@@ -3,6 +3,7 @@ import { usePaneContext, useTransformContext } from "mafs";
 import { det } from "mathjs";
 import { getStrokeDasharray } from "./mathTypes";
 import type { FillPatternType } from "./mathTypes";
+import { useStableRange } from "./useStableRange";
 
 interface InequalityPlotProps {
   compiledLHS: any;
@@ -69,14 +70,28 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
   const patternId = `pattern-${id || Math.random().toString(36).substring(2)}`;
   const maskId = `mask-${id || Math.random().toString(36).substring(2)}`;
 
+  // The expensive grid below is computed over a padded, cached range rather than the
+  // raw live viewport, so ordinary panning/zooming doesn't force a full recompute on
+  // every frame. Visual clipping (mask/rect further down) still uses the live xRange/
+  // yRange so the fill always covers exactly what's on screen.
+  const RANGE_PAD_FACTOR = 0.35;
+  const [computeXMin, computeXMax] = useStableRange(xRange[0], xRange[1], RANGE_PAD_FACTOR);
+  const [computeYMin, computeYMax] = useStableRange(yRange[0], yRange[1], RANGE_PAD_FACTOR);
+
   const paths = useMemo(() => {
     if (!compiledLHS) return { fill: "", boundary: "" };
 
-    const GRID_SIZE = Math.max(40, Math.min(300, samplingDepth * 8));
-    const xMin = xRange[0];
-    const xMax = xRange[1];
-    const yMin = yRange[0];
-    const yMax = yRange[1];
+    const xMin = computeXMin;
+    const xMax = computeXMax;
+    const yMin = computeYMin;
+    const yMax = computeYMax;
+
+    // The computed range is padded beyond the live viewport by a fixed, known factor,
+    // so we can scale grid density by that same fixed ratio (rather than referencing
+    // the ever-changing live xRange here, which would defeat the point of stabilizing
+    // this memo) to keep on-screen resolution close to sampling the viewport alone.
+    const spanRatio = 1 + 2 * RANGE_PAD_FACTOR;
+    const GRID_SIZE = Math.max(40, Math.min(450, Math.round(samplingDepth * 8 * spanRatio)));
 
     const dx = (xMax - xMin) / GRID_SIZE;
     const dy = (yMax - yMin) / GRID_SIZE;
@@ -228,7 +243,7 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
     return { fill: fillPath, boundary: boundaryPath, dy };
   }, [
     compiledLHS, compiledRHS, operator, dependenciesHash || baseScope, samplingDepth,
-    xRange[0], xRange[1], yRange[0], yRange[1],
+    computeXMin, computeXMax, computeYMin, computeYMax,
     tx, ty, px, py, rot, scaleX, scaleY,
   ]);
 

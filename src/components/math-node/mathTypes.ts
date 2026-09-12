@@ -1,3 +1,15 @@
+import { friendlyMathError } from "../../lib/math/friendlyErrors";
+import type { OdeSystem } from "../../lib/math/odeSystem";
+
+/** A parsed + compiled differential system. Runtime only; never persisted. */
+export interface CompiledOde {
+  system: OdeSystem;
+  /** Compiled derivative expression per state, in state order. */
+  derivatives: any[];
+  /** Compiled starting-value expression per state, in state order. */
+  initials: any[];
+}
+
 // ─── Interfaces ───────────────────────────────────────────────────────────────
 
 export interface MathFunction {
@@ -49,6 +61,13 @@ export interface MathFunction {
   patternAngle?: number;
   lineStyle?: "solid" | "dashed" | "dotted" | "dashdot";
   outlineWidth?: number;
+  tRange?: [number, number]; // Custom domain for the parameter t (parametric/polar/differential)
+
+  // Differential equations ("differential" type)
+  compiledOde?: CompiledOde; // runtime only, stripped on save
+  odeAxes?: [string, string]; // what to plot: "t" or a state display name
+  odeSteps?: number; // integration steps (default 1000)
+  odeAnimate?: boolean; // show a dot moving along the solution
 
   // Behaviors
   isDraggable?: boolean;
@@ -368,13 +387,5 @@ export const getStrokeDasharray = (style?: string) => {
   return undefined; // solid or undefined
 };
 
-export const formatMathError = (errMessage: string): string => {
-  if (!errMessage) return errMessage;
-  const match =
-    errMessage.match(/Undefined symbol\s+([a-zA-Z0-9_]+)/i) ||
-    errMessage.match(/Symbol\s+([a-zA-Z0-9_]+)\s+is undefined/i);
-  if (match) {
-    return `Unknown geometry reference "${match[1]}".`;
-  }
-  return errMessage;
-};
+export const formatMathError = (errMessage: string): string =>
+  friendlyMathError(errMessage);

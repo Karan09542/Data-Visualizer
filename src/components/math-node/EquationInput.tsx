@@ -24,6 +24,10 @@ interface EquationInputProps {
   setHoveredVar?: React.Dispatch<React.SetStateAction<string | null>>;
   error?: string;
   warning?: string;
+  /** Example syntax for this function type, shown while the field is focused and empty. */
+  placeholder?: string;
+  /** Ready-made LaTeX for the preview, for syntax mathjs can't parse (e.g. ODE systems). */
+  latexOverride?: string | null;
   onAddEnter?: () => void;
   onBlur?: () => void;
   globalTime?: number;
@@ -40,6 +44,8 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   hoveredVar,
   error,
   warning,
+  placeholder,
+  latexOverride,
   onAddEnter,
   onBlur,
   globalTime = 1,
@@ -118,6 +124,13 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
       return;
     }
 
+    if (latexOverride) {
+      // Already-rendered syntax (ODE systems); the worker can't parse these.
+      setLatexResult({ latex: latexOverride });
+      setIsComputingLatex(false);
+      return;
+    }
+
     let cancelled = false;
     let timeoutId: any;
     let safetyTimeoutId: any;
@@ -177,7 +190,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
       clearTimeout(timeoutId);
       clearTimeout(safetyTimeoutId);
     };
-  }, [value, isFocused, forceEditMode, error, variables, expressionToLatexWithEval]);
+  }, [value, isFocused, forceEditMode, error, variables, expressionToLatexWithEval, latexOverride]);
 
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement | HTMLDivElement>,
@@ -473,7 +486,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
               }}
               onKeyDown={handleKeyDown}
               className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
-              placeholder={isFocused ? "e.g. a * sin(b*x + c)" : ""}
+              placeholder={isFocused ? placeholder || "e.g. a * sin(b*x + c)" : ""}
               spellCheck={false}
               autoComplete="off"
               style={{ overflow: "hidden" }}

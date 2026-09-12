@@ -32,9 +32,12 @@ import {
   Check,
   Eye,
   Sparkles,
-  Type,
-  List,
   Calculator,
+  Ban,
+  Grid3x3,
+  Radar,
+  SlidersHorizontal,
+  Activity,
   FunctionSquare,
 } from "lucide-react";
 
@@ -86,13 +89,29 @@ import {
   CurvePatternDefs,
   InequalityPlot,
   AdaptiveGrid,
+  AxisSettingsPanel,
+  dependencyKey,
+  SmoothCurve,
+  OdeCurve,
+  PlotErrorBoundary,
+  objectId,
+  cachedByKey,
   createAxisLabelFormatter,
   MATH_EXAMPLES,
+  EXAMPLE_GALLERY,
   TraceOverlay,
   VariableManager,
   Timeline,
 } from "./math-node";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
+import { splitRelation } from "../lib/math/splitRelation";
+import { parseOdeSystemCached } from "../lib/math/odeSystem";
+import { odeSystemToLatex } from "../lib/math/odeLatex";
+
+// Identity of this module instance. It changes when Vite hot-reloads this file, which
+// lets the cached plot-layer component below be rebuilt — otherwise an open dev page
+// keeps rendering the previous version's closure and edits appear to do nothing.
+const MODULE_INSTANCE = {};
 
 
 export const MathNodeRenderer: React.FC<any> = ({
@@ -190,6 +209,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   const geomCacheRef = useRef<Record<string, [number, number][]>>({});
   const latestContextRef = useRef<any>(null);
   const MathNodesLayerRef = useRef<any>(null);
+  const MathNodesLayerModuleRef = useRef<any>(null);
   const [functions, setFunctions] = useState<MathFunction[]>(() => {
     if (typeof data.value === "string") {
       try {
@@ -419,7 +439,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [time, setTime] = useState(0);
   const [isPlaying, setIsPlaying] = useState(true);
   const [timeMode, setTimeMode] = useState<"loop" | "bounce" | "continuous">(
-    "loop",
+    "continuous",
   );
   const [timeBounds, setTimeBounds] = useState({
     min: 0,
@@ -449,20 +469,10 @@ export const MathNodeRenderer: React.FC<any> = ({
         settings.gridType !== undefined
           ? settings.gridType
           : ("cartesian" as any),
-      axisFilter:
-        settings.axisFilter !== undefined
-          ? settings.axisFilter
-          : ("numeric" as any),
       axisStepStr:
         settings.axisStepStr !== undefined ? settings.axisStepStr : "1",
-      customAxisFilter:
-        settings.customAxisFilter !== undefined
-          ? settings.customAxisFilter
-          : "n % 3 == 0",
-      customAxisMapping:
-        settings.customAxisMapping !== undefined
-          ? settings.customAxisMapping
-          : "0: Origin\n1: Start\n2: A\n3: B\n4: End",
+      axisAutoFit:
+        settings.axisAutoFit !== undefined ? settings.axisAutoFit : true,
       axisPrefix: settings.axisPrefix !== undefined ? settings.axisPrefix : "",
       axisSuffix: settings.axisSuffix !== undefined ? settings.axisSuffix : "",
       axisDecimals:
@@ -481,21 +491,6 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
     initialGridSettings.gridType,
   );
-  const [axisFilter, setAxisFilter] = useState<
-    | "all"
-    | "even"
-    | "odd"
-    | "numeric"
-    | "pi"
-    | "euler"
-    | "complex"
-    | "degrees"
-    | "radians"
-    | "fractions"
-    | "scientific"
-    | "custom_mapping"
-    | "custom"
-  >(initialGridSettings.axisFilter);
   const [axisStepStr, setAxisStepStr] = useState<string>(
     initialGridSettings.axisStepStr,
   );
@@ -507,11 +502,8 @@ export const MathNodeRenderer: React.FC<any> = ({
       return 1;
     }
   }, [axisStepStr]);
-  const [customAxisFilter, setCustomAxisFilter] = useState(
-    initialGridSettings.customAxisFilter,
-  );
-  const [customAxisMapping, setCustomAxisMapping] = useState(
-    initialGridSettings.customAxisMapping,
+  const [axisAutoFit, setAxisAutoFit] = useState<boolean>(
+    initialGridSettings.axisAutoFit,
   );
   const [axisPrefix, setAxisPrefix] = useState(initialGridSettings.axisPrefix);
   const [axisSuffix, setAxisSuffix] = useState(initialGridSettings.axisSuffix);
@@ -523,6 +515,10 @@ export const MathNodeRenderer: React.FC<any> = ({
   );
   const [showAdvancedAxisControls, setShowAdvancedAxisControls] =
     useState(false);
+  const closeAxisPanel = useCallback(
+    () => setShowAdvancedAxisControls(false),
+    [],
+  );
   const [graphSize, setGraphSize] = useState({ width: 800, height: 600 });
   const [samplingDepth, setSamplingDepth] = useState(
     initialGridSettings.samplingDepth,
@@ -543,10 +539,8 @@ export const MathNodeRenderer: React.FC<any> = ({
   const groupsRef = useRef(groups);
   const gridSettingsRef = useRef({
     gridType,
-    axisFilter,
     axisStepStr,
-    customAxisFilter,
-    customAxisMapping,
+    axisAutoFit,
     axisPrefix,
     axisSuffix,
     axisDecimals,
@@ -567,10 +561,8 @@ export const MathNodeRenderer: React.FC<any> = ({
   useEffect(() => {
     gridSettingsRef.current = {
       gridType,
-      axisFilter,
       axisStepStr,
-      customAxisFilter,
-      customAxisMapping,
+      axisAutoFit,
       axisPrefix,
       axisSuffix,
       axisDecimals,
@@ -580,10 +572,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     };
   }, [
     gridType,
-    axisFilter,
     axisStepStr,
-    customAxisFilter,
-    customAxisMapping,
+    axisAutoFit,
     axisPrefix,
     axisSuffix,
     axisDecimals,
@@ -593,7 +583,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   ]);
 
   const stripFunctions = (fns: MathFunction[]) =>
-    fns.map(({ compiled, compiled2, error, ...f }) => f);
+    fns.map(({ compiled, compiled2, compiledOde, error, ...f }) => f);
 
   const saveImmediately = useCallback(
     (
@@ -664,14 +654,10 @@ export const MathNodeRenderer: React.FC<any> = ({
             if (parsed.gridSettings) {
               if (parsed.gridSettings.gridType !== undefined)
                 setGridType(parsed.gridSettings.gridType);
-              if (parsed.gridSettings.axisFilter !== undefined)
-                setAxisFilter(parsed.gridSettings.axisFilter);
               if (parsed.gridSettings.axisStepStr !== undefined)
                 setAxisStepStr(parsed.gridSettings.axisStepStr);
-              if (parsed.gridSettings.customAxisMapping !== undefined)
-                setCustomAxisMapping(parsed.gridSettings.customAxisMapping);
-              if (parsed.gridSettings.customAxisFilter !== undefined)
-                setCustomAxisFilter(parsed.gridSettings.customAxisFilter);
+              if (parsed.gridSettings.axisAutoFit !== undefined)
+                setAxisAutoFit(parsed.gridSettings.axisAutoFit);
               if (parsed.gridSettings.axisPrefix !== undefined)
                 setAxisPrefix(parsed.gridSettings.axisPrefix);
               if (parsed.gridSettings.axisSuffix !== undefined)
@@ -693,53 +679,51 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   // Stable serialization of functions for save-effect — excludes runtime-only
   // fields (compiled, compiled2, error, compiledKey) so recompilation alone
-  // doesn't trigger a new save cycle.
+  // doesn't trigger a new save cycle, and the per-frame playhead fields (time,
+  // direction) so a playing timeline doesn't restart the save timer every frame.
   const functionsSaveKey = useMemo(
-    () => JSON.stringify(stripFunctions(functions)),
+    () =>
+      JSON.stringify(
+        stripFunctions(functions).map(({ time, direction, ...rest }: any) => rest),
+      ),
     [functions]
   );
 
   useEffect(() => {
     if (!data || !data.path) return;
 
-    // Save to the graph every time there's a state change
-    const stateToSave = {
-      functions: stripFunctions(functions),
-      variables,
-      groups,
-      gridSettings: {
-        gridType,
-        axisFilter,
-        axisStepStr,
-        customAxisMapping,
-        customAxisFilter,
-        axisPrefix,
-        axisSuffix,
-        axisDecimals,
-        axisThousandsSep,
-        samplingDepth,
-        gridSubdivisions,
-      },
-    };
-
-    const newVal = JSON.stringify(stateToSave, null, 2);
+    // Serializing all functions is expensive, so it happens inside the debounce timer:
+    // during a slider drag this runs once at the end instead of on every tick.
+    const serialize = () =>
+      JSON.stringify(
+        {
+          functions: stripFunctions(functionsRef.current),
+          variables: variablesRef.current,
+          groups: groupsRef.current,
+          gridSettings: gridSettingsRef.current,
+        },
+        null,
+        2,
+      );
 
     if (lastSavedValue.current === null) {
-      // Initialize if null to avoid overriding valid external data immediately on load
-      lastSavedValue.current = newVal;
+      // Baseline on first run, so loading never immediately overwrites valid data.
+      lastSavedValue.current = serialize();
       return;
     }
 
-    if (newVal !== lastSavedValue.current) {
+    const timeoutId = setTimeout(() => {
+      // Compared against what was last actually written: an unrelated re-render that
+      // cancels this timer can no longer drop the change silently.
+      const newVal = serialize();
+      if (newVal === lastSavedValue.current) return;
       lastSavedValue.current = newVal;
-      const timeoutId = setTimeout(() => {
-        updateNodeValue(data.path, newVal);
-      }, 500); // 500ms debounce
+      updateNodeValue(data.path, newVal);
+    }, 500);
 
-      return () => {
-        clearTimeout(timeoutId);
-      };
-    }
+    return () => {
+      clearTimeout(timeoutId);
+    };
   }, [
     functionsSaveKey,
     variables,
@@ -747,10 +731,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     data.path,
     updateNodeValue,
     gridType,
-    axisFilter,
     axisStepStr,
-    customAxisMapping,
-    customAxisFilter,
+    axisAutoFit,
     axisPrefix,
     axisSuffix,
     axisDecimals,
@@ -829,14 +811,11 @@ export const MathNodeRenderer: React.FC<any> = ({
   }, [data?.path]);
 
   const getAxisLabel = useMemo(() => createAxisLabelFormatter({
-    axisFilter,
     axisDecimals,
     axisThousandsSep,
     axisPrefix,
     axisSuffix,
-    customAxisFilter,
-    customAxisMapping,
-  }), [axisFilter, axisDecimals, axisThousandsSep, axisPrefix, axisSuffix, customAxisFilter, customAxisMapping]);
+  }), [axisDecimals, axisThousandsSep, axisPrefix, axisSuffix]);
 
   useEffect(() => {
     if (!graphContainerRef.current) return;
@@ -890,27 +869,49 @@ export const MathNodeRenderer: React.FC<any> = ({
           const res = (result.results[i] as any) || {};
           if (res.error) return { ...f, error: res.error };
           try {
-            let compiled, compiled2;
+            let compiled, compiled2, compiledOde;
             let inferredOperator = f.operator;
-            if (f.type === "implicit" || f.type === "inequality") {
-              let op = f.operator || "=";
-              let parts = f.expr.split(op);
-
-              if (f.type === "inequality") {
-                const match = f.expr.match(/(<=|>=|<|>)/);
-                if (match) {
-                  op = match[1];
-                  parts = f.expr.split(op);
-                  inferredOperator = op;
-                } else if (!f.operator) {
-                  op = "<=";
-                  parts = [f.expr, "0"];
-                  inferredOperator = op;
-                }
+            if (f.type === "differential") {
+              // "x'' = -k*x - c*x'; x(0) = 1" -> first-order states with compiled parts.
+              const system = parseOdeSystemCached(f.expr);
+              if (system.error) {
+                return { ...f, compiled: undefined, compiledOde: undefined, error: system.error };
               }
+              compiledOde = {
+                system,
+                derivatives: system.states.map((s) =>
+                  parseAndAdjustForCompile(s.derivative).compile(),
+                ),
+                initials: system.states.map((s) =>
+                  parseAndAdjustForCompile(s.initial || "0").compile(),
+                ),
+              };
+              return {
+                ...f,
+                compiled: undefined,
+                compiledOde,
+                compiledKey: res.compiledKey,
+                error: undefined,
+              };
+            }
+            if (f.type === "implicit" || f.type === "inequality") {
+              // Split at the first top-level operator, so comparisons nested inside the
+              // expression (e.g. a piecewise `x < 0 ? … : …`) aren't cut in half.
+              const split = splitRelation(f.expr, f.type);
+              let lhsStr = "0";
+              let rhsStr = "0";
 
-              const lhsStr = parts[0] ? parts[0].trim() : "0";
-              const rhsStr = parts[1] ? parts[1].trim() : "0";
+              if (split) {
+                lhsStr = split.lhs || "0";
+                rhsStr = split.rhs || "0";
+                if (f.type === "inequality") inferredOperator = split.operator;
+              } else if (f.type === "inequality" && !f.operator) {
+                lhsStr = f.expr.trim() || "0";
+                rhsStr = "0";
+                inferredOperator = "<=";
+              } else {
+                lhsStr = f.expr.trim() || "0";
+              }
 
               const lhsNode = parseAndAdjustForCompile(lhsStr || "0");
               const rhsNode = parseAndAdjustForCompile(rhsStr || "0");
@@ -935,7 +936,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           return prev.map(existingF => {
             const compiled = compiledById.get(existingF.id);
             if (compiled) {
-              return { ...existingF, compiled: compiled.compiled, compiled2: compiled.compiled2, compiledKey: compiled.compiledKey, error: compiled.error, operator: compiled.operator };
+              return { ...existingF, compiled: compiled.compiled, compiled2: compiled.compiled2, compiledOde: (compiled as any).compiledOde, compiledKey: compiled.compiledKey, error: compiled.error, operator: compiled.operator };
             }
             return existingF;
           });
@@ -974,10 +975,23 @@ export const MathNodeRenderer: React.FC<any> = ({
     )
     .join("|");
 
+  // Whether any visible function's expression actually references t/time — if nothing
+  // does, there's no reason to keep the rAF loop ticking (and re-sampling every curve)
+  // 60x/sec for a plain static graph.
+  const hasTimeDependentFunction = functions.some(
+    (f) =>
+      f.visible &&
+      (f.type === "differential"
+        ? // ODE solutions are static; only the dot moving along them needs the clock.
+          f.odeAnimate !== false
+        : /\b(t|time)\b/.test(f.expr)),
+  );
+
   // Animation loop
   useEffect(() => {
     const hasAnyAnimation =
-      isPlaying || functions.some((f) => f.hasCustomTimeline && f.isPlaying);
+      (isPlaying && hasTimeDependentFunction) ||
+      functions.some((f) => f.hasCustomTimeline && f.isPlaying);
     if (!hasAnyAnimation) {
       if (reqRef.current) cancelAnimationFrame(reqRef.current);
       lastTimeRef.current = 0;
@@ -1081,6 +1095,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     };
   }, [
     isPlaying,
+    hasTimeDependentFunction,
     timeBounds.speed,
     timeBounds.direction,
     timeBounds.min,
@@ -1089,15 +1104,14 @@ export const MathNodeRenderer: React.FC<any> = ({
     functionsSerializedKey,
   ]);
 
-  const baseScope = variables.reduce(
-    (acc, v) => ({ ...acc, [v.name]: v.value }),
-    {} as any,
-  );
+  // theta defaults to 0 so non-polar expressions that mention it still evaluate, but a
+  // user variable named theta must win (polar sweeps bind theta per sample anyway).
+  const baseScope: any = { theta: 0 };
+  for (const v of variables) baseScope[v.name] = v.value;
   baseScope.t = time;
   baseScope.time = time;
   baseScope.ln = mathjs.log;
   baseScope.log10 = mathjs.log10;
-  baseScope.theta = 0;
   baseScope.indexHelper = indexHelper;
 
   // Expose geometry functions in baseScope
@@ -1128,6 +1142,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   // Pre-evaluate functions so definitions or matrices are available sequentially
   functions.forEach((f) => {
+    if (f.type === "differential") return; // solved numerically, nothing to pre-evaluate
     if (f.compiled) {
       try {
         const fTime = f.hasCustomTimeline
@@ -1164,17 +1179,40 @@ export const MathNodeRenderer: React.FC<any> = ({
     );
   };
 
+  // Sensible ranges for common physics symbols, so typing e.g. "g" into an equation
+  // doesn't require a second trip to the variable editor just to fix a generic -10..10
+  // default into something physically meaningful.
+  const PHYSICS_VAR_DEFAULTS: Record<
+    string,
+    { value: number; min: number; max: number; step: number; displayName: string }
+  > = {
+    g: { value: 9.8, min: 1, max: 20, step: 0.1, displayName: "Gravity" },
+    theta: { value: Math.PI / 4, min: 0, max: Math.PI * 2, step: 0.01, displayName: "Angle" },
+    "θ": { value: Math.PI / 4, min: 0, max: Math.PI * 2, step: 0.01, displayName: "Angle" },
+    omega: { value: 2, min: 0, max: 10, step: 0.1, displayName: "Angular Frequency" },
+    "ω": { value: 2, min: 0, max: 10, step: 0.1, displayName: "Angular Frequency" },
+    phi: { value: 0, min: 0, max: Math.PI * 2, step: 0.1, displayName: "Phase" },
+    "φ": { value: 0, min: 0, max: Math.PI * 2, step: 0.1, displayName: "Phase" },
+    v0: { value: 20, min: 0, max: 40, step: 0.5, displayName: "Initial Velocity" },
+    A: { value: 2, min: 0, max: 10, step: 0.1, displayName: "Amplitude" },
+    k: { value: 1, min: 0, max: 10, step: 0.1, displayName: "Spring Constant" },
+    c: { value: 0.2, min: 0, max: 2, step: 0.05, displayName: "Damping" },
+    L: { value: 1, min: 0.1, max: 5, step: 0.1, displayName: "Length" },
+    m: { value: 1, min: 0.1, max: 10, step: 0.1, displayName: "Mass" },
+  };
+
   const handleAutoAddVar = (name: string) => {
+    const preset = PHYSICS_VAR_DEFAULTS[name];
     const newVar: MathVariable = {
       id: generateSafeId(),
       name,
-      displayName: "",
+      displayName: preset?.displayName ?? "",
       description: "",
-      value: 1,
-      defaultValue: 1,
-      min: -10,
-      max: 10,
-      step: 0.1,
+      value: preset?.value ?? 1,
+      defaultValue: preset?.value ?? 1,
+      min: preset?.min ?? -10,
+      max: preset?.max ?? 10,
+      step: preset?.step ?? 0.1,
       groupId: "default",
     };
     setVariables((prev) => [...prev, newVar]);
@@ -1213,7 +1251,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     | "vector"
     | "polygon"
     | "inequality"
-    | "line";
+    | "line"
+    | "differential";
     expr: string;
     expr2?: string;
     name?: string;
@@ -1228,6 +1267,10 @@ export const MathNodeRenderer: React.FC<any> = ({
         color: COLORS[prev.length % COLORS.length],
         visible: true,
         type: formula.type,
+        // Sensible defaults so an inserted ODE draws something immediately.
+        ...(formula.type === "differential"
+          ? { tRange: [0, 20] as [number, number], odeSteps: 1000, odeAnimate: true }
+          : {}),
       },
     ]);
   };
@@ -1345,6 +1388,10 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
   };
 
+  // One shape for every icon button in the header, so they line up and hit the same size.
+  const headerIconBtn =
+    "size-7 inline-flex items-center justify-center rounded-lg shrink-0 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40";
+
   const content = (
     <div
       className={`${appTheme} flex flex-col bg-white dark:bg-slate-900 border border-slate-250 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-2xl overflow-hidden transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "w-full h-full rounded-xl"}`}
@@ -1378,40 +1425,48 @@ export const MathNodeRenderer: React.FC<any> = ({
             Advanced Math Graph
           </span>
         </div>
-        <div className="flex items-center gap-1 nodrag shrink-0">
-          <button
-            onClick={() => setShowGridControls((prev) => !prev)}
-            className={`p-1 rounded transition-colors md:hidden ${showGridControls
-              ? "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400"
-              : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 hover:text-slate-800 dark:hover:text-slate-200"
-              }`}
-            title="Grid & Axis Settings"
-          >
-            <Settings size={16} />
-          </button>
-          <button
-            onClick={() => setViewResetKey((k) => k + 1)}
-            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
-            title="Reset Origin (Center Graph)"
-          >
-            <Crosshair size={16} />
-          </button>
-          <button
-            onClick={() => setShowHelp(true)}
-            className="p-1 sm:px-1.5 sm:py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900 rounded transition-all text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1 text-xs"
-            title="Help & Documentation (F1 / Alt+H)"
-          >
-            <HelpCircle size={14} />
-            <span className="hidden sm:inline">Help</span>
-          </button>
-          <button
-            onClick={() => setIsFullscreen(!isFullscreen)}
-            className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 shrink-0"
-            title={isFullscreen ? "Minimize" : "Maximize Node"}
-          >
-            {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-          </button>
-          <NodeOptionsMenu path={nodeId} iconSize={16} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 shrink-0" />
+        <div className="flex items-center gap-1.5 nodrag shrink-0">
+          {/* Graph actions */}
+          <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
+            <button
+              onClick={() => setShowGridControls((prev) => !prev)}
+              className={`${headerIconBtn} md:hidden ${showGridControls
+                ? "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-500/20"
+                : ""
+                }`}
+              title="Grid & Axis Settings"
+              aria-pressed={showGridControls}
+            >
+              <Settings size={15} />
+            </button>
+            <button
+              onClick={() => setViewResetKey((k) => k + 1)}
+              className={headerIconBtn}
+              title="Reset Origin (Center Graph)"
+            >
+              <Crosshair size={15} />
+            </button>
+            <button
+              onClick={() => setShowHelp(true)}
+              className="h-7 inline-flex items-center gap-1.5 px-2 rounded-lg text-xs font-medium shrink-0 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
+              title="Help & Documentation (F1 / Alt+H)"
+            >
+              <HelpCircle size={14} />
+              <span className="hidden sm:inline">Help</span>
+            </button>
+          </div>
+
+          {/* Window actions */}
+          <div className="flex items-center gap-0.5">
+            <button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              className={headerIconBtn}
+              title={isFullscreen ? "Minimize" : "Maximize Node"}
+            >
+              {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            </button>
+            <NodeOptionsMenu path={nodeId} iconSize={15} className={headerIconBtn} />
+          </div>
         </div>
       </div>
 
@@ -1649,7 +1704,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                               ? "Inequality"
                                               : f.type === "polygon"
                                                 ? "Polygon"
-                                                : "Select function type"
+                                                : f.type === "differential"
+                                                  ? "Differential equation (x' = …, solved numerically)"
+                                                  : "Select function type"
                             }
                           >
                             <option
@@ -1658,6 +1715,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                               className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                             >
                               y =
+                            </option>
+                            <option
+                              value="differential"
+                              title="Differential equation, e.g. x'' = -k*x - c*x'"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              x′ =
                             </option>
                             <option
                               value="polar"
@@ -1747,6 +1811,24 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   handleUpdateExpr(f.id, val)
                                 }
                                 onBlur={() => saveImmediately()}
+                                latexOverride={
+                                  f.type === "differential"
+                                    ? odeSystemToLatex(f.expr)
+                                    : undefined
+                                }
+                                placeholder={
+                                  f.type === "differential"
+                                    ? "e.g. x'' = -k*x - c*x'; x(0) = 1; x'(0) = 0"
+                                    : f.type === "polar"
+                                      ? "e.g. 1 + cos(theta)"
+                                      : f.type === "parametric"
+                                        ? "e.g. [cos(t), sin(t)]"
+                                        : f.type === "implicit"
+                                          ? "e.g. x^2 + y^2 = 4"
+                                          : f.type === "inequality"
+                                            ? "e.g. y < sin(x)"
+                                            : "e.g. a * sin(b*x + c)  ·  piecewise: x < 0 ? x^2 : sin(x)"
+                                }
                                 variables={variables}
                                 hoveredVar={hoveredVar}
                                 error={f.error}
@@ -4564,6 +4646,182 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   </span>
                                 </div>
                               </div>
+
+                              {(f.type === "parametric" ||
+                                f.type === "polar" ||
+                                f.type === "differential") && (
+                                <div className="flex flex-col gap-1 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
+                                  <span className="text-slate-550 dark:text-slate-400 font-semibold text-[11px]">
+                                    {f.type === "differential" ? "Time Range (t)" : "Parameter Range (t)"}
+                                  </span>
+                                  <div className="flex items-center gap-2 mt-1">
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={f.tRange ? f.tRange[0] : 0}
+                                      onChange={(e) => {
+                                        const val = parseFloat(e.target.value);
+                                        if (isNaN(val)) return;
+                                        const defaultMax =
+                                          f.type === "polar"
+                                            ? 2 * Math.PI * 5
+                                            : f.type === "differential"
+                                              ? 10
+                                              : 2 * Math.PI;
+                                        setFunctions((prev) =>
+                                          prev.map((fn) =>
+                                            fn.id === f.id
+                                              ? {
+                                                ...fn,
+                                                tRange: [val, fn.tRange ? fn.tRange[1] : defaultMax],
+                                              }
+                                              : fn,
+                                          ),
+                                        );
+                                      }}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500"
+                                      placeholder="min"
+                                    />
+                                    <span className="text-slate-450 dark:text-slate-500 text-[10px]">
+                                      to
+                                    </span>
+                                    <input
+                                      type="number"
+                                      step="0.1"
+                                      value={
+                                        f.tRange
+                                          ? f.tRange[1]
+                                          : Number(
+                                            (f.type === "polar"
+                                              ? 2 * Math.PI * 5
+                                              : f.type === "differential"
+                                                ? 10
+                                                : 2 * Math.PI
+                                            ).toFixed(3),
+                                          )
+                                      }
+                                      onChange={(e) => {
+                                        const val = parseFloat(e.target.value);
+                                        if (isNaN(val)) return;
+                                        setFunctions((prev) =>
+                                          prev.map((fn) =>
+                                            fn.id === f.id
+                                              ? { ...fn, tRange: [fn.tRange ? fn.tRange[0] : 0, val] }
+                                              : fn,
+                                          ),
+                                        );
+                                      }}
+                                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500"
+                                      placeholder="max"
+                                    />
+                                  </div>
+                                </div>
+                              )}
+
+                              {f.type === "differential" && (() => {
+                                const system = parseOdeSystemCached(f.expr);
+                                const options = ["t", ...system.states.map((s) => s.display)];
+                                const axes = f.odeAxes ?? ["t", system.states[0]?.display ?? "t"];
+                                const setAxis = (which: 0 | 1, value: string) =>
+                                  setFunctions((prev) =>
+                                    prev.map((fn) =>
+                                      fn.id === f.id
+                                        ? {
+                                          ...fn,
+                                          odeAxes: (which === 0
+                                            ? [value, axes[1]]
+                                            : [axes[0], value]) as [string, string],
+                                        }
+                                        : fn,
+                                    ),
+                                  );
+                                const selectCls =
+                                  "w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500";
+                                return (
+                                  <div className="flex flex-col gap-2 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
+                                    {system.error ? (
+                                      <span className="text-[10px] text-red-500 dark:text-red-400">
+                                        {system.error}
+                                      </span>
+                                    ) : (
+                                      <React.Fragment>
+                                        <span className="text-slate-550 dark:text-slate-400 font-semibold text-[11px]">
+                                          Plot
+                                        </span>
+                                        <div className="flex items-center gap-2">
+                                          <select
+                                            value={axes[0]}
+                                            onChange={(e) => setAxis(0, e.target.value)}
+                                            className={selectCls}
+                                            title="Horizontal axis"
+                                          >
+                                            {options.map((o) => (
+                                              <option key={o} value={o}>{o}</option>
+                                            ))}
+                                          </select>
+                                          <span className="text-slate-450 dark:text-slate-500 text-[10px]">
+                                            vs
+                                          </span>
+                                          <select
+                                            value={axes[1]}
+                                            onChange={(e) => setAxis(1, e.target.value)}
+                                            className={selectCls}
+                                            title="Vertical axis"
+                                          >
+                                            {options.map((o) => (
+                                              <option key={o} value={o}>{o}</option>
+                                            ))}
+                                          </select>
+                                        </div>
+
+                                        <div className="flex items-center gap-2">
+                                          <span className="text-slate-550 dark:text-slate-400 text-[11px] shrink-0">
+                                            Steps
+                                          </span>
+                                          <input
+                                            type="number"
+                                            min="10"
+                                            max="20000"
+                                            step="100"
+                                            value={f.odeSteps ?? 1000}
+                                            onChange={(e) => {
+                                              const val = parseInt(e.target.value, 10);
+                                              if (isNaN(val)) return;
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id ? { ...fn, odeSteps: val } : fn,
+                                                ),
+                                              );
+                                            }}
+                                            className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded px-2 py-1 text-[11px] font-mono text-slate-700 dark:text-slate-200 outline-none focus:border-blue-500"
+                                            title="More steps means a more accurate solution"
+                                          />
+                                        </div>
+
+                                        <label className="flex items-center gap-2 cursor-pointer select-none">
+                                          <input
+                                            type="checkbox"
+                                            checked={f.odeAnimate !== false}
+                                            onChange={(e) =>
+                                              setFunctions((prev) =>
+                                                prev.map((fn) =>
+                                                  fn.id === f.id
+                                                    ? { ...fn, odeAnimate: e.target.checked }
+                                                    : fn,
+                                                ),
+                                              )
+                                            }
+                                            className="size-3.5 rounded border-slate-300 dark:border-slate-700 cursor-pointer"
+                                          />
+                                          <span className="text-slate-550 dark:text-slate-400 text-[11px]">
+                                            Show moving point
+                                          </span>
+                                        </label>
+                                      </React.Fragment>
+                                    )}
+                                  </div>
+                                );
+                              })()}
                             </div>
                           )}
                         </div>
@@ -4768,6 +5026,26 @@ export const MathNodeRenderer: React.FC<any> = ({
                         {[
                           { label: "Linear", fn: "m*x + b", type: "function" },
                           {
+                            label: "Piecewise",
+                            fn: "x < 0 ? x^2 : sin(x)",
+                            type: "function",
+                          },
+                          {
+                            label: "Step",
+                            fn: "x < 0 ? 0 : 1",
+                            type: "function",
+                          },
+                          {
+                            label: "ODE: Oscillator",
+                            fn: "x'' = -k*x - c*x'; x(0) = 1; x'(0) = 0",
+                            type: "differential",
+                          },
+                          {
+                            label: "ODE: Growth",
+                            fn: "N' = r*N*(1 - N/K); N(0) = 1",
+                            type: "differential",
+                          },
+                          {
                             label: "Quadratic",
                             fn: "a*x^2 + b*x + c",
                             type: "function",
@@ -4882,95 +5160,24 @@ export const MathNodeRenderer: React.FC<any> = ({
                         Examples Gallery
                       </h4>
                       <div className="grid grid-cols-2 gap-2">
-                        <button
-                          onClick={() => handleLoadExample("Lissajous")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Lissajous"
-                            ? "bg-blue-500/10 border-blue-400 dark:border-blue-500 ring-1 ring-blue-400/50"
-                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                            }`}
-                        >
-                          <span className="text-[10px] text-blue-500 font-semibold dark:text-blue-400 group-hover:text-blue-600 dark:group-hover:text-blue-300">
-                            Animation
-                          </span>
-                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
-                            Lissajous Curves
-                          </span>
-                        </button>
-
-                        <button
-                          onClick={() => handleLoadExample("Fourier")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Fourier"
-                            ? "bg-emerald-500/10 border-emerald-400 dark:border-emerald-500 ring-1 ring-emerald-400/50"
-                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                            }`}
-                        >
-                          <span className="text-[10px] text-emerald-600 font-semibold dark:text-emerald-400 group-hover:text-emerald-700 dark:group-hover:text-emerald-300">
-                            Mathematics
-                          </span>
-                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
-                            Fourier Series
-                          </span>
-                        </button>
-
-                        <button
-                          onClick={() => handleLoadExample("Wave")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Wave"
-                            ? "bg-amber-500/10 border-amber-400 dark:border-amber-500 ring-1 ring-amber-400/50"
-                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                            }`}
-                        >
-                          <span className="text-[10px] text-amber-600 font-semibold dark:text-amber-400 group-hover:text-amber-700 dark:group-hover:text-amber-300">
-                            Physics
-                          </span>
-                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
-                            Traveling Wave
-                          </span>
-                        </button>
-
-                        <button
-                          onClick={() => handleLoadExample("Statistics")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Statistics"
-                            ? "bg-purple-500/10 border-purple-400 dark:border-purple-500 ring-1 ring-purple-400/50"
-                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                            }`}
-                        >
-                          <span className="text-[10px] text-purple-600 font-semibold dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300">
-                            Statistics
-                          </span>
-                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
-                            Normal Dist.
-                          </span>
-                        </button>
-
-                        <button
-                          onClick={() => handleLoadExample("Geometry")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Geometry"
-                            ? "bg-pink-500/10 border-pink-400 dark:border-pink-500 ring-1 ring-pink-400/50"
-                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                            }`}
-                        >
-                          <span className="text-[10px] text-pink-600 font-semibold dark:text-pink-400 group-hover:text-pink-700 dark:group-hover:text-pink-300">
-                            Geometry
-                          </span>
-                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
-                            Vectors & Polygons
-                          </span>
-                        </button>
-
-                        <button
-                          onClick={() => handleLoadExample("Matrix")}
-                          className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === "Matrix"
-                            ? "bg-indigo-500/10 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50"
-                            : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
-                            }`}
-                        >
-                          <span className="text-[10px] text-indigo-600 font-semibold dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300">
-                            Matrices
-                          </span>
-                          <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
-                            Matrix & Det. Eq.
-                          </span>
-                        </button>
+                        {EXAMPLE_GALLERY.map((ex) => (
+                          <button
+                            key={ex.key}
+                            onClick={() => handleLoadExample(ex.key)}
+                            title={ex.hint}
+                            className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === ex.key
+                              ? ex.activeClass
+                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                              }`}
+                          >
+                            <span className={`text-[10px] font-semibold ${ex.labelClass}`}>
+                              {ex.category}
+                            </span>
+                            <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
+                              {ex.label}
+                            </span>
+                          </button>
+                        ))}
                       </div>
                     </div>
                   </div>
@@ -5061,240 +5268,84 @@ export const MathNodeRenderer: React.FC<any> = ({
           {/* Graph Controls */}
           {(isExpanded || isFullscreen) && (
             <div
-              className={`absolute top-2 left-2 right-2 md:top-4 md:left-4 md:right-auto z-40 flex flex-wrap md:flex-nowrap items-center bg-slate-900/80 backdrop-blur border border-slate-700/50 rounded-lg pointer-events-auto p-1 shadow-2xl transition-all duration-300 ${showGridControls
+              data-no-trace
+              className={`absolute top-2 left-2 right-2 md:top-3 md:left-3 md:right-auto z-40 flex items-center gap-1 p-1 rounded-xl bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 pointer-events-auto overflow-x-auto no-scrollbar transition-all duration-300 ${showGridControls || showAdvancedAxisControls
                 ? "opacity-100 translate-y-0"
                 : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
                 }`}
             >
-              <button
-                onClick={() => setGridType("none")}
-                className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors ${gridType === "none" ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
-                title="No Grid"
+              <div
+                role="radiogroup"
+                aria-label="Grid type"
+                className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/70 shrink-0"
               >
-                None
-              </button>
-              <button
-                onClick={() => setGridType("cartesian")}
-                className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors ${gridType === "cartesian" ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
-                title="Cartesian Grid"
-              >
-                Cartesian
-              </button>
-              <button
-                onClick={() => setGridType("polar")}
-                className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors ${gridType === "polar" ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
-                title="Polar Grid"
-              >
-                Polar
-              </button>
-              <div className="hidden md:block w-px bg-slate-700 my-1 mx-1 h-4"></div>
-              <div className="relative flex items-center">
-                <button
-                  onClick={() =>
-                    setShowAdvancedAxisControls(!showAdvancedAxisControls)
-                  }
-                  className={`px-3 py-1.5 text-xs font-mono rounded-md transition-colors flex items-center gap-1.5 ${showAdvancedAxisControls ? "bg-slate-700 text-slate-200 shadow" : "text-slate-400 hover:text-slate-300 hover:bg-slate-800"}`}
-                  title="Axis Labels Setup"
-                >
-                  <List size={14} />
-                  <span>Axis Labels</span>
-                  <Settings size={12} />
-                </button>
-
-                {showAdvancedAxisControls && (
-                  <div
-                    className="absolute top-[calc(100%+8px)] right-0 bg-slate-900 border border-slate-800 rounded-xl shadow-2xl p-5 z-[100] w-[340px] flex flex-col gap-5 overflow-visible cursor-default"
-                    onClick={(e) => e.stopPropagation()}
-                  >
-                    <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-                      <h3 className="text-sm font-medium text-slate-200 flex items-center gap-2 tracking-wide">
-                        <Type size={16} className="text-blue-500" /> Axis Labels
-                        Setup
-                      </h3>
-                      <button
-                        onClick={() => setShowAdvancedAxisControls(false)}
-                        className="text-slate-500 hover:text-slate-300 transition-colors p-1 rounded-md hover:bg-slate-800"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-4">
-                      <div className="flex flex-col gap-2 col-span-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
-                          Label Mode
-                        </label>
-                        <select
-                          value={axisFilter}
-                          onChange={(e) => setAxisFilter(e.target.value as any)}
-                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 hover:border-slate-700 transition-colors"
-                        >
-                          <optgroup label="Basic">
-                            <option value="all">All Subdivisions</option>
-                            <option value="even">Even Numbers</option>
-                            <option value="odd">Odd Numbers</option>
-                          </optgroup>
-                          <optgroup label="Mathematical Presets">
-                            <option value="numeric">Numeric (Default)</option>
-                            <option value="pi">π Multiples</option>
-                            <option value="euler">Euler (e)</option>
-                            <option value="complex">Complex (i)</option>
-                            <option value="degrees">Degrees</option>
-                            <option value="radians">Radians</option>
-                            <option value="fractions">Fractions</option>
-                            <option value="scientific">Scientific</option>
-                          </optgroup>
-                          <optgroup label="Custom">
-                            <option value="custom_mapping">
-                              Custom Mapping
-                            </option>
-                            <option value="custom">
-                              Logic Rule (e.g. n%2==0)
-                            </option>
-                          </optgroup>
-                        </select>
-                      </div>
-
-                      <div className="flex flex-col gap-2 col-span-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
-                          Axis Step Size (lines)
-                        </label>
-                        <input
-                          type="text"
-                          value={axisStepStr}
-                          onChange={(e) => setAxisStepStr(e.target.value)}
-                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 transition-colors placeholder:text-slate-600"
-                          placeholder="e.g. 1, 0.5, pi/2"
-                        />
-                      </div>
-
-                      {axisFilter === "custom_mapping" && (
-                        <div className="flex flex-col gap-2 col-span-2">
-                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
-                            Value → Label Map
-                          </label>
-                          <textarea
-                            value={customAxisMapping}
-                            onChange={(e) =>
-                              setCustomAxisMapping(e.target.value)
-                            }
-                            className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 h-28 whitespace-pre custom-scrollbar resize-none placeholder:text-slate-600"
-                            placeholder="0 → Origin&#10;1 → Start&#10;2 → End"
-                          />
-                        </div>
-                      )}
-
-                      {axisFilter === "custom" && (
-                        <div className="flex flex-col gap-2 col-span-2">
-                          <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
-                            Logic Rule (Returns Boolean)
-                          </label>
-                          <input
-                            type="text"
-                            value={customAxisFilter}
-                            onChange={(e) =>
-                              setCustomAxisFilter(e.target.value)
-                            }
-                            className="bg-slate-950 border border-slate-800 text-slate-300 text-xs font-mono rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 placeholder:text-slate-600"
-                            placeholder="e.g. abs(n) > 2"
-                          />
-                        </div>
-                      )}
-
-                      {["numeric", "scientific"].includes(axisFilter) && (
-                        <React.Fragment>
-                          <div className="flex flex-col gap-2 col-span-2 sm:col-span-1">
-                            <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
-                              Decimals
-                            </label>
-                            <input
-                              type="number"
-                              min="0"
-                              max="10"
-                              value={axisDecimals}
-                              onChange={(e) =>
-                                setAxisDecimals(Number(e.target.value))
-                              }
-                              className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50"
-                            />
-                          </div>
-                          <div className="flex items-center gap-2 col-span-2 sm:col-span-1 pb-2 self-end">
-                            <input
-                              type="checkbox"
-                              id="thousandsSep"
-                              checked={axisThousandsSep}
-                              onChange={(e) =>
-                                setAxisThousandsSep(e.target.checked)
-                              }
-                              className="rounded border-slate-700 bg-slate-950 focus:ring-blue-500/50 focus:ring-offset-slate-900 focus:border-slate-600 size-4 cursor-pointer"
-                            />
-                            <label
-                              htmlFor="thousandsSep"
-                              className="text-xs text-slate-300 select-none cursor-pointer"
-                            >
-                              Thousands Separator
-                            </label>
-                          </div>
-                        </React.Fragment>
-                      )}
-
-                      <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
-                          Prefix
-                        </label>
-                        <input
-                          type="text"
-                          value={axisPrefix}
-                          onChange={(e) => setAxisPrefix(e.target.value)}
-                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 placeholder:text-slate-600"
-                          placeholder="e.g. $"
-                        />
-                      </div>
-                      <div className="flex flex-col gap-2">
-                        <label className="text-[10px] uppercase font-bold tracking-wider text-slate-500 ml-0.5">
-                          Suffix
-                        </label>
-                        <input
-                          type="text"
-                          value={axisSuffix}
-                          onChange={(e) => setAxisSuffix(e.target.value)}
-                          className="bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-lg px-3 py-2 outline-none focus:border-blue-500/50 placeholder:text-slate-600"
-                          placeholder="s"
-                        />
-                      </div>
-
-                      <div className="col-span-2 mt-2 bg-slate-950/80 border border-slate-800/80 rounded-xl p-4 text-slate-300 flex flex-col gap-3 relative">
-                        <h4 className="text-[10px] uppercase tracking-wider text-slate-500 font-bold">
-                          Live Preview
-                        </h4>
-                        <div className="flex items-center font-mono text-xs overflow-x-auto custom-scrollbar pb-1 text-slate-200">
-                          {[
-                            0,
-                            parsedAxisStep,
-                            parsedAxisStep * 2,
-                            parsedAxisStep * 3,
-                          ].map((val, idx) => {
-                            const lbl = getAxisLabel(val);
-                            return (
-                              <React.Fragment key={val}>
-                                {idx > 0 && (
-                                  <span className="text-slate-700 font-sans mx-3">
-                                    |
-                                  </span>
-                                )}
-                                <span className="shrink-0">
-                                  {lbl === "" ? "—" : lbl}
-                                </span>
-                              </React.Fragment>
-                            );
-                          })}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                )}
+                {(
+                  [
+                    { id: "none", label: "None", Icon: Ban },
+                    { id: "cartesian", label: "Cartesian", Icon: Grid3x3 },
+                    { id: "polar", label: "Polar", Icon: Radar },
+                  ] as const
+                ).map(({ id, label, Icon }) => {
+                  const active = gridType === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setGridType(id)}
+                      title={id === "none" ? "Hide grid" : `${label} grid`}
+                      className={`flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-md text-[11px] font-medium transition-all ${active
+                        ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-600/60"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                        }`}
+                    >
+                      <Icon
+                        size={13}
+                        className={active ? "text-blue-600 dark:text-blue-400" : ""}
+                      />
+                      <span>{label}</span>
+                    </button>
+                  );
+                })}
               </div>
+              <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />
+              <button
+                type="button"
+                onClick={() =>
+                  setShowAdvancedAxisControls(!showAdvancedAxisControls)
+                }
+                aria-expanded={showAdvancedAxisControls}
+                title="Axis settings"
+                className={`flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${showAdvancedAxisControls
+                  ? "bg-blue-600 text-white shadow-sm"
+                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+              >
+                <SlidersHorizontal size={13} />
+                <span className="hidden sm:inline">Axes</span>
+              </button>
             </div>
+          )}
+
+          {(isExpanded || isFullscreen) && showAdvancedAxisControls && (
+            <AxisSettingsPanel
+              axisStepStr={axisStepStr}
+              setAxisStepStr={setAxisStepStr}
+              parsedAxisStep={parsedAxisStep}
+              axisAutoFit={axisAutoFit}
+              setAxisAutoFit={setAxisAutoFit}
+              axisDecimals={axisDecimals}
+              setAxisDecimals={setAxisDecimals}
+              axisThousandsSep={axisThousandsSep}
+              setAxisThousandsSep={setAxisThousandsSep}
+              axisPrefix={axisPrefix}
+              setAxisPrefix={setAxisPrefix}
+              axisSuffix={axisSuffix}
+              setAxisSuffix={setAxisSuffix}
+              getAxisLabel={getAxisLabel}
+              onClose={closeAxisPanel}
+            />
           )}
 
           <Mafs
@@ -5310,14 +5361,11 @@ export const MathNodeRenderer: React.FC<any> = ({
               gridType={gridType}
               gridSubdivisions={gridSubdivisions}
               parsedAxisStep={parsedAxisStep}
-              axisStepStr={axisStepStr}
-              axisFilter={axisFilter}
+              axisAutoFit={axisAutoFit}
               axisDecimals={axisDecimals}
               axisThousandsSep={axisThousandsSep}
               axisPrefix={axisPrefix}
               axisSuffix={axisSuffix}
-              customAxisFilter={customAxisFilter}
-              customAxisMapping={customAxisMapping}
             />
 
             <TraceOverlay
@@ -5342,7 +5390,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                 variables,
               };
 
-              if (!MathNodesLayerRef.current) {
+              if (
+                !MathNodesLayerRef.current ||
+                MathNodesLayerModuleRef.current !== MODULE_INSTANCE
+              ) {
+                MathNodesLayerModuleRef.current = MODULE_INSTANCE;
                 MathNodesLayerRef.current = ({
                   isInteractionLayer,
                 }: {
@@ -5374,6 +5426,46 @@ export const MathNodeRenderer: React.FC<any> = ({
                   return functions
                     .filter((f) => f.visible)
                     .map((f) => {
+                      // Differential equations are solved numerically, so they have no
+                      // single compiled expression and are handled before that check.
+                      if (f.type === "differential") {
+                        if (isInteractionLayer || !f.compiledOde) return null;
+                        const fTime = f.hasCustomTimeline
+                          ? f.time !== undefined
+                            ? f.time
+                            : 0
+                          : time;
+                        const odeScope = { ...ctx.baseScope, t: fTime, time: time };
+                        const hoverMatch =
+                          hoveredVar && new RegExp(`\\b${hoveredVar}\\b`).test(f.expr);
+                        return (
+                          <OdeCurve
+                            key={`${f.id}-ode`}
+                            compiledOde={f.compiledOde}
+                            scope={odeScope}
+                            sampleKey={`${objectId(f.compiledOde)}|${dependencyKey(
+                              f,
+                              functions,
+                              odeScope,
+                              fTime,
+                              variables,
+                            )}`}
+                            tRange={f.tRange}
+                            steps={f.odeSteps ?? 1000}
+                            axes={f.odeAxes}
+                            color={f.color}
+                            weight={hoverMatch ? 6 : f.outlineWidth !== undefined ? f.outlineWidth : 3}
+                            opacity={hoveredVar ? (hoverMatch ? 1 : 0.3) : 1}
+                            style={f.lineStyle && f.lineStyle !== "solid" ? "dashed" : "solid"}
+                            svgPathProps={{
+                              style: { strokeDasharray: getStrokeDasharray(f.lineStyle) },
+                            }}
+                            animate={f.odeAnimate !== false}
+                            markerTime={fTime}
+                          />
+                        );
+                      }
+
                       if (f.compiled) {
                         const fTime = f.hasCustomTimeline
                           ? f.time !== undefined
@@ -5668,6 +5760,41 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                             return [outX, outY];
                           };
+
+                          // Same transform for curves, but NaN/±Infinity pass through (so
+                          // SmoothCurve can break the path there) and nothing is clamped
+                          // (SmoothCurve clamps only when writing the path).
+                          const isIdentityTransform =
+                            tx === 0 && ty === 0 && rot === 0 && sx === 1 && sy === 1 && baseAngle === 0;
+                          const cosA = Math.cos(-baseAngle);
+                          const sinA = Math.sin(-baseAngle);
+                          const cosR = Math.cos(rot + baseAngle);
+                          const sinR = Math.sin(rot + baseAngle);
+                          const applyCurveTransform = (
+                            pt: [number, number],
+                          ): [number, number] => {
+                            if (isIdentityTransform) return pt;
+                            const lx = pt[0] - px;
+                            const ly = pt[1] - py;
+                            const x1 = (lx * cosA - ly * sinA) * sx;
+                            const y1 = (lx * sinA + ly * cosA) * sy;
+                            return [x1 * cosR - y1 * sinR + px + tx, x1 * sinR + y1 * cosR + py + ty];
+                          };
+                          // Everything a curve's samples depend on; SmoothCurve re-samples only
+                          // when this changes (not on every render / animation frame).
+                          const curveKey =
+                            !isInteractionLayer &&
+                              (f.type === "function" ||
+                                f.type === "parametric" ||
+                                f.type === "polar")
+                              ? `${objectId(f.compiled)}|${f.type}|${dependencyKey(
+                                f,
+                                functions,
+                                baseScope,
+                                fTime,
+                                variables,
+                              )}|${tx},${ty},${rot},${sx},${sy},${px},${py},${baseAngle}|${f.tRange ? f.tRange.join(",") : ""}`
+                              : "";
 
                           return (
                             <React.Fragment key={f.id}>
@@ -5972,33 +6099,38 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   <React.Fragment>
                                     {f.fillColor !== undefined &&
                                       (() => {
-                                        const fillPoints: [number, number][] =
-                                          [];
-                                        const steps = 150;
-                                        for (let i = 0; i <= steps; i++) {
-                                          const tVal =
-                                            (2 * Math.PI * i) / steps;
-                                          try {
-                                            const scope = Object.create(baseScope);
-                                            scope.t = tVal;
-                                            const res = f.compiled.evaluate(scope);
-                                            const arr =
-                                              res && res.toArray
-                                                ? res.toArray()
-                                                : res;
-                                            if (
-                                              Array.isArray(arr) &&
-                                              arr.length >= 2
-                                            ) {
-                                              fillPoints.push(
-                                                applyForwardTransform([
-                                                  Number(arr[0]),
-                                                  Number(arr[1]),
-                                                ]),
-                                              );
+                                        const [fillT0, fillT1] = f.tRange ?? [0, 2 * Math.PI];
+                                        const fillPoints = cachedByKey(
+                                          `${f.id}:fill`,
+                                          curveKey,
+                                          () => {
+                                            const pts: [number, number][] = [];
+                                            const steps = 150;
+                                            for (let i = 0; i <= steps; i++) {
+                                              const tVal = fillT0 + ((fillT1 - fillT0) * i) / steps;
+                                              try {
+                                                const scope = Object.create(baseScope);
+                                                scope.t = tVal;
+                                                const res = f.compiled.evaluate(scope);
+                                                const arr =
+                                                  res && res.toArray
+                                                    ? res.toArray()
+                                                    : res;
+                                                if (
+                                                  Array.isArray(arr) &&
+                                                  arr.length >= 2
+                                                ) {
+                                                  const p = applyCurveTransform([
+                                                    Number(arr[0]),
+                                                    Number(arr[1]),
+                                                  ]);
+                                                  if (Number.isFinite(p[0]) && Number.isFinite(p[1])) pts.push(p);
+                                                }
+                                              } catch { }
                                             }
-                                          } catch { }
-                                        }
+                                            return pts;
+                                          },
+                                        );
                                         if (fillPoints.length < 2) return null;
                                         return (
                                           <React.Fragment>
@@ -6041,8 +6173,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                           </React.Fragment>
                                         );
                                       })()}
-                                    <Plot.Parametric
-                                      key={`${f.id}-parametric-${variablesHash}-${fTime}`}
+                                    <SmoothCurve
+                                      key={`${f.id}-parametric`}
+                                      sampleKey={curveKey}
                                       minSamplingDepth={Math.max(
                                         8,
                                         Math.min(10, samplingDepth),
@@ -6064,17 +6197,17 @@ export const MathNodeRenderer: React.FC<any> = ({
                                             Array.isArray(arr) &&
                                             arr.length >= 2
                                           ) {
-                                            return applyForwardTransform([
+                                            return applyCurveTransform([
                                               Number(arr[0]),
                                               Number(arr[1]),
                                             ]);
                                           }
-                                          return [0, 0];
+                                          return [NaN, NaN];
                                         } catch {
-                                          return [0, 0];
+                                          return [NaN, NaN];
                                         }
                                       }}
-                                      t={[0, 2 * Math.PI]}
+                                      t={f.tRange ?? [0, 2 * Math.PI]}
                                       color={f.color}
                                       weight={
                                         hoveredVar &&
@@ -6116,7 +6249,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 (f.type === "inequality" ||
                                   f.type === "implicit") && (
                                   <InequalityPlot
-                                    key={`${f.id}-ineq-${variablesHash}-${fTime}`}
+                                    key={`${f.id}-ineq`}
                                     id={f.id}
                                     compiledLHS={f.compiled}
                                     compiledRHS={f.compiled2}
@@ -6126,18 +6259,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       (f.type === "implicit" ? "=" : "<")
                                     }
                                     baseScope={baseScope}
-                                    dependenciesHash={`${f.expr}__${f.expr2 || ""}__${f.operator || ""}__${functions
-                                      .filter(fn => fn.id !== f.id && fn.name && (
-                                        new RegExp(`\\b${fn.name}\\b`).test(f.expr || "") ||
-                                        (f.expr2 && new RegExp(`\\b${fn.name}\\b`).test(f.expr2))
-                                      ))
-                                      .map(fn => fn.expr)
-                                      .join("__")}__${variables.map((v) => `${v.name}:${v.value}`).join(",")}__${/\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr || "") ||
-                                        (f.expr2 && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.expr2)) ||
-                                        (f.operator && /\b(t|time|t_[a-zA-Z0-9_]+)\b/.test(f.operator))
-                                        ? `time:${time}_fTime:${fTime}`
-                                        : "static"
-                                      }`}
+                                    dependenciesHash={`${f.expr}__${f.expr2 || ""}__${f.operator || ""}__${dependencyKey(
+                                      f,
+                                      functions,
+                                      baseScope,
+                                      fTime,
+                                      variables,
+                                    )}`}
                                     color={f.color}
                                     fillColor={f.fillColor}
                                     fillOpacity={
@@ -6178,41 +6306,36 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   <React.Fragment>
                                     {f.fillColor !== undefined &&
                                       (() => {
-                                        const fillPoints: [number, number][] =
-                                          [];
-                                        const steps = 300;
-                                        const maxT = 2 * Math.PI * 5;
-                                        for (let i = 0; i <= steps; i++) {
-                                          const tVal = (maxT * i) / steps;
-                                          try {
-                                            const useThetaAsAngle =
-                                              /\btheta\b/.test(f.expr);
-                                            const scope = Object.create(baseScope);
-                                            if (useThetaAsAngle) {
-                                              scope.theta = tVal;
-                                              scope.x = tVal;
-                                            } else {
-                                              scope.t = tVal;
-                                              scope.x = tVal;
-                                              scope.theta = tVal;
+                                        const [fillT0, fillT1] = f.tRange ?? [0, 2 * Math.PI * 5];
+                                        const useThetaAsAngle = /\btheta\b|θ/.test(f.expr);
+                                        const fillPoints = cachedByKey(
+                                          `${f.id}:fill`,
+                                          curveKey,
+                                          () => {
+                                            const pts: [number, number][] = [];
+                                            const steps = 300;
+                                            for (let i = 0; i <= steps; i++) {
+                                              const tVal = fillT0 + ((fillT1 - fillT0) * i) / steps;
+                                              try {
+                                                const scope = Object.create(baseScope);
+                                                if (!useThetaAsAngle) scope.t = tVal;
+                                                scope.x = tVal;
+                                                scope.theta = scope["θ"] = tVal;
+                                                const r = Number(
+                                                  f.compiled.evaluate(scope),
+                                                );
+                                                if (Number.isFinite(r)) {
+                                                  const p = applyCurveTransform([
+                                                    r * Math.cos(tVal),
+                                                    r * Math.sin(tVal),
+                                                  ]);
+                                                  if (Number.isFinite(p[0]) && Number.isFinite(p[1])) pts.push(p);
+                                                }
+                                              } catch { }
                                             }
-                                            const r = Number(
-                                              f.compiled.evaluate(scope),
-                                            );
-                                            if (
-                                              !isNaN(r) &&
-                                              typeof r !== "object" &&
-                                              isFinite(r)
-                                            ) {
-                                              fillPoints.push(
-                                                applyForwardTransform([
-                                                  r * Math.cos(tVal),
-                                                  r * Math.sin(tVal),
-                                                ]),
-                                              );
-                                            }
-                                          } catch { }
-                                        }
+                                            return pts;
+                                          },
+                                        );
                                         if (fillPoints.length < 2) return null;
                                         return (
                                           <React.Fragment>
@@ -6255,8 +6378,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                           </React.Fragment>
                                         );
                                       })()}
-                                    <Plot.Parametric
-                                      key={`${f.id}-polar-${variablesHash}-${fTime}`}
+                                    <SmoothCurve
+                                      key={`${f.id}-polar`}
+                                      sampleKey={curveKey}
                                       minSamplingDepth={Math.max(
                                         8,
                                         Math.min(10, samplingDepth),
@@ -6265,33 +6389,27 @@ export const MathNodeRenderer: React.FC<any> = ({
                                         8,
                                         Math.min(14, samplingDepth),
                                       )}
-                                      xy={(tVal: number) => {
-                                        try {
-                                          const useThetaAsAngle =
-                                            /\btheta\b/.test(f.expr);
-                                          const scope = Object.create(baseScope);
-                                          if (useThetaAsAngle) {
-                                            scope.theta = tVal;
+                                      xy={(() => {
+                                        const useThetaAsAngle = /\btheta\b|θ/.test(f.expr);
+                                        return (tVal: number): [number, number] => {
+                                          try {
+                                            const scope = Object.create(baseScope);
+                                            if (!useThetaAsAngle) scope.t = tVal;
                                             scope.x = tVal;
-                                          } else {
-                                            scope.t = tVal;
-                                            scope.x = tVal;
-                                            scope.theta = tVal;
+                                            scope.theta = scope["θ"] = tVal;
+                                            const r = Number(
+                                              f.compiled.evaluate(scope),
+                                            );
+                                            return applyCurveTransform([
+                                              r * Math.cos(tVal),
+                                              r * Math.sin(tVal),
+                                            ]);
+                                          } catch {
+                                            return [NaN, NaN];
                                           }
-                                          const r = Number(
-                                            f.compiled.evaluate(scope),
-                                          );
-                                          if (isNaN(r) || typeof r === "object")
-                                            return [0, 0];
-                                          return applyForwardTransform([
-                                            r * Math.cos(tVal),
-                                            r * Math.sin(tVal),
-                                          ]);
-                                        } catch {
-                                          return [0, 0];
-                                        }
-                                      }}
-                                      t={[0, 2 * Math.PI * 5]} // Up to 5 full rotations, can adjust if user wants varying domain
+                                        };
+                                      })()}
+                                      t={f.tRange ?? [0, 2 * Math.PI * 5]} // Up to 5 full rotations by default; override via f.tRange
                                       color={f.color}
                                       weight={
                                         hoveredVar &&
@@ -6334,29 +6452,30 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   <React.Fragment>
                                     {f.fillColor !== undefined &&
                                       (() => {
-                                        const fillPoints: [number, number][] =
-                                          [];
                                         const xMin = xRange[0] - 2;
                                         const xMax = xRange[1] + 2;
-                                        const steps = 200;
-                                        for (let i = 0; i <= steps; i++) {
-                                          const xVal =
-                                            xMin + ((xMax - xMin) * i) / steps;
-                                          try {
-                                            const scope = Object.create(baseScope);
-                                            scope.x = xVal;
-                                            const res = f.compiled.evaluate(scope);
-                                            const y = Number(res);
-                                            if (!isNaN(y) && isFinite(y)) {
-                                              fillPoints.push(
-                                                applyForwardTransform([
-                                                  xVal,
-                                                  y,
-                                                ]),
-                                              );
+                                        const fillPoints = cachedByKey(
+                                          `${f.id}:fill`,
+                                          `${curveKey}|${xMin},${xMax}`,
+                                          () => {
+                                            const pts: [number, number][] = [];
+                                            const steps = 200;
+                                            for (let i = 0; i <= steps; i++) {
+                                              const xVal =
+                                                xMin + ((xMax - xMin) * i) / steps;
+                                              try {
+                                                const scope = Object.create(baseScope);
+                                                scope.x = xVal;
+                                                const y = Number(f.compiled.evaluate(scope));
+                                                if (Number.isFinite(y)) {
+                                                  const p = applyCurveTransform([xVal, y]);
+                                                  if (Number.isFinite(p[0]) && Number.isFinite(p[1])) pts.push(p);
+                                                }
+                                              } catch { }
                                             }
-                                          } catch { }
-                                        }
+                                            return pts;
+                                          },
+                                        );
                                         if (fillPoints.length < 2) return null;
                                         return (
                                           <React.Fragment>
@@ -6399,8 +6518,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                           </React.Fragment>
                                         );
                                       })()}
-                                    <Plot.Parametric
-                                      key={`${f.id}-function-${variablesHash}-${fTime}`}
+                                    <SmoothCurve
+                                      key={`${f.id}-function`}
+                                      sampleKey={curveKey}
                                       minSamplingDepth={Math.max(
                                         8,
                                         Math.min(10, samplingDepth),
@@ -6409,10 +6529,29 @@ export const MathNodeRenderer: React.FC<any> = ({
                                         8,
                                         Math.min(14, samplingDepth),
                                       )}
-                                      t={[
-                                        xRange[0] - Math.max(50, (xRange[1] - xRange[0]) * 2),
-                                        xRange[1] + Math.max(50, (xRange[1] - xRange[0]) * 2),
-                                      ]}
+                                      // Sample exactly the pane range (already padded past the
+                                      // viewport and snapped by Mafs), as Mafs' own Plot.OfX does.
+                                      // With a transform, use the pane's x-extent in the curve's
+                                      // own coordinates.
+                                      t={(() => {
+                                        if (isIdentityTransform) return [xRange[0], xRange[1]] as [number, number];
+                                        let lo = Infinity;
+                                        let hi = -Infinity;
+                                        for (const gx of [xRange[0], xRange[1]]) {
+                                          for (const gy of [yRange[0], yRange[1]]) {
+                                            const ux = gx - px - tx;
+                                            const uy = gy - py - ty;
+                                            const x1 = (ux * cosR + uy * sinR) / (sx || 1);
+                                            const y1 = (-ux * sinR + uy * cosR) / (sy || 1);
+                                            const lx = x1 * cosA + y1 * sinA + px;
+                                            lo = Math.min(lo, lx);
+                                            hi = Math.max(hi, lx);
+                                          }
+                                        }
+                                        return Number.isFinite(lo) && Number.isFinite(hi) && hi > lo
+                                          ? ([lo, hi] as [number, number])
+                                          : ([xRange[0], xRange[1]] as [number, number]);
+                                      })()}
                                       xy={(t) => {
                                         try {
                                           const scope = Object.create(baseScope);
@@ -6423,22 +6562,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                                             typeof res === "object" &&
                                             res.im !== undefined
                                           ) {
-                                            if (Math.abs(res.im) < 1e-9) {
-                                              return applyForwardTransform([
-                                                t,
-                                                Number(res.re),
-                                              ]);
-                                            } else {
-                                              return applyForwardTransform([
-                                                t,
-                                                NaN,
-                                              ]);
-                                            }
+                                            return applyCurveTransform([
+                                              t,
+                                              Math.abs(res.im) < 1e-9 ? Number(res.re) : NaN,
+                                            ]);
                                           }
-                                          return applyForwardTransform([
-                                            t,
-                                            Number(res),
-                                          ]);
+                                          return applyCurveTransform([t, Number(res)]);
                                         } catch {
                                           return [t, NaN];
                                         }
@@ -7051,20 +7180,46 @@ export const MathNodeRenderer: React.FC<any> = ({
 
               return (
                 <React.Fragment>
-                  <MathNodesLayer isInteractionLayer={false} />
-                  <MathNodesLayer isInteractionLayer={true} />
+                  <PlotErrorBoundary label="curve layer" resetKey={functionsSaveKey}>
+                    <MathNodesLayer isInteractionLayer={false} />
+                  </PlotErrorBoundary>
+                  <PlotErrorBoundary label="interaction layer" resetKey={functionsSaveKey}>
+                    <MathNodesLayer isInteractionLayer={true} />
+                  </PlotErrorBoundary>
                 </React.Fragment>
               );
             })()}
           </Mafs>
 
           {isFullscreen && (
-            <div className="absolute bottom-4 right-4 md:bottom-auto md:top-4 z-30 bg-white/90 dark:bg-slate-900/80 backdrop-blur border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-mono p-3 rounded-lg shadow-2xl">
-              <div className="font-semibold text-slate-800 dark:text-slate-200 mb-1 border-b border-slate-200 dark:border-slate-700 pb-1">
+            <div
+              data-no-trace
+              className="absolute bottom-3 right-3 md:bottom-auto md:top-3 z-30 pointer-events-none min-w-[10rem] max-w-[16rem] overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md shadow-lg shadow-slate-900/5 dark:shadow-black/30"
+            >
+              <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                <Activity size={12} className="text-blue-500 dark:text-blue-400" />
                 Inspector
               </div>
-              <div className="flex flex-col gap-1 mt-2">
-                {functions
+              {(() => {
+                const renderRow = (
+                  f: MathFunction,
+                  label: React.ReactNode,
+                  value: React.ReactNode,
+                ) => (
+                  <div key={f.id} className="flex items-center justify-between gap-3">
+                    <span className="flex items-center gap-1.5 min-w-0 text-slate-500 dark:text-slate-400">
+                      <span
+                        className="size-2 shrink-0 rounded-full"
+                        style={{ backgroundColor: f.color }}
+                      />
+                      <span className="truncate">{label}</span>
+                    </span>
+                    <span className="tabular-nums text-slate-900 dark:text-slate-100">
+                      {value}
+                    </span>
+                  </div>
+                );
+                const rows = functions
                   .filter((f) => f.visible && f.compiled)
                   .map((f) => {
                     const fTime = f.hasCustomTimeline
@@ -7088,13 +7243,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                         )
                           return null;
                         const y = Number(val).toFixed(2);
-                        return (
-                          <div key={f.id} className="flex gap-2">
-                            <span style={{ color: f.color }}>
-                              f({((fTime % 10) - 5).toFixed(1)})
-                            </span>
-                            : {y}
-                          </div>
+                        return renderRow(
+                          f,
+                          `f(${((fTime % 10) - 5).toFixed(1)})`,
+                          y,
                         );
                       } else if (
                         f.type === "parametric" ||
@@ -7102,25 +7254,22 @@ export const MathNodeRenderer: React.FC<any> = ({
                       ) {
                         const tVal = (fTime / 2) % (2 * Math.PI);
                         if (f.type === "polar") {
-                          const useThetaAsAngle = /\btheta\b/.test(f.expr);
+                          const useThetaAsAngle = /\btheta\b|θ/.test(f.expr);
                           const scope = { ...baseScopeShadow };
                           if (useThetaAsAngle) {
-                            scope.theta = tVal;
+                            scope.theta = scope["θ"] = tVal;
                             scope.x = tVal;
                           } else {
                             scope.t = tVal;
                             scope.x = tVal;
-                            scope.theta = tVal;
+                            scope.theta = scope["θ"] = tVal;
                           }
                           const r = Number(f.compiled.evaluate(scope));
                           if (isNaN(r)) return null;
-                          return (
-                            <div key={f.id} className="flex gap-2">
-                              <span style={{ color: f.color }}>
-                                r({tVal.toFixed(1)})
-                              </span>
-                              : {r.toFixed(2)}
-                            </div>
+                          return renderRow(
+                            f,
+                            `r(${tVal.toFixed(1)})`,
+                            r.toFixed(2),
                           );
                         } else {
                           const res = f.compiled.evaluate({
@@ -7134,14 +7283,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                             !isNaN(Number(arr[0])) &&
                             !isNaN(Number(arr[1]))
                           ) {
-                            return (
-                              <div key={f.id} className="flex gap-2">
-                                <span style={{ color: f.color }}>
-                                  [x,y]({tVal.toFixed(1)})
-                                </span>
-                                : [{Number(arr[0]).toFixed(2)},{" "}
-                                {Number(arr[1]).toFixed(2)}]
-                              </div>
+                            return renderRow(
+                              f,
+                              `(x,y)(${tVal.toFixed(1)})`,
+                              `(${Number(arr[0]).toFixed(2)}, ${Number(arr[1]).toFixed(2)})`,
                             );
                           }
                         }
@@ -7149,13 +7294,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                         const res = resolveGeometryPoints(f, baseScopeShadow);
                         if (res.points && res.points.length > 0) {
                           const pt = res.points[0];
-                          return (
-                            <div key={f.id} className="flex gap-2">
-                              <span style={{ color: f.color }}>
-                                {f.type === "point" ? "P" : "V"}
-                              </span>
-                              : [{pt[0].toFixed(2)}, {pt[1].toFixed(2)}]
-                            </div>
+                          return renderRow(
+                            f,
+                            f.label || (f.type === "point" ? "P" : "V"),
+                            `(${pt[0].toFixed(2)}, ${pt[1].toFixed(2)})`,
                           );
                         }
                       }
@@ -7163,8 +7305,20 @@ export const MathNodeRenderer: React.FC<any> = ({
                     } catch {
                       return null;
                     }
-                  })}
-              </div>
+                  })
+                  .filter(Boolean);
+                return (
+                  <div className="flex flex-col gap-1.5 px-3 py-2 font-mono text-[11px]">
+                    {rows.length > 0 ? (
+                      rows
+                    ) : (
+                      <span className="font-sans text-slate-400 dark:text-slate-500">
+                        No live values
+                      </span>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           )}
         </div>

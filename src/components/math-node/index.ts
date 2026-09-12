@@ -11,6 +11,11 @@ export * from "./CurvePatternDefs";
 export * from "./InequalityPlot";
 export * from "./ImplicitPlot";
 export * from "./AdaptiveGrid";
+export * from "./AxisSettingsPanel";
+export * from "./dependencyKeys";
+export * from "./SmoothCurve";
+export * from "./OdeCurve";
+export * from "./PlotErrorBoundary";
 export * from "./examples";
 export * from "./TraceOverlay";
 

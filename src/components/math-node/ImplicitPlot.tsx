@@ -3,6 +3,7 @@ import { usePaneContext } from "mafs";
 import { Line } from "mafs";
 import { det } from "mathjs";
 import { getStrokeDasharray } from "./mathTypes";
+import { useStableRange } from "./useStableRange";
 
 interface ImplicitPlotProps {
   compiledLHS: any;
@@ -52,15 +53,25 @@ export const ImplicitPlot: React.FC<ImplicitPlotProps> = ({
     yRange = pane.yPaneRange;
   }
 
-  const GRID_SIZE = Math.max(20, Math.min(200, samplingDepth * 6));
+  // Computed over a padded, cached range rather than the raw live viewport, so ordinary
+  // panning/zooming doesn't force a full recompute on every frame (see useStableRange).
+  const RANGE_PAD_FACTOR = 0.35;
+  const [computeXMin, computeXMax] = useStableRange(xRange[0], xRange[1], RANGE_PAD_FACTOR);
+  const [computeYMin, computeYMax] = useStableRange(yRange[0], yRange[1], RANGE_PAD_FACTOR);
+  // Grid density scaled by the same fixed pad ratio to keep on-screen resolution close
+  // to what it would be sampling only the live viewport.
+  const GRID_SIZE = Math.max(
+    20,
+    Math.min(280, Math.round(samplingDepth * 6 * (1 + 2 * RANGE_PAD_FACTOR))),
+  );
 
   const segments = useMemo(() => {
     if (!compiledLHS) return [];
 
-    const xMin = xRange[0];
-    const xMax = xRange[1];
-    const yMin = yRange[0];
-    const yMax = yRange[1];
+    const xMin = computeXMin;
+    const xMax = computeXMax;
+    const yMin = computeYMin;
+    const yMax = computeYMax;
 
     const dx = (xMax - xMin) / GRID_SIZE;
     const dy = (yMax - yMin) / GRID_SIZE;
@@ -187,7 +198,7 @@ export const ImplicitPlot: React.FC<ImplicitPlotProps> = ({
     return localSegments;
   }, [
     compiledLHS, compiledRHS, dependenciesHash || baseScope, samplingDepth,
-    xRange[0], xRange[1], yRange[0], yRange[1],
+    computeXMin, computeXMax, computeYMin, computeYMax,
     tx, ty, px, py, rot, scaleX, scaleY,
   ]);
 

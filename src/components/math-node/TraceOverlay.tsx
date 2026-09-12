@@ -1,7 +1,12 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Point, useTransformContext, usePaneContext, Text, vec } from "mafs";
 import { MathFunction } from "./mathTypes";
 import { computePCA } from "./mathHelpers";
+
+// UI floating over the graph (toolbar, settings panel, inspector) opts out of tracing,
+// so tapping a button doesn't also trace the curve underneath it.
+const isOverOverlayUI = (e: PointerEvent) =>
+  e.target instanceof Element && e.target.closest("[data-no-trace]") !== null;
 
 interface TraceOverlayProps {
   functions: MathFunction[];
@@ -26,17 +31,15 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
     color: string;
   } | null>(null);
 
-  const handlePointerMove = useCallback(
-    (e: PointerEvent) => {
-      if (!containerRef.current) return;
-      if (!e.shiftKey) {
-        setHoverData(null);
-        return;
-      }
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const computeMatchAt = useCallback(
+    (clientX: number, clientY: number, maxPixelDist: number) => {
+      if (!containerRef.current) return null;
 
       const rect = containerRef.current.getBoundingClientRect();
-      const px = e.clientX - rect.left;
-      const py = e.clientY - rect.top;
+      const px = clientX - rect.left;
+      const py = clientY - rect.top;
 
       const xRange = pane && pane.xPaneRange ? pane.xPaneRange : [-5, 5];
       const yRange = pane && pane.yPaneRange ? pane.yPaneRange : [-5, 5];
@@ -45,7 +48,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
       const viewBoxY = (yRange[1] / (yRange[0] - yRange[1])) * rect.height;
 
       const inverseViewTransform = vec.matrixInvert(viewTransform);
-      if (!inverseViewTransform) return;
+      if (!inverseViewTransform) return null;
 
       const [mathX, mathY] = vec.transform(
         [px + viewBoxX, py + viewBoxY],
@@ -55,11 +58,9 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
       // viewTransform is [a, c, tx, b, d, ty]. Index 0 is scaleX, Index 4 is scaleY.
       const pixelsPerUnitX = Math.abs(viewTransform[0]);
       const pixelsPerUnitY = Math.abs(viewTransform[4]);
-      
-      const MAX_PIXEL_DIST = 20; // max hover distance in pixels
 
       let closestMatch = null;
-      let minPixelDistSq = MAX_PIXEL_DIST * MAX_PIXEL_DIST;
+      let minPixelDistSq = maxPixelDist * maxPixelDist;
 
       const scope = Object.create(baseScope);
       scope.time = time;
@@ -213,7 +214,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
             for (let i = 0; i < pts.length; i++) {
               checkSegment(pts[i], pts[(i + 1) % pts.length], f.color);
             }
-          } else if (f.type === "function" || f.type === "differential") {
+          } else if (f.type === "function") {
             const transform = getTransformHelper(f, []);
             const inverse = getInverseTransformHelper(f, []);
             const localMouse = inverse([mathX, mathY]);
@@ -257,8 +258,11 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
           } else if (f.type === "parametric" || f.type === "polar") {
             const isPolar = f.type === "polar";
             const tMin = (f as any).tRange ? (f as any).tRange[0] : 0;
-            const tMax = (f as any).tRange ? (f as any).tRange[1] : (isPolar ? 12 * Math.PI : 2 * Math.PI);
-            const samples = isPolar ? 300 : 100;
+            // Must match the actual sweep used to draw the curve (Plot.Parametric below/elsewhere) —
+            // polar plots are drawn over [0, 2π*5]. Searching a wider range than what's drawn lets
+            // this converge on a mathematically valid point that was never actually rendered.
+            const tMax = (f as any).tRange ? (f as any).tRange[1] : (isPolar ? 2 * Math.PI * 5 : 2 * Math.PI);
+            const samples = isPolar ? 720 : 100;
             
             const transform = getTransformHelper(f, []);
             
@@ -268,7 +272,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
             
             for (let i = 0; i <= samples; i++) {
               const t = tMin + (tMax - tMin) * (i / samples);
-              scope.theta = t;
+              scope.theta = scope["θ"] = t;
               scope.t = t;
               scope.x = t; // fallback if user used x
               let pt = [0, 0];
@@ -296,7 +300,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
                 let localMinDist = minDist;
                 for (let i = 0; i <= 20; i++) {
                   const t = bestT - searchRadius + 2 * searchRadius * (i / 20);
-                  scope.theta = t;
+                  scope.theta = scope["θ"] = t;
                   scope.t = t;
                   scope.x = t;
                   let pt = [0, 0];
@@ -369,24 +373,70 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
         }
       }
 
-      setHoverData(closestMatch);
+      return closestMatch;
     },
     [containerRef, pane, functions, baseScope, time]
+  );
+
+  // Desktop/mouse: hold Shift while hovering to show the live trace point.
+  const handlePointerMove = useCallback(
+    (e: PointerEvent) => {
+      if (e.pointerType === "touch") return;
+      if (!e.shiftKey || isOverOverlayUI(e)) {
+        setHoverData(null);
+        return;
+      }
+      setHoverData(computeMatchAt(e.clientX, e.clientY, 20));
+    },
+    [computeMatchAt]
+  );
+
+  // Mobile/touch: record where the touch started so we can tell a tap from a pan-drag.
+  const handlePointerDown = useCallback((e: PointerEvent) => {
+    if (e.pointerType !== "touch") return;
+    touchStartRef.current = isOverOverlayUI(e)
+      ? null
+      : { x: e.clientX, y: e.clientY };
+  }, []);
+
+  // Mobile/touch: a short tap (little movement since pointerdown) shows the point value.
+  const handlePointerUp = useCallback(
+    (e: PointerEvent) => {
+      if (e.pointerType !== "touch") return;
+      const start = touchStartRef.current;
+      touchStartRef.current = null;
+      if (!start) return;
+
+      const dx = e.clientX - start.x;
+      const dy = e.clientY - start.y;
+      if (dx * dx + dy * dy > 100) return; // moved more than ~10px: was a pan, not a tap
+
+      setHoverData(computeMatchAt(e.clientX, e.clientY, 28));
+    },
+    [computeMatchAt]
   );
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
 
+    const handleLeave = (e: PointerEvent) => {
+      // Touch has no real "leave"; pointerup already handles showing the tapped value.
+      if (e.pointerType !== "touch") setHoverData(null);
+    };
+
     el.addEventListener("pointermove", handlePointerMove);
-    const handleLeave = () => setHoverData(null);
+    el.addEventListener("pointerdown", handlePointerDown);
+    el.addEventListener("pointerup", handlePointerUp);
     el.addEventListener("pointerleave", handleLeave);
 
     return () => {
       el.removeEventListener("pointermove", handlePointerMove);
+      el.removeEventListener("pointerdown", handlePointerDown);
+      el.removeEventListener("pointerup", handlePointerUp);
       el.removeEventListener("pointerleave", handleLeave);
     };
-  }, [containerRef, handlePointerMove]);
+  }, [containerRef, handlePointerMove, handlePointerDown, handlePointerUp]);
 
   if (!hoverData) return null;
 

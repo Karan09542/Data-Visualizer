@@ -141,6 +141,27 @@ export const VariableManager: React.FC<VariableManagerProps> = ({
   setDragOverVariablePosition,
   handleDropVariable,
 }) => {
+  // Slider drags fire far faster than the screen refreshes, and each update re-renders
+  // every plot. Coalesce to one commit per animation frame; the last value always lands.
+  const pendingSliderRef = useRef<{ id: string; value: number } | null>(null);
+  const sliderRafRef = useRef<number | null>(null);
+  const commitSliderValue = (id: string, value: number) => {
+    pendingSliderRef.current = { id, value };
+    if (sliderRafRef.current !== null) return;
+    sliderRafRef.current = requestAnimationFrame(() => {
+      sliderRafRef.current = null;
+      const pending = pendingSliderRef.current;
+      pendingSliderRef.current = null;
+      if (pending) handleUpdateVar(pending.id, { value: pending.value });
+    });
+  };
+  useEffect(
+    () => () => {
+      if (sliderRafRef.current !== null) cancelAnimationFrame(sliderRafRef.current);
+    },
+    [],
+  );
+
   const [showSearch, setShowSearch] = useState(false);
   const [searchVar, setSearchVar] = useState("");
   const [rangePopupVarId, setRangePopupVarId] = useState<string | null>(null);
@@ -528,9 +549,7 @@ export const VariableManager: React.FC<VariableManagerProps> = ({
                           step={v.step}
                           value={v.value}
                           onChange={(e) =>
-                            handleUpdateVar(v.id, {
-                              value: parseFloat(e.target.value),
-                            })
+                            commitSliderValue(v.id, parseFloat(e.target.value))
                           }
                           className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors flex-1 [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[currentColor] [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-125 active:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[currentColor] [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-125 active:[&::-moz-range-thumb]:scale-110 [&::-moz-range-thumb]:transition-transform"
                           style={{

@@ -13,7 +13,7 @@ interface MathHelpPopupProps {
   isOpen: boolean;
   onClose: () => void;
   onInsertFormula?: (formula: {
-    type: "function" | "parametric" | "point" | "implicit" | "polar" | "vector" | "polygon" | "inequality" | "line";
+    type: "function" | "parametric" | "point" | "implicit" | "polar" | "vector" | "polygon" | "inequality" | "line" | "differential";
     expr: string;
     expr2?: string;
     name?: string;
@@ -42,7 +42,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
   };
 
   const handleInsert = (formula: {
-    type: "function" | "parametric" | "point" | "implicit" | "polar" | "vector" | "polygon" | "inequality" | "line";
+    type: "function" | "parametric" | "point" | "implicit" | "polar" | "vector" | "polygon" | "inequality" | "line" | "differential";
     expr: string;
     expr2?: string;
     name?: string;
@@ -82,6 +82,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
     { id: 'transformations', title: 'Transformations', icon: Move, badge: 'Gizmos' },
     { id: 'inequalities', title: 'Inequalities', icon: Layers, badge: 'Shading' },
     { id: 'polar-parametric', title: 'Polar & Parametric', icon: Compass, badge: 'Curves' },
+    { id: 'differential', title: "Differential Equations", icon: Waves, badge: "x′" },
     { id: 'advanced-gallery', title: 'Advanced Gallery', icon: Sparkles, badge: 'Ready' },
   ];
 
@@ -99,6 +100,18 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
         title: 'Continuous Evaluation Loop',
         keywords: ['loop', 'render', 'evaluation', 'fps', 'real-time', 'mafs'],
         snippet: 'Plots vectors and math shapes with ultra-crisp precision on resize-friendly canvas elements.',
+      },
+      {
+        section: 'differential',
+        title: "Differential Equations (x')",
+        keywords: ['differential', 'ode', 'derivative', 'prime', "x'", "x''", 'rate of change', 'solver', 'rk4', 'runge kutta', 'numerical', 'simulate', 'physics', 'motion'],
+        snippet: "Write how fast something changes — x'' = -k*x - c*x' — and the solver draws the path.",
+      },
+      {
+        section: 'differential',
+        title: 'Starting values and coupled equations',
+        keywords: ['initial condition', 'starting value', 'x(0)', 'coupled', 'system', 'phase portrait', 'pendulum', 'oscillator', 'orbit', 'damping'],
+        snippet: 'x(0) = 1 sets where it starts; write several equations together to couple them.',
       },
       {
         section: 'function-types',
@@ -1010,6 +1023,116 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                                 {copiedId === 'copy-param-ex' ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
                               </button>
                             </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {activeTab === 'differential' && (
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Differential Equations (x′)</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                            Some motion has no tidy formula — a pendulum swinging wide, a ball slowed by air, a planet in orbit.
+                            But you can always say <em>how fast things change</em>. Pick the <code className="font-mono text-indigo-500">x′ =</code> type,
+                            write that rule, and the solver works out the path for you.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">Writing it</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
+                            Write it the way you would on paper. Separate each part with <code className="font-mono text-indigo-500">;</code> or a new line.
+                          </p>
+                          <div className="p-2.5 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg">
+                            <code className="font-mono text-[11px] text-indigo-500 select-all">x'' = -k*x - c*x'; x(0) = 1; x'(0) = 0</code>
+                          </div>
+                          <ul className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-1.5 list-disc pl-4">
+                            <li><code className="font-mono text-indigo-500">x'</code> is the speed of x, <code className="font-mono text-indigo-500">x''</code> is its acceleration. Use as many primes as you need.</li>
+                            <li>A second-order equation gives you two things to plot: <code className="font-mono text-indigo-500">x</code> and <code className="font-mono text-indigo-500">x'</code>.</li>
+                            <li><code className="font-mono text-indigo-500">x(0) = 1</code> sets where it starts; <code className="font-mono text-indigo-500">x'(0) = 0</code> sets how fast. Anything you leave out starts at 0.</li>
+                            <li>Write several equations together to couple them, e.g. <code className="font-mono text-indigo-500">x' = v; v' = -x</code>.</li>
+                            <li>Any other letter (like <code className="font-mono text-indigo-500">k</code> or <code className="font-mono text-indigo-500">c</code>) becomes a slider you can drag while the curve updates.</li>
+                          </ul>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">Settings under the equation</span>
+                          <ul className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-1.5 list-disc pl-4">
+                            <li><strong className="text-slate-700 dark:text-slate-300">Plot</strong> — choose what goes on each axis. <code className="font-mono text-indigo-500">t</code> vs <code className="font-mono text-indigo-500">x</code> shows motion over time; <code className="font-mono text-indigo-500">x</code> vs <code className="font-mono text-indigo-500">x'</code> shows a phase portrait (position against speed).</li>
+                            <li><strong className="text-slate-700 dark:text-slate-300">Time Range</strong> — how long to simulate.</li>
+                            <li><strong className="text-slate-700 dark:text-slate-300">Steps</strong> — more steps means a more accurate curve and more work.</li>
+                            <li><strong className="text-slate-700 dark:text-slate-300">Show moving point</strong> — a dot that travels along the solution as time plays.</li>
+                          </ul>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-normal">
+                            Solved with Runge–Kutta (RK4), which steps forward in time and checks the slope four times per step. It's a very close approximation, not an exact formula.
+                          </p>
+                        </div>
+
+                        <div className="space-y-3">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">Try these</span>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            {[
+                              {
+                                id: 'ode-damped',
+                                name: 'Damped Oscillator',
+                                expr: "x'' = -k*x - c*x'; x(0) = 1; x'(0) = 0",
+                                desc: 'A spring losing energy to friction. Plot t vs x.',
+                              },
+                              {
+                                id: 'ode-pendulum',
+                                name: 'Pendulum (no approximation)',
+                                expr: "theta'' = -(g/L)*sin(theta); theta(0) = 2.5; theta'(0) = 0",
+                                desc: 'Swings wide, where the usual sine formula stops working. Try plotting theta vs theta′.',
+                              },
+                              {
+                                id: 'ode-logistic',
+                                name: 'Population Growth',
+                                expr: "N' = r*N*(1 - N/K); N(0) = 1",
+                                desc: 'Fast growth that flattens as it runs out of room.',
+                              },
+                              {
+                                id: 'ode-orbit',
+                                name: 'Orbit',
+                                expr: "x'' = -mu*x/(x^2 + y^2)^1.5; y'' = -mu*y/(x^2 + y^2)^1.5; x(0) = 1; y'(0) = 1",
+                                desc: 'Gravity pulling toward the centre. Plot x vs y.',
+                              },
+                            ].map((preset) => (
+                              <div
+                                key={preset.id}
+                                className="group p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/60 rounded-xl space-y-3 transition-all"
+                              >
+                                <div className="space-y-1">
+                                  <h4 className="text-xs font-bold text-slate-850 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                    {preset.name}
+                                  </h4>
+                                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal">{preset.desc}</p>
+                                </div>
+                                <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg">
+                                  <code className="flex-1 font-mono text-[11px] text-slate-800 dark:text-slate-300 font-medium truncate select-all" title={preset.expr}>
+                                    {preset.expr}
+                                  </code>
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      onClick={() => handleCopy(preset.expr, preset.id)}
+                                      className="p-1.5 bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 rounded-md transition-all"
+                                      title="Copy equation"
+                                    >
+                                      {copiedId === preset.id ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                                    </button>
+                                    {onInsertFormula && (
+                                      <button
+                                        onClick={() => handleInsert({ type: 'differential', expr: preset.expr }, preset.id)}
+                                        className="px-2 py-1 bg-indigo-500 hover:bg-indigo-600 text-white rounded-md text-[10px] font-bold transition-all flex items-center gap-1 shadow shadow-indigo-500/10"
+                                      >
+                                        {insertedId === preset.id ? <Check size={12} /> : <Plus size={12} />}
+                                        Insert
+                                      </button>
+                                    )}
+                                  </div>
+                                </div>
+                              </div>
+                            ))}
                           </div>
                         </div>
                       </div>

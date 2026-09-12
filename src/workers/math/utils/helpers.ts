@@ -1,3 +1,5 @@
+import { friendlyMathError } from "../../../lib/math/friendlyErrors";
+
 export const resolveNestedValue = (val: any): any => {
   if (!val) return val;
   if (typeof val.toArray === "function") {
@@ -36,13 +38,5 @@ export const indexHelper = (obj: any, ...indices: any[]) => {
   return current;
 };
 
-export const formatMathError = (errMessage: string): string => {
-  if (!errMessage) return errMessage;
-  const match =
-    errMessage.match(/Undefined symbol\s+([a-zA-Z0-9_]+)/i) ||
-    errMessage.match(/Symbol\s+([a-zA-Z0-9_]+)\s+is undefined/i);
-  if (match) {
-    return `Unknown geometry reference "${match[1]}".`;
-  }
-  return errMessage;
-};
+export const formatMathError = (errMessage: string): string =>
+  friendlyMathError(errMessage);
