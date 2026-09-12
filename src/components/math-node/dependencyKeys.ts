@@ -125,6 +125,66 @@ function serialize(v: unknown): string {
 }
 
 /**
+ * Names a row reads, following references through other rows (so a curve using `k`
+ * where another row defines `k = 2*a` also reports `a`). Returns null if the
+ * expression can't be analyzed.
+ */
+function collectLeafSymbols(
+  f: MathFunction,
+  functions: MathFunction[],
+): Set<string> | null {
+  const definers = new Map<string, MathFunction>();
+  for (const row of functions) {
+    for (const n of rowNames(row)) if (!definers.has(n)) definers.set(n, row);
+  }
+
+  const leaves = new Set<string>();
+  const visited = new Set<string>();
+  const queue: MathFunction[] = [f];
+
+  while (queue.length > 0) {
+    const row = queue.pop()!;
+    if (visited.has(row.id)) continue;
+    visited.add(row.id);
+
+    const exprs = rowExprs(row);
+    if (exprs.length === 0) continue;
+    const sweep = new Set(sweepSymbols(row));
+
+    for (const e of exprs) {
+      const info = analyzeExpr(e);
+      if (!info) return null;
+      for (const sym of info.used) {
+        if (sweep.has(sym) || STABLE_HELPERS.has(sym) || isTimeSymbol(sym)) continue;
+        const def = definers.get(sym);
+        if (def && def.id !== row.id) queue.push(def);
+        else leaves.add(sym);
+      }
+    }
+  }
+
+  return leaves;
+}
+
+/**
+ * The user-defined variables a row actually uses, in the order they're defined.
+ * Used to show sliders for just this equation's parameters.
+ */
+export function referencedVariables(
+  f: MathFunction,
+  functions: MathFunction[],
+  variables: MathVariable[],
+): MathVariable[] {
+  const leaves = collectLeafSymbols(f, functions);
+  if (leaves) return variables.filter((v) => leaves.has(v.name));
+
+  // Unanalyzable expression: fall back to a plain name scan so something sensible shows.
+  return variables.filter((v) =>
+    new RegExp(`(^|[^\\w])${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w]|$)`).test(f.expr || ""),
+  );
+}
+
+/**
  * A string that changes exactly when anything the row's output depends on changes:
  * values of variables it references (directly, or transitively through other rows that
  * define names it uses, e.g. `k = 2*a` or `g(x) = a*x`), and time if it animates.

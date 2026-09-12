@@ -442,7 +442,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   return (
     <div className="relative flex-1 group/preview" ref={containerRef}>
       <div
-        className={`relative w-full rounded border group-hover/preview:border-slate-350 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused || forceEditMode ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
+        className={`relative w-full rounded border group-hover/preview:border-slate-300 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused || forceEditMode ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
         onClick={() => {
           if (!isFocused) setIsFocused(true);
           setTimeout(() => inputRef.current?.focus(), 10);
@@ -485,7 +485,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
                 if (onBlur) onBlur();
               }}
               onKeyDown={handleKeyDown}
-              className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
+              className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-600 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
               placeholder={isFocused ? placeholder || "e.g. a * sin(b*x + c)" : ""}
               spellCheck={false}
               autoComplete="off"
@@ -568,7 +568,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
                   <span className="font-mono text-blue-600 dark:text-blue-400 text-sm font-semibold">
                     {s.name}
                   </span>
-                  <span className="text-[10px] text-slate-550 dark:text-slate-500">
+                  <span className="text-[10px] text-slate-500 dark:text-slate-500">
                     {idx === selIndex ? "Tab to insert" : ""}
                   </span>
                 </div>

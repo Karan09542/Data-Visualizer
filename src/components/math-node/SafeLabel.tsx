@@ -11,6 +11,8 @@ interface SafeLabelProps {
   scale?: number;
   flipX?: boolean;
   flipY?: boolean;
+  /** `tex` is already LaTeX (e.g. a multi-line ODE system); render it as-is. */
+  rawLatex?: boolean;
 }
 
 export const SafeLabel: React.FC<SafeLabelProps> = ({
@@ -21,6 +23,7 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
   scale = 1,
   flipX = false,
   flipY = false,
+  rawLatex = false,
 }) => {
   const { viewTransform, userTransform } = useTransformContext();
   const ref = useRef<HTMLSpanElement>(null);
@@ -32,6 +35,11 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
   // Compute LaTeX async
   useEffect(() => {
     let cancelled = false;
+
+    if (rawLatex) {
+      setFinalTex(tex);
+      return;
+    }
 
     (async () => {
       try {
@@ -69,7 +77,7 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [tex, expressionToLatex]);
+  }, [tex, expressionToLatex, rawLatex]);
 
   useEffect(() => {
     if (!ref.current) return;
@@ -78,6 +86,7 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
         throwOnError: true,
         strict: "ignore",
         trust: true,
+        displayMode: rawLatex, // multi-line blocks need display mode to stack
       });
     } catch (e) {
       ref.current.innerText = finalTex;

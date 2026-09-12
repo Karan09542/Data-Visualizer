@@ -265,7 +265,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
             <div className="flex-1 flex flex-col md:flex-row overflow-hidden">
               
               {/* Sidebar Navigation */}
-              <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-slate-250 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/20 flex flex-col shrink-0">
+              <div className="w-full md:w-64 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/20 flex flex-col shrink-0">
                 <div className="p-3 text-[10px] font-extrabold uppercase text-slate-400 tracking-wider hidden md:block">
                   Documentation Guide
                 </div>
@@ -409,7 +409,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
 
                         <div className="space-y-3">
                           <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">How Graphs Work Internally</h4>
-                          <div className="border border-slate-150 dark:border-slate-800 rounded-xl overflow-hidden text-xs">
+                          <div className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden text-xs">
                             <div className="grid grid-cols-3 bg-slate-50 dark:bg-slate-900/80 p-2.5 font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                               <div>Step Component</div>
                               <div className="col-span-2">Functional Responsibility</div>
@@ -541,8 +541,8 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                           </p>
                         </div>
 
-                        <div className="border border-slate-200 dark:border-slate-850 rounded-xl overflow-hidden text-xs">
-                          <div className="grid grid-cols-12 bg-slate-50 dark:bg-slate-900/80 p-3 font-bold text-slate-700 dark:text-slate-300 border-b border-slate-250 dark:border-slate-800">
+                        <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden text-xs">
+                          <div className="grid grid-cols-12 bg-slate-50 dark:bg-slate-900/80 p-3 font-bold text-slate-700 dark:text-slate-300 border-b border-slate-200 dark:border-slate-800">
                             <div className="col-span-3">Concept / Formula</div>
                             <div className="col-span-3 font-mono">LaTeX Code</div>
                             <div className="col-span-3">Typeset Result</div>
@@ -565,7 +565,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                               key={idx}
                               className="grid grid-cols-12 p-3 border-b border-slate-100 dark:border-slate-800/40 text-slate-600 dark:text-slate-400 items-center hover:bg-slate-50/50 dark:hover:bg-slate-900/10 transition-colors"
                             >
-                              <div className="col-span-3 font-semibold text-slate-850 dark:text-slate-200">{item.name}</div>
+                              <div className="col-span-3 font-semibold text-slate-800 dark:text-slate-200">{item.name}</div>
                               <div className="col-span-3 font-mono text-indigo-500 dark:text-indigo-400 bg-slate-50 dark:bg-slate-950 px-2 py-1 rounded w-fit text-[11px] select-all">
                                 {item.code}
                               </div>
@@ -575,7 +575,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                               <div className="col-span-3 flex justify-end gap-1.5">
                                 <button
                                   onClick={() => handleCopy(item.code, `copy-latex-${idx}`)}
-                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-850 rounded text-[10px] font-bold text-slate-600 dark:text-slate-300 transition-all flex items-center gap-1"
+                                  className="px-2 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-900 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 rounded text-[10px] font-bold text-slate-600 dark:text-slate-300 transition-all flex items-center gap-1"
                                 >
                                   {copiedId === `copy-latex-${idx}` ? <Check size={11} className="text-emerald-500" /> : <Copy size={11} />}
                                   Copy Code
@@ -613,15 +613,15 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                               Scientific Trigonometry & Logarithms
                             </h4>
                             <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 text-xs">
-                              <div className="flex justify-between items-center border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Standard Functions</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400">sin(x), cos(x), tan(x)</code>
                               </div>
-                              <div className="flex justify-between items-center border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Absolute & Roots</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400">abs(x), sqrt(x), sign(x)</code>
                               </div>
-                              <div className="flex justify-between items-center border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Logarithmic Base</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400">log(x), log10(x), ln(x)</code>
                               </div>
@@ -638,23 +638,23 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                               Matrices, Determinants & Arrays
                             </h4>
                             <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 text-xs">
-                              <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Custom Matrices</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400">[[1, 2], [3, 4]]</code>
                               </div>
-                              <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Matrix Determinant</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400">det(M)</code>
                               </div>
-                              <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Interactive Vectors</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400">dot(V1, V2), norm(V1)</code>
                               </div>
-                              <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Map Iteration (Loop)</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400 text-right">map(1:5, f(i)=i^2)</code>
                               </div>
-                              <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                              <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                                 <span className="font-semibold">Filter Iteration</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400 text-right">filter([1,2,3,4], f(x)=x&gt;2)</code>
                               </div>
@@ -672,19 +672,19 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                             Statistics & Series Analysis
                           </h4>
                           <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 text-xs">
-                            <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                            <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                               <span className="font-semibold">Maximum of a Series</span>
                               <code className="font-mono text-indigo-500 dark:text-indigo-400">max(map(1:10, f(i) = -i^2 + 5i))</code>
                             </div>
-                            <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                            <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                               <span className="font-semibold">Minimum of a Series</span>
                               <code className="font-mono text-indigo-500 dark:text-indigo-400">min(map(1:10, f(i) = i^2))</code>
                             </div>
-                            <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                            <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                               <span className="font-semibold">Mean / Average</span>
                               <code className="font-mono text-indigo-500 dark:text-indigo-400">mean(map(1:10, f(i) = i^2))</code>
                             </div>
-                            <div className="flex justify-between items-start border-b border-slate-150 dark:border-slate-800/60 pb-1.5">
+                            <div className="flex justify-between items-start border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
                               <span className="font-semibold">Median</span>
                               <code className="font-mono text-indigo-500 dark:text-indigo-400 text-right">median(map(1:10, f(i) = i^2))</code>
                             </div>
@@ -700,8 +700,8 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                           <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
                             You can plot linear algebra constraints directly using matrix equations in <b>Implicit Relations</b>. For instance, the determinant of a 3x3 matrix equating to zero defines collinearity of points:
                           </p>
-                          <div className="p-3 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg flex justify-between items-center font-mono">
-                            <span className="text-[11px] text-slate-800 dark:text-slate-350 font-bold">[[x, y, 1], [a, b, 1], [c, d, 1]] = 0</span>
+                          <div className="p-3 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg flex justify-between items-center font-mono">
+                            <span className="text-[11px] text-slate-800 dark:text-slate-300 font-bold">[[x, y, 1], [a, b, 1], [c, d, 1]] = 0</span>
                             <button
                               onClick={() => handleCopy('[[x, y, 1], [1, 1, 1], [2, 3, 1]]', 'copy-collinear')}
                               className="px-2 py-1 bg-indigo-500 text-white rounded text-[10px] font-bold flex items-center gap-1 hover:bg-indigo-600 transition-all"
@@ -728,15 +728,15 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                           <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 text-xs">
                             <span className="font-black text-indigo-500 uppercase text-[9px] tracking-wider block">Standard Core Coordinates</span>
                             <ul className="space-y-1.5 text-slate-600 dark:text-slate-400">
-                              <li className="flex justify-between border-b border-slate-150 dark:border-slate-800/40 pb-1">
+                              <li className="flex justify-between border-b border-slate-100 dark:border-slate-800/40 pb-1">
                                 <code className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">x</code>
                                 <span>Input coordinate along horizontal axis</span>
                               </li>
-                              <li className="flex justify-between border-b border-slate-150 dark:border-slate-800/40 pb-1">
+                              <li className="flex justify-between border-b border-slate-100 dark:border-slate-800/40 pb-1">
                                 <code className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">y</code>
                                 <span>Input coordinate along vertical axis</span>
                               </li>
-                              <li className="flex justify-between border-b border-slate-150 dark:border-slate-800/40 pb-1">
+                              <li className="flex justify-between border-b border-slate-100 dark:border-slate-800/40 pb-1">
                                 <code className="font-mono text-indigo-600 dark:text-indigo-400 font-bold">t</code>
                                 <span>Elapsed animation clock in seconds</span>
                               </li>
@@ -792,9 +792,9 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                               key={idx}
                               className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3 text-xs"
                             >
-                              <h4 className="font-bold text-slate-850 dark:text-slate-200">{card.title}</h4>
+                              <h4 className="font-bold text-slate-800 dark:text-slate-200">{card.title}</h4>
                               <p className="text-slate-500 dark:text-slate-400 leading-normal">{card.desc}</p>
-                              <div className="flex justify-between items-center p-2.5 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800/80 rounded-lg">
+                              <div className="flex justify-between items-center p-2.5 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80 rounded-lg">
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400">{card.example}</code>
                                 <button
                                   onClick={() => handleCopy(card.example, `copy-anim-${idx}`)}
@@ -810,7 +810,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                         {/* Global vs. Individual Timeline Detailed Guide */}
                         <div className="mt-6 border-t border-slate-200 dark:border-slate-800 pt-5 space-y-4">
                           <div className="space-y-1">
-                            <h4 className="text-sm font-bold text-slate-850 dark:text-slate-200 flex items-center gap-1.5">
+                            <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
                               <Info size={14} className="text-indigo-500" />
                               Global Timeline vs. Individual Timelines
                             </h4>
@@ -868,7 +868,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                               Suppose the first item (e.g. <code>f(x)</code>) has its <b>Individual Timeline</b> active and loops from 0 to 5.
                               You can plot a separate dependent coordinate point <code>P</code> that follows <code>f(x)</code>'s local timeline, even while the rest of the canvas tracks the master global clock:
                             </p>
-                            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800/80 rounded-lg">
+                            <div className="flex flex-wrap items-center justify-between gap-2 p-2.5 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800/80 rounded-lg">
                               <div className="flex flex-col">
                                 <span className="text-[10px] text-slate-400 uppercase font-bold tracking-wider">Example Coordinate Point Formula</span>
                                 <code className="font-mono text-indigo-500 dark:text-indigo-400 font-semibold text-xs">[ t_1, sin(t_1) ]</code>
@@ -950,7 +950,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                               className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-4"
                             >
                               <div className="space-y-1">
-                                <h4 className="text-xs font-bold text-slate-850 dark:text-slate-200">
+                                <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">
                                   Equation: <code className="font-mono text-indigo-500 dark:text-indigo-400">{item.expr}</code>
                                 </h4>
                                 <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
@@ -998,7 +998,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                             <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
                               In polar mode, you calculate radius <code className="font-mono text-indigo-500">r</code> as a function of angle <code className="font-mono text-indigo-500">theta</code> or <code className="font-mono text-indigo-500">θ</code>. The sweep evaluates through a full 2π rotational interval.
                             </p>
-                            <div className="flex justify-between items-center p-2.5 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg text-xs">
+                            <div className="flex justify-between items-center p-2.5 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg text-xs">
                               <code className="font-mono text-indigo-500">r = 3 * sin(5 * theta)</code>
                               <button
                                 onClick={() => handleCopy('3 * sin(5 * theta)', 'copy-polar-ex')}
@@ -1014,7 +1014,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                             <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
                               In parametric mode, you enter standard continuous positions as vector arrays. Traces orbits with parameter <code className="font-mono text-indigo-500">t</code> from 0 to 2π.
                             </p>
-                            <div className="flex justify-between items-center p-2.5 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg text-xs">
+                            <div className="flex justify-between items-center p-2.5 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg text-xs">
                               <code className="font-mono text-indigo-500">[cos(t*3), sin(t*2)]</code>
                               <button
                                 onClick={() => handleCopy('[cos(t*3), sin(t*2)]', 'copy-param-ex')}
@@ -1044,7 +1044,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                           <p className="text-xs text-slate-600 dark:text-slate-400 leading-normal">
                             Write it the way you would on paper. Separate each part with <code className="font-mono text-indigo-500">;</code> or a new line.
                           </p>
-                          <div className="p-2.5 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg">
+                          <div className="p-2.5 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg">
                             <code className="font-mono text-[11px] text-indigo-500 select-all">x'' = -k*x - c*x'; x(0) = 1; x'(0) = 0</code>
                           </div>
                           <ul className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed space-y-1.5 list-disc pl-4">
@@ -1103,12 +1103,12 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                                 className="group p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/60 rounded-xl space-y-3 transition-all"
                               >
                                 <div className="space-y-1">
-                                  <h4 className="text-xs font-bold text-slate-850 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                     {preset.name}
                                   </h4>
                                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-normal">{preset.desc}</p>
                                 </div>
-                                <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg">
+                                <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg">
                                   <code className="flex-1 font-mono text-[11px] text-slate-800 dark:text-slate-300 font-medium truncate select-all" title={preset.expr}>
                                     {preset.expr}
                                   </code>
@@ -1216,7 +1216,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                                   <span className="text-[9px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2 py-0.5 rounded">
                                     {preset.type}
                                   </span>
-                                  <h4 className="text-xs font-bold text-slate-850 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                                  <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
                                     {preset.name}
                                   </h4>
                                 </div>
@@ -1225,7 +1225,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                                 </p>
                               </div>
 
-                              <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-950 border border-slate-150 dark:border-slate-800 rounded-lg">
+                              <div className="flex items-center gap-2 p-2 bg-white dark:bg-slate-950 border border-slate-100 dark:border-slate-800 rounded-lg">
                                 <code className="flex-1 font-mono text-[11px] text-slate-800 dark:text-slate-300 font-medium truncate select-all" title={preset.expr}>
                                   {preset.expr}
                                 </code>

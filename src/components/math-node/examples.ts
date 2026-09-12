@@ -34,8 +34,8 @@ export const EXAMPLE_GALLERY: {
       labelClass: "text-teal-600 dark:text-teal-400 group-hover:text-teal-700 dark:group-hover:text-teal-300",
     },
     {
-      key: "Pendulum", category: "Physics · ODE", label: "Pendulum (phase)",
-      hint: "A real pendulum, no small-angle approximation",
+      key: "Pendulum", category: "Physics · ODE", label: "Pendulum",
+      hint: "A real pendulum swinging wide — not a sine wave. Switch the Plot axes for the phase portrait",
       activeClass: "bg-cyan-500/10 border-cyan-400 dark:border-cyan-500 ring-1 ring-cyan-400/50",
       labelClass: "text-cyan-600 dark:text-cyan-400 group-hover:text-cyan-700 dark:group-hover:text-cyan-300",
     },
@@ -489,8 +489,10 @@ export const MATH_EXAMPLES: Record<string, { functions: MathFunction[]; variable
         type: "differential",
         color: COLORS[2],
         visible: true,
-        tRange: [0, 20],
-        odeAxes: ["theta", "theta'"],
+        // About three swings (period ~3.3s at this amplitude). Swap the Plot axes to
+        // theta vs theta' for the phase portrait.
+        tRange: [0, 10],
+        odeAxes: ["t", "theta"],
         odeAnimate: true,
       },
     ],
@@ -514,7 +516,9 @@ export const MATH_EXAMPLES: Record<string, { functions: MathFunction[]; variable
         type: "differential",
         color: COLORS[1],
         visible: true,
-        tRange: [0, 4],
+        // Ends where it lands (measured for the default speed/angle/drag) instead of
+        // carrying on below the ground.
+        tRange: [0, 2.52],
         odeAxes: ["x", "y"],
         odeAnimate: true,
       },

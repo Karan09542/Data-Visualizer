@@ -40,6 +40,62 @@ export function solveCompiledOde(
   return solveOdeRK4(deriv, y0, tRange[0], tRange[1], clampOdeSteps(steps, n));
 }
 
+/** Where a drawn solution sits, in its own (untransformed) coordinates. */
+export interface OdeExtent {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+}
+
+// Published by the curve so the transform gizmos can be sized to the actual solution.
+// Without it they fall back to a default radius, which makes resizing wildly sensitive.
+const odeExtents = new Map<string, OdeExtent>();
+
+export const setOdeExtent = (id: string, extent: OdeExtent) => {
+  if (odeExtents.size > 200) odeExtents.clear();
+  odeExtents.set(id, extent);
+};
+
+export const getOdeExtent = (id: string) => odeExtents.get(id);
+
+export function computeOdeExtent(
+  solution: OdeSolution,
+  system: OdeSystem,
+  axisX: string,
+  axisY: string,
+): OdeExtent | null {
+  const cx = odeAxisColumns(system, axisX);
+  const cy = odeAxisColumns(system, axisY);
+  if (!cx || !cy) return null;
+
+  const { data, cols, rows } = solution;
+  const at = (row: number, col: number) => (col < 0 ? 1 : data[row * cols + col]);
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (let i = 0; i < rows; i++) {
+    const x = at(i, cx.value);
+    const y = at(i, cy.value);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    if (Math.abs(x) > 1e6 || Math.abs(y) > 1e6) continue;
+    minX = Math.min(minX, x);
+    maxX = Math.max(maxX, x);
+    minY = Math.min(minY, y);
+    maxY = Math.max(maxY, y);
+  }
+
+  if (!Number.isFinite(minX) || !Number.isFinite(minY)) return null;
+  return {
+    cx: (minX + maxX) / 2,
+    cy: (minY + maxY) / 2,
+    rx: Math.max((maxX - minX) / 2, 1e-6),
+    ry: Math.max((maxY - minY) / 2, 1e-6),
+  };
+}
+
 /** Column of a quantity's value and of its time-derivative, for one axis choice. */
 export function odeAxisColumns(
   system: OdeSystem,
@@ -60,6 +116,11 @@ export function buildOdePath(
   system: OdeSystem,
   axisX: string,
   axisY: string,
+  /**
+   * Optional translate/rotate/scale. It's affine, so applying it to the Bézier control
+   * points transforms the curve exactly — no re-sampling needed.
+   */
+  transform?: (p: [number, number]) => [number, number],
 ): string {
   const cx = odeAxisColumns(system, axisX);
   const cy = odeAxisColumns(system, axisY);
@@ -77,10 +138,11 @@ export function buildOdePath(
 
   const parts: string[] = [];
   let penDown = false;
+  const map = (ax: number, ay: number): [number, number] =>
+    transform ? transform([ax, ay]) : [ax, ay];
 
   for (let i = 0; i < rows; i++) {
-    const x = at(i, cx.value);
-    const y = at(i, cy.value);
+    const [x, y] = map(at(i, cx.value), at(i, cy.value));
     if (!plottable(x, y)) {
       penDown = false;
       continue;
@@ -91,8 +153,7 @@ export function buildOdePath(
       continue;
     }
 
-    const px = at(i - 1, cx.value);
-    const py = at(i - 1, cy.value);
+    const [px, py] = map(at(i - 1, cx.value), at(i - 1, cy.value));
     const h = data[i * cols] - data[(i - 1) * cols];
     const dx0 = at(i - 1, cx.slope);
     const dy0 = at(i - 1, cy.slope);
@@ -100,10 +161,10 @@ export function buildOdePath(
     const dy1 = at(i, cy.slope);
 
     if (finite(dx0, dy0, dx1, dy1)) {
-      const c1x = px + (h * dx0) / 3;
-      const c1y = py + (h * dy0) / 3;
-      const c2x = x - (h * dx1) / 3;
-      const c2y = y - (h * dy1) / 3;
+      const [rawPx, rawPy] = [at(i - 1, cx.value), at(i - 1, cy.value)];
+      const [rawX, rawY] = [at(i, cx.value), at(i, cy.value)];
+      const [c1x, c1y] = map(rawPx + (h * dx0) / 3, rawPy + (h * dy0) / 3);
+      const [c2x, c2y] = map(rawX - (h * dx1) / 3, rawY - (h * dy1) / 3);
       const span = Math.hypot(x - px, y - py) || 1e-9;
       const overshoot =
         Math.max(Math.hypot(c1x - px, c1y - py), Math.hypot(c2x - x, c2y - y)) / span;

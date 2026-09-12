@@ -1,12 +1,20 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { Point } from "mafs";
 import { sampleOdeAt, type OdeSolution } from "../../lib/math/odeSolver";
-import { buildOdePath, solveCompiledOde } from "../../lib/math/odeCurveData";
+import {
+  buildOdePath,
+  computeOdeExtent,
+  setOdeExtent,
+  solveCompiledOde,
+} from "../../lib/math/odeCurveData";
+import { DEFAULT_IMAGE_WIDTH, PointImage } from "./PointImage";
 import type { CompiledOde } from "./mathTypes";
 
 type Vec2 = [number, number];
 
 interface OdeCurveProps {
+  /** Function id, so the transform gizmos can find this curve's extent. */
+  id?: string;
   compiledOde: CompiledOde;
   /** Per-function scope: variables, time, helpers. */
   scope: any;
@@ -24,11 +32,18 @@ interface OdeCurveProps {
   /** Draw a dot at the current time. */
   animate?: boolean;
   markerTime?: number;
+  /** Draw this picture at the marker instead of a plain dot. */
+  markerImage?: string;
+  markerImageWidth?: number;
+  markerImageHeight?: number;
+  /** Translate/rotate/scale from the function's transform gizmos. */
+  transform?: (p: Vec2) => Vec2;
 }
 
 const isFiniteAll = (...values: number[]) => values.every((v) => Number.isFinite(v));
 
 export const OdeCurve: React.FC<OdeCurveProps> = ({
+  id,
   compiledOde,
   scope,
   sampleKey,
@@ -42,6 +57,10 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
   svgPathProps = {},
   animate = false,
   markerTime = 0,
+  markerImage,
+  markerImageWidth,
+  markerImageHeight,
+  transform,
 }) => {
   const system = compiledOde?.system;
   const stateCount = system?.states.length ?? 0;
@@ -65,9 +84,18 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
   const [axisX, axisY] = axes ?? ["t", system?.states[0]?.display ?? "t"];
 
   const d = useMemo(
-    () => (solution && system ? buildOdePath(solution, system, axisX, axisY) : ""),
-    [solution, system, axisX, axisY],
+    () => (solution && system ? buildOdePath(solution, system, axisX, axisY, transform) : ""),
+    // `transform` is a fresh closure each render; sampleKey covers its inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [solution, system, axisX, axisY, sampleKey],
   );
+
+  // Publish where the solution lies so the transform handles can be placed around it.
+  useEffect(() => {
+    if (!id || !solution || !system) return;
+    const extent = computeOdeExtent(solution, system, axisX, axisY);
+    if (extent) setOdeExtent(id, extent);
+  }, [id, solution, system, axisX, axisY]);
 
   const marker = useMemo<Vec2 | null>(() => {
     if (!animate || !solution || !system) return null;
@@ -84,8 +112,11 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
     };
     const mx = pick(axisX);
     const my = pick(axisY);
-    return isFiniteAll(mx, my) ? [mx, my] : null;
-  }, [animate, solution, system, markerTime, t0, t1, axisX, axisY]);
+    if (!isFiniteAll(mx, my)) return null;
+    const placed = transform ? transform([mx, my]) : ([mx, my] as Vec2);
+    return isFiniteAll(placed[0], placed[1]) ? placed : null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [animate, solution, system, markerTime, t0, t1, axisX, axisY, sampleKey]);
 
   if (!d) return null;
 
@@ -107,7 +138,17 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
           ...(svgPathProps.style || {}),
         }}
       />
-      {marker && <Point x={marker[0]} y={marker[1]} color={color} />}
+      {marker &&
+        (markerImage ? (
+          <PointImage
+            src={markerImage}
+            at={marker}
+            width={markerImageWidth ?? DEFAULT_IMAGE_WIDTH}
+            height={markerImageHeight ?? DEFAULT_IMAGE_WIDTH}
+          />
+        ) : (
+          <Point x={marker[0]} y={marker[1]} color={color} />
+        ))}
     </React.Fragment>
   );
 };

@@ -16,6 +16,9 @@ export * from "./dependencyKeys";
 export * from "./SmoothCurve";
 export * from "./OdeCurve";
 export * from "./PlotErrorBoundary";
+export * from "./SettingsControls";
+export * from "./InlineVariableSliders";
+export * from "./PointImage";
 export * from "./examples";
 export * from "./TraceOverlay";
 

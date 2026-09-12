@@ -43,14 +43,14 @@ export const Timeline: React.FC<TimelineProps> = ({
         <div className="flex items-center gap-1.5">
           <button
             onClick={() => setTracePoints(!tracePoints)}
-            className={`px-2 py-1 rounded-md transition-all text-xs flex items-center gap-1.5 font-medium border shadow-sm ${tracePoints ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-750"}`}
+            className={`px-2 py-1 rounded-md transition-all text-xs flex items-center gap-1.5 font-medium border shadow-sm ${tracePoints ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700"}`}
             title="Trace Points"
           >
             <Crosshair size={13} className={tracePoints ? "text-emerald-500" : "text-slate-400"} /> Trace
           </button>
           <button
             onClick={() => setShowTimeSettings(!showTimeSettings)}
-            className={`p-1.5 rounded-md transition-all border shadow-sm ${showTimeSettings ? "bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-blue-600 dark:text-blue-400" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-750"}`}
+            className={`p-1.5 rounded-md transition-all border shadow-sm ${showTimeSettings ? "bg-slate-100 dark:bg-slate-700 border-slate-300 dark:border-slate-600 text-blue-600 dark:text-blue-400" : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700"}`}
             title="Timeline Settings"
           >
             <Settings size={14} />

@@ -22,7 +22,7 @@ export const ReadableColorBadge = ({ color }: { color: string }) => {
       title="Click to copy HEX color"
     >
       <span
-        className="w-2.5 h-2.5 rounded-sm border border-slate-300 dark:border-slate-650 shrink-0 shadow-xs"
+        className="w-2.5 h-2.5 rounded-sm border border-slate-300 dark:border-slate-600 shrink-0 shadow-xs"
         style={{ backgroundColor: color }}
       />
       <span>{color}</span>

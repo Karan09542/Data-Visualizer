@@ -107,7 +107,7 @@ export const LabelInput: React.FC<LabelInputProps> = ({
           onChange={(e) => onChange(e.target.value)}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
-          className="w-full bg-transparent outline-none caret-blue-550 dark:caret-blue-400 font-mono text-xs px-2.5 py-1.5 resize-y text-slate-800 dark:text-slate-200 custom-scrollbar min-h-[36px] block"
+          className="w-full bg-transparent outline-none caret-blue-600 dark:caret-blue-400 font-mono text-xs px-2.5 py-1.5 resize-y text-slate-800 dark:text-slate-200 custom-scrollbar min-h-[36px] block"
           placeholder={isFocused ? placeholder : ""}
           spellCheck={false}
           autoComplete="off"

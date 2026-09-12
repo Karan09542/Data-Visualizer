@@ -63,6 +63,14 @@ export interface MathFunction {
   outlineWidth?: number;
   tRange?: [number, number]; // Custom domain for the parameter t (parametric/polar/differential)
 
+  /** Show sliders for this equation's own parameters under its input. */
+  showInlineVars?: boolean;
+
+  // Image shown in place of a point
+  imageSrc?: string; // data URL (uploaded) or remote URL
+  imageWidth?: number; // graph units
+  imageHeight?: number; // graph units
+
   // Differential equations ("differential" type)
   compiledOde?: CompiledOde; // runtime only, stripped on save
   odeAxes?: [string, string]; // what to plot: "t" or a state display name

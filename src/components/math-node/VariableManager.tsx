@@ -241,7 +241,7 @@ export const VariableManager: React.FC<VariableManagerProps> = ({
             <div key={group.id} className="flex flex-col gap-2">
               <div className="flex items-center justify-between group/header text-[10px] font-semibold text-slate-500 uppercase select-none">
                 <div
-                  className="flex items-center gap-1 cursor-pointer hover:text-slate-705 dark:hover:text-slate-350"
+                  className="flex items-center gap-1 cursor-pointer hover:text-slate-705 dark:hover:text-slate-300"
                   onClick={() =>
                     setGroups(
                       groups.map((g) =>
@@ -307,7 +307,7 @@ export const VariableManager: React.FC<VariableManagerProps> = ({
                   }}
                   className={`border-2 border-dashed rounded-lg p-3 text-center text-xs transition-all flex flex-col items-center justify-center gap-1 min-h-[64px] ${dragOverVariableId === `empty_${group.id}`
                     ? "border-blue-500 bg-blue-500/10 text-blue-500"
-                    : "border-slate-200 dark:border-slate-800/60 text-slate-400 dark:text-slate-500 hover:border-slate-350 dark:hover:border-slate-700"
+                    : "border-slate-200 dark:border-slate-800/60 text-slate-400 dark:text-slate-500 hover:border-slate-300 dark:hover:border-slate-700"
                     }`}
                 >
                   <Folder className="opacity-30" size={14} />
@@ -393,7 +393,7 @@ export const VariableManager: React.FC<VariableManagerProps> = ({
                           onTouchEnd={() =>
                             setCanDragVariableId(null)
                           }
-                          className="cursor-grab active:cursor-grabbing text-slate-450 dark:text-slate-605 hover:text-slate-650 dark:hover:text-slate-350 p-0.5 rounded opacity-0 max-sm:opacity-100 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                          className="cursor-grab active:cursor-grabbing text-slate-400 dark:text-slate-605 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 rounded opacity-0 max-sm:opacity-100 group-hover:opacity-100 transition-opacity flex-shrink-0"
                           title="Drag to reorder"
                         >
                           <GripVertical size={12} />
