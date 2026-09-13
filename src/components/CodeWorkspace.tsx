@@ -84,6 +84,8 @@ import FileExplorerPanel from "./FileExplorerPanel";
 import WorkspaceSash from "./WorkspaceSash";
 import { EditorTabStrip } from "./editor-tabs/EditorTabStrip";
 import { SplitEditorGroup } from "./editor-tabs/SplitEditorGroup";
+import { useEditorFile } from "./editor-tabs/useEditorFile";
+import { executableKindFor } from "../utils/editorLanguage";
 import type { TabMenuEntry } from "./editor-tabs/useTabContextMenu";
 import type { EditorGroupId, SplitDirection } from "../store/useStore";
 import {
@@ -197,6 +199,8 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const keepGroupTabOpen = useStore((state) => state.keepGroupTabOpen);
   const moveTabToOtherGroup = useStore((state) => state.moveTabToOtherGroup);
   const setEditorSplitLayout = useStore((state) => state.setEditorSplitLayout);
+  const activeEditorGroup = useStore((state) => state.activeEditorGroup);
+  const setActiveEditorGroup = useStore((state) => state.setActiveEditorGroup);
   const activePrompts = useStore((state) => state.activePrompts);
   const setActivePrompt = useStore((state) => state.setActivePrompt);
   const setAppTheme = useStore((state) => state.setAppTheme);
@@ -210,6 +214,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const [copied, setCopied] = useState(false);
   const [monaco, setMonaco] = useState<any>(null);
   const [editorInstance, setEditorInstance] = useState<any>(null);
+  const [sideEditorInstance, setSideEditorInstance] = useState<any>(null);
   const [isPasteModalOpen, setIsPasteModalOpen] = useState(false);
   const [pasteInputValue, setPasteInputValue] = useState("");
   const pasteTextareaRef = useRef<HTMLTextAreaElement>(null);
@@ -229,8 +234,35 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     };
   }, []);
 
-  // Active open file in the workspace
-  const currentFilePath = activeExplorerFile || path;
+  // Two files matter once the editor is split. The main group shows its own open file; the file
+  // being worked on is the active tab of whichever group has focus, and running, the console and
+  // the title bar follow that one - as in VS Code.
+  const mainFilePath = activeExplorerFile || path;
+  const focusedGroup: EditorGroupId =
+    editorSplit?.active && activeEditorGroup === "side" ? "side" : "main";
+  const currentFilePath =
+    focusedGroup === "side" && editorSplit?.active ? editorSplit.active : mainFilePath;
+  const setFocusedGroup = (group: EditorGroupId) => setActiveEditorGroup(group);
+  /** The main group's file, as its editor pane shows it. */
+  const mainFile = useEditorFile(mainFilePath);
+  /** The side group's file, when the editor is split. */
+  const sideFile = useEditorFile(editorSplit?.active ?? null);
+
+  // The coding keys: one set for the workspace, for the group being worked in - shown while its
+  // file is code open in a text editor.
+  const activeFileView = focusedGroup === "side" ? sideFile : mainFile;
+  const activeKind = executableKindFor(currentFilePath);
+  const activeEditorInstance = focusedGroup === "side" ? sideEditorInstance : editorInstance;
+  const keyboardEditor =
+    activeKind &&
+    activeKind !== "api" &&
+    !activeFileView.media &&
+    !activeFileView.isImg &&
+    !activeFileView.isTodo &&
+    !activeFileView.isSearch &&
+    activeEditorInstance?.getModel?.()
+      ? activeEditorInstance
+      : null;
 
   useEffect(() => {
     const searchParams = new URLSearchParams(window.location.search);
@@ -244,8 +276,8 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   }, [currentFilePath]);
 
   const isEditingOtherFile = useMemo(() => {
-    return !!(activeExplorerFile && activeExplorerFile !== path);
-  }, [activeExplorerFile, path]);
+    return !!(currentFilePath && currentFilePath !== path);
+  }, [currentFilePath, path]);
 
   // Read code content dynamically for the active open file
   const code = useMemo(() => {
@@ -380,8 +412,8 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   // The only control that can restore the chrome lives inside ImageWorkspace, so leaving an image
   // file while it is hidden would strand the user with no tabs and no way back.
   useEffect(() => {
-    if (!isImg && imageChromeHidden) setImageChromeHidden(false);
-  }, [isImg, imageChromeHidden]);
+    if (!mainFile.isImg && imageChromeHidden) setImageChromeHidden(false);
+  }, [mainFile.isImg, imageChromeHidden]);
   const isJson = useMemo(
     () => fileExt.endsWith("_json") || fileExt === "json",
     [fileExt],
@@ -534,8 +566,8 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
   // Breadcrumb trail under the tab bar, mirroring the VS Code editor header.
   const breadcrumbs = useMemo(() => {
-    if (typeof currentFilePath !== "string") return [];
-    const parts = currentFilePath.split(".").filter(Boolean);
+    if (typeof mainFilePath !== "string") return [];
+    const parts = mainFilePath.split(".").filter(Boolean);
     return parts.map((part, i) => {
       const segPath = parts.slice(0, i + 1).join(".");
       return {
@@ -545,7 +577,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
       };
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentFilePath]);
+  }, [mainFilePath]);
 
   // Run button visibility check: Show ONLY for .js, .ts, .py files
   const isExecutable = useMemo(() => {
@@ -596,36 +628,34 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
 
   const handleEditorChange = (value: string | undefined) => {
     if (value !== undefined) {
-      setJsNodeCodeOverride(currentFilePath, value);
-      const tab = workspaceTabs.find((t) => t.path === currentFilePath);
+      setJsNodeCodeOverride(mainFilePath, value);
+      const tab = workspaceTabs.find((t) => t.path === mainFilePath);
       if (tab && !tab.isDirty) {
-        markWorkspaceTabDirty(currentFilePath, true);
+        markWorkspaceTabDirty(mainFilePath, true);
       }
       // handleUpdateGlobalCode(currentFilePath, value); // Don't auto-save to JSON if we use explicit save
     }
   };
 
   const handleClearAllCode = () => {
-    if (editorRef.current) {
-      const model = editorRef.current.getModel();
+    const ed = activeEditor();
+    if (ed) {
+      const model = ed.getModel();
       if (model) {
-        editorRef.current.executeEdits("clear-all-code", [
+        ed.executeEdits("clear-all-code", [
           {
             range: model.getFullModelRange(),
             text: "",
           },
         ]);
-        editorRef.current.pushUndoStop();
+        ed.pushUndoStop();
       } else {
-        editorRef.current.setValue("");
+        ed.setValue("");
       }
     }
     setJsNodeCodeOverride(currentFilePath, "");
     updateNodeValue(currentFilePath, "", { fromEditor: true });
-    const tab = workspaceTabs.find((t) => t.path === currentFilePath);
-    if (tab && !tab.isDirty) {
-      markWorkspaceTabDirty(currentFilePath, true);
-    }
+    markWorkspaceTabDirty(currentFilePath, true);
     setIsMinimapMenuOpen(false);
     useStore.getState().setNotification({
       message: "Cleared all code (Ctrl+Z / Cmd+Z to undo)",
@@ -669,7 +699,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   };
 
   // Execution engine switch router
-  const onExecute = (activeCodeValue: string) => {
+  const onExecute = (activeCodeValue: string, targetPath: string = currentFilePath) => {
     if (autoClearLogs) {
       clearLogs();
     }
@@ -679,22 +709,20 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     }
     setActiveTab("console");
 
-    if (isTs) {
-      setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
-      executeTsNode(currentFilePath, activeCodeValue);
-    } else if (isJs) {
-      setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
-      executeJsNode(currentFilePath, activeCodeValue);
-    } else if (isPy) {
-      setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
-      executePyNode(currentFilePath, activeCodeValue);
-    } else if (isApi) {
-      setJsNodeCodeOverride(currentFilePath, activeCodeValue);
-      updateNodeValue(currentFilePath, activeCodeValue, { fromEditor: true });
-      fetchApiNode(currentFilePath, activeCodeValue);
+    // The kind comes from the file being run, which need not be the one on the toolbar.
+    const kind = executableKindFor(targetPath);
+    if (kind) {
+      setJsNodeCodeOverride(targetPath, activeCodeValue);
+      updateNodeValue(targetPath, activeCodeValue, { fromEditor: true });
+    }
+    if (kind === "ts") {
+      executeTsNode(targetPath, activeCodeValue);
+    } else if (kind === "js") {
+      executeJsNode(targetPath, activeCodeValue);
+    } else if (kind === "py") {
+      executePyNode(targetPath, activeCodeValue);
+    } else if (kind === "api") {
+      fetchApiNode(targetPath, activeCodeValue);
     }
   };
 
@@ -1308,7 +1336,7 @@ declare const console: {
         if (focusedGroupRef.current === "side" && state.editorSplit?.active) {
           splitTab("side", state.editorSplit.active);
         } else {
-          const active = state.activeExplorerFile || latestRefs.current.currentFilePath;
+          const active = state.activeExplorerFile || latestRefs.current.mainFilePath;
           if (active) splitTab("main", active);
         }
       }
@@ -1347,17 +1375,18 @@ declare const console: {
   // Keep focus settings
   useEffect(() => {
     if (jsNodeFocusLine !== null) {
-      if (jsNodeFocusLine.path === currentFilePath && editorRef.current) {
+      if (jsNodeFocusLine.path === currentFilePath && activeEditor()) {
         requestAnimationFrame(() => {
           setTimeout(() => {
             try {
-              if (editorRef.current) {
-                editorRef.current.revealLineInCenter(jsNodeFocusLine.line);
-                editorRef.current.setPosition({
+              const ed = activeEditor();
+              if (ed) {
+                ed.revealLineInCenter(jsNodeFocusLine.line);
+                ed.setPosition({
                   lineNumber: jsNodeFocusLine.line,
                   column: jsNodeFocusLine.column || 1,
                 });
-                editorRef.current.focus();
+                ed.focus();
               }
             } catch (err) {
               // ignore errors gracefully
@@ -1568,24 +1597,37 @@ declare const console: {
   const [isGoToLineOpen, setIsGoToLineOpen] = useState(false);
   const [goToLineValue, setGoToLineValue] = useState("");
   const editorRef = useRef<any>(null);
+  // The side group's editor, and which group has focus, for handlers that run outside React.
+  const sideEditorRef = useRef<any>(null);
+  const focusedGroupRef = useRef<EditorGroupId>("main");
+  focusedGroupRef.current = focusedGroup;
+  /** The Monaco editor of the group being worked in: format, copy, go to line and paste use it. */
+  const activeEditor = () => {
+    if (focusedGroupRef.current === "side") {
+      const side = sideEditorRef.current;
+      return side && side.getModel?.() ? side : null;
+    }
+    return editorRef.current;
+  };
 
   const handleFormatDocument = async () => {
-    if (!editorRef.current) return;
+    const ed = activeEditor();
+    if (!ed) return;
     try {
       if (editorLanguage === "python") {
-        const current = editorRef.current.getValue();
+        const current = ed.getValue();
         const formatted = formatPythonCode(current);
         if (formatted !== current) {
-          const model = editorRef.current.getModel();
+          const model = ed.getModel();
           if (model) {
-            editorRef.current.executeEdits("python-formatter", [
+            ed.executeEdits("python-formatter", [
               { range: model.getFullModelRange(), text: formatted },
             ]);
-            editorRef.current.pushUndoStop();
+            ed.pushUndoStop();
           }
         }
       } else {
-        await editorRef.current
+        await ed
           .getAction("editor.action.formatDocument")
           ?.run();
       }
@@ -1595,9 +1637,8 @@ declare const console: {
   };
 
   const handleCopyContents = () => {
-    navigator.clipboard.writeText(
-      editorRef.current ? editorRef.current.getValue() : code,
-    );
+    const ed = activeEditor();
+    navigator.clipboard.writeText(ed ? ed.getValue() : code);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -1607,10 +1648,11 @@ declare const console: {
     const parts = goToLineValue.split(":");
     const line = parseInt(parts[0], 10);
     const col = parts[1] ? parseInt(parts[1], 10) : 1;
-    if (editorRef.current && !isNaN(line)) {
-      editorRef.current.revealLineInCenter(line);
-      editorRef.current.setPosition({ lineNumber: line, column: col });
-      editorRef.current.focus();
+    const ed = activeEditor();
+    if (ed && !isNaN(line)) {
+      ed.revealLineInCenter(line);
+      ed.setPosition({ lineNumber: line, column: col });
+      ed.focus();
     }
     setIsGoToLineOpen(false);
   };
@@ -1652,13 +1694,6 @@ declare const console: {
     };
   }, [isMinimapMenuOpen]);
 
-  // Which editor group the reader is working in: Ctrl+\ splits that group's file.
-  const [focusedGroup, setFocusedGroup] = useState<EditorGroupId>("main");
-  const focusedGroupRef = useRef<EditorGroupId>("main");
-  focusedGroupRef.current = editorSplit ? focusedGroup : "main";
-  useEffect(() => {
-    if (!editorSplit && focusedGroup !== "main") setFocusedGroup("main");
-  }, [editorSplit, focusedGroup]);
 
   const isMacPlatform =
     typeof navigator !== "undefined" && /Mac|iPhone|iPad/i.test(navigator.platform || navigator.userAgent);
@@ -1747,6 +1782,7 @@ declare const console: {
     updateNodeValue,
     markWorkspaceTabDirty,
     currentFilePath,
+    mainFilePath,
     setTerminalState,
     terminalState,
     setIsGoToLineOpen,
@@ -1763,6 +1799,7 @@ declare const console: {
       updateNodeValue,
       markWorkspaceTabDirty,
       currentFilePath,
+      mainFilePath,
       setTerminalState,
       terminalState,
       setIsGoToLineOpen,
@@ -1921,11 +1958,10 @@ declare const console: {
               <div className="flex items-center rounded-[4px] bg-[var(--vsc-hover)] p-0.5 mr-1">
                 <button
                   disabled={isLoading}
-                  onClick={() =>
-                    onExecute(
-                      editorRef.current ? editorRef.current.getValue() : code,
-                    )
-                  }
+                  onClick={() => {
+                    const ed = activeEditor();
+                    onExecute(ed ? ed.getValue() : code);
+                  }}
                   className={`flex items-center gap-1 px-2.5 py-1 text-[11px] font-semibold rounded-[3px] cursor-pointer transition-colors whitespace-nowrap ${isLoading
                     ? "text-[var(--vsc-fg-muted)] cursor-not-allowed"
                     : "bg-[var(--vsc-accent)] text-[var(--vsc-accent-fg)] hover:opacity-90"
@@ -2407,9 +2443,13 @@ declare const console: {
             className={`flex-1 flex overflow-hidden h-full relative min-w-0 ${effectiveLayout === "bottom" ? "flex-col" : "flex-row"}`}
           >
             <div
+              data-editor-column
+              className={`flex-1 z-10 relative min-w-[120px] min-h-[80px] bg-[var(--vsc-editor)] overflow-hidden flex-col ${terminalState === "maximized" ? "hidden" : "flex"}`}
+            >
+            <div
               ref={editorAreaRef}
               data-editor-area
-              className={`flex-1 z-10 relative min-w-[120px] min-h-[80px] bg-[var(--vsc-editor)] overflow-hidden ${terminalState === "maximized" ? "hidden" : "flex"} ${editorSplit && splitShownDirection === "down" ? "flex-col" : "flex-row"}`}
+              className={`flex-1 relative min-w-0 min-h-0 overflow-hidden flex ${editorSplit && splitShownDirection === "down" ? "flex-col" : "flex-row"}`}
             >
             <div
               data-editor-group="main"
@@ -2422,12 +2462,16 @@ declare const console: {
               <EditorTabStrip
                 group="main"
                 tabs={workspaceTabs}
-                activePath={currentFilePath}
+                activePath={mainFilePath}
                 focused={!editorSplit || focusedGroup === "main"}
                 hidden={imageChromeHidden}
                 getIcon={getTabIcon}
                 getName={getCleanName}
-                onActivate={(tab) => openWorkspaceTab(tab.path, tab.isPreview)}
+                onActivate={(tab) => {
+                  // A main tab clicked: the main group is the one being worked in, even mid-render.
+                  setActiveEditorGroup("main");
+                  openWorkspaceTab(tab.path, tab.isPreview);
+                }}
                 onClose={(tabPath) => closeGroupTabs("main", [tabPath])}
                 onReorder={setWorkspaceTabs}
                 onKeepOpen={(tabPath) => keepGroupTabOpen("main", tabPath)}
@@ -2438,7 +2482,7 @@ declare const console: {
                     <button
                       type="button"
                       data-split-editor-button
-                      onClick={() => splitTab("main", currentFilePath)}
+                      onClick={() => splitTab("main", mainFilePath)}
                       title={`Split Editor (${splitShortcut})`}
                       aria-label="Split Editor"
                       className="p-1 rounded-[4px] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer"
@@ -2463,7 +2507,7 @@ declare const console: {
                       <span
                         className={`flex items-center gap-1 ${crumb.isFile ? "text-[var(--vsc-fg)]" : ""}`}
                       >
-                        {crumb.isFile && getTabIcon(currentFilePath, true)}
+                        {crumb.isFile && getTabIcon(mainFilePath, true)}
                         {crumb.label}
                       </span>
                     </span>
@@ -2490,7 +2534,7 @@ declare const console: {
                           handleExecuteGoToLine();
                         } else if (e.key === "Escape") {
                           setIsGoToLineOpen(false);
-                          if (editorRef.current) editorRef.current.focus();
+                          activeEditor()?.focus();
                         }
                       }}
                     />
@@ -2503,7 +2547,7 @@ declare const console: {
                     <button
                       onClick={() => {
                         setIsGoToLineOpen(false);
-                        if (editorRef.current) editorRef.current.focus();
+                        activeEditor()?.focus();
                       }}
                       className="p-1 hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] rounded-[3px] transition-colors block cursor-pointer"
                     >
@@ -2511,46 +2555,42 @@ declare const console: {
                     </button>
                   </div>
                 )}
-                {isSearch ? (
+                {mainFile.isSearch ? (
                   <SearchNodeWorkspace
-                    key={currentFilePath}
-                    path={currentFilePath}
+                    key={mainFilePath}
+                    path={mainFilePath}
                   />
-                ) : isTodo ? (
-                  <TodoWorkspace key={currentFilePath} path={currentFilePath} />
-                ) : showMediaOnly && currentMedia ? (
+                ) : mainFile.isTodo ? (
+                  <TodoWorkspace key={mainFilePath} path={mainFilePath} />
+                ) : mainFile.showMediaOnly && mainFile.media ? (
                   <MediaFileViewer
-                    key={currentFilePath}
-                    name={mediaFileName(currentFilePath.split(".").pop() || currentFilePath, currentMedia)}
-                    media={currentMedia}
+                    key={mainFilePath}
+                    name={mediaFileName(mainFilePath.split(".").pop() || mainFilePath, mainFile.media)}
+                    media={mainFile.media}
                     onOpenEditor={
-                      currentMedia.kind === "image" ? () => setMediaViewOnly(currentFilePath, false) : undefined
+                      mainFile.media.kind === "image" ? () => setMediaViewOnly(mainFilePath, false) : undefined
                     }
                   />
-                ) : isImg ? (
+                ) : mainFile.isImg ? (
                   <React.Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-400">Loading Image Workspace...</div>}>
                     <ImageWorkspace
-                      key={currentFilePath}
-                      path={currentFilePath}
+                      key={mainFilePath}
+                      path={mainFilePath}
                       chromeHidden={imageChromeHidden}
                       onToggleChrome={() => setImageChromeHidden(v => !v)}
                     />
                   </React.Suspense>
                 ) : (
                   <SafeEditor
-                    path={currentFilePath}
+                    path={mainFilePath}
                     height="100%"
-                    defaultLanguage={editorLanguage}
-                    language={editorLanguage}
+                    defaultLanguage={mainFile.language}
+                    language={mainFile.language}
                     theme={
                       codeEditorOptions.theme ||
                       (appTheme === "dark" ? "customDark" : "customLight")
                     }
-                    value={
-                      isEditingOtherFile && typeof otherFileValue === "string"
-                        ? otherFileValue
-                        : code
-                    }
+                    value={mainFile.text}
                     onChange={handleEditorChange}
                     options={codeEditorOptions}
                     beforeMount={handleEditorWillMount}
@@ -2600,8 +2640,11 @@ declare const console: {
                       editor.addCommand(
                         m.KeyMod.CtrlCmd | m.KeyCode.Enter,
                         () => {
-                          if (latestRefs.current.isExecutable) {
-                            latestRefs.current.onExecute(editor.getValue());
+                          // Ctrl+Enter here runs this editor's file, whatever the toolbar shows.
+                          const target = latestRefs.current.mainFilePath;
+                          const kind = executableKindFor(target);
+                          if (kind && kind !== "api") {
+                            latestRefs.current.onExecute(editor.getValue(), target);
                             if (latestRefs.current.terminalState === "hidden") {
                               latestRefs.current.setTerminalState("normal");
                             }
@@ -2613,12 +2656,12 @@ declare const console: {
                         () => {
                           const val = editor.getValue();
                           latestRefs.current.updateNodeValue(
-                            latestRefs.current.currentFilePath,
+                            latestRefs.current.mainFilePath,
                             val,
                             { fromEditor: true },
                           );
                           latestRefs.current.markWorkspaceTabDirty(
-                            latestRefs.current.currentFilePath,
+                            latestRefs.current.mainFilePath,
                             false,
                           );
                           // Visual confirmation can be added here if needed
@@ -2657,7 +2700,7 @@ declare const console: {
                             if (!state.parsedData) return;
 
                             const currentVirtualPath = getVirtualPath(
-                              latestRefs.current.currentFilePath,
+                              latestRefs.current.mainFilePath,
                               state.parsedData,
                             );
                             const currentDir =
@@ -2797,15 +2840,6 @@ declare const console: {
                     }}
                   />
                 )}
-                {/* Programming Keyboard */}
-                {isExecutable && editorLanguage && (
-                  <div className="absolute bottom-0 left-0 right-0 z-50">
-                    <ProgrammingKeyboard
-                      editor={editorInstance}
-                      language={editorLanguage}
-                    />
-                  </div>
-                )}
               </div>
             </div>
 
@@ -2839,9 +2873,26 @@ declare const console: {
                   editorOptions={codeEditorOptions}
                   editorTheme={codeEditorOptions.theme || (appTheme === "dark" ? "customDark" : "customLight")}
                   shownDirection={splitShownDirection}
+                  onEditorMount={(ed) => {
+                    sideEditorRef.current = ed;
+                    setSideEditorInstance(ed);
+                  }}
+                  onRun={(tabPath, text) => {
+                    latestRefs.current.onExecute(text, tabPath);
+                    if (latestRefs.current.terminalState === "hidden") latestRefs.current.setTerminalState("normal");
+                  }}
                   style={{ flex: `${1 - editorSplit.ratio} 1 0px` }}
                 />
               </>
+            )}
+            </div>
+
+            {/* The coding keys, docked under both groups: never over the code, always in the same
+                place, typing into whichever group is being worked in. */}
+            {keyboardEditor && (
+              <div data-programming-keyboard className="shrink-0 min-w-0">
+                <ProgrammingKeyboard editor={keyboardEditor} language={activeFileView.language} />
+              </div>
             )}
             </div>
 
@@ -3427,9 +3478,9 @@ declare const console: {
               onChange={(e) => setPasteInputValue(e.target.value)}
               onPaste={(e) => {
                 const pasted = e.clipboardData?.getData("text/plain");
-                if (pasted && editorRef.current) {
+                if (pasted && activeEditor()) {
                   e.preventDefault();
-                  insertTextIntoEditor(editorRef.current, pasted);
+                  insertTextIntoEditor(activeEditor(), pasted);
                   setIsPasteModalOpen(false);
                   setPasteInputValue("");
                 }
@@ -3451,8 +3502,8 @@ declare const console: {
                 </button>
                 <button
                   onClick={() => {
-                    if (pasteInputValue && editorRef.current) {
-                      insertTextIntoEditor(editorRef.current, pasteInputValue);
+                    if (pasteInputValue && activeEditor()) {
+                      insertTextIntoEditor(activeEditor(), pasteInputValue);
                     }
                     setIsPasteModalOpen(false);
                     setPasteInputValue("");

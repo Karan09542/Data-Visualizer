@@ -14,3 +14,16 @@ export function editorLanguageFor(path: string): string {
   if (is("_md", "md")) return "markdown";
   return "plaintext";
 }
+
+export type ExecutableKind = "ts" | "js" | "py" | "api";
+
+/** How a node runs, when it runs at all: as TypeScript, JavaScript, Python, or an API request. */
+export function executableKindFor(path: string): ExecutableKind | null {
+  const ext = (path.split(".").pop() || "").replace(/\[[0-9]+\]$/, "").toLowerCase();
+  const is = (suffix: string, plain: string) => ext.endsWith(suffix) || ext === plain;
+  if (is("_ts_node", "ts")) return "ts";
+  if (is("_js_node", "js")) return "js";
+  if (is("_py_node", "py")) return "py";
+  if (is("_api_node", "api")) return "api";
+  return null;
+}

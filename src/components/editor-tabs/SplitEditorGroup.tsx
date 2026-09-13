@@ -2,9 +2,10 @@
  * The second editor group a split opens, beside or below the main one.
  *
  * It has tabs of its own and edits files the way the main group does: typing keeps a draft,
- * Ctrl+S saves it. A file open in both groups is one file - both editors share its model, so
- * typing in one shows in the other at once. Running code and the console stay with the main
- * group.
+ * Ctrl+S saves it, Ctrl+Enter runs it. A file open in both groups is one file - both editors share
+ * its model, so typing in one shows in the other at once. While this group is the one being worked
+ * in, files opened from the explorer land here, and the Run button, the console and the coding
+ * keys (one set, the workspace's) follow its tab.
  */
 import React, { useMemo } from "react";
 import { ChevronRight, Columns2, ExternalLink, Rows2, X } from "lucide-react";
@@ -13,11 +14,11 @@ import MediaFileViewer from "../MediaFileViewer";
 import { TodoWorkspace } from "../TodoWorkspace";
 import { SearchNodeWorkspace } from "../SearchNodeWorkspace";
 import { useStore, type EditorGroupId, type EditorSplit } from "../../store/useStore";
-import { getValueAtPath } from "../../utils/pathUtils";
-import { detectMediaFile, mediaFileName } from "../../utils/mediaFiles";
-import { editorLanguageFor } from "../../utils/editorLanguage";
+import { mediaFileName } from "../../utils/mediaFiles";
+import { executableKindFor } from "../../utils/editorLanguage";
 import { registerWorkspaceIntelliSense } from "../../utils/workspaceIntelliSense";
 import { EditorTabStrip } from "./EditorTabStrip";
+import { useEditorFile } from "./useEditorFile";
 import type { TabMenuEntry } from "./useTabContextMenu";
 
 interface SplitEditorGroupProps {
@@ -32,6 +33,10 @@ interface SplitEditorGroupProps {
   editorTheme: string;
   /** How the groups are laid out on screen right now (a narrow screen may stack a right split). */
   shownDirection: "right" | "down";
+  /** This group's Monaco editor, so the workspace's toolbar can act on it. */
+  onEditorMount?: (editor: any) => void;
+  /** Runs a file: Ctrl+Enter here. */
+  onRun?: (path: string, code: string) => void;
   style?: React.CSSProperties;
 }
 
@@ -49,11 +54,10 @@ export function SplitEditorGroup({
   editorOptions,
   editorTheme,
   shownDirection,
+  onEditorMount,
+  onRun,
   style,
 }: SplitEditorGroupProps) {
-  const parsedData = useStore((s) => s.parsedData);
-  const overrides = useStore((s) => s.jsNodeCodeOverrides);
-  const uploadedMediaMetadata = useStore((s) => s.uploadedMediaMetadata);
   const setJsNodeCodeOverride = useStore((s) => s.setJsNodeCodeOverride);
   const markWorkspaceTabDirty = useStore((s) => s.markWorkspaceTabDirty);
   const activateGroupTab = useStore((s) => s.activateGroupTab);
@@ -66,25 +70,8 @@ export function SplitEditorGroup({
   const setMediaViewOnly = useStore((s) => s.setMediaViewOnly);
 
   const path = split.active;
-  const rawValue = path ? getValueAtPath(parsedData, path) : undefined;
+  const file = useEditorFile(path);
   const key = path ? path.split(".").pop() || path : "";
-  const ext = key.toLowerCase();
-
-  const text = useMemo(() => {
-    if (!path) return "";
-    const val = overrides[path] ?? rawValue ?? "";
-    if (typeof val === "string") return val;
-    try {
-      return JSON.stringify(val, null, 2);
-    } catch {
-      return String(val);
-    }
-  }, [path, overrides, rawValue]);
-
-  const media = useMemo(
-    () => (path ? detectMediaFile(key, rawValue, uploadedMediaMetadata) : null),
-    [path, key, rawValue, uploadedMediaMetadata],
-  );
 
   const crumbs = useMemo(() => {
     if (!path) return [];
@@ -97,18 +84,18 @@ export function SplitEditorGroup({
   let body: React.ReactNode;
   if (!path) {
     body = <div className="flex-1" />;
-  } else if (ext.endsWith("_todo_node")) {
+  } else if (file.isTodo) {
     body = <TodoWorkspace key={path} path={path} />;
-  } else if (ext.endsWith("_search_node")) {
+  } else if (file.isSearch) {
     body = <SearchNodeWorkspace key={path} path={path} />;
-  } else if (media) {
+  } else if (file.media) {
     body = (
       <MediaFileViewer
         key={path}
-        name={mediaFileName(key, media)}
-        media={media}
+        name={mediaFileName(key, file.media)}
+        media={file.media}
         onOpenEditor={
-          media.kind === "image"
+          file.media.kind === "image"
             ? () => {
               setMediaViewOnly(path, false);
               openInMain(path);
@@ -117,7 +104,7 @@ export function SplitEditorGroup({
         }
       />
     );
-  } else if (ext.endsWith("_image_node")) {
+  } else if (file.isImg) {
     // The image editor needs the whole workspace; it opens in the main group.
     body = (
       <div className="flex-1 flex flex-col items-center justify-center gap-3 text-[12px] text-[var(--vsc-fg-muted)]">
@@ -132,10 +119,10 @@ export function SplitEditorGroup({
       <SafeEditor
         path={path}
         height="100%"
-        defaultLanguage={editorLanguageFor(path)}
-        language={editorLanguageFor(path)}
+        defaultLanguage={file.language}
+        language={file.language}
         theme={editorTheme}
-        value={text}
+        value={file.text}
         options={editorOptions}
         onChange={(value) => {
           if (value === undefined) return;
@@ -143,16 +130,22 @@ export function SplitEditorGroup({
           const tab = split.tabs.find((t) => t.path === path);
           if (tab && !tab.isDirty) markWorkspaceTabDirty(path, true);
         }}
-        onMount={(editor, m) => {
-          registerWorkspaceIntelliSense(m, editor);
-          editor.onDidFocusEditorText?.(onFocus);
-          // Ctrl+S saves the file this editor shows - read when pressed, not when mounted.
-          editor.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.KeyS, () => {
+        onMount={(ed, m) => {
+          onEditorMount?.(ed);
+          registerWorkspaceIntelliSense(m, ed);
+          ed.onDidFocusEditorText?.(onFocus);
+          // Commands read the group's file when pressed, not when the editor mounted.
+          const current = () => useStore.getState().editorSplit?.active ?? null;
+          ed.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.KeyS, () => {
+            const target = current();
+            if (!target) return;
             const state = useStore.getState();
-            const current = state.editorSplit?.active;
-            if (!current) return;
-            state.updateNodeValue(current, editor.getValue(), { fromEditor: true });
-            state.markWorkspaceTabDirty(current, false);
+            state.updateNodeValue(target, ed.getValue(), { fromEditor: true });
+            state.markWorkspaceTabDirty(target, false);
+          });
+          ed.addCommand(m.KeyMod.CtrlCmd | m.KeyCode.Enter, () => {
+            const target = current();
+            if (target && executableKindFor(target)) onRun?.(target, ed.getValue());
           });
         }}
       />

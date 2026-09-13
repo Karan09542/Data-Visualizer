@@ -1436,7 +1436,7 @@ export default function GuiEditorPanel() {
             </div>
           ) : (
             <div
-              className="flex flex-col max-w-4xl mx-auto mb-10 border border-slate-200 dark:border-slate-800/70 rounded-lg overflow-hidden bg-white dark:bg-[#0b101c]/50 divide-y divide-slate-200 dark:divide-slate-800/60"
+              className="flex flex-col max-w-4xl mx-auto mb-10 border border-slate-200 dark:border-slate-800/70 rounded-lg bg-white dark:bg-[#0b101c]/50 divide-y divide-slate-200 dark:divide-slate-800/60"
               ref={menuContainerRef}
             >
               {/* Dynamic Header */}

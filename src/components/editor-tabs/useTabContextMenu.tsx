@@ -54,12 +54,28 @@ interface OpenMenu {
   theme: Record<string, string>;
 }
 
-interface Hold {
-  timer: number;
+/**
+ * A finger on a tab. It starts `pending`; kept still long enough it is `held` and the menu opens;
+ * moved after that it is `dragging` the tab. Moved before the hold, it was scrolling the row.
+ */
+interface Press {
   x: number;
   y: number;
+  lastX: number;
+  lastY: number;
   path: string;
   el: HTMLElement;
+  timer: number;
+  phase: "pending" | "held" | "dragging";
+  cleanup: () => void;
+}
+
+/** A tab dragged by a finger - held, then moved - handed to whoever reorders the tabs. */
+export interface TabTouchDrag {
+  onStart: (path: string, x: number, y: number) => void;
+  onMove: (x: number, y: number) => void;
+  onEnd: (x: number, y: number) => void;
+  onCancel: () => void;
 }
 
 const themeOf = (el: HTMLElement | null) => {
@@ -73,26 +89,116 @@ const themeOf = (el: HTMLElement | null) => {
   return theme;
 };
 
-export function useTabContextMenu(build: (path: string) => TabMenuEntry[]) {
+export function useTabContextMenu(build: (path: string) => TabMenuEntry[], drag?: TabTouchDrag) {
   const [menu, setMenu] = useState<OpenMenu | null>(null);
-  const hold = useRef<Hold | null>(null);
-  // A touch that opened the menu is followed by a click on the tab; that click is not a choice.
+  const press = useRef<Press | null>(null);
+  // A touch that opened the menu, or dragged a tab, is followed by a click on the tab; that
+  // click is not a choice.
   const swallowClickUntil = useRef(0);
+  const dragRef = useRef(drag);
+  dragRef.current = drag;
 
   const close = useCallback(() => setMenu(null), []);
-
-  const cancelHold = useCallback(() => {
-    if (!hold.current) return;
-    clearTimeout(hold.current.timer);
-    hold.current = null;
-  }, []);
 
   const open = useCallback((x: number, y: number, path: string, el: HTMLElement | null, touch: boolean) => {
     if (touch) swallowClickUntil.current = Date.now() + 600;
     setMenu({ x, y, path, touch, theme: themeOf(el), openedAt: Date.now() });
   }, []);
 
-  useEffect(() => cancelHold, [cancelHold]);
+  /** Ends a press, however it went. A drag still going is cancelled if asked. */
+  const endPress = useCallback((cancelDrag: boolean) => {
+    const p = press.current;
+    if (!p) return;
+    press.current = null;
+    clearTimeout(p.timer);
+    p.cleanup();
+    if (cancelDrag && p.phase === "dragging") dragRef.current?.onCancel();
+  }, []);
+
+  /** A finger kept still long enough: the menu opens, and moving now drags the tab instead. */
+  const holdPress = useCallback(
+    (p: Press) => {
+      if (p.phase !== "pending") return;
+      clearTimeout(p.timer);
+      p.phase = "held";
+      try {
+        navigator.vibrate?.(12);
+      } catch {
+        /* no vibration here */
+      }
+      open(p.x, p.y, p.path, p.el, true);
+    },
+    [open],
+  );
+
+  const startPress = useCallback(
+    (path: string, el: HTMLElement, x: number, y: number) => {
+      // The browser's own drag would fight the finger's; the tab is draggable again afterwards.
+      const wasDraggable = el.draggable;
+      el.draggable = false;
+
+      // Listened for natively: React's touch listeners are passive, and a held or dragging finger
+      // has to stop the row from scrolling.
+      const onMove = (ev: TouchEvent) => {
+        const p = press.current;
+        const t = ev.touches[0];
+        if (!p || !t || ev.touches.length > 1) return;
+        p.lastX = t.clientX;
+        p.lastY = t.clientY;
+        const moved = Math.hypot(t.clientX - p.x, t.clientY - p.y);
+        if (p.phase === "pending") {
+          if (moved > MOVE_CANCEL_PX) endPress(false); // scrolling the row, not holding a tab
+          else if (ev.cancelable) ev.preventDefault(); // a still finger must not start a scroll
+          return;
+        }
+        if (ev.cancelable) ev.preventDefault();
+        if (p.phase === "held") {
+          if (moved <= MOVE_CANCEL_PX) return;
+          p.phase = "dragging";
+          setMenu(null);
+          dragRef.current?.onStart(p.path, t.clientX, t.clientY);
+        }
+        dragRef.current?.onMove(t.clientX, t.clientY);
+      };
+      const onEnd = (ev: TouchEvent) => {
+        const p = press.current;
+        if (!p) return;
+        if (p.phase !== "pending") swallowClickUntil.current = Date.now() + 600;
+        const wasDragging = p.phase === "dragging";
+        endPress(false);
+        if (!wasDragging) return;
+        if (ev.type === "touchcancel") dragRef.current?.onCancel();
+        else dragRef.current?.onEnd(p.lastX, p.lastY);
+      };
+
+      el.addEventListener("touchmove", onMove, { passive: false });
+      el.addEventListener("touchend", onEnd);
+      el.addEventListener("touchcancel", onEnd);
+      const p: Press = {
+        x,
+        y,
+        lastX: x,
+        lastY: y,
+        path,
+        el,
+        phase: "pending",
+        timer: 0,
+        cleanup: () => {
+          el.removeEventListener("touchmove", onMove);
+          el.removeEventListener("touchend", onEnd);
+          el.removeEventListener("touchcancel", onEnd);
+          el.draggable = wasDraggable;
+        },
+      };
+      p.timer = window.setTimeout(() => {
+        if (press.current === p) holdPress(p);
+      }, HOLD_MS);
+      press.current = p;
+    },
+    [endPress, holdPress],
+  );
+
+  useEffect(() => () => endPress(true), [endPress]);
 
   // Anywhere else, Escape, a scroll or a resize closes it.
   useEffect(() => {
@@ -132,43 +238,29 @@ export function useTabContextMenu(build: (path: string) => TabMenuEntry[]) {
       onContextMenu: (e: React.MouseEvent<HTMLElement>) => {
         e.preventDefault();
         e.stopPropagation();
-        const byTouch = !!hold.current || Date.now() < swallowClickUntil.current;
-        cancelHold();
-        open(e.clientX, e.clientY, path, e.currentTarget, byTouch);
+        const p = press.current;
+        if (p) {
+          // A browser that answers a long press with its own context menu event: the hold decides,
+          // so the menu opens once, and moving afterwards still drags the tab.
+          if (p.phase === "pending") holdPress(p);
+          return;
+        }
+        open(e.clientX, e.clientY, path, e.currentTarget, Date.now() < swallowClickUntil.current);
       },
       onTouchStart: (e: React.TouchEvent<HTMLElement>) => {
         if (e.touches.length >= 2) {
           // A two-finger tap. The first finger says which tab; it may be this one or another.
-          const first = hold.current;
+          const first = press.current;
           const a = e.touches[0];
           const b = e.touches[1];
-          cancelHold();
+          endPress(true);
           open((a.clientX + b.clientX) / 2, (a.clientY + b.clientY) / 2, first?.path ?? path, first?.el ?? e.currentTarget, true);
           return;
         }
+        endPress(true);
         const t = e.touches[0];
-        cancelHold();
-        const el = e.currentTarget;
-        hold.current = {
-          x: t.clientX,
-          y: t.clientY,
-          path,
-          el,
-          timer: window.setTimeout(() => {
-            const h = hold.current;
-            hold.current = null;
-            if (h) open(h.x, h.y, h.path, h.el, true);
-          }, HOLD_MS),
-        };
+        startPress(path, e.currentTarget, t.clientX, t.clientY);
       },
-      onTouchMove: (e: React.TouchEvent<HTMLElement>) => {
-        const h = hold.current;
-        const t = e.touches[0];
-        if (!h || !t) return;
-        if (Math.hypot(t.clientX - h.x, t.clientY - h.y) > MOVE_CANCEL_PX) cancelHold();
-      },
-      onTouchEnd: cancelHold,
-      onTouchCancel: cancelHold,
       onClickCapture: (e: React.MouseEvent<HTMLElement>) => {
         if (Date.now() < swallowClickUntil.current) {
           e.preventDefault();
@@ -176,7 +268,7 @@ export function useTabContextMenu(build: (path: string) => TabMenuEntry[]) {
         }
       },
     }),
-    [cancelHold, open],
+    [endPress, holdPress, open, startPress],
   );
 
   const element = menu

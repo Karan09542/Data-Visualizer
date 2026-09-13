@@ -21,7 +21,15 @@ function settleGroups(tabs: WorkspaceTab[], active: string | null, split: Editor
     active = editorSplit.active ?? tabs[tabs.length - 1]?.path ?? null;
     editorSplit = null;
   }
-  return { workspaceTabs: tabs, activeExplorerFile: active, selectedExplorerFiles: active ? [active] : [], expandedJsNodeId: active, editorSplit };
+  return {
+    workspaceTabs: tabs,
+    activeExplorerFile: active,
+    selectedExplorerFiles: active ? [active] : [],
+    expandedJsNodeId: active,
+    editorSplit,
+    // With one group left, it is the one being worked in.
+    ...(editorSplit ? {} : { activeEditorGroup: "main" as const }),
+  };
 }
 
 /** The main group with a file open and active in it, as a tab kept open (not a preview). */
@@ -29,7 +37,38 @@ function withMainTabOpen(s: { workspaceTabs: WorkspaceTab[]; editorSplit: Editor
   const tabs = s.workspaceTabs.some(t => t.path === path)
     ? s.workspaceTabs
     : [...s.workspaceTabs, { path, isPreview: false, isDirty: !!s.editorSplit?.tabs.find(t => t.path === path)?.isDirty }];
-  return { workspaceTabs: tabs, activeExplorerFile: path, selectedExplorerFiles: [path], expandedJsNodeId: path };
+  return { workspaceTabs: tabs, activeExplorerFile: path, selectedExplorerFiles: [path], expandedJsNodeId: path, activeEditorGroup: "main" as const };
+}
+
+/**
+ * The side group with a file open and active in it. A preview replaces the group's preview tab,
+ * as it does in the main group; the main group is left as it is.
+ */
+function withSideTabOpen(
+  s: { workspaceTabs: WorkspaceTab[]; editorSplit: EditorSplit | null; explorerExpandedPaths: Record<string, boolean> },
+  path: string,
+  asPreview: boolean,
+) {
+  const split = s.editorSplit!;
+  const isDirty = !!s.workspaceTabs.find(t => t.path === path)?.isDirty;
+  let tabs = split.tabs;
+  const existing = tabs.find(t => t.path === path);
+  if (existing) {
+    if (!asPreview && existing.isPreview) tabs = tabs.map(t => (t.path === path ? { ...t, isPreview: false } : t));
+  } else if (asPreview) {
+    const preview = tabs.findIndex(t => t.isPreview);
+    const tab = { path, isPreview: true, isDirty };
+    tabs = preview !== -1 ? tabs.map((t, i) => (i === preview ? tab : t)) : [...tabs, tab];
+  } else {
+    tabs = [...tabs, { path, isPreview: false, isDirty }];
+  }
+
+  // Its folders open in the explorer, as when a file opens in the main group.
+  const explorerExpandedPaths = { ...s.explorerExpandedPaths };
+  const parts = path.split(".");
+  for (let i = 2; i < parts.length; i++) explorerExpandedPaths[parts.slice(0, i).join(".")] = true;
+
+  return { editorSplit: { ...split, tabs, active: path }, selectedExplorerFiles: [path], explorerExpandedPaths };
 }
 
 let searchWorkerInstance: Worker | null = null;
@@ -150,6 +189,12 @@ export interface StoreState {
   closeWorkspaceTabs: (paths: string[]) => void;
 
   editorSplit: EditorSplit | null;
+  /**
+   * The group being worked in. With the editor split, files open there, and running, the console
+   * and the title bar follow its active tab - as in VS Code.
+   */
+  activeEditorGroup: EditorGroupId;
+  setActiveEditorGroup: (group: EditorGroupId) => void;
   /**
    * Shows a file in the other group - VS Code's split. From the main group it opens the file in
    * the side group (making one when there is none); from the side group, in the main one.
@@ -551,6 +596,9 @@ export const useStore = create<StoreState>()(
         setWorkspaceTabs: (tabs) => set({ workspaceTabs: tabs }),
         openWorkspaceTab: (path, asPreview = true) =>
           set((s) => {
+            if (s.editorSplit && s.activeEditorGroup === "side") {
+              return withSideTabOpen(s, path, asPreview);
+            }
             let tabs = [...s.workspaceTabs];
             const existing = tabs.find(t => t.path === path);
             if (existing) {
@@ -658,6 +706,9 @@ export const useStore = create<StoreState>()(
           }),
 
         editorSplit: null,
+        activeEditorGroup: "main",
+        setActiveEditorGroup: (group) =>
+          set((s) => (s.activeEditorGroup === group ? {} : { activeEditorGroup: group })),
         splitEditorTab: (path, options) =>
           set((s) => {
             if (options?.from === "side") {
@@ -668,13 +719,14 @@ export const useStore = create<StoreState>()(
             const tabs = split.tabs.some(t => t.path === path)
               ? split.tabs
               : [...split.tabs, { path, isPreview: false, isDirty: !!s.workspaceTabs.find(t => t.path === path)?.isDirty }];
-            return { editorSplit: { ...split, direction, tabs, active: path } };
+            // The new group is where the reader carries on, as in VS Code.
+            return { editorSplit: { ...split, direction, tabs, active: path }, activeEditorGroup: "side" as const };
           }),
         activateGroupTab: (group, path) =>
           set((s) => {
             if (group === "main") return withMainTabOpen(s, path);
             if (!s.editorSplit) return {};
-            return { editorSplit: { ...s.editorSplit, active: path } };
+            return { editorSplit: { ...s.editorSplit, active: path }, activeEditorGroup: "side" as const };
           }),
         closeGroupTabs: (group, paths, focus) =>
           set((s) => {
@@ -726,7 +778,7 @@ export const useStore = create<StoreState>()(
             const ratio = layout.ratio === undefined ? s.editorSplit.ratio : Math.min(0.85, Math.max(0.15, layout.ratio));
             return { editorSplit: { ...s.editorSplit, ...layout, ratio } };
           }),
-        closeEditorSplit: () => set({ editorSplit: null }),
+        closeEditorSplit: () => set({ editorSplit: null, activeEditorGroup: "main" }),
 
         selectedExplorerFiles: [],
         setSelectedExplorerFiles: (paths) =>
@@ -821,6 +873,12 @@ export const useStore = create<StoreState>()(
         setExpandedJsNodeId: (id: string | null) =>
           set((s) => {
             const stateUpdate: any = { expandedJsNodeId: id };
+            // Closing the workspace: opening it again starts in the main group.
+            if (!id) stateUpdate.activeEditorGroup = "main";
+            // The side group being worked in: the file is there, the main group keeps its own.
+            if (id && s.editorSplit && s.activeEditorGroup === "side") {
+              return { ...withSideTabOpen(s, id, true), expandedJsNodeId: id };
+            }
             if (id) {
               let tabs = [...s.workspaceTabs];
               const existing = tabs.find(t => t.path === id);
@@ -1467,6 +1525,7 @@ export const useStore = create<StoreState>()(
           "activePreviewPath",
           "workspaceTabs",
           "editorSplit",
+          "activeEditorGroup",
           "activeExplorerFile",
           "explorerExpandedPaths",
           "selectedExplorerFiles",
