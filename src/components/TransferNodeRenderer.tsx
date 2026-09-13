@@ -645,6 +645,7 @@ export const TransferNodeRenderer: React.FC<{
     paused: boolean;
     canceled: boolean;
     accepted: boolean;
+    isProcessing: boolean;
     checksum: number; // simple CRC or similar
   }>>({});
 
@@ -654,6 +655,7 @@ export const TransferNodeRenderer: React.FC<{
     received: number;
     total: number;
     checksum: number;
+    writeQueue?: Promise<void>;
   }>>({});
 
   const streamRef = useRef<MediaStream | null>(null);
@@ -1462,7 +1464,7 @@ export const TransferNodeRenderer: React.FC<{
 
   const processNextChunk = async (msgId: string) => {
     const stream = outgoingStreamsRef.current[msgId];
-    if (!stream || stream.paused || stream.canceled || !dcRef.current || dcRef.current.readyState !== "open") return;
+    if (!stream || stream.paused || stream.canceled || stream.isProcessing || !dcRef.current || dcRef.current.readyState !== "open") return;
 
     if (stream.offset >= stream.file.size) {
       // Done
@@ -1474,6 +1476,8 @@ export const TransferNodeRenderer: React.FC<{
       }
       return;
     }
+
+    stream.isProcessing = true;
 
     // Process chunk
     try {
@@ -1498,11 +1502,6 @@ export const TransferNodeRenderer: React.FC<{
         setTransferProgress(progress);
       }
 
-      // Wait if bufferedAmount is too high
-      if (dcRef.current.bufferedAmount < dcRef.current.bufferedAmountLowThreshold) {
-        // Can continue immediately
-        setTimeout(() => processNextChunk(msgId), 0);
-      }
     } catch (err) {
       console.error("Streaming error", err);
       dcRef.current.send(JSON.stringify({ type: "stream_cancel", msgId }));
@@ -1511,10 +1510,20 @@ export const TransferNodeRenderer: React.FC<{
       if (Object.keys(outgoingStreamsRef.current).length === 0) {
         setTransferProgress(0);
       }
+    } finally {
+      if (outgoingStreamsRef.current[msgId]) {
+        outgoingStreamsRef.current[msgId].isProcessing = false;
+      }
+    }
+
+    // Wait if bufferedAmount is too high
+    if (dcRef.current && dcRef.current.bufferedAmount < dcRef.current.bufferedAmountLowThreshold) {
+      // Can continue immediately
+      setTimeout(() => processNextChunk(msgId), 0);
     }
   };
 
-  const startFileStream = (file: File, replyData?: any) => {
+  const startFileStream = (file: File, replyData?: any, autoAccept?: boolean) => {
     if (!dcRef.current || dcRef.current.readyState !== "open") return;
     const msgId = uuidv4();
     const fType = getFileType(file.name);
@@ -1525,6 +1534,7 @@ export const TransferNodeRenderer: React.FC<{
       paused: false,
       canceled: false,
       accepted: false,
+      isProcessing: false,
       checksum: 0,
     };
 
@@ -1556,6 +1566,7 @@ export const TransferNodeRenderer: React.FC<{
         fileSize: file.size,
         fileType: fType,
         replyTo: replyData,
+        autoAccept,
       }),
     );
   };
@@ -1776,6 +1787,42 @@ export const TransferNodeRenderer: React.FC<{
         type: "success",
       });
     };
+
+    const autoAcceptStream = (msgId: string, fileSize: number) => {
+      const memoryBuffer: Uint8Array[] = [];
+      const streamMock = {
+        write: async (chunk: Uint8Array) => {
+          memoryBuffer.push(new Uint8Array(chunk));
+        },
+        close: async () => {
+          const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
+          const combined = new Uint8Array(totalLength);
+          let offset = 0;
+          for (const chunk of memoryBuffer) {
+            combined.set(chunk, offset);
+            offset += chunk.length;
+          }
+          const blob = new Blob([combined]);
+          const url = URL.createObjectURL(blob);
+          
+          updateStreamMessage(msgId, {
+            content: url,
+            originalBlob: blob,
+            streamState: "completed"
+          });
+        }
+      };
+      incomingStreamsRef.current[msgId] = {
+        handle: null,
+        stream: streamMock,
+        received: 0,
+        total: fileSize,
+        checksum: 0
+      };
+      dc.send(JSON.stringify({ type: "stream_accept", msgId }));
+      updateStreamMessage(msgId, { streamState: "transferring" });
+    };
+
     dc.onmessage = async (e) => {
       if (e.data instanceof ArrayBuffer) {
         const data = new Uint8Array(e.data);
@@ -1785,17 +1832,23 @@ export const TransferNodeRenderer: React.FC<{
 
         const stream = incomingStreamsRef.current[msgId];
         if (stream && stream.stream) {
-          try {
-            await stream.stream.write(chunk);
-            stream.received += chunk.length;
-            stream.checksum = crc32(chunk, stream.checksum);
+          stream.writeQueue = (stream.writeQueue || Promise.resolve())
+            .then(async () => {
+              try {
+                await stream.stream.write(chunk);
+                stream.received += chunk.length;
+                stream.checksum = crc32(chunk, stream.checksum);
 
-            const progress = Math.floor((stream.received / stream.total) * 100);
-            updateStreamMessage(msgId, { streamProgress: progress });
-            setTransferProgress(progress);
-          } catch (err) {
-            console.error("Failed to write chunk", err);
-          }
+                const progress = Math.floor((stream.received / stream.total) * 100);
+                updateStreamMessage(msgId, { streamProgress: progress });
+                
+                if (progress % 5 === 0 || progress === 100) {
+                  setTransferProgress(progress);
+                }
+              } catch (err) {
+                console.error("Failed to write chunk", err);
+              }
+            });
         }
         return;
       }
@@ -1851,6 +1904,9 @@ export const TransferNodeRenderer: React.FC<{
             setUnreadCount((prev) => prev + 1);
             sendLocalNotification("Incoming Large File", msg.fileName || "File");
           }
+          if (msg.autoAccept) {
+            autoAcceptStream(msg.msgId, msg.fileSize);
+          }
           return;
         }
 
@@ -1869,6 +1925,11 @@ export const TransferNodeRenderer: React.FC<{
           if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
             setUnreadCount((prev) => prev + 1);
             sendLocalNotification("Incoming Files", `Received ${msg.attachments?.length || 0} files`);
+          }
+          if (msg.autoAccept && msg.attachments) {
+            for (const att of msg.attachments) {
+              autoAcceptStream(att.id, att.fileSize);
+            }
           }
           return;
         } else if (msg.type === "stream_accept") {
@@ -1911,8 +1972,8 @@ export const TransferNodeRenderer: React.FC<{
         } else if (msg.type === "stream_end") {
           const inStream = incomingStreamsRef.current[msg.msgId];
           if (inStream) {
-            if ((inStream as any).writeQueue) {
-              await (inStream as any).writeQueue;
+            if (inStream.writeQueue) {
+              await inStream.writeQueue;
             }
             try {
               await inStream.stream.close();
@@ -2038,64 +2099,6 @@ export const TransferNodeRenderer: React.FC<{
                   ),
                 );
               } catch (err) { }
-            } else if (chunkData.type === "composite") {
-              try {
-                const compositePayload = JSON.parse(fullPayload);
-                const attachments: Attachment[] = (compositePayload.attachments || []).map((att: any) => {
-                  const objectUrl = dataURItoBlobURL(att.content, att.fileName);
-                  const originalBlob = blobRegistry.get(objectUrl);
-                  return { ...att, content: objectUrl, originalBlob };
-                });
-                const newMsg: Message = {
-                  id: msg.msgId,
-                  sender: "remote",
-                  type: "composite",
-                  content: compositePayload.content,
-                  attachments,
-                  timestamp: Date.now(),
-                  status: "received",
-                  replyTo: chunkData.replyTo,
-                };
-                setMessages((prev) => [...prev, newMsg]);
-
-                if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
-                  setUnreadCount((prev) => prev + 1);
-                  sendLocalNotification(
-                    "Message Received",
-                    compositePayload.content || "New message with attachments",
-                  );
-                }
-              } catch (e) {
-                console.error("Failed to parse composite message", e);
-              }
-            } else if (chunkData.type === "file") {
-              const fType = chunkData.fileName
-                ? getFileType(chunkData.fileName)
-                : "file";
-              const objectUrl = dataURItoBlobURL(fullPayload, chunkData.fileName);
-              const originalBlob = blobRegistry.get(objectUrl);
-              const newMsg: Message = {
-                id: msg.msgId,
-                sender: "remote",
-                type: "file",
-                fileName: chunkData.fileName,
-                fileType: fType,
-                fileSize: fullPayload.length,
-                content: objectUrl,
-                originalBlob,
-                timestamp: Date.now(),
-                status: "received",
-                replyTo: chunkData.replyTo,
-              };
-              setMessages((prev) => [...prev, newMsg]);
-
-              if (!isAtBottom || document.visibilityState === "hidden" || !document.hasFocus()) {
-                setUnreadCount((prev) => prev + 1);
-                sendLocalNotification(
-                  "File Received",
-                  chunkData.fileName || "New file received",
-                );
-              }
             } else if (chunkData.type === "text") {
               const newMsg: Message = {
                 id: msg.msgId,
@@ -2537,9 +2540,10 @@ export const TransferNodeRenderer: React.FC<{
     const textContent = chatInput;
     const filesToProcess = [...pendingFiles];
 
+    const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
     const totalPendingSize = filesToProcess.reduce((acc, curr) => acc + curr.size, 0);
-    if (totalPendingSize > MAX_FILE_SIZE) {
-      setNotification({ message: "Total size of attached files exceeds 100MB limit. Please remove some files.", type: "error" });
+    if (totalPendingSize > currentLimit) {
+      setNotification({ message: "Total size of attached files exceeds 100MB limit. Enable 'Stream to Disk' for unlimited size.", type: "error" });
       return;
     }
 
@@ -2559,139 +2563,77 @@ export const TransferNodeRenderer: React.FC<{
       await sendLargeMessage("msg_edit", JSON.stringify({ targetId: editingMessage.id, content: textContent }));
       return;
     }
-
     if (filesToProcess.length > 0) {
-      if (largeFileMode) {
-        if (filesToProcess.length === 1 && !textContent.trim()) {
-          startFileStream(filesToProcess[0], replyData);
-          return;
-        }
-
-        const msgId = uuidv4();
-        const attachments: Attachment[] = [];
-        const payloadAttachments: any[] = [];
-
-        for (const file of filesToProcess) {
-          const attId = uuidv4();
-          const fType = getFileType(file.name);
-          const objectUrl = URL.createObjectURL(file);
-          blobRegistry.set(objectUrl, file);
-
-          outgoingStreamsRef.current[attId] = {
-            file,
-            offset: 0,
-            paused: false,
-            canceled: false,
-            accepted: false,
-            checksum: 0,
-          };
-
-          attachments.push({
-            id: attId,
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: fType,
-            content: objectUrl,
-            originalBlob: file,
-            streamState: "offered",
-            streamProgress: 0,
-          });
-
-          payloadAttachments.push({
-            id: attId,
-            fileName: file.name,
-            fileSize: file.size,
-            fileType: fType,
-            streamState: "offered",
-            streamProgress: 0,
-          });
-        }
-
-        const compositeMsg: Message = {
-          id: msgId,
-          sender: "me",
-          type: "composite",
-          content: textContent,
-          attachments,
-          timestamp: Date.now(),
-          status: "sent",
-          replyTo: replyData,
-        };
-
-        setMessages((prev) => [...prev, compositeMsg]);
-
-        dcRef.current?.send(
-          JSON.stringify({
-            type: "composite_stream_offer",
-            msgId,
-            content: textContent,
-            attachments: payloadAttachments,
-            replyTo: replyData,
-          })
-        );
+      if (filesToProcess.length === 1 && !textContent.trim()) {
+        startFileStream(filesToProcess[0], replyData, !largeFileMode);
         return;
       }
 
       const msgId = uuidv4();
       const attachments: Attachment[] = [];
-      const compositePayloadAttachments: any[] = [];
+      const payloadAttachments: any[] = [];
 
       for (const file of filesToProcess) {
-        const fileContent = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.readAsDataURL(file);
-        });
-
+        const attId = uuidv4();
         const fType = getFileType(file.name);
         const objectUrl = URL.createObjectURL(file);
         blobRegistry.set(objectUrl, file);
 
-        const attId = uuidv4();
+        outgoingStreamsRef.current[attId] = {
+          file,
+          offset: 0,
+          paused: false,
+          canceled: false,
+          accepted: false,
+          isProcessing: false,
+          checksum: 0,
+        };
+
         attachments.push({
           id: attId,
           fileName: file.name,
           fileSize: file.size,
           fileType: fType,
           content: objectUrl,
-          originalBlob: file
+          originalBlob: file,
+          streamState: "offered",
+          streamProgress: 0,
         });
 
-        compositePayloadAttachments.push({
+        payloadAttachments.push({
           id: attId,
           fileName: file.name,
           fileSize: file.size,
           fileType: fType,
-          content: fileContent
+          streamState: "offered",
+          streamProgress: 0,
         });
       }
 
-      const compositePayload = {
-        content: textContent,
-        attachments: compositePayloadAttachments
-      };
-
-      const localMsgOverride: Message = {
+      const compositeMsg: Message = {
         id: msgId,
         sender: "me",
         type: "composite",
         content: textContent,
         attachments,
         timestamp: Date.now(),
-        status: "sending",
-        chunksSent: 0,
-        chunksTotal: 0,
-        replyTo: replyData
+        status: "sent",
+        replyTo: replyData,
       };
 
-      await sendLargeMessage(
-        "composite",
-        JSON.stringify(compositePayload),
-        undefined,
-        replyData,
-        undefined,
-        localMsgOverride
+      setMessages((prev) => [...prev, compositeMsg]);
+
+      dcRef.current?.send(
+        JSON.stringify({
+          type: "composite_stream_offer",
+          msgId,
+          content: textContent,
+          attachments: payloadAttachments,
+          replyTo: replyData,
+          autoAccept: !largeFileMode,
+        })
       );
+      return;
     } else if (textContent.trim()) {
       await sendLargeMessage("text", textContent, undefined, replyData);
     }
@@ -4506,8 +4448,9 @@ export const TransferNodeRenderer: React.FC<{
                         const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
                         if (entry && entry.isDirectory) {
                           const filesInDir = await getFilesFromEntry(entry);
+                          const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
                           const totalSize = filesInDir.reduce((acc, curr) => acc + curr.file.size, 0);
-                          if (totalSize > MAX_FILE_SIZE) {
+                          if (totalSize > currentLimit) {
                             hasLarge = true;
                           } else if (filesInDir.length > 0) {
                             const id = uuidv4();
@@ -4516,15 +4459,16 @@ export const TransferNodeRenderer: React.FC<{
                           }
                         } else {
                           const f = item.getAsFile();
+                          const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
                           if (f) {
-                            if (f.size > MAX_FILE_SIZE) hasLarge = true;
+                            if (f.size > currentLimit) hasLarge = true;
                             else newFiles.push(f);
                           }
                         }
                       }
                     }
                     if (hasLarge) {
-                      setNotification({ message: "Files/folders exceeding 100MB limit were ignored", type: "error" });
+                      setNotification({ message: "Files/folders exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
                     }
                     if (newFiles.length > 0) {
                       setPendingFiles(prev => [...prev, ...newFiles]);
@@ -4585,7 +4529,7 @@ export const TransferNodeRenderer: React.FC<{
                                   Nothing is stored on any server.
                                 </p>
                                 <p className={`text-xs mt-2 font-medium ${isDark ? "text-indigo-400/80" : "text-indigo-500/80"}`}>
-                                  Max file/folder size: 100MB
+                                  Max file/folder size: {largeFileMode ? "Unlimited (Stream to disk)" : "100MB"}
                                 </p>
                               </div>
                             </div>
@@ -5243,13 +5187,14 @@ export const TransferNodeRenderer: React.FC<{
                                 onChange={(e) => {
                                   const files = Array.from(e.target.files || []);
                                   const validFiles = [];
+                                  const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
                                   let hasLarge = false;
                                   for (const f of files) {
-                                    if (f.size > MAX_FILE_SIZE) hasLarge = true;
+                                    if (f.size > currentLimit) hasLarge = true;
                                     else validFiles.push(f);
                                   }
                                   if (hasLarge) {
-                                    setNotification({ message: "Files exceeding 100MB limit were ignored", type: "error" });
+                                    setNotification({ message: "Files exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
                                   }
                                   if (validFiles.length > 0) {
                                     setPendingFiles(prev => [...prev, ...validFiles]);
@@ -5278,13 +5223,14 @@ export const TransferNodeRenderer: React.FC<{
                                     .filter((f): f is File => f !== null);
 
                                   const validFiles = [];
+                                  const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
                                   let hasLarge = false;
                                   for (const f of files) {
-                                    if (f.size > MAX_FILE_SIZE) hasLarge = true;
+                                    if (f.size > currentLimit) hasLarge = true;
                                     else validFiles.push(f);
                                   }
                                   if (hasLarge) {
-                                    setNotification({ message: "Pasted files exceeding 100MB limit were ignored", type: "error" });
+                                    setNotification({ message: "Pasted files exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
                                   }
                                   if (validFiles.length > 0) {
                                     setPendingFiles(prev => [...prev, ...validFiles]);
