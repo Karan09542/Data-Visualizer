@@ -4639,7 +4639,7 @@ export const TransferNodeRenderer: React.FC<{
                                       </button>
                                     )}
                                     {msg.type === "text" && (
-                                      <div className="px-4 py-2.5 text-xs font-medium select-text">
+                                      <div className="px-4 py-2.5 text-xs font-medium select-text whitespace-pre-wrap break-words">
                                         {renderContentWithLinks(msg.content)}
                                       </div>
                                     )}
@@ -4707,7 +4707,7 @@ export const TransferNodeRenderer: React.FC<{
                                           );
                                         })()}
                                         {msg.content && (
-                                          <div className="px-3 py-1.5 text-xs font-medium mt-0.5 select-text">
+                                          <div className="px-3 py-1.5 text-xs font-medium mt-0.5 select-text whitespace-pre-wrap break-words">
                                             {renderContentWithLinks(msg.content)}
                                           </div>
                                         )}
@@ -5211,8 +5211,8 @@ export const TransferNodeRenderer: React.FC<{
                                 : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
                                 }`}
                             >
-                              <input
-                                type="text"
+                              <textarea
+                                rows={Math.min(chatInput.split("\n").length, 5) || 1}
                                 value={chatInput}
                                 onChange={(e) => setChatInput(e.target.value)}
                                 onPaste={(e) => {
@@ -5238,7 +5238,10 @@ export const TransferNodeRenderer: React.FC<{
                                 }}
                                 onKeyDown={(e) => {
                                   e.stopPropagation();
-                                  if (e.key === "Enter") sendMessage();
+                                  if (e.key === "Enter" && !e.shiftKey) {
+                                    e.preventDefault();
+                                    sendMessage();
+                                  }
                                   if (e.key === "Escape") {
                                     setChatInput("");
                                     setEditingMessage(null);
@@ -5249,7 +5252,7 @@ export const TransferNodeRenderer: React.FC<{
                                 onFocus={() => setChatInputFocused(true)}
                                 onBlur={() => setChatInputFocused(false)}
                                 placeholder="Type a message..."
-                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0"
+                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0 resize-none max-h-32 overflow-y-auto leading-relaxed"
                               />
                               {!chatInputFocused && chatInput.length > 0 && (
                                 <button
