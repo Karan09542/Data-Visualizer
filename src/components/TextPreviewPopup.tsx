@@ -1478,6 +1478,7 @@ const TextPreviewPopup: React.FC = () => {
                               { label: 'Search', value: 'search', icon: <Search size={14} /> },
                               { label: 'Download .md', value: 'download-md', icon: <Download size={14} /> },
                               { label: 'Download .txt', value: 'download-txt', icon: <Download size={14} /> },
+                              ...(viewMode === 'markdown' || viewMode === 'html' ? [{ label: 'Download .html', value: 'download-html', icon: <Globe size={14} /> }] : []),
                               ...(viewMode === 'raw' ? [{ label: wordWrap ? 'No Wrap' : 'Word Wrap', value: 'toggle-wrap', icon: <WrapText size={14} /> }] : []),
                             ]}
                             onChange={(val) => {
@@ -1487,6 +1488,7 @@ const TextPreviewPopup: React.FC = () => {
                               if (val === 'search') { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 50); }
                               if (val === 'download-md') handleDownload('md');
                               if (val === 'download-txt') handleDownload('txt');
+                              if (val === 'download-html') handleDownload('html');
                               if (val === 'toggle-wrap') setWordWrap(!wordWrap);
                             }}
                             icon={<MoreVertical size={16} />}
