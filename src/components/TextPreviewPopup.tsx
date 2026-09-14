@@ -5,7 +5,8 @@ import {
   Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu, Settings,
   ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronLeft,
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowLeftToLine, ArrowRightToLine, ClipboardPaste, Quote,
-  Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus, Maximize2, Minimize2, MoreVertical, Tag
+  Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus, Maximize2, Minimize2, MoreVertical, Tag,
+  Download, Search, WrapText, ImageOff, Eye
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -214,6 +215,83 @@ const CodeBlock = ({ inline, children, className, theme, ...props }: any) => {
     </div>
   );
 };
+
+// Image renderer with lazy loading, error fallback, and zoom lightbox
+const ImageRenderer = memo(({ src, alt, ...props }: any) => {
+  const [hasError, setHasError] = useState(false);
+  const [zoomed, setZoomed] = useState(false);
+
+  if (hasError) {
+    return (
+      <div className="my-4 flex items-center gap-3 p-4 bg-slate-800/50 border border-slate-700/50 rounded-lg text-slate-400">
+        <ImageOff size={20} className="shrink-0 text-slate-500" />
+        <div className="min-w-0">
+          <div className="text-xs font-semibold text-slate-300">Image failed to load</div>
+          {src && <div className="text-[10px] font-mono truncate mt-0.5 opacity-60">{src}</div>}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <img
+        src={src}
+        alt={alt || ''}
+        loading="lazy"
+        onClick={() => setZoomed(true)}
+        onError={() => setHasError(true)}
+        className="cursor-zoom-in transition-transform hover:scale-[1.01] active:scale-100"
+        {...props}
+      />
+      {zoomed && createPortal(
+        <div
+          className="fixed inset-0 z-[10001] bg-black/90 backdrop-blur-md flex items-center justify-center p-4 cursor-zoom-out"
+          onClick={() => setZoomed(false)}
+        >
+          <img
+            src={src}
+            alt={alt || ''}
+            className="max-w-full max-h-[90vh] object-contain rounded-lg shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          />
+          <button
+            onClick={() => setZoomed(false)}
+            className="absolute top-4 right-4 p-2 bg-white/10 hover:bg-white/20 text-white rounded-full backdrop-blur transition-colors"
+          >
+            <X size={20} />
+          </button>
+          {alt && (
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 text-xs text-white/70 bg-black/50 px-4 py-2 rounded-full backdrop-blur max-w-md truncate">
+              {alt}
+            </div>
+          )}
+        </div>,
+        document.body
+      )}
+    </>
+  );
+});
+
+// Styled details/summary for collapsible sections
+const DetailsRenderer = ({ children, ...props }: any) => (
+  <details
+    className="my-4 rounded-lg border border-slate-700/50 bg-slate-800/30 overflow-hidden group/details open:ring-1 open:ring-indigo-500/20 transition-all"
+    {...props}
+  >
+    {children}
+  </details>
+);
+
+const SummaryRenderer = ({ children, ...props }: any) => (
+  <summary
+    className="px-4 py-3 cursor-pointer select-none font-semibold text-sm text-slate-200 hover:text-white bg-slate-800/50 hover:bg-slate-800/80 transition-colors list-none flex items-center gap-2 [&::-webkit-details-marker]:hidden"
+    {...props}
+  >
+    <ChevronRight size={14} className="shrink-0 transition-transform group-open/details:rotate-90 text-indigo-400" />
+    {children}
+  </summary>
+);
 
 const extractHeadings = (text: string): Heading[] => {
   const headings: Heading[] = [];
@@ -600,6 +678,12 @@ const TextPreviewPopup: React.FC = () => {
   const [showSettings, setShowSettings] = React.useState(false);
   const [activeHeadingId, setActiveHeadingId] = React.useState<string>('');
   const [keyboardLocked, setKeyboardLocked] = React.useState(false);
+  const [wordWrap, setWordWrap] = React.useState(true);
+  const [showSearch, setShowSearch] = React.useState(false);
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [searchMatchCount, setSearchMatchCount] = React.useState(0);
+  const [currentSearchMatch, setCurrentSearchMatch] = React.useState(0);
+  const searchInputRef = React.useRef<HTMLInputElement>(null);
 
   React.useEffect(() => {
     const handleResize = () => {
@@ -737,7 +821,149 @@ const TextPreviewPopup: React.FC = () => {
     }
   }, [viewMode]);
 
+  // Ctrl+F search handler
+  React.useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        e.stopPropagation();
+        setShowSearch(true);
+        setTimeout(() => searchInputRef.current?.focus(), 50);
+      }
+      if (e.key === 'Escape' && showSearch) {
+        setShowSearch(false);
+        setSearchQuery('');
+        clearSearchHighlights();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown, true);
+    return () => window.removeEventListener('keydown', handleKeyDown, true);
+  }, [showSearch]);
+
+  // Search highlight logic
+  const clearSearchHighlights = React.useCallback(() => {
+    if (!contentRef.current) return;
+    const marks = contentRef.current.querySelectorAll('mark[data-search-highlight]');
+    marks.forEach((mark) => {
+      const parent = mark.parentNode;
+      if (parent) {
+        parent.replaceChild(document.createTextNode(mark.textContent || ''), mark);
+        parent.normalize();
+      }
+    });
+    setSearchMatchCount(0);
+    setCurrentSearchMatch(0);
+  }, []);
+
+  const performSearch = React.useCallback((query: string) => {
+    clearSearchHighlights();
+    if (!query.trim() || !contentRef.current) return;
+
+    const walker = document.createTreeWalker(contentRef.current, NodeFilter.SHOW_TEXT, null);
+    const textNodes: Text[] = [];
+    while (walker.nextNode()) {
+      textNodes.push(walker.currentNode as Text);
+    }
+
+    let matchCount = 0;
+    const lowerQuery = query.toLowerCase();
+
+    textNodes.forEach((node) => {
+      const text = node.textContent || '';
+      const lowerText = text.toLowerCase();
+      if (!lowerText.includes(lowerQuery)) return;
+
+      const frag = document.createDocumentFragment();
+      let lastIndex = 0;
+
+      let idx = lowerText.indexOf(lowerQuery, lastIndex);
+      while (idx !== -1) {
+        if (idx > lastIndex) {
+          frag.appendChild(document.createTextNode(text.slice(lastIndex, idx)));
+        }
+        const mark = document.createElement('mark');
+        mark.setAttribute('data-search-highlight', String(matchCount));
+        mark.className = 'bg-yellow-400/40 text-inherit rounded-sm px-0.5';
+        mark.textContent = text.slice(idx, idx + query.length);
+        frag.appendChild(mark);
+        matchCount++;
+        lastIndex = idx + query.length;
+        idx = lowerText.indexOf(lowerQuery, lastIndex);
+      }
+
+      if (lastIndex < text.length) {
+        frag.appendChild(document.createTextNode(text.slice(lastIndex)));
+      }
+
+      node.parentNode?.replaceChild(frag, node);
+    });
+
+    setSearchMatchCount(matchCount);
+    if (matchCount > 0) {
+      setCurrentSearchMatch(1);
+      scrollToMatch(0);
+    }
+  }, [clearSearchHighlights]);
+
+  const scrollToMatch = React.useCallback((index: number) => {
+    if (!contentRef.current) return;
+    const marks = contentRef.current.querySelectorAll('mark[data-search-highlight]');
+    marks.forEach((m) => m.classList.remove('!bg-indigo-500/60', 'ring-2', 'ring-indigo-400'));
+    if (marks[index]) {
+      marks[index].classList.add('!bg-indigo-500/60', 'ring-2', 'ring-indigo-400');
+      marks[index].scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }
+  }, []);
+
+  const nextSearchMatch = React.useCallback(() => {
+    if (searchMatchCount === 0) return;
+    const next = currentSearchMatch >= searchMatchCount ? 1 : currentSearchMatch + 1;
+    setCurrentSearchMatch(next);
+    scrollToMatch(next - 1);
+  }, [currentSearchMatch, searchMatchCount, scrollToMatch]);
+
+  const prevSearchMatch = React.useCallback(() => {
+    if (searchMatchCount === 0) return;
+    const prev = currentSearchMatch <= 1 ? searchMatchCount : currentSearchMatch - 1;
+    setCurrentSearchMatch(prev);
+    scrollToMatch(prev - 1);
+  }, [currentSearchMatch, searchMatchCount, scrollToMatch]);
+
+  React.useEffect(() => {
+    const timer = setTimeout(() => performSearch(searchQuery), 200);
+    return () => clearTimeout(timer);
+  }, [searchQuery, performSearch]);
+
+  // Download handler
+  const handleDownload = React.useCallback((format: 'md' | 'html' | 'txt') => {
+    let content = editText;
+    let mimeType = 'text/plain';
+    let ext = 'txt';
+
+    if (format === 'md') {
+      mimeType = 'text/markdown';
+      ext = 'md';
+    } else if (format === 'html') {
+      // For HTML, grab the rendered content if we're in markdown/html mode
+      if (contentRef.current) {
+        content = contentRef.current.innerHTML;
+      }
+      mimeType = 'text/html';
+      ext = 'html';
+    }
+
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const baseName = activePreviewPath?.split('.').slice(0, -1).join('.') || 'document';
+    a.href = url;
+    a.download = `${baseName}.${ext}`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [editText, activePreviewPath]);
+
   const headings = useMemo(() => extractHeadings(editText), [editText]);
+
 
   const markdownComponents = React.useMemo(() => ({
     pre: ({ children }: any) => <>{children}</>,
@@ -786,7 +1012,10 @@ const TextPreviewPopup: React.FC = () => {
         return <input type="checkbox" className="mr-2 rounded text-indigo-500 focus:ring-indigo-500 dark:bg-slate-800 dark:border-slate-700" {...props} disabled={false} readOnly />
       }
       return <input {...props} />
-    }
+    },
+    img: ({ node, ...props }: any) => <ImageRenderer {...props} />,
+    details: ({ node, ...props }: any) => <DetailsRenderer {...props} />,
+    summary: ({ node, ...props }: any) => <SummaryRenderer {...props} />,
   }), [mdTheme, handleHeadingClick]);
 
   const [showHeadingMenu, setShowHeadingMenu] = React.useState(false);
@@ -1199,6 +1428,44 @@ const TextPreviewPopup: React.FC = () => {
                           <span className="hidden sm:inline">{copied ? 'Copied' : 'Copy'}</span>
                         </button>
 
+                        {/* Search Button (Desktop) */}
+                        <button
+                          onClick={() => {
+                            setShowSearch(!showSearch);
+                            if (!showSearch) setTimeout(() => searchInputRef.current?.focus(), 50);
+                          }}
+                          className={`hidden sm:flex p-1.5 rounded-lg text-xs font-medium transition-colors border items-center gap-2 ${showSearch ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/40' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'}`}
+                          title="Search in document (Ctrl+F)"
+                        >
+                          <Search size={14} />
+                        </button>
+
+                        {/* Word Wrap Toggle (Desktop, raw view only) */}
+                        {viewMode === 'raw' && (
+                          <button
+                            onClick={() => setWordWrap(!wordWrap)}
+                            className={`hidden sm:flex p-1.5 rounded-lg text-xs font-medium transition-colors border items-center gap-2 ${wordWrap ? 'bg-indigo-600/20 text-indigo-400 border-indigo-500/40' : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border-slate-700'}`}
+                            title={wordWrap ? 'Disable Word Wrap' : 'Enable Word Wrap'}
+                          >
+                            <WrapText size={14} />
+                          </button>
+                        )}
+
+                        {/* Download Button (Desktop) */}
+                        <CustomSelect
+                          value=""
+                          placeholder=""
+                          options={[
+                            { label: 'Download as .md', value: 'md', icon: <FileText size={14} /> },
+                            { label: 'Download as .txt', value: 'txt', icon: <FileText size={14} /> },
+                            ...(viewMode === 'markdown' || viewMode === 'html' ? [{ label: 'Download as .html', value: 'html', icon: <Globe size={14} /> }] : []),
+                          ]}
+                          onChange={(val) => handleDownload(val as 'md' | 'html' | 'txt')}
+                          icon={<Download size={14} />}
+                          variant="toolbar"
+                          className="hidden sm:block [&>button]:!p-1.5 [&>button]:w-8 [&>button]:h-8 [&>button]:!bg-slate-800 [&>button]:!border-slate-700 hover:[&>button]:!bg-slate-700 [&>button]:text-slate-300 [&_span.truncate]:hidden [&>button>svg:last-child]:hidden [&>button>div]:w-full [&>button>div]:justify-center"
+                        />
+
                         {/* Mobile Options Dropdown */}
                         <div className="sm:hidden flex items-center">
                           <CustomSelect
@@ -1207,12 +1474,20 @@ const TextPreviewPopup: React.FC = () => {
                             options={[
                               ...(viewMode === 'markdown' && headings.length > 0 ? [{ label: 'Outline', value: 'outline', icon: <Menu size={14} /> }] : []),
                               ...(viewMode === 'markdown' ? [{ label: 'Appearance', value: 'settings', icon: <Settings size={14} /> }] : []),
-                              { label: copied ? 'Copied' : 'Copy Content', value: 'copy', icon: copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} /> }
+                              { label: copied ? 'Copied' : 'Copy Content', value: 'copy', icon: copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} /> },
+                              { label: 'Search', value: 'search', icon: <Search size={14} /> },
+                              { label: 'Download .md', value: 'download-md', icon: <Download size={14} /> },
+                              { label: 'Download .txt', value: 'download-txt', icon: <Download size={14} /> },
+                              ...(viewMode === 'raw' ? [{ label: wordWrap ? 'No Wrap' : 'Word Wrap', value: 'toggle-wrap', icon: <WrapText size={14} /> }] : []),
                             ]}
                             onChange={(val) => {
                               if (val === 'outline') setShowOutline(!showOutline);
                               if (val === 'settings') setShowSettings(!showSettings);
                               if (val === 'copy') handleCopy();
+                              if (val === 'search') { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 50); }
+                              if (val === 'download-md') handleDownload('md');
+                              if (val === 'download-txt') handleDownload('txt');
+                              if (val === 'toggle-wrap') setWordWrap(!wordWrap);
                             }}
                             icon={<MoreVertical size={16} />}
                             variant="toolbar"
@@ -1228,6 +1503,76 @@ const TextPreviewPopup: React.FC = () => {
                         </button>
                       </div>
                     </div>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Search Bar */}
+            <AnimatePresence>
+              {showSearch && (
+                <motion.div
+                  initial={{ height: 0, opacity: 0 }}
+                  animate={{ height: 'auto', opacity: 1 }}
+                  exit={{ height: 0, opacity: 0 }}
+                  transition={{ duration: 0.15 }}
+                  className="shrink-0 overflow-hidden bg-slate-900 border-b border-slate-800"
+                >
+                  <div className="flex items-center gap-2 px-3 py-2">
+                    <Search size={14} className="text-slate-500 shrink-0" />
+                    <input
+                      ref={searchInputRef}
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      onKeyDown={(e) => {
+                        e.stopPropagation();
+                        if (e.key === 'Enter') {
+                          if (e.shiftKey) prevSearchMatch();
+                          else nextSearchMatch();
+                        }
+                        if (e.key === 'Escape') {
+                          setShowSearch(false);
+                          setSearchQuery('');
+                          clearSearchHighlights();
+                        }
+                      }}
+                      onKeyUp={(e) => e.stopPropagation()}
+                      placeholder="Search in document..."
+                      className="flex-1 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none min-w-0"
+                      autoFocus
+                    />
+                    {searchQuery && (
+                      <span className="text-[10px] font-mono text-slate-400 shrink-0">
+                        {searchMatchCount > 0 ? `${currentSearchMatch}/${searchMatchCount}` : 'No results'}
+                      </span>
+                    )}
+                    <div className="flex items-center gap-0.5 shrink-0">
+                      <button
+                        onClick={prevSearchMatch}
+                        className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
+                        title="Previous match (Shift+Enter)"
+                      >
+                        <ChevronUp size={14} />
+                      </button>
+                      <button
+                        onClick={nextSearchMatch}
+                        className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors"
+                        title="Next match (Enter)"
+                      >
+                        <ChevronDown size={14} />
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => {
+                        setShowSearch(false);
+                        setSearchQuery('');
+                        clearSearchHighlights();
+                      }}
+                      className="p-1 text-slate-400 hover:text-white hover:bg-slate-800 rounded transition-colors shrink-0"
+                    >
+                      <X size={14} />
+                    </button>
                   </div>
                 </motion.div>
               )}
@@ -1791,8 +2136,8 @@ const TextPreviewPopup: React.FC = () => {
                   />
                 </div>
               ) : (
-                <div className="flex-1 overflow-auto bg-slate-950 custom-scrollbar">
-                  <pre className="p-4 sm:p-6 font-mono text-sm text-slate-300 leading-relaxed whitespace-pre-wrap break-words min-h-full selection:bg-indigo-500/30">
+                <div ref={contentRef} className="flex-1 overflow-auto bg-slate-950 custom-scrollbar">
+                  <pre className={`p-4 sm:p-6 font-mono text-sm text-slate-300 leading-relaxed min-h-full selection:bg-indigo-500/30 ${wordWrap ? 'whitespace-pre-wrap break-words' : 'whitespace-pre'}`}>
                     {editText}
                   </pre>
                 </div>
