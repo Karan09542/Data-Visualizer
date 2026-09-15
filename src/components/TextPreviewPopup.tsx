@@ -6,7 +6,8 @@ import {
   ZoomIn, ZoomOut, RotateCcw, ChevronUp, ChevronLeft,
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowLeftToLine, ArrowRightToLine, ClipboardPaste, Quote,
   Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus, Maximize2, Minimize2, MoreVertical, Tag,
-  Download, Search, WrapText, ImageOff, Eye
+  Download, Search, WrapText, ImageOff, Eye,
+  Info, Lightbulb, MessageSquareWarning, TriangleAlert, OctagonAlert, BookOpen, Sun, Moon
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -15,7 +16,7 @@ import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
 import rehypeKatex from 'rehype-katex';
 import rehypeRaw from 'rehype-raw';
-import { Highlight, themes } from 'prism-react-renderer';
+import { Highlight, themes, type PrismTheme } from 'prism-react-renderer';
 import mermaid from 'mermaid';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
 import CustomSelect from './CustomSelect';
@@ -28,8 +29,14 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const id = useMemo(() => `mermaid-${Math.random().toString(36).substr(2, 9)}`, []);
+  const renderCountRef = React.useRef(0);
+  const diagramRef = React.useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    let cancelled = false;
+    // A fresh id per render: StrictMode runs this effect twice, and reusing one id let the
+    // second run's cleanup delete the already-displayed SVG (which carries that same id).
+    const renderId = `${id}-${++renderCountRef.current}`;
     const isDark = ['notebook-dark', 'default-dark', 'github-dark', 'retro-arcade', 'synthwave', 'chalkboard'].includes(theme || '');
     mermaid.initialize({
       startOnLoad: false,
@@ -38,24 +45,30 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
       suppressErrorRendering: true
     });
 
-    // Mermaid might leave orphaned elements in the DOM on error
-    const cleanupErrorNodes = () => {
-      const el1 = document.getElementById(id);
-      const el2 = document.getElementById(`d${id}`);
-      if (el1) el1.remove();
-      if (el2) el2.remove();
+    // Mermaid can leave its off-screen scratch nodes in the DOM; never touch the visible diagram
+    const cleanupTempNodes = () => {
+      [renderId, `d${renderId}`].forEach((nodeId) => {
+        const el = document.getElementById(nodeId);
+        if (el && !diagramRef.current?.contains(el)) el.remove();
+      });
     };
 
-    mermaid.render(id, code).then((result) => {
+    mermaid.render(renderId, code).then((result) => {
+      cleanupTempNodes();
+      if (cancelled) return;
       setSvg(result.svg);
       setHasError(false);
-      cleanupErrorNodes();
     }).catch(e => {
+      cleanupTempNodes();
+      if (cancelled) return;
       console.error('Mermaid render error:', e);
       setHasError(true);
-      cleanupErrorNodes();
     });
-  }, [code, id]);
+
+    return () => {
+      cancelled = true;
+    };
+  }, [code, id, theme]);
 
   const handleZoomIn = () => setScale(s => Math.min(s + 0.25, 4));
   const handleZoomOut = () => setScale(s => Math.max(s - 0.25, 0.25));
@@ -99,6 +112,7 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
         onMouseLeave={handleMouseUp}
       >
         <div
+          ref={diagramRef}
           className="mermaid not-prose font-sans !leading-normal [&_text]:!font-sans [&>svg]:!max-w-full [&>svg]:!w-[800px] [&>svg]:!h-auto [&>svg]:min-w-[400px]"
           dangerouslySetInnerHTML={{ __html: svg }}
           style={{
@@ -138,6 +152,392 @@ interface Heading {
   level: number;
 }
 
+type ThemeMode = 'light' | 'dark';
+
+// The picker shows theme names only; light/dark is a separate toggle. Each name maps to the
+// variant ids it ships in (those ids are what `mdTheme` stores, so saved prefs keep working).
+const MD_THEME_FAMILIES: { name: string; light?: string; dark?: string }[] = [
+  { name: 'Notebook', light: 'notebook', dark: 'notebook-dark' },
+  { name: 'GitHub', light: 'github-light', dark: 'github-dark' },
+  { name: 'Default', dark: 'default-dark' },
+  { name: 'Borderlands', light: 'borderlands' },
+  { name: 'Comic Minimal', light: 'comic-minimal' },
+  { name: 'Anime Pastel', light: 'anime-pastel' },
+  { name: 'Manga Scan', light: 'manga-scan' },
+  { name: 'Cyberpunk 2077', light: 'cyberpunk' },
+  { name: 'Retro Arcade', dark: 'retro-arcade' },
+  { name: 'Synthwave', dark: 'synthwave' },
+  { name: 'Neubrutalism', light: 'neubrutalism' },
+  { name: 'Kawaii Cute', light: 'kawaii' },
+  { name: 'Chalkboard', dark: 'chalkboard' },
+];
+
+type ViewMode = 'raw' | 'markdown' | 'html' | 'edit';
+
+// View switcher entries: [mode, short label, icon, tooltip]
+const VIEW_MODES = [
+  ['raw', 'Raw', FileText, 'Code View'],
+  ['markdown', 'Preview', Layout, 'Markdown Preview'],
+  ['html', 'HTML', Globe, 'HTML Preview'],
+  ['edit', 'Edit', Edit3, 'Edit Text'],
+] as const;
+
+const VIEW_MODE_LABELS: Record<ViewMode, string> = {
+  raw: 'Raw text',
+  markdown: 'Markdown preview',
+  html: 'HTML preview',
+  edit: 'Editing',
+};
+
+const getThemeFamily = (themeId: string) =>
+  MD_THEME_FAMILIES.find((f) => f.light === themeId || f.dark === themeId) ?? MD_THEME_FAMILIES[0];
+
+const getThemeMode = (themeId: string): ThemeMode =>
+  getThemeFamily(themeId).dark === themeId ? 'dark' : 'light';
+
+const GITHUB_THEMES = ['github-light', 'github-dark'];
+// Themes styled by scoped CSS in index.css (no `prose`): get heading anchors and plain <kbd>
+const CSS_STYLED_THEMES = [...GITHUB_THEMES, 'default-dark', 'borderlands', 'comic-minimal', 'anime-pastel', 'manga-scan', 'cyberpunk', 'retro-arcade', 'synthwave', 'neubrutalism', 'kawaii', 'chalkboard'];
+
+// Google font families a theme needs, loaded when the theme is selected
+const THEME_FONTS: Record<string, string[]> = {
+  borderlands: ['Bangers'],
+  'anime-pastel': ['M PLUS Rounded 1c'],
+  'manga-scan': ['Dela Gothic One', 'Zen Kaku Gothic New'],
+  cyberpunk: ['Chakra Petch', 'Rajdhani'],
+  'retro-arcade': ['Press Start 2P', 'VT323'],
+  synthwave: ['Audiowide', 'Exo 2'],
+  neubrutalism: ['Archivo Black', 'Space Grotesk'],
+  kawaii: ['Fredoka', 'Nunito'],
+  chalkboard: ['Cabin Sketch', 'Patrick Hand'],
+};
+
+// GitHub's dark syntax palette (prism-react-renderer ships only a light GitHub theme)
+const githubDarkPrism: PrismTheme = {
+  plain: { color: '#f0f6fc', backgroundColor: '#151b23' },
+  styles: [
+    { types: ['comment', 'prolog', 'doctype', 'cdata'], style: { color: '#9198a1', fontStyle: 'italic' } },
+    { types: ['keyword', 'selector', 'important', 'atrule'], style: { color: '#ff7b72' } },
+    { types: ['string', 'char', 'attr-value', 'regex', 'inserted'], style: { color: '#a5d6ff' } },
+    { types: ['function', 'class-name'], style: { color: '#d2a8ff' } },
+    { types: ['number', 'boolean', 'constant', 'symbol', 'builtin', 'property', 'attr-name'], style: { color: '#79c0ff' } },
+    { types: ['tag'], style: { color: '#7ee787' } },
+    { types: ['deleted'], style: { color: '#ffa198' } },
+    { types: ['variable', 'parameter'], style: { color: '#ffa657' } },
+    { types: ['punctuation', 'operator'], style: { color: '#f0f6fc' } },
+  ],
+};
+
+// Monochrome print palette: tokens are told apart by weight, style and grey level, not hue
+const mangaPrism: PrismTheme = {
+  plain: { color: '#141414', backgroundColor: '#fbfaf6' },
+  styles: [
+    { types: ['comment', 'prolog', 'doctype', 'cdata'], style: { color: '#7a7a7a', fontStyle: 'italic' } },
+    { types: ['keyword', 'selector', 'important', 'atrule', 'tag'], style: { color: '#0a0a0a', fontWeight: 'bold' } },
+    { types: ['string', 'char', 'attr-value', 'regex', 'inserted'], style: { color: '#2b2b2b', backgroundColor: 'rgba(0, 0, 0, 0.07)' } },
+    { types: ['function', 'class-name'], style: { color: '#0a0a0a', fontWeight: 'bold' } },
+    { types: ['number', 'boolean', 'constant', 'symbol', 'builtin'], style: { color: '#0a0a0a', fontStyle: 'italic' } },
+    { types: ['property', 'attr-name', 'variable', 'parameter'], style: { color: '#2b2b2b' } },
+    { types: ['deleted'], style: { color: '#7a7a7a', textDecorationLine: 'line-through' } },
+    { types: ['punctuation', 'operator'], style: { color: '#5c5c5c' } },
+  ],
+};
+
+// Coloured chalk on slate: pink keywords, yellow strings, blue calls, orange numbers
+const chalkPrism: PrismTheme = {
+  plain: { color: '#ece8dc', backgroundColor: '#243a2e' },
+  styles: [
+    { types: ['comment', 'prolog', 'doctype', 'cdata'], style: { color: '#9aa89e', fontStyle: 'italic' } },
+    { types: ['keyword', 'selector', 'important', 'atrule', 'tag'], style: { color: '#f5a3b7' } },
+    { types: ['string', 'char', 'attr-value', 'regex', 'inserted'], style: { color: '#f7e37a' } },
+    { types: ['function', 'class-name'], style: { color: '#9fd3f0' } },
+    { types: ['number', 'boolean', 'constant', 'symbol', 'builtin'], style: { color: '#f6b77c' } },
+    { types: ['property', 'attr-name'], style: { color: '#b6e3a1' } },
+    { types: ['variable', 'parameter'], style: { color: '#ece8dc' } },
+    { types: ['deleted'], style: { color: '#f5a3b7' } },
+    { types: ['punctuation', 'operator'], style: { color: '#c9c4b4' } },
+  ],
+};
+
+// Candy palette on white: strawberry keywords, mint strings, lavender calls, caramel numbers
+const kawaiiPrism: PrismTheme = {
+  plain: { color: '#5a4a55', backgroundColor: '#fdfbff' },
+  styles: [
+    { types: ['comment', 'prolog', 'doctype', 'cdata'], style: { color: '#b8a8b3', fontStyle: 'italic' } },
+    { types: ['keyword', 'selector', 'important', 'atrule'], style: { color: '#e0457b', fontWeight: 'bold' } },
+    { types: ['string', 'char', 'attr-value', 'regex', 'inserted'], style: { color: '#1f8a6e' } },
+    { types: ['function', 'class-name'], style: { color: '#6a4fd0' } },
+    { types: ['number', 'boolean', 'constant', 'symbol', 'builtin'], style: { color: '#c77700' } },
+    { types: ['property', 'attr-name', 'tag'], style: { color: '#1f78b4' } },
+    { types: ['variable', 'parameter'], style: { color: '#5a4a55' } },
+    { types: ['deleted'], style: { color: '#d6336c' } },
+    { types: ['punctuation', 'operator'], style: { color: '#9a8a95' } },
+  ],
+};
+
+// Arcade cabinet palette: ghost pink keywords, Pac-Man yellow strings, cyan calls, 1UP green numbers
+const arcadePrism: PrismTheme = {
+  plain: { color: '#e8e6ff', backgroundColor: '#0e0a24' },
+  styles: [
+    { types: ['comment', 'prolog', 'doctype', 'cdata'], style: { color: '#6c6796', fontStyle: 'italic' } },
+    { types: ['keyword', 'selector', 'important', 'atrule'], style: { color: '#ff7ad9' } },
+    { types: ['string', 'char', 'attr-value', 'regex', 'inserted'], style: { color: '#ffd23f' } },
+    { types: ['function', 'class-name'], style: { color: '#2de2e6' } },
+    { types: ['number', 'boolean', 'constant', 'symbol', 'builtin'], style: { color: '#39ff88' } },
+    { types: ['property', 'attr-name', 'variable', 'parameter'], style: { color: '#ffa53b' } },
+    { types: ['tag', 'deleted'], style: { color: '#ff3b5c' } },
+    { types: ['punctuation', 'operator'], style: { color: '#8b85b8' } },
+  ],
+};
+
+// Night City terminal: red keywords, yellow strings, cyan calls on near-black
+const cyberpunkPrism: PrismTheme = {
+  plain: { color: '#e6e6e6', backgroundColor: '#0a0a0f' },
+  styles: [
+    { types: ['comment', 'prolog', 'doctype', 'cdata'], style: { color: '#6b7280', fontStyle: 'italic' } },
+    { types: ['keyword', 'selector', 'important', 'atrule'], style: { color: '#ff003c', fontWeight: 'bold' } },
+    { types: ['string', 'char', 'attr-value', 'regex', 'inserted'], style: { color: '#fcee0a' } },
+    { types: ['function', 'class-name', 'tag'], style: { color: '#00e5f5' } },
+    { types: ['number', 'boolean', 'constant', 'symbol', 'builtin'], style: { color: '#c77dff' } },
+    { types: ['property', 'attr-name'], style: { color: '#7df9ff' } },
+    { types: ['variable', 'parameter'], style: { color: '#e6e6e6' } },
+    { types: ['deleted'], style: { color: '#ff5c7a' } },
+    { types: ['punctuation', 'operator'], style: { color: '#9ca3af' } },
+  ],
+};
+
+// `header` swaps the floating hover controls for a window-style title bar
+// `dots` gives each window dot its own class; otherwise all three use `dot`
+type CodeHeader = { bar: string; dot: string; dots?: [string, string, string]; label: string; button: string };
+type CodeStyles = { inline: string; card: string; chip: string; copy: string; copied: string; pre: string; prism: PrismTheme; header?: CodeHeader };
+
+const CODE_STYLES: Record<string, CodeStyles> = {
+  'default-dark': {
+    inline: 'bg-indigo-500/10 text-indigo-200 border-indigo-400/15',
+    card: '!rounded-xl border border-white/[0.08] bg-[#0d1424] shadow-[inset_0_1px_0_rgba(255,255,255,0.04),0_10px_30px_-14px_rgba(0,0,0,0.7)]',
+    chip: '',
+    copy: '',
+    copied: 'text-emerald-400',
+    pre: 'text-slate-200 selection:bg-indigo-500/35',
+    prism: themes.oneDark,
+    header: {
+      bar: 'border-b border-white/[0.06] bg-white/[0.025]',
+      dot: 'bg-slate-700/80',
+      label: 'text-slate-400 lowercase',
+      button: 'text-slate-400 hover:text-slate-100 hover:bg-white/[0.06]',
+    },
+  },
+  // Slate tablet: chalk-outlined dark board, dashed chalk rule under the bar, chalk-colour dots
+  chalkboard: {
+    inline: 'bg-white/10 text-[#fff5b8] border-[#f4f1e8]/25',
+    card: '!rounded-md border-2 border-[#f4f1e8]/40 bg-[#243a2e] shadow-[inset_0_0_30px_rgba(0,0,0,0.35)]',
+    chip: '',
+    copy: '',
+    copied: 'text-[#b6e3a1]',
+    pre: 'text-[#ece8dc] selection:bg-[#f7e37a]/30',
+    prism: chalkPrism,
+    header: {
+      bar: 'bg-black/15 border-b-2 border-dashed border-[#f4f1e8]/30',
+      dot: '',
+      dots: ['bg-[#f5a3b7]', 'bg-[#f7e37a]', 'bg-[#b6e3a1]'],
+      label: 'text-[#f7e37a] lowercase',
+      button: 'text-[#9fd3f0] hover:bg-white/10 hover:text-white',
+    },
+  },
+  // Candy card: lavender rim with a chunky bottom edge, strawberry/butter/mint dots
+  kawaii: {
+    inline: 'bg-[#ffe4ee] text-[#d6336c] border-[#ffc2d6] font-bold',
+    card: '!rounded-[22px] border-[3px] border-[#c8b6ff] bg-[#fdfbff] shadow-[0_5px_0_#c8b6ff]',
+    chip: '',
+    copy: '',
+    copied: 'text-[#1f8a6e]',
+    pre: 'text-[#5a4a55] selection:bg-[#ffd6e5]',
+    prism: kawaiiPrism,
+    header: {
+      bar: 'bg-[#f1ecff] border-b-[3px] border-[#c8b6ff]',
+      dot: '',
+      dots: ['bg-[#ff8fb8]', 'bg-[#ffd566]', 'bg-[#8fe3cf]'],
+      label: 'text-[#6a4fd0] font-bold lowercase',
+      button: '!rounded-full text-[#d6336c] font-bold bg-white hover:bg-[#ffe4ee]',
+    },
+  },
+  // Brutal card: 3px ink border + hard shadow, yellow title bar, bordered colour dots
+  neubrutalism: {
+    inline: 'bg-[#ffdc58] text-black !border-2 border-black font-bold !rounded-md',
+    card: '!rounded-xl border-[3px] border-black bg-white shadow-[6px_6px_0_#000]',
+    chip: '',
+    copy: '',
+    copied: 'text-black',
+    pre: 'text-[#111] selection:bg-[#ffdc58]',
+    prism: themes.oneLight,
+    header: {
+      bar: 'bg-[#ffdc58] border-b-[3px] border-black',
+      dot: '',
+      dots: ['bg-[#ff6b6b] border-2 border-black', 'bg-[#88aaee] border-2 border-black', 'bg-[#a3e636] border-2 border-black'],
+      label: 'text-black font-bold uppercase tracking-wider',
+      button: 'text-black font-bold uppercase border-2 border-black bg-white hover:bg-black hover:text-[#ffdc58]',
+    },
+  },
+  // Neon night: pink-rimmed glowing block, sunset title bar, glowing dots, Synthwave '84 tokens
+  synthwave: {
+    inline: 'bg-[#ff2bd6]/10 text-[#ff9de6] border-[#ff2bd6]/30',
+    card: '!rounded-xl border border-[#ff2bd6]/40 bg-[#1b0b33] shadow-[0_0_28px_-10px_rgba(255,43,214,0.55)]',
+    chip: '',
+    copy: '',
+    copied: 'text-[#3dffa8]',
+    pre: 'text-[#ece6ff] selection:bg-[#ff2bd6]/40',
+    prism: themes.synthwave84,
+    header: {
+      bar: 'bg-gradient-to-r from-[#2a0f4d] via-[#1b0b33] to-[#0f1a3d] border-b border-[#ff2bd6]/30',
+      dot: '',
+      dots: ['bg-[#ff2bd6] shadow-[0_0_6px_#ff2bd6]', 'bg-[#ffd319] shadow-[0_0_6px_#ffd319]', 'bg-[#00e5ff] shadow-[0_0_6px_#00e5ff]'],
+      label: 'text-[#ff9de6] lowercase',
+      button: 'text-[#00e5ff] hover:bg-[#00e5ff]/10 hover:text-white',
+    },
+  },
+  // CRT screen: notched pixel frame in maze blue, square red/yellow/green lights
+  'retro-arcade': {
+    inline: 'bg-[#120c33] text-[#39ff88] border-[#3a5bff] !rounded-none',
+    card: '!rounded-none border-0 bg-[#0e0a24] shadow-[0_-4px_0_0_#3a5bff,0_4px_0_0_#3a5bff,-4px_0_0_0_#3a5bff,4px_0_0_0_#3a5bff]',
+    chip: '',
+    copy: '',
+    copied: 'text-[#39ff88]',
+    pre: 'text-[#e8e6ff] selection:bg-[#ff7ad9]/40',
+    prism: arcadePrism,
+    header: {
+      bar: 'bg-[#120c33] border-b-4 border-[#3a5bff]',
+      dot: '',
+      dots: ['!rounded-none bg-[#ff3b5c]', '!rounded-none bg-[#ffd23f]', '!rounded-none bg-[#39ff88]'],
+      label: 'text-[#ffd23f] font-bold uppercase tracking-[0.2em]',
+      button: '!rounded-none text-[#2de2e6] font-bold uppercase hover:bg-[#2de2e6] hover:text-[#05030f]',
+    },
+  },
+  // HUD terminal: black block (chamfered via CSS), yellow-rimmed bar, square status lights
+  cyberpunk: {
+    inline: 'bg-[#0d0d0d] text-[#fcee0a] border-[#0d0d0d] font-semibold !rounded-none',
+    card: '!rounded-none border-2 border-[#0d0d0d] bg-[#0a0a0f]',
+    chip: '',
+    copy: '',
+    copied: 'text-[#fcee0a]',
+    pre: 'text-[#e6e6e6] selection:bg-[#ff003c]/50',
+    prism: cyberpunkPrism,
+    header: {
+      bar: 'bg-[#0d0d0d] border-b-2 border-[#fcee0a]',
+      dot: '',
+      dots: ['!rounded-none bg-[#ff003c]', '!rounded-none bg-[#fcee0a]', '!rounded-none bg-[#00e5f5]'],
+      label: 'text-[#fcee0a] font-bold uppercase tracking-[0.18em]',
+      button: '!rounded-none text-[#00e5f5] font-bold uppercase hover:bg-[#00e5f5] hover:text-[#0d0d0d]',
+    },
+  },
+  // Printed panel: inked outline, black title bar, monochrome code
+  'manga-scan': {
+    inline: 'bg-[#0a0a0a] text-[#f4f1ea] border-[#0a0a0a] font-bold !rounded-none',
+    card: '!rounded-none border-[3px] border-[#0a0a0a] bg-[#fbfaf6]',
+    chip: '',
+    copy: '',
+    copied: 'text-current',
+    pre: 'text-[#141414] selection:bg-[#0a0a0a] selection:text-[#f4f1ea]',
+    prism: mangaPrism,
+    header: {
+      bar: 'bg-[#0a0a0a]',
+      dot: 'bg-transparent border-[1.5px] border-[#f4f1ea]',
+      label: 'text-[#f4f1ea] font-bold uppercase tracking-[0.2em]',
+      button: '!rounded-none text-[#f4f1ea] font-bold uppercase hover:bg-[#f4f1ea] hover:text-[#0a0a0a]',
+    },
+  },
+  // Dreamy pastel card: lavender outline, sakura/lavender/sky gradient title bar
+  'anime-pastel': {
+    inline: 'bg-[#fce7f3] text-[#be185d] border-[#fbcfe8] font-semibold',
+    card: 'border-[1.5px] border-[#e9d5ff] bg-[#fdfaff] shadow-[0_10px_30px_-16px_rgba(168,85,247,0.35)]',
+    chip: '',
+    copy: '',
+    copied: 'text-[#059669]',
+    pre: 'text-[#4a3a5c] selection:bg-[#fbcfe8]',
+    prism: themes.oneLight,
+    header: {
+      bar: 'border-b-[1.5px] border-[#e9d5ff] bg-gradient-to-r from-[#fce7f3] via-[#f3e8ff] to-[#e0f2fe]',
+      dot: '',
+      dots: ['bg-[#f9a8d4]', 'bg-[#c4b5fd]', 'bg-[#7dd3fc]'],
+      label: 'text-[#7c3aed] font-bold lowercase',
+      button: 'text-[#9d174d] font-bold hover:bg-white/70',
+    },
+  },
+  // Comic strip: light card, ink outline + offset shadow, red/yellow/green window dots
+  'comic-minimal': {
+    inline: 'bg-[#fef9c3] text-[#b91c1c] border-[#fde68a] font-bold',
+    card: 'border-[2.5px] border-[#1f2937] bg-[#fffdf5] shadow-[5px_5px_0_#1f2937]',
+    chip: '',
+    copy: '',
+    copied: 'text-[#16a34a]',
+    pre: 'text-[#1f2937] selection:bg-[#fde047]',
+    prism: themes.oneLight,
+    header: {
+      bar: 'border-b-[2.5px] border-[#1f2937] bg-[#dbeafe]',
+      dot: '',
+      dots: [
+        'bg-[#ef4444] border-[1.5px] border-[#1f2937]',
+        'bg-[#facc15] border-[1.5px] border-[#1f2937]',
+        'bg-[#22c55e] border-[1.5px] border-[#1f2937]',
+      ],
+      label: 'text-[#1f2937] font-bold lowercase',
+      button: 'text-[#1f2937] font-bold hover:bg-[#1f2937] hover:text-white',
+    },
+  },
+  // Comic panel: ink outline + hard shadow, yellow title bar, Monokai-style code
+  borderlands: {
+    inline: 'bg-[#ffd400] text-[#111] border-[#111] font-bold',
+    card: '!rounded-none border-[3px] border-[#111] bg-[#1b1b1b] shadow-[6px_6px_0_#111]',
+    chip: '',
+    copy: '',
+    copied: 'text-current',
+    pre: 'text-[#f8f8f2] selection:bg-[#ffd400]/40',
+    prism: themes.okaidia,
+    header: {
+      bar: 'border-b-[3px] border-[#111] bg-[#ffd400]',
+      dot: 'bg-[#111]',
+      label: 'text-[#111] font-black uppercase tracking-wider',
+      button: 'text-[#111] font-bold uppercase hover:bg-[#111] hover:text-[#ffd400]',
+    },
+  },
+  // Light notebook: paper "index card"
+  notebook: {
+    inline: 'bg-yellow-100/90 text-slate-900 border-yellow-200/80',
+    card: 'border border-[#dbe4f2] border-l-4 border-l-indigo-300 bg-[#fffef9] shadow-[0_1px_2px_rgba(30,58,138,0.06),0_6px_16px_-6px_rgba(30,58,138,0.18)]',
+    chip: 'text-indigo-500 bg-indigo-50/95 border-indigo-100',
+    copy: 'text-slate-400 hover:text-indigo-600 bg-white/95 hover:bg-indigo-50 border-slate-200',
+    copied: 'text-emerald-600',
+    pre: 'text-slate-800 selection:bg-indigo-100',
+    prism: themes.oneLight,
+  },
+  'github-light': {
+    inline: 'bg-[#818b9833] text-[#1f2328] border-transparent',
+    card: '!rounded-md bg-[#f6f8fa]',
+    chip: 'text-[#59636e] bg-[#f6f8fa] border-[#d1d9e0]',
+    copy: 'text-[#59636e] hover:text-[#1f2328] bg-[#f6f8fa] hover:bg-[#eff2f5] border-[#d1d9e0]',
+    copied: 'text-[#1a7f37]',
+    pre: 'text-[#1f2328] selection:bg-[#0969da]/20',
+    prism: themes.github,
+  },
+  'github-dark': {
+    inline: 'bg-[#656c7633] text-[#f0f6fc] border-transparent',
+    card: '!rounded-md bg-[#151b23]',
+    chip: 'text-[#9198a1] bg-[#212830] border-[#3d444d]',
+    copy: 'text-[#9198a1] hover:text-[#f0f6fc] bg-[#212830] hover:bg-[#262c36] border-[#3d444d]',
+    copied: 'text-[#3fb950]',
+    pre: 'text-[#f0f6fc] selection:bg-[#4493f8]/30',
+    prism: githubDarkPrism,
+  },
+  default: {
+    inline: 'bg-slate-800/60 text-indigo-300 border-slate-700/40',
+    card: 'border border-slate-800/80 bg-slate-950/70',
+    chip: 'text-slate-400 bg-slate-900/90 border-slate-800',
+    copy: 'text-slate-400 hover:text-white bg-slate-900/90 hover:bg-slate-800 border-slate-800',
+    copied: 'text-emerald-400',
+    pre: 'text-slate-200 selection:bg-indigo-500/30',
+    prism: themes.vsDark,
+  },
+};
+
 const CodeBlock = ({ inline, children, className, theme, ...props }: any) => {
   const [copied, setCopied] = useState(false);
   const match = /language-(\w+)/.exec(className || '');
@@ -152,9 +552,11 @@ const CodeBlock = ({ inline, children, className, theme, ...props }: any) => {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const styles = CODE_STYLES[theme] ?? CODE_STYLES.default;
+
   if (!isBlock && (inline || (!match && !code.includes('\n')))) {
     return (
-      <code className="bg-slate-800/60 text-indigo-300 px-1.5 py-0.5 rounded text-[13px] font-mono border border-slate-700/40" {...props}>
+      <code className={`px-1.5 py-0.5 rounded text-[13px] font-mono border ${styles.inline}`} {...props}>
         {children}
       </code>
     );
@@ -165,35 +567,55 @@ const CodeBlock = ({ inline, children, className, theme, ...props }: any) => {
   }
 
   return (
-    <div className="not-prose relative group rounded-lg overflow-hidden my-4 border border-slate-800/80 bg-slate-950/70">
+    <div className={`not-prose relative group rounded-lg overflow-hidden my-4 ${styles.card}`}>
+      {styles.header && (
+        <div className={`flex items-center justify-between gap-3 h-9 pl-3.5 pr-1.5 ${styles.header.bar}`}>
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex gap-1.5 shrink-0" aria-hidden="true">
+              {(styles.header.dots ?? [styles.header.dot, styles.header.dot, styles.header.dot]).map((dotClass, i) => (
+                <span key={i} className={`w-2.5 h-2.5 rounded-full ${dotClass}`} />
+              ))}
+            </div>
+            <span className={`text-[11px] font-mono truncate ${styles.header.label}`}>{language || 'text'}</span>
+          </div>
+          <button
+            onClick={handleCopy}
+            className={`flex items-center gap-1.5 h-6 px-2 rounded-md text-[11px] font-medium transition-colors ${styles.header.button}`}
+            title="Copy code"
+          >
+            {copied ? <><Check size={13} className={styles.copied} />Copied</> : <><Copy size={13} />Copy</>}
+          </button>
+        </div>
+      )}
+
       {/* Floating Top-Right Controls */}
-      <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
+      {!styles.header && <div className="absolute top-2.5 right-2.5 flex items-center gap-1.5 opacity-100 sm:opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
         {language && language !== 'text' && language !== 'code' && (
-          <span className="text-[10px] font-mono text-slate-400 uppercase select-none px-1.5 py-0.5 rounded bg-slate-900/90 border border-slate-800 backdrop-blur">
+          <span className={`text-[10px] font-mono uppercase select-none px-1.5 py-0.5 rounded border backdrop-blur ${styles.chip}`}>
             {language}
           </span>
         )}
         <button
           onClick={handleCopy}
-          className="p-1.5 text-slate-400 hover:text-white bg-slate-900/90 hover:bg-slate-800 rounded-md border border-slate-800 shadow-sm backdrop-blur transition-all flex items-center gap-1"
+          className={`p-1.5 rounded-md border shadow-sm backdrop-blur transition-all flex items-center gap-1 ${styles.copy}`}
           title="Copy code"
         >
           {copied ? (
             <>
-              <Check size={13} className="text-emerald-400" />
-              <span className="text-[10px] text-emerald-400 font-sans font-medium pr-0.5">Copied</span>
+              <Check size={13} className={styles.copied} />
+              <span className={`text-[10px] font-sans font-medium pr-0.5 ${styles.copied}`}>Copied</span>
             </>
           ) : (
             <Copy size={13} />
           )}
         </button>
-      </div>
+      </div>}
 
       {/* Syntax Highlighted Code Body */}
-      <Highlight theme={themes.vsDark} code={code} language={language || 'text'}>
+      <Highlight theme={styles.prism} code={code} language={language || 'text'}>
         {({ className: highlightClass, style, tokens, getLineProps, getTokenProps }) => (
           <pre
-            className="!p-4 sm:!p-5 !pr-16 !m-0 overflow-x-auto text-[13px] font-mono leading-relaxed custom-scrollbar selection:bg-indigo-500/30 text-slate-200"
+            className={`!p-4 sm:!p-5 ${styles.header ? '' : '!pr-16'} !m-0 overflow-x-auto text-[13px] font-mono leading-relaxed custom-scrollbar ${styles.pre}`}
             style={{
               ...style,
               backgroundColor: 'transparent',
@@ -391,7 +813,8 @@ const getHeadingClass = (level: number) => {
 };
 
 const HeadingRenderer = (props: any) => {
-  const { level, children, id: propId, onHeadingClick, ...restProps } = props;
+  const { level, children, id: propId, onHeadingClick, theme, ...restProps } = props;
+  const isCssStyled = CSS_STYLED_THEMES.includes(theme);
   const childArray = React.Children.toArray(children);
   const text = (childArray.reduce(flatten, '') as string) || '';
   const slug = text.toLowerCase().replace(/[^\p{L}\p{M}\p{N}_]+/gu, '-').replace(/(^-|-$)/g, '');
@@ -414,206 +837,174 @@ const HeadingRenderer = (props: any) => {
     {
       id,
       onClick: handleClick,
-      className: `scroll-mt-20 group relative cursor-pointer hover:opacity-90 transition-opacity ${getHeadingClass(level)}`,
+      // CSS-styled themes size headings in index.css (.gh-markdown / .dd-markdown)
+      className: `scroll-mt-20 group relative cursor-pointer hover:opacity-90 transition-opacity ${isCssStyled ? '' : getHeadingClass(level)}`,
       ...restProps
     },
-    childArray
+    isCssStyled
+      ? [<a key="heading-anchor" href={`#${id}`} className="heading-anchor" aria-hidden="true"><LinkIcon size={16} /></a>, ...childArray]
+      : childArray
   );
+};
+
+const GITHUB_ALERTS: Record<string, { label: string; icon: typeof Info }> = {
+  note: { label: 'Note', icon: Info },
+  tip: { label: 'Tip', icon: Lightbulb },
+  important: { label: 'Important', icon: MessageSquareWarning },
+  warning: { label: 'Warning', icon: TriangleAlert },
+  caution: { label: 'Caution', icon: OctagonAlert },
+};
+
+// Turns `> [!NOTE]` style blockquotes into GitHub alerts: strips the marker and tags the node
+const rehypeGithubAlerts = () => (tree: any) => {
+  const visit = (node: any) => {
+    if (node.type === 'element' && node.tagName === 'blockquote') {
+      const firstP = node.children?.find((c: any) => c.type === 'element');
+      const firstText = firstP?.tagName === 'p' ? firstP.children?.[0] : null;
+      const match = firstText?.type === 'text' ? /^\s*\[!(note|tip|important|warning|caution)\]\s*/i.exec(firstText.value) : null;
+      if (match) {
+        const type = match[1].toLowerCase();
+        firstText.value = firstText.value.slice(match[0].length);
+        if (!firstText.value) firstP.children.shift();
+        if (firstP.children[0]?.tagName === 'br') firstP.children.shift();
+        if (firstP.children.length === 0) node.children.splice(node.children.indexOf(firstP), 1);
+        node.properties = { ...node.properties, className: ['markdown-alert', `markdown-alert-${type}`], dataAlert: type };
+      }
+    }
+    node.children?.forEach(visit);
+  };
+  visit(tree);
+};
+
+const RULED_THEMES = ['notebook', 'notebook-dark'];
+const RULE_HEIGHT = 32;
+
+// Pads each block so its height is a whole number of ruled lines, keeping
+// the text after code blocks, tables, images, diagrams and math on the lines.
+const snapToRuledLines = (root: HTMLElement) => {
+  const blocks = Array.from(
+    root.querySelectorAll<HTMLElement>(':scope > *, :scope li > *, :scope blockquote > *, :scope details > *')
+  )
+    .filter((el) => !getComputedStyle(el).display.startsWith('inline'))
+    .reverse(); // innermost first, so parents measure already-snapped children
+
+  blocks.forEach((el) => el.style.removeProperty('--snap'));
+  blocks.forEach((el) => {
+    const height = el.getBoundingClientRect().height;
+    const snapped = Math.ceil((height - 0.5) / RULE_HEIGHT) * RULE_HEIGHT;
+    el.style.setProperty('--snap', `${Math.max(0, snapped - height)}px`);
+  });
 };
 
 const getThemeClasses = (theme: string) => {
   switch (theme) {
+    // GitHub themes skip `prose`; .gh-markdown in index.css reproduces GitHub's README styles
     case 'github-light':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-slate-900 custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
-          "prose-headings:border-b prose-headings:border-slate-200 prose-headings:pb-2 " +
-          "prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline " +
-          "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
-          "prose-code:bg-slate-100 prose-code:text-slate-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
-          "prose-table:border prose-table:border-slate-200 prose-th:bg-slate-50 prose-th:p-2 prose-td:p-2 " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-slate-300 prose-blockquote:text-slate-500 prose-blockquote:not-italic " +
-          "markdown-body pb-12"
+        container: "flex-1 px-3 py-4 sm:p-8 overflow-auto bg-white custom-scrollbar scroll-smooth",
+        prose: "gh-markdown gh-light markdown-body"
       };
     case 'github-dark':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#0d1117] text-[#c9d1d9] custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base prose-invert max-w-3xl mx-auto " +
-          "prose-headings:text-[#c9d1d9] prose-headings:border-b prose-headings:border-[#21262d] prose-headings:pb-2 " +
-          "prose-a:text-[#58a6ff] prose-a:no-underline hover:prose-a:underline " +
-          "prose-p:text-[#c9d1d9] prose-li:text-[#c9d1d9] prose-strong:text-[#c9d1d9] " +
-          "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
-          "prose-code:bg-[#161b22] prose-code:text-[#c9d1d9] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
-          "prose-table:border prose-table:border-[#30363d] prose-th:bg-[#161b22] prose-th:p-2 prose-td:p-2 " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-[#30363d] prose-blockquote:text-[#8b949e] prose-blockquote:not-italic " +
-          "markdown-body pb-12"
+        container: "flex-1 px-3 py-4 sm:p-8 overflow-auto bg-[#0d1117] custom-scrollbar scroll-smooth",
+        prose: "gh-markdown gh-dark markdown-body"
       };
+    // Always dark (it used to follow the app's light/dark class); styled by .dd-markdown in index.css
     case 'default-dark':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white dark:bg-[#0d1117] custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
-          "prose-headings:tracking-tight prose-headings:border-b prose-headings:border-slate-200 dark:prose-headings:border-slate-800/50 prose-headings:pb-2 " +
-          "prose-a:text-indigo-500 dark:prose-a:text-indigo-400 prose-a:no-underline hover:prose-a:underline " +
-          "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
-          "prose-code:text-indigo-600 dark:prose-code:text-indigo-400 prose-code:bg-indigo-50 dark:prose-code:bg-indigo-500/10 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
-          "prose-table:border prose-table:border-slate-200 dark:prose-table:border-slate-800 prose-th:bg-slate-50 dark:prose-th:bg-slate-900 prose-th:p-2 prose-td:p-2 " +
-          "prose-img:rounded-lg prose-img:shadow-sm " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-indigo-500 prose-blockquote:bg-indigo-50 dark:prose-blockquote:bg-indigo-500/10 prose-blockquote:py-1 prose-blockquote:px-4 prose-blockquote:not-italic prose-blockquote:text-slate-700 dark:prose-blockquote:text-slate-300 " +
-          "markdown-body pb-12"
+        container: "dd-surface flex-1 px-5 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "dd-markdown markdown-body"
       };
     case 'notebook-dark':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#1e1e2e] text-slate-300 custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_31px,#3b82f61a_32px)] bg-[length:100%_32px]",
-        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] " +
-          "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:border-b-2 prose-headings:border-blue-500/20 prose-headings:pb-2 prose-headings:text-indigo-300 " +
+        // pt-8 keeps the content top on a rule; bg-local makes the lines scroll with the text
+        container: "flex-1 px-4 pt-8 pb-8 sm:px-8 overflow-auto bg-[#1e1e2e] text-slate-300 custom-scrollbar scroll-smooth bg-local bg-[linear-gradient(transparent_31px,#3b82f61a_32px)] bg-[length:100%_32px]",
+        prose: "ruled-notebook [--heading-rule:rgba(129,140,248,0.35)] prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] " +
+          "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:text-indigo-300 " +
           "prose-a:text-blue-400 prose-a:no-underline hover:prose-a:underline " +
-          "prose-p:leading-8 prose-li:leading-8 prose-headings:leading-8 " +
           "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
           "prose-code:bg-yellow-900/30 prose-code:text-yellow-100 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
-          "prose-table:border prose-table:border-blue-900/50 prose-th:bg-blue-900/20 prose-th:p-2 prose-td:p-2 " +
+          "prose-th:bg-blue-900/20 prose-th:px-2 prose-td:px-2 " +
           "prose-img:rounded-lg prose-img:shadow-md " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-red-500/50 prose-blockquote:bg-red-900/10 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-400 " +
+          "prose-blockquote:border-l-4 prose-blockquote:border-red-500/50 prose-blockquote:bg-red-900/10 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-400 " +
           "markdown-body pb-12 relative " +
           "before:absolute before:top-0 before:bottom-0 before:w-px before:bg-red-500/30 before:-left-6 sm:before:-left-8"
       };
+    // Comic panel on halftone paper; styled by .bl-markdown in index.css (Bangers loaded on select)
     case 'borderlands':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#e5e5e5] text-black font-sans custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
-          "prose-headings:font-black prose-headings:uppercase prose-headings:-skew-x-3 prose-headings:text-yellow-400 prose-headings:drop-shadow-[2px_2px_0_#000] prose-headings:border-b-4 prose-headings:border-black prose-headings:pb-2 " +
-          "prose-a:text-red-500 prose-a:font-bold prose-a:no-underline hover:prose-a:underline hover:prose-a:bg-yellow-400 hover:prose-a:text-black " +
-          "prose-p:font-bold prose-p:text-black prose-strong:text-black prose-strong:font-black " +
-          "prose-pre:bg-white prose-pre:border-4 prose-pre:border-black prose-pre:shadow-[4px_4px_0_#000] prose-pre:rounded-none " +
-          "prose-code:text-red-600 prose-code:font-bold prose-code:bg-white prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 prose-code:shadow-[2px_2px_0_#000] " +
-          "prose-table:border-4 prose-table:border-black prose-th:bg-yellow-400 prose-th:border-b-4 prose-th:border-black prose-th:text-black prose-th:uppercase prose-th:font-black prose-td:border-b-2 prose-td:border-black " +
-          "prose-img:border-4 prose-img:border-black prose-img:shadow-[6px_6px_0_#000] prose-img:rounded-none " +
-          "prose-blockquote:border-l-8 prose-blockquote:border-black prose-blockquote:bg-yellow-400 prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:italic prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:shadow-[4px_4px_0_#000] " +
-          "markdown-body pb-12"
+        container: "bl-surface flex-1 px-4 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "bl-markdown markdown-body"
       };
+    // Sunday comic strip on sketchbook paper; styled by .cm-markdown in index.css
     case 'comic-minimal':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-slate-800 font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
-          "prose-headings:text-blue-500 prose-headings:border-b-4 prose-headings:border-yellow-400 prose-headings:rounded-full prose-headings:px-4 prose-headings:py-1 prose-headings:inline-block " +
-          "prose-a:text-red-500 hover:prose-a:text-blue-500 " +
-          "prose-pre:bg-blue-50 prose-pre:border-4 prose-pre:border-blue-200 prose-pre:rounded-2xl " +
-          "prose-code:text-red-500 prose-code:bg-yellow-100 prose-code:px-2 prose-code:py-1 prose-code:rounded-full " +
-          "prose-blockquote:border-l-0 prose-blockquote:bg-blue-50 prose-blockquote:rounded-2xl prose-blockquote:py-3 prose-blockquote:px-6 prose-blockquote:text-blue-800 " +
-          "markdown-body pb-12"
+        container: "cm-surface flex-1 px-5 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "cm-markdown markdown-body"
       };
+    // Dreamy pastel haze + frosted page; styled by .ap-markdown in index.css (M PLUS Rounded 1c loaded on select)
     case 'anime-pastel':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fff0f5] text-[#7851a9] font-sans custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
-          "prose-headings:text-[#ffb6c1] prose-headings:drop-shadow-[1px_1px_0_#7851a9] prose-headings:border-b-2 prose-headings:border-[#ff69b4] prose-headings:border-dashed " +
-          "prose-a:text-[#00ced1] hover:prose-a:text-[#ff69b4] " +
-          "prose-pre:bg-[#e6e6fa] prose-pre:border-2 prose-pre:border-[#ffb6c1] prose-pre:rounded-xl " +
-          "prose-code:text-[#ff69b4] prose-code:bg-[#fff] prose-code:px-2 prose-code:py-0.5 prose-code:rounded-md prose-code:border prose-code:border-[#ffb6c1] " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-[#ff69b4] prose-blockquote:bg-[#ffe4e1] prose-blockquote:rounded-r-xl prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:text-[#ff69b4] " +
-          "markdown-body pb-12"
+        container: "ap-surface flex-1 px-4 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "ap-markdown markdown-body"
       };
+    // Scanned B&W manga page on a dark reader; styled by .ms-markdown in index.css (fonts loaded on select)
     case 'manga-scan':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-white text-black font-serif custom-scrollbar scroll-smooth " +
-          "bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px] [background-position:0_0,8px_8px] opacity-90",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto bg-white p-8 border-4 border-black " +
-          "prose-headings:font-black prose-headings:text-black prose-headings:uppercase prose-headings:border-b-8 prose-headings:border-black prose-headings:pb-1 " +
-          "prose-a:text-black prose-a:bg-gray-200 prose-a:font-bold prose-a:no-underline hover:prose-a:bg-black hover:prose-a:text-white " +
-          "prose-p:font-medium prose-p:text-black " +
-          "prose-pre:bg-white prose-pre:border-4 prose-pre:border-black prose-pre:rounded-none " +
-          "prose-code:text-black prose-code:font-bold prose-code:bg-gray-200 prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 " +
-          "prose-img:border-8 prose-img:border-black prose-img:rounded-none prose-img:grayscale " +
-          "prose-blockquote:border-l-8 prose-blockquote:border-black prose-blockquote:bg-gray-100 prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:italic prose-blockquote:py-3 prose-blockquote:px-6 " +
-          "markdown-body pb-12"
+        container: "ms-surface flex-1 px-3 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "ms-markdown markdown-body"
       };
+    // Yellow HUD with a chamfered paper panel; styled by .cp-markdown in index.css (fonts loaded on select)
     case 'cyberpunk':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fbee0f] text-black font-mono custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
-          "prose-headings:font-black prose-headings:text-[#00ffff] prose-headings:bg-black prose-headings:inline-block prose-headings:px-4 prose-headings:py-1 prose-headings:uppercase prose-headings:tracking-widest prose-headings:-skew-x-6 " +
-          "prose-a:text-[#ff003c] prose-a:font-bold prose-a:bg-black prose-a:px-1 hover:prose-a:text-black hover:prose-a:bg-[#00ffff] " +
-          "prose-p:font-medium prose-p:text-black " +
-          "prose-pre:bg-black prose-pre:border-l-8 prose-pre:border-[#ff003c] prose-pre:rounded-none " +
-          "prose-code:text-[#00ffff] prose-code:font-bold prose-code:bg-black prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded-none " +
-          "prose-img:border-4 prose-img:border-black prose-img:rounded-none prose-img:shadow-[8px_8px_0_#ff003c] " +
-          "prose-blockquote:border-l-8 prose-blockquote:border-[#00ffff] prose-blockquote:bg-black prose-blockquote:text-[#ff003c] prose-blockquote:font-mono prose-blockquote:py-3 prose-blockquote:px-6 prose-blockquote:-skew-x-6 " +
-          "markdown-body pb-12"
+        container: "cp-surface flex-1 px-3 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "cp-markdown markdown-body"
       };
+    // 80s cabinet CRT with a neon bezel; styled by .rc-markdown in index.css (pixel fonts loaded on select)
     case 'retro-arcade':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-black text-[#00ff00] font-mono custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
-          "prose-headings:font-black prose-headings:text-[#ff00ff] prose-headings:uppercase prose-headings:tracking-widest prose-headings:border-b-4 prose-headings:border-[#ff00ff] prose-headings:border-dashed " +
-          "prose-a:text-[#00ffff] prose-a:uppercase hover:prose-a:bg-[#00ffff] hover:prose-a:text-black " +
-          "prose-p:text-[#00ff00] " +
-          "prose-pre:bg-[#111] prose-pre:border-4 prose-pre:border-[#00ff00] prose-pre:rounded-none " +
-          "prose-code:text-[#ff00ff] prose-code:bg-[#222] prose-code:border prose-code:border-[#ff00ff] prose-code:px-1.5 prose-code:py-0.5 prose-code:uppercase " +
-          "prose-blockquote:border-l-8 prose-blockquote:border-[#00ffff] prose-blockquote:bg-[#0a0a0a] prose-blockquote:text-[#00ffff] prose-blockquote:uppercase prose-blockquote:py-3 prose-blockquote:px-6 " +
-          "markdown-body pb-12"
+        container: "rc-surface flex-1 px-3 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "rc-markdown markdown-body"
       };
+    // '84 sunset: static sky/sun/grid behind a frosted neon panel; styled by .sw-markdown in index.css
+    // (extra top padding lets the sun rise above the panel before content scrolls over it)
     case 'synthwave':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#1a0b2e] text-[#b399ff] font-sans custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_0%,rgba(255,0,255,0.1)_50%,transparent_100%)] bg-[length:100%_4px]",
-        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
-          "prose-headings:font-black prose-headings:text-transparent prose-headings:bg-clip-text prose-headings:bg-gradient-to-r prose-headings:from-[#ff00a0] prose-headings:to-[#00d2ff] prose-headings:drop-shadow-[0_0_8px_rgba(255,0,160,0.8)] " +
-          "prose-a:text-[#00d2ff] hover:prose-a:text-[#ff00a0] hover:prose-a:drop-shadow-[0_0_5px_rgba(255,0,160,0.8)] " +
-          "prose-pre:bg-[#0d0221] prose-pre:border prose-pre:border-[#00d2ff] prose-pre:shadow-[0_0_15px_rgba(0,210,255,0.3)] " +
-          "prose-code:text-[#ff00a0] prose-code:bg-[#2b0f4c] prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-[#ff00a0] prose-blockquote:bg-[#2b0f4c]/50 prose-blockquote:text-[#00d2ff] prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:shadow-[inset_4px_0_10px_rgba(255,0,160,0.2)] " +
-          "markdown-body pb-12"
+        container: "sw-surface flex-1 px-4 pt-28 pb-12 sm:px-10 sm:pt-44 sm:pb-16 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "sw-markdown markdown-body"
       };
+    // Flat brights + ink borders on one white card; styled by .nb-markdown in index.css (fonts loaded on select)
     case 'neubrutalism':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#ffd600] text-black font-sans custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
-          "prose-headings:font-black prose-headings:text-white prose-headings:bg-black prose-headings:px-4 prose-headings:py-2 prose-headings:inline-block prose-headings:shadow-[8px_8px_0_#ff4500] prose-headings:border-4 prose-headings:border-black prose-headings:rotate-1 " +
-          "prose-a:text-black prose-a:bg-[#ff4500] prose-a:px-1 prose-a:font-bold prose-a:border-2 prose-a:border-black prose-a:shadow-[2px_2px_0_#000] hover:prose-a:translate-y-[2px] hover:prose-a:translate-x-[2px] hover:prose-a:shadow-none hover:prose-a:bg-[#00ff00] " +
-          "prose-p:font-medium prose-p:text-black prose-p:bg-white prose-p:p-4 prose-p:border-4 prose-p:border-black prose-p:shadow-[6px_6px_0_#000] " +
-          "prose-pre:bg-[#00ff00] prose-pre:border-4 prose-pre:border-black prose-pre:shadow-[8px_8px_0_#000] prose-pre:rounded-none prose-pre:rotate-[-1deg] " +
-          "prose-code:text-black prose-code:font-bold prose-code:bg-white prose-code:border-2 prose-code:border-black prose-code:px-1.5 prose-code:py-0.5 prose-code:shadow-[2px_2px_0_#000] " +
-          "prose-img:border-4 prose-img:border-black prose-img:shadow-[8px_8px_0_#000] prose-img:rounded-none " +
-          "prose-blockquote:border-4 prose-blockquote:border-black prose-blockquote:bg-[#ff4500] prose-blockquote:text-black prose-blockquote:font-black prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:shadow-[8px_8px_0_#000] prose-blockquote:-rotate-1 " +
-          "markdown-body pb-12"
+        container: "nb-surface flex-1 px-4 py-8 sm:px-10 sm:py-12 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "nb-markdown markdown-body"
       };
+    // Candy-shop sticker book: polka dots + one lace-edged card; styled by .kw-markdown in index.css
+    // (extra top padding leaves room for the lace trim and face sticker)
     case 'kawaii':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fff0f5] text-[#555] font-sans custom-scrollbar scroll-smooth",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto " +
-          "prose-headings:font-bold prose-headings:text-[#ff69b4] prose-headings:bg-white prose-headings:rounded-full prose-headings:px-6 prose-headings:py-2 prose-headings:shadow-sm prose-headings:border-2 prose-headings:border-[#ffb6c1] prose-headings:text-center " +
-          "prose-a:text-[#00ced1] prose-a:font-bold hover:prose-a:text-[#ff69b4] " +
-          "prose-p:bg-white prose-p:rounded-3xl prose-p:p-5 prose-p:shadow-sm prose-p:border-2 prose-p:border-[#ffefd5] " +
-          "prose-pre:bg-[#f0f8ff] prose-pre:border-2 prose-pre:border-[#add8e6] prose-pre:rounded-3xl prose-pre:shadow-sm " +
-          "prose-code:text-[#ff69b4] prose-code:bg-[#fff] prose-code:px-2 prose-code:py-0.5 prose-code:rounded-full prose-code:border prose-code:border-[#ffe4e1] " +
-          "prose-img:rounded-3xl prose-img:border-4 prose-img:border-white prose-img:shadow-md " +
-          "prose-blockquote:border-0 prose-blockquote:bg-[#ffe4e1] prose-blockquote:text-[#ff69b4] prose-blockquote:rounded-3xl prose-blockquote:py-4 prose-blockquote:px-6 prose-blockquote:shadow-sm prose-blockquote:text-center prose-blockquote:font-medium " +
-          "markdown-body pb-12"
+        container: "kw-surface flex-1 px-4 pt-10 pb-12 sm:px-10 sm:pt-14 sm:pb-16 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "kw-markdown markdown-body"
       };
+    // Classroom slate in a wooden frame with a chalk tray; styled by .cb-markdown in index.css
+    // (padding leaves room for the frame and the tray below the board)
     case 'chalkboard':
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#2b3a32] text-[#f4f4f0] font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] custom-scrollbar scroll-smooth " +
-          "bg-[radial-gradient(circle,rgba(255,255,255,0.03)_1px,transparent_1px)] [background-size:10px_10px]",
-        prose: "prose prose-sm sm:prose-base dark:prose-invert max-w-3xl mx-auto " +
-          "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:text-[#f4f4f0] prose-headings:border-b-2 prose-headings:border-white/20 prose-headings:pb-2 prose-headings:drop-shadow-[1px_1px_1px_rgba(255,255,255,0.3)] " +
-          "prose-a:text-[#ffdfba] hover:prose-a:text-[#ffffba] prose-a:underline prose-a:decoration-wavy " +
-          "prose-p:text-[#e0e0e0] prose-strong:text-[#ffffba] " +
-          "prose-pre:bg-[#1f2b25] prose-pre:border-2 prose-pre:border-white/10 prose-pre:rounded-sm " +
-          "prose-code:text-[#bae1ff] prose-code:bg-[#1f2b25] prose-code:px-1.5 prose-code:py-0.5 prose-code:border border-white/20 " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-[#ffb3ba] prose-blockquote:bg-[#1f2b25] prose-blockquote:text-[#ffb3ba] prose-blockquote:py-2 prose-blockquote:px-4 " +
-          "markdown-body pb-12"
+        container: "cb-surface flex-1 px-5 pt-10 pb-16 sm:px-12 sm:pt-14 sm:pb-20 overflow-auto custom-scrollbar scroll-smooth",
+        prose: "cb-markdown markdown-body"
       };
     case 'notebook':
     default:
       return {
-        container: "flex-1 p-4 sm:p-8 overflow-auto bg-[#fdfaf6] text-slate-800 custom-scrollbar scroll-smooth bg-[linear-gradient(transparent_31px,#3b82f633_32px)] bg-[length:100%_32px]",
-        prose: "prose prose-sm sm:prose-base max-w-3xl mx-auto font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] " +
-          "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:border-b-2 prose-headings:border-blue-300/30 prose-headings:pb-2 prose-headings:text-indigo-900 " +
+        container: "flex-1 px-4 pt-8 pb-8 sm:px-8 overflow-auto bg-[#fdfaf6] text-slate-800 custom-scrollbar scroll-smooth bg-local bg-[linear-gradient(transparent_31px,#3b82f633_32px)] bg-[length:100%_32px]",
+        prose: "ruled-notebook [--heading-rule:rgba(59,130,246,0.4)] prose prose-sm sm:prose-base max-w-3xl mx-auto font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] " +
+          "prose-headings:font-['Comic_Neue','Comic_Sans_MS','Chalkboard_SE','Marker_Felt',sans-serif] prose-headings:text-indigo-900 " +
           "prose-a:text-blue-600 prose-a:no-underline hover:prose-a:underline " +
-          "prose-p:leading-8 prose-li:leading-8 prose-headings:leading-8 " +
           "prose-pre:p-0 prose-pre:bg-transparent prose-pre:border-0 " +
           "prose-code:bg-yellow-100 prose-code:text-slate-900 prose-code:px-1.5 prose-code:py-0.5 prose-code:rounded prose-code:before:content-none prose-code:after:content-none " +
-          "prose-table:border prose-table:border-blue-200 prose-th:bg-blue-50 prose-th:p-2 prose-td:p-2 " +
+          "prose-th:bg-blue-50 prose-th:px-2 prose-td:px-2 " +
           "prose-img:rounded-lg prose-img:shadow-md " +
-          "prose-blockquote:border-l-4 prose-blockquote:border-red-400 prose-blockquote:bg-red-50/50 prose-blockquote:py-2 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-700 " +
+          "prose-blockquote:border-l-4 prose-blockquote:border-red-400 prose-blockquote:bg-red-50/50 prose-blockquote:px-4 prose-blockquote:italic prose-blockquote:text-slate-700 " +
           "markdown-body pb-12 relative " +
           "before:absolute before:top-0 before:bottom-0 before:w-px before:bg-red-400/60 before:-left-6 sm:before:-left-8"
       };
@@ -660,7 +1051,32 @@ const TextPreviewPopup: React.FC = () => {
 
   React.useEffect(() => {
     localStorage.setItem('mdTheme', mdTheme);
+    THEME_FONTS[mdTheme]?.forEach((font) => loadGoogleFont(font));
   }, [mdTheme]);
+
+  const mdFamily = getThemeFamily(mdTheme);
+  const mdMode = getThemeMode(mdTheme);
+  const canToggleMdMode = Boolean(mdFamily.light && mdFamily.dark);
+  const mdModeUnavailableHint = `${mdFamily.name} only comes in ${mdMode} mode`;
+
+  // Switching theme keeps the current mode when the new theme has it
+  const selectMdThemeFamily = (name: string) => {
+    const family = MD_THEME_FAMILIES.find((f) => f.name === name);
+    const next = family && (family[mdMode] ?? family.light ?? family.dark);
+    if (next) setMdTheme(next);
+  };
+
+  const setMdMode = (mode: ThemeMode) => {
+    const next = mdFamily[mode];
+    if (next) setMdTheme(next);
+  };
+
+  // Mobile actions live in a bottom sheet rendered inside the popup, so it inherits the theme chrome
+  const [showMobileMenu, setShowMobileMenu] = React.useState(false);
+
+  // Desktop-only: expand the popup to fill the viewport (small screens are already full screen)
+  const [isFullscreen, setIsFullscreen] = React.useState(false);
+  const fileName = activePreviewPath?.split(/[/\\]/).pop() || 'Untitled';
 
   React.useEffect(() => {
     localStorage.setItem('mdFont', mdFont);
@@ -676,6 +1092,16 @@ const TextPreviewPopup: React.FC = () => {
   const [showOutline, setShowOutline] = React.useState(false);
   const [outlineFullScreen, setOutlineFullScreen] = React.useState(false);
   const [showSettings, setShowSettings] = React.useState(false);
+
+  // Esc closes the Appearance drawer
+  React.useEffect(() => {
+    if (!showSettings) return;
+    const closeOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setShowSettings(false);
+    };
+    window.addEventListener('keydown', closeOnEscape);
+    return () => window.removeEventListener('keydown', closeOnEscape);
+  }, [showSettings]);
   const [activeHeadingId, setActiveHeadingId] = React.useState<string>('');
   const [keyboardLocked, setKeyboardLocked] = React.useState(false);
   const [wordWrap, setWordWrap] = React.useState(true);
@@ -701,6 +1127,26 @@ const TextPreviewPopup: React.FC = () => {
   const outlineRef = React.useRef<HTMLDivElement>(null);
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const toolbarRef = React.useRef<HTMLDivElement>(null);
+  const proseRef = React.useRef<HTMLDivElement>(null);
+
+  // Notebook themes: keep every block aligned to the ruled lines. Re-snaps
+  // whenever the rendered document changes size (images, mermaid, fonts, resize).
+  const isRuledTheme = RULED_THEMES.includes(mdTheme);
+  React.useLayoutEffect(() => {
+    const root = proseRef.current;
+    if (viewMode !== 'markdown' || !isRuledTheme || !root) return;
+    let frame = 0;
+    snapToRuledLines(root);
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(() => snapToRuledLines(root));
+    });
+    observer.observe(root);
+    return () => {
+      cancelAnimationFrame(frame);
+      observer.disconnect();
+    };
+  }, [viewMode, isRuledTheme, editText, mdFont]);
 
   const navHoldTimeoutRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const isNavHoldRef = React.useRef(false);
@@ -972,13 +1418,24 @@ const TextPreviewPopup: React.FC = () => {
         {children}
       </CodeBlock>
     ),
-    h1: (props: any) => <HeadingRenderer level={1} onHeadingClick={handleHeadingClick} {...props} />,
-    h2: (props: any) => <HeadingRenderer level={2} onHeadingClick={handleHeadingClick} {...props} />,
-    h3: (props: any) => <HeadingRenderer level={3} onHeadingClick={handleHeadingClick} {...props} />,
-    h4: (props: any) => <HeadingRenderer level={4} onHeadingClick={handleHeadingClick} {...props} />,
-    h5: (props: any) => <HeadingRenderer level={5} onHeadingClick={handleHeadingClick} {...props} />,
-    h6: (props: any) => <HeadingRenderer level={6} onHeadingClick={handleHeadingClick} {...props} />,
-    kbd: (props: any) => (
+    h1: (props: any) => <HeadingRenderer level={1} theme={mdTheme} onHeadingClick={handleHeadingClick} {...props} />,
+    h2: (props: any) => <HeadingRenderer level={2} theme={mdTheme} onHeadingClick={handleHeadingClick} {...props} />,
+    h3: (props: any) => <HeadingRenderer level={3} theme={mdTheme} onHeadingClick={handleHeadingClick} {...props} />,
+    h4: (props: any) => <HeadingRenderer level={4} theme={mdTheme} onHeadingClick={handleHeadingClick} {...props} />,
+    h5: (props: any) => <HeadingRenderer level={5} theme={mdTheme} onHeadingClick={handleHeadingClick} {...props} />,
+    h6: (props: any) => <HeadingRenderer level={6} theme={mdTheme} onHeadingClick={handleHeadingClick} {...props} />,
+    blockquote: ({ node, children, ...props }: any) => {
+      const alert = GITHUB_ALERTS[props['data-alert']];
+      if (!alert) return <blockquote {...props}>{children}</blockquote>;
+      const Icon = alert.icon;
+      return (
+        <blockquote {...props}>
+          <p className="markdown-alert-title"><Icon size={16} strokeWidth={2.25} />{alert.label}</p>
+          {children}
+        </blockquote>
+      );
+    },
+    kbd: ({ node, ...props }: any) => CSS_STYLED_THEMES.includes(mdTheme) ? <kbd {...props} /> : (
       <kbd
         className="!inline-flex !items-center !justify-center !bg-indigo-500/10 !text-indigo-400 !px-2.5 !py-0.5 !mx-1 !rounded-full !text-[10px] !tracking-widest !font-sans !font-bold !border !border-indigo-500/30 !shadow-none !whitespace-nowrap uppercase !leading-none align-baseline transform -translate-y-[1px]"
         {...props}
@@ -1318,7 +1775,7 @@ const TextPreviewPopup: React.FC = () => {
     <AnimatePresence>
       {(activePreviewText !== null && activePreviewText !== undefined) && (
         <div
-          className="fixed inset-0 z-[10000] flex items-center justify-center sm:p-4 bg-slate-950/90 backdrop-blur-sm"
+          className={`fixed inset-0 z-[10000] flex items-center justify-center bg-slate-950/90 backdrop-blur-sm ${isFullscreen ? 'sm:p-0' : 'sm:p-4'}`}
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
@@ -1327,7 +1784,16 @@ const TextPreviewPopup: React.FC = () => {
             initial={{ opacity: 0, scale: 0.98, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 10 }}
-            className="relative w-full max-w-6xl h-[100dvh] sm:h-full max-h-none sm:max-h-[90vh] bg-slate-900 border-0 sm:border border-slate-800 shadow-2xl rounded-none sm:rounded-xl flex flex-col overflow-hidden"
+            // In markdown preview the chrome (header, outline, settings, footer) takes the theme's
+            // palette: index.css remaps Tailwind's slate/indigo colour variables per data-md-chrome
+            data-md-chrome={viewMode === 'markdown' ? mdTheme : undefined}
+            // `layout` animates the size change when toggling full screen instead of snapping
+            layout
+            transition={{ layout: { duration: 0.28, ease: [0.32, 0.72, 0, 1] } }}
+            className={`relative w-full h-[100dvh] sm:h-full max-h-none bg-slate-900 border-0 border-slate-800 shadow-2xl rounded-none flex flex-col overflow-hidden ${isFullscreen
+              ? 'max-w-none'
+              : 'max-w-6xl sm:max-h-[90vh] sm:border sm:rounded-xl'
+              }`}
           >
             {/* Toggle Header Handle (Mobile) */}
             <button
@@ -1355,27 +1821,41 @@ const TextPreviewPopup: React.FC = () => {
                   transition={{ duration: 0.2 }}
                   className="shrink-0 relative z-10 overflow-hidden bg-slate-900 border-b border-slate-800"
                 >
-                  <div className="flex flex-row items-center justify-between gap-2 pl-3 pr-2 py-2 w-full">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <div className="p-1.5 sm:p-2 bg-indigo-500/10 text-indigo-400 rounded-lg shrink-0">
+                  <div className="w-full px-3 pt-2.5 pb-2 sm:pl-3 sm:pr-2 sm:py-2">
+                  <div className="flex flex-row items-center justify-between gap-2">
+                    {/* File identity: name as the title, view mode underneath */}
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div className="w-9 h-9 flex items-center justify-center bg-indigo-500/10 text-indigo-400 rounded-xl shrink-0">
                         <Type size={18} />
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-1.5 sm:gap-2">
-                          <h3 className="text-xs sm:text-sm font-semibold text-white tracking-tight truncate">
-                            {viewMode === 'edit' ? 'Editor' : (viewMode === 'markdown' ? 'Markdown' : (viewMode === 'html' ? 'HTML' : 'Raw View'))}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <h3 className="text-sm font-semibold text-white tracking-tight truncate" title={activePreviewPath || ''}>
+                            {fileName}
                           </h3>
-                          <span className="text-[8px] sm:text-[9px] bg-slate-800 text-slate-400 px-1 py-0.5 rounded border border-slate-700 font-mono uppercase shrink-0">
+                          <span className="text-[9px] leading-none bg-slate-800 text-slate-400 px-1.5 py-1 rounded-md border border-slate-700 font-mono uppercase shrink-0">
                             {activePreviewPath?.split('.').pop()}
                           </span>
                         </div>
-                        <p className="text-[9px] sm:text-[10px] text-slate-500 font-mono truncate max-w-[120px] sm:max-w-xs" title={activePreviewPath || ''}>
-                          {activePreviewPath}
+                        <p className="mt-0.5 text-[11px] text-slate-500 truncate">
+                          {VIEW_MODE_LABELS[viewMode]}
                         </p>
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5 shrink-0">
+                    <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                      {/* Desktop Light/Dark Toggle */}
+                      {viewMode === 'markdown' && (
+                        <button
+                          onClick={() => setMdMode(mdMode === 'dark' ? 'light' : 'dark')}
+                          disabled={!canToggleMdMode}
+                          className="hidden sm:block p-1.5 rounded-md transition-all text-slate-400 hover:text-white bg-slate-800/50 hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:text-slate-400 disabled:hover:bg-slate-800/50"
+                          title={canToggleMdMode ? `Switch to ${mdMode === 'dark' ? 'light' : 'dark'} mode` : mdModeUnavailableHint}
+                          aria-label="Toggle light or dark mode"
+                        >
+                          {mdMode === 'dark' ? <Moon size={18} /> : <Sun size={18} />}
+                        </button>
+                      )}
                       {/* Desktop Appearance Settings */}
                       {viewMode === 'markdown' && (
                         <button
@@ -1386,35 +1866,18 @@ const TextPreviewPopup: React.FC = () => {
                           <Settings size={18} />
                         </button>
                       )}
-                      <div className="flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 shrink-0">
-                        <button
-                          onClick={() => setViewMode('raw')}
-                          className={`p-1.5 rounded-md transition-all ${viewMode === 'raw' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                          title="Code View"
-                        >
-                          <FileText size={14} />
-                        </button>
-                        <button
-                          onClick={() => setViewMode('markdown')}
-                          className={`p-1.5 rounded-md transition-all ${viewMode === 'markdown' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                          title="Markdown Preview"
-                        >
-                          <Layout size={14} />
-                        </button>
-                        <button
-                          onClick={() => setViewMode('html')}
-                          className={`p-1.5 rounded-md transition-all ${viewMode === 'html' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                          title="HTML Preview"
-                        >
-                          <Globe size={14} />
-                        </button>
-                        <button
-                          onClick={() => setViewMode('edit')}
-                          className={`p-1.5 rounded-md transition-all ${viewMode === 'edit' ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
-                          title="Edit Text"
-                        >
-                          <Edit3 size={14} />
-                        </button>
+                      {/* Desktop view switcher (icon-only); mobile gets a labelled row below */}
+                      <div className="hidden sm:flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 shrink-0">
+                        {VIEW_MODES.map(([mode, , Icon, title]) => (
+                          <button
+                            key={mode}
+                            onClick={() => setViewMode(mode)}
+                            className={`p-1.5 rounded-md transition-all ${viewMode === mode ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 hover:text-slate-300'}`}
+                            title={title}
+                          >
+                            <Icon size={14} />
+                          </button>
+                        ))}
                       </div>
 
                       <div className="h-4 w-[1px] bg-slate-800 mx-1 hidden sm:block" />
@@ -1466,47 +1929,196 @@ const TextPreviewPopup: React.FC = () => {
                           className="hidden sm:block [&>button]:!p-1.5 [&>button]:w-8 [&>button]:h-8 [&>button]:!bg-slate-800 [&>button]:!border-slate-700 hover:[&>button]:!bg-slate-700 [&>button]:text-slate-300 [&_span.truncate]:hidden [&>button>svg:last-child]:hidden [&>button>div]:w-full [&>button>div]:justify-center"
                         />
 
-                        {/* Mobile Options Dropdown */}
-                        <div className="sm:hidden flex items-center">
-                          <CustomSelect
-                            value=""
-                            placeholder=""
-                            options={[
-                              ...(viewMode === 'markdown' && headings.length > 0 ? [{ label: 'Outline', value: 'outline', icon: <Menu size={14} /> }] : []),
-                              ...(viewMode === 'markdown' ? [{ label: 'Appearance', value: 'settings', icon: <Settings size={14} /> }] : []),
-                              { label: copied ? 'Copied' : 'Copy Content', value: 'copy', icon: copied ? <Check size={14} className="text-emerald-400" /> : <Copy size={14} /> },
-                              { label: 'Search', value: 'search', icon: <Search size={14} /> },
-                              { label: 'Download .md', value: 'download-md', icon: <Download size={14} /> },
-                              { label: 'Download .txt', value: 'download-txt', icon: <Download size={14} /> },
-                              ...(viewMode === 'markdown' || viewMode === 'html' ? [{ label: 'Download .html', value: 'download-html', icon: <Globe size={14} /> }] : []),
-                              ...(viewMode === 'raw' ? [{ label: wordWrap ? 'No Wrap' : 'Word Wrap', value: 'toggle-wrap', icon: <WrapText size={14} /> }] : []),
-                            ]}
-                            onChange={(val) => {
-                              if (val === 'outline') setShowOutline(!showOutline);
-                              if (val === 'settings') setShowSettings(!showSettings);
-                              if (val === 'copy') handleCopy();
-                              if (val === 'search') { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 50); }
-                              if (val === 'download-md') handleDownload('md');
-                              if (val === 'download-txt') handleDownload('txt');
-                              if (val === 'download-html') handleDownload('html');
-                              if (val === 'toggle-wrap') setWordWrap(!wordWrap);
-                            }}
-                            icon={<MoreVertical size={16} />}
-                            variant="toolbar"
-                            className="[&>button]:!p-1.5 [&>button]:w-8 [&>button]:h-8 [&>button]:!bg-transparent [&>button]:!border-transparent hover:[&>button]:!bg-slate-800 hover:[&>button]:!text-white [&>button]:text-slate-400 [&_span.truncate]:hidden [&>button>svg:last-child]:hidden [&>button>div]:w-full [&>button>div]:justify-center"
-                          />
-                        </div>
+                        {/* Full screen toggle (Desktop only) */}
+                        <button
+                          onClick={() => setIsFullscreen((f) => !f)}
+                          className="hidden sm:flex p-1.5 rounded-lg transition-colors items-center justify-center text-slate-400 hover:text-white hover:bg-slate-800"
+                          title={isFullscreen ? 'Exit full screen' : 'Full screen'}
+                          aria-label={isFullscreen ? 'Exit full screen' : 'Enter full screen'}
+                          aria-pressed={isFullscreen}
+                        >
+                          {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                        </button>
+
+                        {/* Mobile: open the actions sheet */}
+                        <button
+                          onClick={() => setShowMobileMenu(true)}
+                          className={`sm:hidden w-9 h-9 flex items-center justify-center rounded-xl border transition-colors ${showMobileMenu ? 'bg-slate-800 text-white border-slate-700' : 'bg-slate-800/50 text-slate-300 border-slate-800 active:bg-slate-800'}`}
+                          aria-haspopup="menu"
+                          aria-expanded={showMobileMenu}
+                          aria-label="More actions"
+                        >
+                          <MoreVertical size={18} />
+                        </button>
 
                         <button
                           onClick={() => setActivePreviewText(null)}
-                          className="p-1.5 hover:bg-slate-800 text-slate-400 hover:text-white rounded-lg transition-colors"
+                          className="w-9 h-9 sm:w-auto sm:h-auto sm:p-1.5 flex items-center justify-center hover:bg-slate-800 active:bg-slate-800 text-slate-400 hover:text-white rounded-xl sm:rounded-lg transition-colors"
+                          aria-label="Close preview"
                         >
                           <X size={18} />
                         </button>
                       </div>
                     </div>
                   </div>
+
+                  {/* Mobile view switcher: full-width, labelled, thumb-sized */}
+                  <div className="sm:hidden mt-2.5 grid grid-cols-4 gap-1 p-1 rounded-xl bg-slate-950 border border-slate-800">
+                    {VIEW_MODES.map(([mode, label, Icon, title]) => (
+                      <button
+                        key={mode}
+                        onClick={() => setViewMode(mode)}
+                        className={`h-8 flex items-center justify-center gap-1.5 rounded-lg text-xs font-medium transition-all ${viewMode === mode ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-500 active:text-slate-300'}`}
+                        title={title}
+                        aria-pressed={viewMode === mode}
+                      >
+                        <Icon size={14} />
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  </div>
                 </motion.div>
+              )}
+            </AnimatePresence>
+
+            {/* Mobile Actions Sheet (inside the popup so it follows the theme chrome) */}
+            <AnimatePresence>
+              {showMobileMenu && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="sm:hidden absolute inset-0 z-[60] bg-black/40 backdrop-blur-[2px]"
+                    onClick={() => setShowMobileMenu(false)}
+                  />
+                  <motion.div
+                    role="menu"
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', damping: 32, stiffness: 340 }}
+                    drag="y"
+                    dragConstraints={{ top: 0, bottom: 0 }}
+                    dragElastic={{ top: 0, bottom: 0.6 }}
+                    onDragEnd={(_, info) => {
+                      if (info.offset.y > 80 || info.velocity.y > 500) setShowMobileMenu(false);
+                    }}
+                    className="sm:hidden absolute inset-x-0 bottom-0 z-[61] bg-slate-900 border-t border-slate-800 rounded-t-2xl shadow-2xl pb-[max(env(safe-area-inset-bottom),12px)]"
+                  >
+                    <div className="flex justify-center pt-2.5 pb-1">
+                      <span className="w-10 h-1 rounded-full bg-slate-700" />
+                    </div>
+                    <div className="flex items-center justify-between gap-3 px-4 pb-2">
+                      <div className="min-w-0">
+                        <p className="text-sm font-semibold text-white truncate">{fileName}</p>
+                        <p className="text-[11px] text-slate-500">{VIEW_MODE_LABELS[viewMode]}</p>
+                      </div>
+                      <button
+                        onClick={() => setShowMobileMenu(false)}
+                        className="w-8 h-8 flex items-center justify-center rounded-full bg-slate-800 text-slate-400 active:text-white shrink-0"
+                        aria-label="Close menu"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div className="max-h-[60dvh] overflow-y-auto custom-scrollbar px-3 pb-1">
+                      {(() => {
+                        type SheetItem = {
+                          key: string;
+                          label: string;
+                          icon: React.ReactNode;
+                          onSelect: () => void;
+                          hint?: string;
+                          disabled?: boolean;
+                          toggle?: boolean;
+                          closeOnSelect?: boolean;
+                          trailing?: React.ReactNode;
+                        };
+                        const closeThen = (fn: () => void) => () => { fn(); setShowMobileMenu(false); };
+                        const sections: { title: string; items: SheetItem[] }[] = [
+                          {
+                            title: 'View',
+                            items: viewMode === 'markdown' ? [
+                              ...(headings.length > 0 ? [{ key: 'outline', label: 'Outline', icon: <Menu size={16} />, onSelect: closeThen(() => setShowOutline(true)) }] : []),
+                              { key: 'appearance', label: 'Appearance', hint: `${mdFamily.name} theme`, icon: <Settings size={16} />, onSelect: closeThen(() => setShowSettings(true)) },
+                              {
+                                key: 'mode',
+                                label: 'Dark mode',
+                                hint: canToggleMdMode ? undefined : mdModeUnavailableHint,
+                                icon: mdMode === 'dark' ? <Moon size={16} /> : <Sun size={16} />,
+                                disabled: !canToggleMdMode,
+                                toggle: mdMode === 'dark',
+                                onSelect: () => setMdMode(mdMode === 'dark' ? 'light' : 'dark'),
+                              },
+                            ] : [],
+                          },
+                          {
+                            title: 'Document',
+                            items: [
+                              {
+                                key: 'copy',
+                                label: copied ? 'Copied to clipboard' : 'Copy content',
+                                icon: copied ? <Check size={16} className="text-emerald-400" /> : <Copy size={16} />,
+                                onSelect: handleCopy,
+                              },
+                              {
+                                key: 'search',
+                                label: 'Search in document',
+                                icon: <Search size={16} />,
+                                onSelect: closeThen(() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 50); }),
+                              },
+                              ...(viewMode === 'raw' ? [{ key: 'wrap', label: 'Word wrap', icon: <WrapText size={16} />, toggle: wordWrap, onSelect: () => setWordWrap(!wordWrap) }] : []),
+                            ],
+                          },
+                          {
+                            title: 'Download',
+                            items: [
+                              { key: 'md', label: 'Markdown', hint: '.md', icon: <Download size={16} />, onSelect: closeThen(() => handleDownload('md')) },
+                              { key: 'txt', label: 'Plain text', hint: '.txt', icon: <FileText size={16} />, onSelect: closeThen(() => handleDownload('txt')) },
+                              ...(viewMode === 'markdown' || viewMode === 'html'
+                                ? [{ key: 'html', label: 'HTML page', hint: '.html', icon: <Globe size={16} />, onSelect: closeThen(() => handleDownload('html')) }]
+                                : []),
+                            ],
+                          },
+                        ];
+
+                        return sections.filter((s) => s.items.length > 0).map((section) => (
+                          <div key={section.title} className="py-1.5">
+                            <p className="px-1 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">{section.title}</p>
+                            <div className="rounded-xl bg-slate-950/60 border border-slate-800 overflow-hidden divide-y divide-slate-800">
+                              {section.items.map((item) => (
+                                <button
+                                  key={item.key}
+                                  role={item.toggle === undefined ? 'menuitem' : 'menuitemcheckbox'}
+                                  aria-checked={item.toggle}
+                                  disabled={item.disabled}
+                                  onClick={item.onSelect}
+                                  className="w-full min-h-11 flex items-center gap-3 px-3 py-2 text-left active:bg-slate-800 disabled:opacity-50 transition-colors"
+                                >
+                                  <span className="w-8 h-8 rounded-lg bg-slate-800 text-slate-300 flex items-center justify-center shrink-0">
+                                    {item.icon}
+                                  </span>
+                                  <span className="flex-1 min-w-0">
+                                    <span className="block text-sm text-slate-200 truncate">{item.label}</span>
+                                    {item.hint && <span className="block text-[11px] text-slate-500 truncate">{item.hint}</span>}
+                                  </span>
+                                  {item.toggle !== undefined && (
+                                    <span className={`w-10 h-6 p-0.5 rounded-full shrink-0 transition-colors ${item.toggle ? 'bg-indigo-500' : 'bg-slate-700'}`}>
+                                      <span className={`block w-5 h-5 rounded-full bg-[#fff] shadow transition-transform ${item.toggle ? 'translate-x-4' : ''}`} />
+                                    </span>
+                                  )}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </motion.div>
+                </>
               )}
             </AnimatePresence>
 
@@ -1656,23 +2268,42 @@ const TextPreviewPopup: React.FC = () => {
               <AnimatePresence>
                 {showSettings && (
                   <>
+                    {/* Light scrim: the drawer tweaks the document, it shouldn't black it out */}
                     <motion.div
-                      initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }}
-                      className="absolute inset-0 bg-black/50 z-40"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
+                      className="absolute inset-0 z-40 bg-black/40 sm:bg-black/15"
                       onClick={() => setShowSettings(false)}
                     />
+                    {/* Slides its own width with an eased tween (no spring overshoot, no fade) */}
                     <motion.div
-                      initial={{ x: 300, opacity: 0 }}
-                      animate={{ x: 0, opacity: 1 }}
-                      exit={{ x: 300, opacity: 0 }}
-                      className="absolute right-0 top-0 bottom-0 z-50 w-64 bg-slate-900 border-l border-slate-800 flex flex-col shadow-2xl"
+                      role="dialog"
+                      aria-label="Appearance settings"
+                      initial={{ x: '100%' }}
+                      animate={{ x: 0 }}
+                      exit={{ x: '100%' }}
+                      transition={{ type: 'tween', duration: 0.28, ease: [0.32, 0.72, 0, 1] }}
+                      className="absolute right-0 top-0 bottom-0 z-50 w-[85%] max-w-xs sm:w-72 bg-slate-900 border-l border-slate-800 flex flex-col shadow-[-16px_0_40px_-16px_rgba(0,0,0,0.5)] will-change-transform"
                     >
-                      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 backdrop-blur sticky top-0">
-                        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                          <Settings size={14} /> Appearance
-                        </h4>
-                        <button onClick={() => setShowSettings(false)} className="text-slate-400 hover:text-white transition-colors">
-                          <X size={18} />
+                      <div className="px-4 py-3 border-b border-slate-800 flex items-center justify-between gap-3 bg-slate-900 shrink-0">
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <span className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+                            <Settings size={16} />
+                          </span>
+                          <div className="min-w-0">
+                            <h4 className="text-sm font-semibold text-white leading-tight">Appearance</h4>
+                            <p className="text-[11px] text-slate-500 truncate">{mdFamily.name} · {mdMode} mode</p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => setShowSettings(false)}
+                          className="w-8 h-8 flex items-center justify-center rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+                          aria-label="Close appearance settings"
+                          title="Close (Esc)"
+                        >
+                          <X size={16} />
                         </button>
                       </div>
                       <div className="p-4 flex flex-col gap-6 overflow-y-auto custom-scrollbar">
@@ -1686,34 +2317,43 @@ const TextPreviewPopup: React.FC = () => {
                               { label: "System Font", value: "System Default" },
                               ...FONTS.map(f => ({ label: f.fontFamily, value: f.fontFamily }))
                             ]}
-                            className="w-full [&>button]:w-full [&>button]:py-2 [&>button]:px-3 [&>button]:bg-slate-950 [&>button]:border-slate-800 [&>button]:text-sm"
+                            className="w-full [&>button]:w-full [&>button]:py-2 [&>button]:px-3 [&>button]:bg-slate-950 [&>button]:border-slate-800 [&>button]:text-slate-200 [&>button]:text-sm"
                           />
                         </div>
 
                         <div className="flex flex-col gap-2.5">
                           <label className="text-xs text-slate-400 font-medium">Theme</label>
                           <CustomSelect
-                            value={mdTheme}
-                            onChange={(val) => setMdTheme(val as any)}
-                            options={[
-                              { label: 'Notebook (Light)', value: 'notebook' },
-                              { label: 'Notebook (Dark)', value: 'notebook-dark' },
-                              { label: 'Default Dark', value: 'default-dark' },
-                              { label: 'GitHub Light', value: 'github-light' },
-                              { label: 'GitHub Dark', value: 'github-dark' },
-                              { label: 'Borderlands', value: 'borderlands' },
-                              { label: 'Comic Minimal', value: 'comic-minimal' },
-                              { label: 'Anime Pastel', value: 'anime-pastel' },
-                              { label: 'Manga Scan', value: 'manga-scan' },
-                              { label: 'Cyberpunk 2077', value: 'cyberpunk' },
-                              { label: 'Retro Arcade', value: 'retro-arcade' },
-                              { label: 'Synthwave', value: 'synthwave' },
-                              { label: 'Neubrutalism', value: 'neubrutalism' },
-                              { label: 'Kawaii Cute', value: 'kawaii' },
-                              { label: 'Chalkboard', value: 'chalkboard' }
-                            ]}
-                            className="w-full [&>button]:w-full [&>button]:py-2 [&>button]:px-3 [&>button]:bg-slate-950 [&>button]:border-slate-800 [&>button]:text-sm"
+                            value={mdFamily.name}
+                            onChange={selectMdThemeFamily}
+                            options={MD_THEME_FAMILIES.map((f) => ({ label: f.name, value: f.name }))}
+                            className="w-full [&>button]:w-full [&>button]:py-2 [&>button]:px-3 [&>button]:bg-slate-950 [&>button]:border-slate-800 [&>button]:text-slate-200 [&>button]:text-sm"
                           />
+                        </div>
+
+                        <div className="flex flex-col gap-2.5">
+                          <label className="text-xs text-slate-400 font-medium">Mode</label>
+                          <div className="grid grid-cols-2 gap-1 p-1 rounded-lg bg-slate-950 border border-slate-800">
+                            {(['light', 'dark'] as const).map((mode) => {
+                              const available = Boolean(mdFamily[mode]);
+                              const active = mdMode === mode;
+                              return (
+                                <button
+                                  key={mode}
+                                  onClick={() => setMdMode(mode)}
+                                  disabled={!available}
+                                  title={available ? undefined : mdModeUnavailableHint}
+                                  className={`flex items-center justify-center gap-1.5 py-1.5 rounded-md text-xs font-medium capitalize transition-all disabled:opacity-35 disabled:cursor-not-allowed ${active ? 'bg-slate-800 text-white shadow-sm' : 'text-slate-400 hover:text-slate-200 disabled:hover:text-slate-400'}`}
+                                >
+                                  {mode === 'light' ? <Sun size={13} /> : <Moon size={13} />}
+                                  {mode}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {!canToggleMdMode && (
+                            <p className="text-[11px] text-slate-500 leading-snug">{mdModeUnavailableHint}.</p>
+                          )}
                         </div>
                       </div>
                     </motion.div>
@@ -2114,14 +2754,24 @@ const TextPreviewPopup: React.FC = () => {
                   </div>
                 </div>
               ) : viewMode === 'markdown' ? (
-                <div ref={contentRef} className={getThemeClasses(mdTheme).container}>
+                <div ref={contentRef} className={`${getThemeClasses(mdTheme).container} md-content`}>
+                  {GITHUB_THEMES.includes(mdTheme) && (
+                    <div className={`gh-readme-header ${mdTheme === 'github-dark' ? 'gh-dark' : 'gh-light'}`}>
+                      <BookOpen size={16} />
+                      <span className="truncate">{activePreviewPath?.split(/[/\\]/).pop() || 'README'}</span>
+                      <span className="gh-readme-meta">
+                        {editText.split('\n').length} lines · {(new Blob([editText]).size / 1024).toFixed(1)} KB
+                      </span>
+                    </div>
+                  )}
                   <div
+                    ref={proseRef}
                     className={getThemeClasses(mdTheme).prose}
                     style={mdFont !== 'System Default' ? { fontFamily: `'${mdFont}', sans-serif` } : undefined}
                   >
                     <ReactMarkdown
                       remarkPlugins={[remarkGfm, remarkMath]}
-                      rehypePlugins={[rehypeRaw, rehypeKatex, customRehypeSlug]}
+                      rehypePlugins={[rehypeRaw, rehypeKatex, customRehypeSlug, rehypeGithubAlerts]}
                       components={markdownComponents}
                     >
                       {editText}
@@ -2155,7 +2805,7 @@ const TextPreviewPopup: React.FC = () => {
                       exit={{ opacity: 0, scale: 0.85, y: 10 }}
                       transition={{ duration: 0.15 }}
                       onClick={() => setViewMode('edit')}
-                      className="absolute bottom-4 right-4 z-40 flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-white rounded-full shadow-xl shadow-indigo-950/60 border border-indigo-400/40 text-xs font-semibold backdrop-blur transition-all active:scale-95"
+                      className="absolute bottom-4 right-4 z-40 flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-[var(--md-on-accent,#fff)] rounded-full shadow-xl shadow-indigo-950/60 border border-indigo-400/40 text-xs font-semibold backdrop-blur transition-all active:scale-95"
                       title="Switch to Editor"
                     >
                       <Edit3 size={14} />
