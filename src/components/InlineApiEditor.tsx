@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
-import { Check, Link2, Settings2, X } from 'lucide-react';
+import { Check, Link2, Globe, X } from 'lucide-react';
 
 interface InlineApiEditorProps {
   initialUrl: string;
@@ -8,12 +8,40 @@ interface InlineApiEditorProps {
   nodeX: number;
   nodeY: number;
   nodeWidth: number;
+  /** Rendered height of the API node, so the popover can sit just below it */
+  nodeHeight?: number;
   onClose: () => void;
 }
 
-export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onClose }: InlineApiEditorProps) {
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
+const RESPONSE_TYPES = [
+  { value: 'auto', label: 'Auto' },
+  { value: 'json', label: 'JSON' },
+  { value: 'text', label: 'Text' },
+  { value: 'blob', label: 'Blob' },
+] as const;
+
+const RESPONSE_VIEWS = [
+  { value: 'auto', label: 'Auto', hint: 'Nodes for small JSON, a file for large JSON, text and media' },
+  { value: 'nodes', label: 'Child nodes', hint: 'Expand the response into nodes on the canvas' },
+  { value: 'file', label: 'File', hint: 'Attach one formatted file node (JSON, text, image, video, audio…)' },
+] as const;
+
+const METHOD_ACTIVE: Record<string, string> = {
+  GET: 'border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  POST: 'border-blue-500/50 bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  PUT: 'border-amber-500/50 bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  PATCH: 'border-violet-500/50 bg-violet-500/10 text-violet-600 dark:text-violet-400',
+  DELETE: 'border-red-500/50 bg-red-500/10 text-red-600 dark:text-red-400',
+};
+
+const POPOVER_WIDTH = 360;
+const FRAME_PADDING = 24; // room for the shadow inside the foreignObject
+const MIN_TIMEOUT = 100;
+const MAX_TIMEOUT = 120000;
+
+export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeHeight = 140, onClose }: InlineApiEditorProps) {
   const [url, setUrl] = useState(initialUrl);
-  const [isValid, setIsValid] = useState(true);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const originalUrlRef = useRef(initialUrl);
   const updateNodeValue = useStore((state) => state.updateNodeValue);
@@ -26,14 +54,27 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
   const [method, setMethod] = useState(currentConfig.method);
   const [responseType, setResponseType] = useState(currentConfig.responseType);
   const [timeout, setTimeoutVal] = useState(currentConfig.timeout.toString());
+  const [view, setView] = useState<'auto' | 'nodes' | 'file'>(currentConfig.view ?? 'auto');
 
   const wrapperRef = useRef<HTMLDivElement>(null);
-  const isEmpty = url.trim() === '';
 
-  const labelClass = 'px-0.5 text-[10px] font-bold uppercase tracking-[0.12em] text-zinc-500 dark:text-zinc-400';
-  const controlClass = 'h-10 w-full rounded-md border border-zinc-300 bg-white px-3 text-sm font-semibold text-zinc-800 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-zinc-700 dark:bg-zinc-950 dark:text-zinc-100';
-  const optionClass = 'bg-white text-zinc-900 dark:bg-zinc-900 dark:text-zinc-100';
+  const trimmedUrl = url.trim();
+  const isEmpty = trimmedUrl === '';
+  const isValidUrl = (() => {
+    if (isEmpty) return true;
+    try {
+      const parsed = new URL(trimmedUrl);
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    } catch {
+      return false;
+    }
+  })();
 
+  const parsedTimeout = Number(timeout);
+  const isValidTimeout = timeout.trim() !== '' && Number.isFinite(parsedTimeout) && parsedTimeout >= MIN_TIMEOUT && parsedTimeout <= MAX_TIMEOUT;
+  const canSave = isValidUrl && isValidTimeout;
+
+  // Keep canvas pan/zoom/drag handlers from reacting to interaction inside the popover
   useEffect(() => {
     const el = wrapperRef.current;
     if (!el) return;
@@ -56,94 +97,87 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
       'wheel',
     ];
 
-    events.forEach((event) => {
-      el.addEventListener(event, stopPropagation, { capture: false });
-    });
-
-    return () => {
-      events.forEach((event) => {
-        el.removeEventListener(event, stopPropagation, { capture: false });
-      });
-    };
+    events.forEach((event) => el.addEventListener(event, stopPropagation));
+    return () => events.forEach((event) => el.removeEventListener(event, stopPropagation));
   }, []);
-
-  useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
-      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
-        handleSave();
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside, { capture: true });
-    return () => document.removeEventListener('mousedown', handleClickOutside, { capture: true });
-  }, [onClose, url, method, responseType, timeout]);
-
-  useEffect(() => {
-    if (textareaRef.current) {
-      textareaRef.current.focus();
-      textareaRef.current.setSelectionRange(url.length, url.length);
-    }
-  }, []);
-
-  const validateUrl = (testUrl: string) => {
-    try {
-      new URL(testUrl);
-      setIsValid(true);
-      return true;
-    } catch {
-      setIsValid(false);
-      return false;
-    }
-  };
-
-  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    const val = e.target.value;
-    setUrl(val);
-    validateUrl(val);
-
-    if (inlineApiEditor) {
-      setInlineApiEditor({
-        ...inlineApiEditor,
-        url: val
-      });
-    }
-  };
 
   const handleSave = async () => {
-    const parsedTimeout = parseInt(timeout, 10);
-    const validTimeout = isNaN(parsedTimeout) ? 5000 : parsedTimeout;
+    const validTimeout = isValidTimeout ? Math.round(parsedTimeout) : currentConfig.timeout;
+    setApiNodeConfig(path, { method, responseType, timeout: validTimeout, view });
 
-    setApiNodeConfig(path, { method, responseType, timeout: validTimeout });
-
-    if (validateUrl(url) || url.trim() === '') {
-      if (url !== originalUrlRef.current) {
-        await updateNodeValue(path, url);
-      }
+    if (isValidUrl && url !== originalUrlRef.current) {
+      await updateNodeValue(path, trimmedUrl);
     }
     onClose();
   };
 
-  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSave();
-    } else if (e.key === 'Escape') {
-      e.preventDefault();
-      onClose();
+  // Clicking away saves (when valid). A ref keeps the listener on the latest values.
+  const outsideClickRef = useRef<() => void>(() => {});
+  outsideClickRef.current = () => {
+    if (canSave) handleSave();
+    else onClose();
+  };
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        outsideClickRef.current();
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside, { capture: true });
+    return () => document.removeEventListener('mousedown', handleClickOutside, { capture: true });
+  }, []);
+
+  useEffect(() => {
+    const textarea = textareaRef.current;
+    if (textarea) {
+      textarea.focus();
+      textarea.setSelectionRange(textarea.value.length, textarea.value.length);
+    }
+  }, []);
+
+  const handleChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setUrl(val);
+
+    // Mirror the draft onto the node so it previews the URL while typing
+    if (inlineApiEditor) {
+      setInlineApiEditor({ ...inlineApiEditor, url: val });
     }
   };
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      onClose();
+    } else if (e.key === 'Enter' && !e.shiftKey && (e.target as HTMLElement).tagName !== 'BUTTON') {
+      e.preventDefault();
+      if (canSave) handleSave();
+    }
+  };
+
+  const frameWidth = POPOVER_WIDTH + FRAME_PADDING * 2;
+  const chipBase = 'h-8 rounded-lg border text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40';
+  const chipIdle = 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200';
+  const labelClass = 'text-xs font-medium text-slate-600 dark:text-slate-300';
+
   return (
     <foreignObject
-      x={nodeX + (nodeWidth / 2) - 210}
-      y={nodeY + 24}
-      width={440}
-      height={310}
+      // Centered under the node, just below its bottom edge
+      x={nodeX - frameWidth / 2}
+      y={nodeY + nodeHeight / 2 + 4}
+      width={frameWidth}
+      height={540}
       className="overflow-visible"
     >
       <div
         ref={wrapperRef}
-        className="relative flex w-[420px] flex-col overflow-hidden rounded-lg border border-zinc-200/80 bg-white/95 text-zinc-900 shadow-[0_24px_60px_-28px_rgba(15,23,42,0.55),0_1px_0_rgba(255,255,255,0.75)_inset] backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100 dark:border-zinc-700/80 dark:bg-zinc-950/95 dark:text-zinc-100 dark:shadow-[0_24px_70px_-28px_rgba(0,0,0,0.95),0_1px_0_rgba(255,255,255,0.06)_inset]"
-        style={{ pointerEvents: 'auto' }}
+        role="dialog"
+        aria-label="Edit API request"
+        className="relative mx-auto mt-3 flex flex-col rounded-xl border border-slate-200 bg-white text-slate-900 shadow-2xl shadow-slate-900/15 animate-in fade-in slide-in-from-top-1 duration-150 dark:border-slate-800 dark:bg-[#0f172a] dark:text-slate-100 dark:shadow-black/50"
+        style={{ width: POPOVER_WIDTH, pointerEvents: 'auto' }}
+        onKeyDown={handleKeyDown}
         onMouseDown={(e) => e.stopPropagation()}
         onMouseUp={(e) => e.stopPropagation()}
         onMouseMove={(e) => e.stopPropagation()}
@@ -156,104 +190,181 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeWidth, onC
         onTouchMove={(e) => e.stopPropagation()}
         onTouchEnd={(e) => e.stopPropagation()}
       >
-        <div className="h-0.5 w-full bg-blue-500" />
+        {/* Arrow pointing up at the node */}
+        <span
+          aria-hidden
+          className="absolute -top-[7px] left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-tl-[3px] border-l border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0f172a]"
+        />
 
-        <div className="flex items-center justify-between border-b border-zinc-200/80 px-4 py-3 dark:border-white/10">
+        {/* Header */}
+        <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
           <div className="flex min-w-0 items-center gap-2.5">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300">
-              <Settings2 size={16} />
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+              <Globe size={16} />
             </div>
             <div className="min-w-0">
-              <div className="truncate text-[12px] font-bold uppercase tracking-[0.16em] text-zinc-800 dark:text-zinc-100">
-                Edit API Node
-              </div>
-              <div className="mt-0.5 truncate text-[10px] font-medium text-zinc-500 dark:text-zinc-500" title={path}>
+              <div className="text-sm font-semibold leading-tight text-slate-900 dark:text-slate-100">Edit API request</div>
+              <div className="mt-0.5 truncate font-mono text-[11px] text-slate-500 dark:text-slate-400" title={path}>
                 {path.replace(/^root\.?/, '') || 'root'}
               </div>
             </div>
           </div>
           <button
+            type="button"
             onClick={onClose}
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-zinc-200/80 bg-white/80 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:bg-white/[0.08] dark:hover:text-white"
-            title="Close"
+            aria-label="Close"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
           >
             <X size={16} />
           </button>
         </div>
 
-        <div className="flex flex-col gap-3 px-4 py-4">
+        {/* Body */}
+        <div className="flex flex-col gap-4 px-4 py-4">
           <div className="flex flex-col gap-1.5">
-            <label className={labelClass}>Endpoint URL</label>
+            <label htmlFor={`api-url-${path}`} className={labelClass}>Endpoint URL</label>
             <div className="relative">
-              <Link2 size={15} className="pointer-events-none absolute left-3 top-3.5 text-blue-500 dark:text-blue-300" />
+              <Link2 size={14} className="pointer-events-none absolute left-3 top-3 text-slate-400" />
               <textarea
+                id={`api-url-${path}`}
                 ref={textareaRef}
                 value={url}
                 onChange={handleChange}
-                onKeyDown={handleKeyDown}
-                className={`min-h-[76px] w-full resize-none rounded-md border bg-zinc-50 py-3 pl-9 pr-3 font-mono text-sm leading-5 text-zinc-900 outline-none transition-colors placeholder:text-zinc-400 focus:ring-2 dark:bg-black/35 dark:text-zinc-100 dark:placeholder:text-zinc-600 ${isValid || isEmpty ? 'border-zinc-300 focus:border-blue-500 focus:ring-blue-500/20 dark:border-zinc-700' : 'border-red-500/60 focus:border-red-500 focus:ring-red-500/20'}`}
-                rows={3}
+                rows={2}
+                spellCheck={false}
                 placeholder="https://api.example.com/data"
+                aria-invalid={!isValidUrl}
+                className={`w-full resize-none rounded-lg border bg-slate-50 py-2.5 pl-9 pr-3 font-mono text-xs leading-5 text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:ring-2 dark:bg-slate-950/60 dark:text-slate-100 dark:placeholder:text-slate-600 ${isValidUrl
+                  ? 'border-slate-200 focus:border-blue-500/60 focus:ring-blue-500/20 dark:border-slate-700'
+                  : 'border-red-500/60 focus:border-red-500 focus:ring-red-500/20'
+                  }`}
               />
             </div>
-            {!isValid && !isEmpty && (
-              <span className="px-0.5 text-[11px] font-medium text-red-600 dark:text-red-300">Invalid URL format</span>
+            {!isValidUrl && (
+              <span className="text-[11px] text-red-600 dark:text-red-400">Enter a full http:// or https:// URL</span>
             )}
           </div>
 
-          <div className="grid grid-cols-[1fr_1fr_1.2fr] gap-2.5">
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label className={labelClass}>Method</label>
-              <select
-                value={method}
-                onChange={e => setMethod(e.target.value)}
-                className={controlClass}
-              >
-                <option className={optionClass} value="GET">GET</option>
-                <option className={optionClass} value="POST">POST</option>
-                <option className={optionClass} value="PUT">PUT</option>
-                <option className={optionClass} value="PATCH">PATCH</option>
-                <option className={optionClass} value="DELETE">DELETE</option>
-              </select>
-            </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label className={labelClass}>Response</label>
-              <select
-                value={responseType}
-                onChange={e => setResponseType(e.target.value)}
-                className={controlClass}
-              >
-                <option className={optionClass} value="auto">Auto</option>
-                <option className={optionClass} value="json">JSON</option>
-                <option className={optionClass} value="text">Text</option>
-                <option className={optionClass} value="blob">Blob</option>
-              </select>
-            </div>
-            <div className="flex min-w-0 flex-col gap-1.5">
-              <label className={labelClass}>Timeout</label>
-              <input
-                type="text"
-                value={timeout}
-                onChange={e => setTimeoutVal(e.target.value)}
-                className={controlClass}
-                placeholder="5000"
-              />
+          <div className="flex flex-col gap-1.5">
+            <span className={labelClass}>Method</span>
+            <div role="radiogroup" aria-label="Method" className="grid grid-cols-5 gap-1.5">
+              {METHODS.map((m) => (
+                <button
+                  key={m}
+                  type="button"
+                  role="radio"
+                  aria-checked={method === m}
+                  onClick={() => setMethod(m)}
+                  className={`${chipBase} ${method === m ? METHOD_ACTIVE[m] : chipIdle}`}
+                >
+                  {m}
+                </button>
+              ))}
             </div>
           </div>
 
-          <div className="flex items-center justify-end gap-2 border-t border-zinc-200/80 pt-3 dark:border-white/10">
+          <div className="grid grid-cols-[1fr_112px] gap-3">
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <span className={labelClass}>Response</span>
+              <div role="radiogroup" aria-label="Response type" className="flex h-8 rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-950/60">
+                {RESPONSE_TYPES.map((type) => {
+                  const active = responseType === type.value;
+                  return (
+                    <button
+                      key={type.value}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => setResponseType(type.value)}
+                      className={`flex-1 rounded-md text-xs font-medium transition-all ${active
+                        ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                        }`}
+                    >
+                      {type.label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5">
+              <label htmlFor={`api-timeout-${path}`} className={labelClass}>Timeout</label>
+              <div className="relative">
+                <input
+                  id={`api-timeout-${path}`}
+                  type="number"
+                  inputMode="numeric"
+                  min={MIN_TIMEOUT}
+                  max={MAX_TIMEOUT}
+                  step={500}
+                  value={timeout}
+                  onChange={(e) => setTimeoutVal(e.target.value)}
+                  aria-invalid={!isValidTimeout}
+                  className={`h-8 w-full rounded-lg border bg-white pl-2.5 pr-8 text-xs font-medium tabular-nums text-slate-900 outline-none transition-colors [appearance:textfield] focus:ring-2 dark:bg-slate-900 dark:text-slate-100 [&::-webkit-inner-spin-button]:appearance-none [&::-webkit-outer-spin-button]:appearance-none ${isValidTimeout
+                    ? 'border-slate-200 focus:border-blue-500/60 focus:ring-blue-500/20 dark:border-slate-700'
+                    : 'border-red-500/60 focus:border-red-500 focus:ring-red-500/20'
+                    }`}
+                />
+                <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[11px] text-slate-400">ms</span>
+              </div>
+            </div>
+          </div>
+          {!isValidTimeout && (
+            <span className="-mt-2 text-[11px] text-red-600 dark:text-red-400">
+              Timeout must be between {MIN_TIMEOUT} and {MAX_TIMEOUT.toLocaleString()} ms
+            </span>
+          )}
+
+          <div className="flex flex-col gap-1.5">
+            <span className={labelClass}>Show response as</span>
+            <div role="radiogroup" aria-label="Show response as" className="flex h-8 rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-950/60">
+              {RESPONSE_VIEWS.map((option) => {
+                const active = view === option.value;
+                return (
+                  <button
+                    key={option.value}
+                    type="button"
+                    role="radio"
+                    aria-checked={active}
+                    title={option.hint}
+                    onClick={() => setView(option.value)}
+                    className={`flex-1 rounded-md text-xs font-medium transition-all ${active
+                      ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400'
+                      : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                      }`}
+                  >
+                    {option.label}
+                  </button>
+                );
+              })}
+            </div>
+            <span className="text-[11px] leading-snug text-slate-400 dark:text-slate-500">
+              {RESPONSE_VIEWS.find((option) => option.value === view)?.hint}
+            </span>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-between gap-2 rounded-b-xl border-t border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">
+          <span className="hidden text-[11px] text-slate-400 sm:inline">
+            <kbd className="font-sans font-semibold text-slate-500 dark:text-slate-400">Enter</kbd> save · <kbd className="font-sans font-semibold text-slate-500 dark:text-slate-400">Esc</kbd> cancel
+          </span>
+          <div className="ml-auto flex items-center gap-2">
             <button
+              type="button"
               onClick={onClose}
-              className="inline-flex h-9 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-600 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-300 dark:hover:bg-white/[0.08] dark:hover:text-white"
+              className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
             >
               Cancel
             </button>
             <button
+              type="button"
               onClick={handleSave}
-              className="inline-flex h-9 items-center justify-center gap-2 rounded-md bg-blue-600 px-4 text-sm font-bold text-white shadow-sm shadow-blue-500/20 transition-colors hover:bg-blue-500"
+              disabled={!canSave}
+              className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-300 disabled:text-slate-500 dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
             >
-              <Check size={15} />
-              Done
+              <Check size={14} />
+              Save
             </button>
           </div>
         </div>

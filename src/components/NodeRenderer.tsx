@@ -24,6 +24,7 @@ import {
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
 import { ApiNodeRenderer } from "./ApiNodeRenderer";
+import { ApiResponseNodeRenderer } from "./ApiResponseNodeRenderer";
 import { JsNodeRenderer } from "./JsNodeRenderer";
 import { JsNodeCodeRenderer } from "./JsNodeCodeRenderer";
 import { JsNodeTerminalRenderer } from "./JsNodeTerminalRenderer";
@@ -42,6 +43,7 @@ import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { SafeModelViewer } from "./SafeModelViewer";
 
 const MemoApiNodeRenderer = React.memo(ApiNodeRenderer);
+const MemoApiResponseNodeRenderer = React.memo(ApiResponseNodeRenderer);
 const MemoJsNodeRenderer = React.memo(JsNodeRenderer);
 const MemoJsNodeCodeRenderer = React.memo(JsNodeCodeRenderer);
 const MemoJsNodeTerminalRenderer = React.memo(JsNodeTerminalRenderer);
@@ -352,6 +354,8 @@ function NodeRenderer({
     data.type === "string" &&
     data.name &&
     String(data.name).endsWith("_api_node");
+  // Fetched API response shown as a single file-style node
+  const isApiResponse = data.type === "api_response";
   const isJsNode =
     data.type === "string" &&
     data.name &&
@@ -392,6 +396,7 @@ function NodeRenderer({
 
   const isSpecialNode =
     isApiNode ||
+    isApiResponse ||
     isJsCode ||
     isJsTerminal ||
     isTsCode ||
@@ -1084,6 +1089,8 @@ function NodeRenderer({
     ? customSize.width
     : isApiNode
       ? 340
+      : isApiResponse
+        ? 440
       : isTodoNode
         ? 385
         : isTransferNode
@@ -1127,6 +1134,8 @@ function NodeRenderer({
                 : 240
               : isApiNode
                 ? 140
+                : isApiResponse
+                  ? 360
                 : isJsNode || isTsNode || isPyNode
                   ? 380
                   : isJsCode || isTsCode || isPyCode
@@ -1921,6 +1930,7 @@ function NodeRenderer({
                 {data.value !== undefined &&
                   !isMedia &&
                   !isApiNode &&
+                  !isApiResponse &&
                   !isJsNode &&
                   !isJsCode &&
                   !isJsTerminal &&
@@ -2020,6 +2030,14 @@ function NodeRenderer({
                     nodeX={node.x}
                     nodeY={node.y}
                     nodeWidth={fWidth}
+                  />
+                )}
+                {isApiResponse && (
+                  <MemoApiResponseNodeRenderer
+                    path={data.id}
+                    data={data.value}
+                    width={fWidth}
+                    height={fHeight}
                   />
                 )}
                 {isJsNode && (

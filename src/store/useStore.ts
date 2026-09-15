@@ -2,7 +2,7 @@ import { create } from "zustand";
 import { startTransition } from "react";
 import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
-import { transformToTree } from "../utils/transformer";
+import { transformToTree, type ApiResponseView } from "../utils/transformer";
 
 import { sanitizeWorkspaceData } from "../utils/workspaceSanitizer";
 import SearchWorker from "../utils/searchWorker?worker";
@@ -222,6 +222,7 @@ export interface StoreState {
     x: number;
     y: number;
     width: number;
+    height?: number;
   } | null;
   setInlineApiEditor: (
     editor: {
@@ -231,15 +232,16 @@ export interface StoreState {
       x: number;
       y: number;
       width: number;
+      height?: number;
     } | null,
   ) => void;
   apiNodeConfig: Record<
     string,
-    { method: string; responseType: string; timeout: number }
+    { method: string; responseType: string; timeout: number; view?: ApiResponseView }
   >;
   setApiNodeConfig: (
     path: string,
-    config: { method: string; responseType: string; timeout: number },
+    config: { method: string; responseType: string; timeout: number; view?: ApiResponseView },
   ) => void;
   apiNodeResponses: Record<string, any>;
   apiNodeLoading: Record<string, boolean>;
@@ -797,7 +799,26 @@ export const useStore = create<StoreState>()(
         setInlineApiEditor: (editor) => set({ inlineApiEditor: editor }),
         apiNodeConfig: {},
         setApiNodeConfig: (path, config) =>
-          set((s) => ({ apiNodeConfig: { ...s.apiNodeConfig, [path]: config } })),
+          set((s) => {
+            const apiNodeConfig = { ...s.apiNodeConfig, [path]: config };
+            const viewChanged = (s.apiNodeConfig[path]?.view ?? "auto") !== (config.view ?? "auto");
+            // Switching between child nodes and the file view reshapes the tree
+            if (!viewChanged || s.parsedData === null || s.apiNodeResponses[path] === undefined) {
+              return { apiNodeConfig };
+            }
+            return {
+              apiNodeConfig,
+              treeData: transformToTree(
+                s.parsedData,
+                "root",
+                "root",
+                s.apiNodeResponses,
+                s.jsNodeResponses,
+                s.jsNodeVisibility,
+                apiNodeConfig,
+              ),
+            };
+          }),
 
         apiNodeResponses: {},
         apiNodeLoading: {},
@@ -813,6 +834,8 @@ export const useStore = create<StoreState>()(
                 "root",
                 res,
                 s.jsNodeResponses,
+                s.jsNodeVisibility,
+                s.apiNodeConfig,
               );
             }
             return { apiNodeResponses: res, treeData };
@@ -841,6 +864,7 @@ export const useStore = create<StoreState>()(
                 res,
                 s.jsNodeResponses,
                 s.jsNodeVisibility,
+                s.apiNodeConfig,
               );
             }
             return {
@@ -931,6 +955,7 @@ export const useStore = create<StoreState>()(
                 s.apiNodeResponses,
                 res,
                 s.jsNodeVisibility,
+                s.apiNodeConfig,
               );
             }
             return { jsNodeResponses: res, treeData };
@@ -981,6 +1006,7 @@ export const useStore = create<StoreState>()(
                 s.apiNodeResponses,
                 s.jsNodeResponses,
                 nextVis,
+                s.apiNodeConfig,
               );
             }
             return { jsNodeVisibility: nextVis, treeData };
@@ -1011,6 +1037,7 @@ export const useStore = create<StoreState>()(
                 s.apiNodeResponses,
                 res,
                 s.jsNodeVisibility,
+                s.apiNodeConfig,
               );
             }
             return {
@@ -1050,6 +1077,7 @@ export const useStore = create<StoreState>()(
             apiNodeResponses,
             jsNodeResponses,
             jsNodeVisibility,
+            apiNodeConfig,
             codeFormat,
           } = get();
           const { data, error } = parseInput(code);
@@ -1062,6 +1090,7 @@ export const useStore = create<StoreState>()(
               apiNodeResponses,
               jsNodeResponses,
               jsNodeVisibility,
+              apiNodeConfig,
             );
           }
 

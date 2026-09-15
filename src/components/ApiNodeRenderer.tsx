@@ -1,18 +1,20 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
+import { resolveApiResponseView } from '../utils/transformer';
 import {
   AlertCircle,
-  CheckCircle2,
   ChevronDown,
   ChevronRight,
-  Edit3,
+  FileJson,
+  Globe,
+  ListTree,
   Loader2,
-  PlayCircle,
+  Pencil,
+  Play,
   RefreshCw,
-  Server,
-  XCircle,
-  type LucideIcon,
+  Trash2,
+  X,
 } from 'lucide-react';
 
 interface ApiNodeRendererProps {
@@ -27,21 +29,20 @@ interface ApiNodeRendererProps {
 type StatusMeta = {
   label: string;
   title: string;
-  icon: LucideIcon;
-  className: string;
-  iconClassName?: string;
+  dotClass: string;
+  textClass: string;
 };
 
 const methodClassMap: Record<string, string> = {
-  GET: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
-  POST: 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300',
-  PUT: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300',
-  PATCH: 'border-violet-500/25 bg-violet-500/10 text-violet-600 dark:text-violet-300',
-  DELETE: 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-300',
+  GET: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
+  POST: 'bg-blue-500/10 text-blue-600 dark:text-blue-400',
+  PUT: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+  PATCH: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+  DELETE: 'bg-red-500/10 text-red-600 dark:text-red-400',
 };
 
 const getMethodClass = (method: string) =>
-  methodClassMap[method] || 'border-zinc-400/30 bg-zinc-500/10 text-zinc-600 dark:text-zinc-300';
+  methodClassMap[method] || 'bg-slate-500/10 text-slate-600 dark:text-slate-300';
 
 const formatResponseType = (responseType: string) =>
   responseType === 'auto' ? 'Auto' : responseType.toUpperCase();
@@ -56,7 +57,7 @@ const formatTimeout = (timeout: number) => {
 
 const getEndpointHost = (value: string) => {
   const trimmed = value.trim();
-  if (!trimmed) return 'No endpoint';
+  if (!trimmed) return 'No endpoint yet';
 
   try {
     return new URL(trimmed).host || 'Endpoint';
@@ -76,10 +77,12 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
   const inlineApiEditor = useStore((state) => state.inlineApiEditor);
   const setInlineApiEditor = useStore((state) => state.setInlineApiEditor);
   const apiNodeConfig = useStore((state) => state.apiNodeConfig);
+  const setApiNodeConfig = useStore((state) => state.setApiNodeConfig);
 
   const [useProxy, setUseProxy] = useState(false);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
   const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   // Use the reactive global URL if we're currently editing this node.
   const isEditing = inlineApiEditor?.path === path;
@@ -285,44 +288,42 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     setUseProxy(false);
   };
 
+  // Which way the response is currently attached (child nodes or a single file node)
+  const currentView = hasData ? resolveApiResponseView(apiNodeResponses[path], config.view) : null;
+  const toggleResponseView = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setApiNodeConfig(path, { ...config, view: currentView === 'file' ? 'nodes' : 'file' });
+  };
+
+  const openEditor = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setInlineApiEditor({
+      url: currentUrl,
+      path,
+      nodeId,
+      x: nodeX,
+      y: nodeY,
+      width: nodeWidth,
+      // The node wrapper adds 6px padding above and below the card
+      height: (cardRef.current?.offsetHeight ?? 128) + 12,
+    });
+  };
+
   const endpointHost = getEndpointHost(currentUrl);
   const responseLabel = formatResponseType(config.responseType);
   const timeoutLabel = formatTimeout(config.timeout);
 
   const statusMeta: StatusMeta = isLoading
-    ? {
-        label: 'Fetching',
-        title: 'Request in progress',
-        icon: Loader2,
-        iconClassName: 'animate-spin',
-        className: 'border-amber-500/25 bg-amber-500/10 text-amber-600 dark:text-amber-300',
-      }
+    ? { label: 'Fetching…', title: 'Request in progress', dotClass: 'bg-amber-500 animate-pulse', textClass: 'text-amber-600 dark:text-amber-400' }
     : error
-      ? {
-          label: 'Failed',
-          title: 'Open API error details',
-          icon: AlertCircle,
-          className: 'border-red-500/25 bg-red-500/10 text-red-600 dark:text-red-300',
-        }
+      ? { label: 'Failed', title: 'Show error details', dotClass: 'bg-red-500', textClass: 'text-red-600 dark:text-red-400' }
       : hasData
-        ? {
-            label: 'Connected',
-            title: 'API data loaded',
-            icon: CheckCircle2,
-            className: 'border-emerald-500/25 bg-emerald-500/10 text-emerald-600 dark:text-emerald-300',
-          }
-        : {
-            label: canFetch ? 'Ready' : 'No URL',
-            title: canFetch ? 'Ready to fetch data' : 'Add an endpoint URL',
-            icon: PlayCircle,
-            className: canFetch
-              ? 'border-blue-500/25 bg-blue-500/10 text-blue-600 dark:text-blue-300'
-              : 'border-zinc-300 bg-zinc-100 text-zinc-500 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-400',
-          };
+        ? { label: 'Connected', title: 'API data loaded', dotClass: 'bg-emerald-500', textClass: 'text-emerald-600 dark:text-emerald-400' }
+        : canFetch
+          ? { label: 'Ready', title: 'Ready to fetch data', dotClass: 'bg-blue-500', textClass: 'text-blue-600 dark:text-blue-400' }
+          : { label: 'No URL', title: 'Add an endpoint URL', dotClass: 'bg-slate-400 dark:bg-slate-600', textClass: 'text-slate-500 dark:text-slate-400' };
 
-  const StatusIcon = statusMeta.icon;
-  const iconButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-zinc-200/80 bg-white/85 text-zinc-500 shadow-sm transition-colors hover:border-zinc-300 hover:bg-zinc-100 hover:text-zinc-900 disabled:cursor-not-allowed disabled:opacity-50 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-400 dark:hover:border-white/20 dark:hover:bg-white/[0.08] dark:hover:text-zinc-100';
-  const statusPillClass = `inline-flex h-7 max-w-[138px] items-center gap-1.5 rounded-md border px-2 text-[10px] font-semibold ${statusMeta.className}`;
+  const iconButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
   const openErrorPopup = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -330,91 +331,105 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     setShowAdvancedDiagnostics(false);
   };
 
+  const statusContent = (
+    <>
+      <span className={`h-2 w-2 shrink-0 rounded-full ${statusMeta.dotClass}`} />
+      <span className={`font-medium ${statusMeta.textClass}`}>{statusMeta.label}</span>
+      {error && !isLoading && <ChevronRight size={12} className={statusMeta.textClass} />}
+    </>
+  );
+
   return (
     <div className="flex h-full w-full min-w-0 pointer-events-auto">
-      <div className="relative flex h-full min-h-[128px] w-full max-w-[340px] flex-col overflow-hidden rounded-lg border border-zinc-200/80 bg-white/95 text-zinc-900 shadow-[0_14px_36px_-24px_rgba(24,24,27,0.65),0_1px_0_rgba(255,255,255,0.75)_inset] backdrop-blur-md dark:border-zinc-700/80 dark:bg-zinc-950/95 dark:text-zinc-100 dark:shadow-[0_18px_42px_-26px_rgba(0,0,0,0.9),0_1px_0_rgba(255,255,255,0.06)_inset]">
-        <div className={`h-0.5 w-full ${error ? 'bg-red-500' : hasData ? 'bg-emerald-500' : isLoading ? 'bg-amber-500' : 'bg-blue-500'}`} />
-
-        <div className="flex items-start justify-between gap-2 px-3 pt-2.5">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-blue-500/20 bg-blue-500/10 text-blue-600 dark:text-blue-300">
-              <Server size={15} className={isLoading ? 'animate-pulse' : ''} />
+      <div
+        ref={cardRef}
+        className={`relative flex h-full min-h-[128px] w-full max-w-[340px] flex-col overflow-hidden rounded-xl border bg-white text-slate-900 shadow-sm transition-colors dark:bg-[#0f172a] dark:text-slate-100 ${isEditing
+          ? 'border-blue-500/60 ring-2 ring-blue-500/20'
+          : 'border-slate-200 dark:border-slate-800'
+          }`}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2 px-3 pt-3">
+          <div className="flex min-w-0 items-center gap-2.5">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-500">
+              {isLoading ? <Loader2 size={16} className="animate-spin" /> : <Globe size={16} />}
             </div>
             <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-1.5">
-                <span className="truncate text-[11px] font-bold uppercase tracking-[0.14em] text-zinc-700 dark:text-zinc-200">
-                  API Endpoint
-                </span>
-                <span className={`shrink-0 rounded-md border px-1.5 py-0.5 text-[9px] font-bold leading-none ${getMethodClass(config.method)}`}>
+              <div className="text-[13px] font-semibold leading-tight text-slate-900 dark:text-slate-100">API request</div>
+              <div className="mt-1 flex min-w-0 items-center gap-1.5">
+                <span className={`shrink-0 rounded px-1.5 py-px text-[10px] font-semibold ${getMethodClass(config.method)}`}>
                   {config.method}
                 </span>
-              </div>
-              <div className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[9px] font-medium uppercase tracking-[0.08em] text-zinc-500 dark:text-zinc-500">
-                <span className="truncate">{responseLabel}</span>
-                <span className="text-zinc-300 dark:text-zinc-700">|</span>
-                <span className="shrink-0">{timeoutLabel}</span>
+                <span className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={endpointHost}>
+                  {endpointHost}
+                </span>
               </div>
             </div>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1">
+          <button
+            onClick={openEditor}
+            className={`${iconButtonClass} ${isEditing ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : ''}`}
+            title="Edit request"
+            aria-label="Edit request"
+          >
+            <Pencil size={14} />
+          </button>
+        </div>
+
+        {/* URL */}
+        {canFetch ? (
+          <div
+            className="mx-3 mt-2.5 truncate rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-300"
+            title={currentUrl}
+          >
+            {currentUrl}
+          </div>
+        ) : (
+          <button
+            onClick={openEditor}
+            className="mx-3 mt-2.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-left text-[11px] text-slate-500 transition-colors hover:border-blue-500/60 hover:text-blue-600 dark:border-slate-700 dark:text-slate-400 dark:hover:text-blue-400"
+          >
+            + Add an endpoint URL
+          </button>
+        )}
+
+        {/* Footer */}
+        <div className="mt-auto flex items-center justify-between gap-2 px-3 pb-2.5 pt-2.5">
+          <div className="flex min-w-0 items-center gap-2 text-[11px]">
+            {error && !isLoading ? (
+              <button
+                onClick={openErrorPopup}
+                className="-ml-1.5 flex items-center gap-1.5 rounded-md px-1.5 py-0.5 transition-colors hover:bg-red-500/10"
+                title={statusMeta.title}
+              >
+                {statusContent}
+              </button>
+            ) : (
+              <span className="flex items-center gap-1.5" title={statusMeta.title}>
+                {statusContent}
+              </span>
+            )}
+            <span className="truncate text-slate-400 dark:text-slate-500">
+              {responseLabel} · {timeoutLabel}
+            </span>
             {useProxy && (
-              <span className="rounded-md border border-orange-500/25 bg-orange-500/10 px-1.5 py-1 text-[9px] font-bold uppercase tracking-[0.08em] text-orange-600 dark:text-orange-300">
+              <span className="shrink-0 rounded bg-orange-500/10 px-1.5 py-px text-[10px] font-medium text-orange-600 dark:text-orange-400" title="Fetched through the proxy">
                 Proxy
               </span>
             )}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setInlineApiEditor({ url: currentUrl, path, nodeId, x: nodeX, y: nodeY, width: nodeWidth });
-              }}
-              className={iconButtonClass}
-              title="Edit API URL"
-            >
-              <Edit3 size={13} />
-            </button>
           </div>
-        </div>
 
-        <div className="mx-3 mt-2 flex min-h-[32px] min-w-0 items-center gap-2 rounded-md border border-zinc-200 bg-zinc-50 px-2.5 py-1.5 shadow-inner dark:border-zinc-800 dark:bg-black/30">
-          <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500 shadow-[0_0_0_3px_rgba(59,130,246,0.12)]" />
-          <div className="min-w-0 leading-tight">
-            <div className="truncate text-[10px] font-semibold text-zinc-600 dark:text-zinc-300" title={endpointHost}>
-              {endpointHost}
-            </div>
-            <div className="truncate font-mono text-[10px] text-zinc-500 dark:text-zinc-500" title={currentUrl}>
-              {currentUrl || 'https://api.example.com/data'}
-            </div>
-          </div>
-        </div>
-
-        <div className="mt-auto flex items-center justify-between gap-2 border-t border-zinc-200/80 px-3 py-2 dark:border-white/10">
-          {error && !isLoading ? (
-            <button
-              onClick={openErrorPopup}
-              className={`${statusPillClass} transition-colors hover:bg-red-500/15`}
-              title={statusMeta.title}
-            >
-              <StatusIcon size={12} className={statusMeta.iconClassName} />
-              <span className="truncate">{statusMeta.label}</span>
-            </button>
-          ) : (
-            <div className={statusPillClass} title={statusMeta.title}>
-              <StatusIcon size={12} className={statusMeta.iconClassName} />
-              <span className="truncate">{statusMeta.label}</span>
-            </div>
-          )}
-
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-0.5">
             {!hasData && !isLoading && !error && (
               <button
                 onClick={(e) => { e.stopPropagation(); handleFetch(false); }}
                 disabled={!canFetch}
-                className="inline-flex h-7 items-center gap-1.5 rounded-md bg-blue-600 px-2.5 text-[11px] font-bold text-white shadow-sm shadow-blue-500/20 transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-zinc-300 disabled:text-zinc-500 disabled:shadow-none dark:disabled:bg-zinc-800 dark:disabled:text-zinc-500"
+                className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-blue-600 px-2.5 text-[11px] font-semibold text-white shadow-sm transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none dark:disabled:bg-slate-800 dark:disabled:text-slate-500"
                 title={canFetch ? 'Fetch data' : 'Add an API URL first'}
               >
-                <PlayCircle size={13} />
-                Fetch Data
+                <Play size={12} className="fill-current" />
+                Fetch
               </button>
             )}
 
@@ -423,26 +438,37 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 onClick={(e) => { e.stopPropagation(); handleFetch(error.requestInfo.proxyUsed); }}
                 className={iconButtonClass}
                 title="Retry"
+                aria-label="Retry"
               >
-                <RefreshCw size={13} />
+                <RefreshCw size={14} />
               </button>
             )}
 
             {hasData && !isLoading && !error && (
               <>
                 <button
+                  onClick={toggleResponseView}
+                  className={iconButtonClass}
+                  title={currentView === 'file' ? 'Show response as child nodes' : 'Show response as a file'}
+                  aria-label={currentView === 'file' ? 'Show response as child nodes' : 'Show response as a file'}
+                >
+                  {currentView === 'file' ? <ListTree size={14} /> : <FileJson size={14} />}
+                </button>
+                <button
                   onClick={(e) => { e.stopPropagation(); handleFetch(useProxy); }}
                   className={iconButtonClass}
                   title="Refresh"
+                  aria-label="Refresh"
                 >
-                  <RefreshCw size={13} />
+                  <RefreshCw size={14} />
                 </button>
                 <button
                   onClick={(e) => { e.stopPropagation(); clearData(); }}
-                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-red-500/20 bg-red-500/10 text-red-600 shadow-sm transition-colors hover:bg-red-500/15 dark:text-red-300"
+                  className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-red-500/10 hover:text-red-600 dark:text-slate-500 dark:hover:text-red-400"
                   title="Clear fetched data"
+                  aria-label="Clear fetched data"
                 >
-                  <XCircle size={13} />
+                  <Trash2 size={14} />
                 </button>
               </>
             )}
@@ -451,94 +477,97 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
         {error && !isLoading && showErrorPopup && createPortal(
           <div
-            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/55 p-4 pointer-events-auto"
+            className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/50 p-4 backdrop-blur-sm pointer-events-auto"
             onClick={(e) => { e.stopPropagation(); setShowErrorPopup(false); }}
           >
             <div
-              className="flex w-[420px] max-w-[92vw] flex-col gap-4 rounded-lg border border-zinc-200 bg-white p-5 font-sans text-zinc-900 shadow-2xl pointer-events-auto dark:border-zinc-700/80 dark:bg-zinc-950 dark:text-zinc-100"
+              role="dialog"
+              aria-label="API fetch error"
+              className="flex w-[420px] max-w-[92vw] flex-col overflow-hidden rounded-xl border border-slate-200 bg-white font-sans text-slate-900 shadow-2xl pointer-events-auto dark:border-slate-800 dark:bg-[#0f172a] dark:text-slate-100"
               onClick={(e) => e.stopPropagation()}
             >
-              <div className="flex items-center justify-between border-b border-zinc-200 pb-3 dark:border-white/10">
-                <h3 className="flex items-center gap-2 text-base font-bold">
-                  <AlertCircle size={18} className="text-red-500" />
-                  API Fetch Error
-                </h3>
+              <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-red-500/10 text-red-500">
+                    <AlertCircle size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-sm font-semibold leading-tight">Request failed</h3>
+                    <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                      <span className="font-medium text-red-600 dark:text-red-400">{error.type}</span>
+                      {error.code && (
+                        <span className="rounded bg-slate-100 px-1.5 py-px font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                          {error.code}
+                        </span>
+                      )}
+                    </p>
+                  </div>
+                </div>
                 <button
                   onClick={(e) => { e.stopPropagation(); setShowErrorPopup(false); }}
-                  className="rounded-md p-1 text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900 dark:text-zinc-400 dark:hover:bg-white/10 dark:hover:text-white"
+                  className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:hover:bg-slate-800 dark:hover:text-slate-200"
                   title="Close"
+                  aria-label="Close"
                 >
-                  <XCircle size={18} />
+                  <X size={16} />
                 </button>
               </div>
 
-              <div className="grid grid-cols-[72px_1fr] gap-x-3 gap-y-2 text-sm">
-                <span className="text-zinc-500 dark:text-zinc-400">Type</span>
-                <span className="font-semibold text-red-600 dark:text-red-300">{error.type}</span>
+              <div className="flex flex-col gap-3 px-4 py-4">
+                <div className="whitespace-pre-wrap rounded-lg border border-slate-200 bg-slate-50 p-3 text-[13px] leading-relaxed text-slate-700 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-200">
+                  {error.userMessage}
+                </div>
 
-                {error.code && (
-                  <>
-                    <span className="text-zinc-500 dark:text-zinc-400">Code</span>
-                    <span className="w-fit rounded-md bg-zinc-100 px-1.5 py-0.5 font-mono text-xs text-zinc-700 dark:bg-white/10 dark:text-zinc-200">
-                      {error.code}
-                    </span>
-                  </>
-                )}
+                <div>
+                  <button
+                    onClick={() => setShowAdvancedDiagnostics(!showAdvancedDiagnostics)}
+                    className="flex items-center gap-1 text-xs font-medium text-slate-500 transition-colors hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                  >
+                    {showAdvancedDiagnostics ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                    Technical details
+                  </button>
+
+                  {showAdvancedDiagnostics && (
+                    <div className="custom-scrollbar mt-2 max-h-[250px] overflow-y-auto break-all rounded-lg border border-slate-800 bg-slate-950 p-3 font-mono text-xs text-slate-200">
+                      <div className="mb-1 font-semibold text-blue-300">Request URL</div>
+                      <div className="mb-3 border-l-2 border-slate-700 pl-2">{error.requestInfo.url}</div>
+
+                      <div className="mb-1 font-semibold text-blue-300">Method</div>
+                      <div className="mb-3 border-l-2 border-slate-700 pl-2">{error.requestInfo.method}</div>
+
+                      <div className="mb-1 font-semibold text-blue-300">Proxy used</div>
+                      <div className="mb-3 border-l-2 border-slate-700 pl-2">{error.requestInfo.proxyUsed ? 'Yes' : 'No'}</div>
+
+                      <div className="mb-1 font-semibold text-blue-300">Raw message</div>
+                      <div className="mb-3 border-l-2 border-slate-700 pl-2">{error.message}</div>
+
+                      {error.details && (
+                        <>
+                          <div className="mb-1 font-semibold text-violet-300">Diagnostics / stack</div>
+                          <div className="whitespace-pre-wrap border-l-2 border-slate-700 pl-2 text-[10px] opacity-85">{error.details}</div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
               </div>
 
-              <div className="rounded-md border border-zinc-200 bg-zinc-50 p-3 text-sm leading-relaxed whitespace-pre-wrap text-zinc-700 shadow-inner dark:border-zinc-800 dark:bg-black/30 dark:text-zinc-200">
-                {error.userMessage}
-              </div>
-
-              <div className="flex gap-2 border-t border-zinc-200 pt-3 dark:border-white/10">
-                <button
-                  onClick={() => { handleFetch(error.requestInfo.proxyUsed); setShowErrorPopup(false); }}
-                  className="flex h-9 flex-1 items-center justify-center gap-2 rounded-md bg-blue-600 px-3 text-sm font-semibold text-white shadow-sm shadow-blue-500/20 transition-colors hover:bg-blue-500"
-                >
-                  <RefreshCw size={14} />
-                  Retry
-                </button>
+              <div className="flex items-center justify-end gap-2 border-t border-slate-200 bg-slate-50 px-4 py-2.5 dark:border-slate-800 dark:bg-slate-950/40">
                 {!error.requestInfo.proxyUsed && (
                   <button
                     onClick={() => { handleFetch(true); setShowErrorPopup(false); }}
-                    className="flex h-9 flex-1 items-center justify-center rounded-md border border-zinc-200 bg-white px-3 text-sm font-semibold text-zinc-700 transition-colors hover:bg-zinc-100 dark:border-white/10 dark:bg-white/[0.04] dark:text-zinc-200 dark:hover:bg-white/[0.08]"
+                    className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
                   >
-                    Retry With Proxy
+                    Retry with proxy
                   </button>
                 )}
-              </div>
-
-              <div>
                 <button
-                  onClick={() => setShowAdvancedDiagnostics(!showAdvancedDiagnostics)}
-                  className="flex items-center gap-1.5 text-sm font-semibold text-zinc-500 transition-colors hover:text-zinc-800 dark:text-zinc-400 dark:hover:text-zinc-200"
+                  onClick={() => { handleFetch(error.requestInfo.proxyUsed); setShowErrorPopup(false); }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-500"
                 >
-                  {showAdvancedDiagnostics ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
-                  Technical Details
+                  <RefreshCw size={13} />
+                  Retry
                 </button>
-
-                {showAdvancedDiagnostics && (
-                  <div className="mt-3 max-h-[250px] overflow-y-auto rounded-md border border-zinc-200 bg-zinc-950 p-3 font-mono text-xs text-zinc-200 shadow-inner custom-scrollbar break-all">
-                    <div className="mb-1 font-semibold text-blue-300">Request URL</div>
-                    <div className="mb-3 border-l-2 border-zinc-700 pl-2">{error.requestInfo.url}</div>
-
-                    <div className="mb-1 font-semibold text-blue-300">Method</div>
-                    <div className="mb-3 border-l-2 border-zinc-700 pl-2">{error.requestInfo.method}</div>
-
-                    <div className="mb-1 font-semibold text-blue-300">Proxy Used</div>
-                    <div className="mb-3 border-l-2 border-zinc-700 pl-2">{error.requestInfo.proxyUsed ? 'Yes' : 'No'}</div>
-
-                    <div className="mb-1 font-semibold text-blue-300">Raw Message</div>
-                    <div className="mb-3 border-l-2 border-zinc-700 pl-2">{error.message}</div>
-
-                    {error.details && (
-                      <>
-                        <div className="mb-1 font-semibold text-violet-300">Diagnostics / Stack</div>
-                        <div className="border-l-2 border-zinc-700 pl-2 text-[10px] opacity-85 whitespace-pre-wrap">{error.details}</div>
-                      </>
-                    )}
-                  </div>
-                )}
               </div>
             </div>
           </div>,
@@ -548,5 +577,3 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     </div>
   );
 }
-
-

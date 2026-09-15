@@ -1,12 +1,89 @@
-import React, { useLayoutEffect, useRef } from "react";
+import React, { useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useStore } from "../store/useStore";
-import { Copy, Edit2, Trash2, Eye, Network, TableProperties, Database, FileText, Info, Type } from "lucide-react";
+import {
+  Copy, Edit2, Trash2, Eye, Network, TableProperties, Database, FileText, Info, Type,
+  Plus, ChevronRight, Braces, Brackets, Hash, ToggleLeft, CircleSlash,
+  Globe, FileCode, Code, Terminal, ListTodo, Sigma, Search, Share2, Image as ImageIcon,
+} from "lucide-react";
 import { getDynamicActions } from "../utils/contextActions";
 import { isProbableCsv, parseCsv, generateSchemaFromData } from "../utils/dataFormats";
 import { safeStringify } from "../utils/safeStringify";
 import { mediaCache } from "./SmartMediaRenderer";
 import { getMediaType } from "./NodeRenderer";
+
+/** Empty values a user can insert straight from the menu */
+const EMPTY_CHILD_TYPES = [
+  { type: "object", label: "Object", hint: "{}", icon: Braces },
+  { type: "array", label: "Array", hint: "[]", icon: Brackets },
+  { type: "string", label: "String", hint: '""', icon: Type },
+  { type: "number", label: "Number", hint: "0", icon: Hash },
+  { type: "boolean", label: "Boolean", hint: "false", icon: ToggleLeft },
+  { type: "null", label: "Null", hint: "null", icon: CircleSlash },
+] as const;
+
+/** Special nodes are keys with a suffix plus a starter value (same defaults as the file explorer) */
+const SPECIAL_NODE_TYPES = [
+  { suffix: "api_node", label: "API", icon: Globe, iconClass: "text-amber-500", type: "string", value: "https://jsonplaceholder.typicode.com/todos/1" },
+  { suffix: "js_node", label: "JS", icon: FileCode, iconClass: "text-yellow-500", type: "string", value: "// JS execution starts here!\n" },
+  { suffix: "ts_node", label: "TS", icon: Code, iconClass: "text-blue-500", type: "string", value: "const msg: string = 'TS execution starts here!';\n" },
+  { suffix: "py_node", label: "Python", icon: Terminal, iconClass: "text-emerald-500", type: "string", value: "print('Python execution starts here!')" },
+  { suffix: "todo_node", label: "Todo", icon: ListTodo, iconClass: "text-purple-500", type: "string", value: JSON.stringify({ title: "Tasks", tasks: [] }) },
+  { suffix: "math_node", label: "Math", icon: Sigma, iconClass: "text-rose-500", type: "string", value: "f(x) = sin(x)" },
+  { suffix: "search_node", label: "Search", icon: Search, iconClass: "text-sky-500", type: "object", value: "{}" },
+  { suffix: "transfer_node", label: "Transfer", icon: Share2, iconClass: "text-indigo-500", type: "string", value: "" },
+  { suffix: "image_node", label: "Image", icon: ImageIcon, iconClass: "text-cyan-500", type: "string", value: "" },
+] as const;
+
+const JSON_NODE_TYPES = new Set(["object", "array", "string", "number", "boolean", "null"]);
+
+const splitNodePath = (path: string) =>
+  path
+    .split(/(?=\[)|(?=\.)/)
+    .filter(Boolean)
+    .map((part) => (part.startsWith(".") ? part.substring(1) : part.replace(/[\[\]"]/g, "")));
+
+/** Reads the current value at a node path, including paths inside fetched API responses */
+const getValueAtNodePath = (path: string) => {
+  const { parsedData, apiNodeResponses } = useStore.getState();
+  if (path === "root") return parsedData;
+
+  const fetchedMarker = ".__fetched";
+  const markerIndex = path.indexOf(fetchedMarker);
+  let current: any = markerIndex >= 0 ? apiNodeResponses[path.substring(0, markerIndex)] : parsedData;
+  const relativePath = markerIndex >= 0 ? path.substring(markerIndex + fetchedMarker.length) : path.replace(/^root/, "");
+
+  for (const part of splitNodePath(relativePath)) {
+    if (current === null || typeof current !== "object") return undefined;
+    current = current[part];
+  }
+  return current;
+};
+
+/** "root.a.b" → "root.a", "root.list[2]" → "root.list" */
+const getParentNodePath = (path: string) => {
+  if (path === "root") return null;
+  const match = path.match(/^(.+?)(\.[^.[\]]+|\[[^\]]*\])$/);
+  return match ? match[1] : null;
+};
+
+const getUniqueKey = (target: Record<string, unknown>, type: string) => {
+  const base = `new_${type}`;
+  // Special node suffixes must stay at the end of the key: new_api_node, new_2_api_node
+  const suffixMatch = type.match(/^(.*)_(\w+_node)$/) || (type.endsWith("_node") ? [type, "", type] : null);
+  if (suffixMatch) {
+    const suffix = suffixMatch[2];
+    const special = `new_${suffix}`;
+    if (!(special in target)) return special;
+    let n = 2;
+    while (`new_${n}_${suffix}` in target) n++;
+    return `new_${n}_${suffix}`;
+  }
+  if (!(base in target)) return base;
+  let counter = 2;
+  while (`${base}_${counter}` in target) counter++;
+  return `${base}_${counter}`;
+};
 
 export interface NodeContextMenuProps {
   contextMenu: { x: number; y: number; node: any };
@@ -33,6 +110,60 @@ export function NodeContextMenu({
   const manuallyRenderedNodes = useStore((s) => s.manuallyRenderedNodes);
   const showMediaPreview = useStore((s) => s.showMediaPreview);
   const knownDataUrls = useStore((s) => s.knownDataUrls);
+  const expandNode = useStore((s) => s.expandNode);
+  const setSelectedNodeId = useStore((s) => s.setSelectedNodeId);
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [addMode, setAddMode] = useState<"child" | "sibling">("child");
+
+  // Two places a new node can go: inside this node (objects/arrays) or next to it (its parent)
+  const menuNode = contextMenu?.node;
+  const isJsonNode = !!menuNode && JSON_NODE_TYPES.has(menuNode.type) && !String(menuNode.path).includes(".__response");
+  const isContainerNode = isJsonNode && (menuNode.type === "object" || menuNode.type === "array");
+
+  const childTargetPath: string | null = isContainerNode ? menuNode.path : null;
+  const childTargetValue = childTargetPath ? getValueAtNodePath(childTargetPath) : undefined;
+  const canAddChild = !!childTargetPath && childTargetValue !== null && typeof childTargetValue === "object";
+
+  const siblingTargetPath: string | null = isJsonNode ? getParentNodePath(menuNode.path) : null;
+  const siblingTargetValue = siblingTargetPath ? getValueAtNodePath(siblingTargetPath) : undefined;
+  const canAddSibling = !!siblingTargetPath && siblingTargetValue !== null && typeof siblingTargetValue === "object";
+
+  const canAdd = canAddChild || canAddSibling;
+  const effectiveMode: "child" | "sibling" =
+    addMode === "child" ? (canAddChild ? "child" : "sibling") : (canAddSibling ? "sibling" : "child");
+  const addTargetPath = effectiveMode === "child" ? childTargetPath : siblingTargetPath;
+  const addTargetValue = effectiveMode === "child" ? childTargetValue : siblingTargetValue;
+  const addTargetIsArray = Array.isArray(addTargetValue);
+  const targetName = effectiveMode === "child"
+    ? String(menuNode?.name ?? "")
+    : String(siblingTargetPath === "root" ? "root" : (siblingTargetPath ?? "").split(/[.[\]"]/).filter(Boolean).pop() ?? "");
+
+  // Start collapsed each time the menu opens, defaulting to "child" when the node can hold children
+  useLayoutEffect(() => {
+    setIsAddOpen(false);
+    setAddMode(isContainerNode ? "child" : "sibling");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextMenu?.node?.path, contextMenu?.x, contextMenu?.y]);
+
+  /** Inserts a value under the current target with a generated key (objects) or at the end (arrays) */
+  const insertNode = (keyType: string, valueStr: string, typeOverride: string) => {
+    if (!addTargetPath || addTargetValue === null || typeof addTargetValue !== "object") return;
+
+    let newNodePath: string;
+    if (Array.isArray(addTargetValue)) {
+      newNodePath = `${addTargetPath}[${addTargetValue.length}]`;
+      applyJsonChange(addTargetPath, "add", valueStr, undefined, typeOverride);
+    } else {
+      const key = getUniqueKey(addTargetValue, keyType);
+      newNodePath = `${addTargetPath}.${key}`;
+      applyJsonChange(addTargetPath, "add", valueStr, key, typeOverride);
+    }
+
+    // Make sure the new node is visible and highlighted
+    expandNode(addTargetPath);
+    setSelectedNodeId(newNodePath);
+    setContextMenu(null);
+  };
 
   useLayoutEffect(() => {
     if (contextMenu && contextMenuRef.current) {
@@ -58,7 +189,8 @@ export function NodeContextMenu({
         contextMenuRef.current.style.top = `${newY}px`;
       }
     }
-  }, [contextMenu]);
+    // Re-check when the add section expands, since the menu gets taller
+  }, [contextMenu, isAddOpen]);
 
   if (!contextMenu) return null;
 
@@ -66,7 +198,7 @@ export function NodeContextMenu({
           <div className={appTheme}>
             <div
               ref={contextMenuRef}
-              className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-hidden min-w-[220px] no-export"
+              className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-x-hidden overflow-y-auto custom-scrollbar max-h-[calc(100vh-20px)] min-w-[220px] max-w-[260px] no-export"
               style={{ top: contextMenu.y, left: contextMenu.x }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
@@ -665,24 +797,113 @@ export function NodeContextMenu({
                 Edit Content
               </button>
 
-              {(contextMenu.node.type === "object" ||
-                contextMenu.node.type === "array") && (
+              {canAdd && (
+                <div className="my-1 border-y border-slate-200 dark:border-slate-700/50">
                   <button
-                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg my-0.5 text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-white/10 hover:scale-[1.01] transition-all hover:text-slate-900 dark:hover:text-white flex items-center gap-3 transition-colors"
-                    onClick={() => {
-                      setEditingNode({
-                        node: contextMenu.node,
-                        value: "",
-                        action: "add",
-                        typeOverride: "auto",
-                      });
-                      setContextMenu(null);
-                    }}
+                    className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg my-0.5 text-emerald-600 dark:text-emerald-400 hover:bg-slate-100/80 dark:hover:bg-white/10 transition-colors flex items-center gap-3"
+                    aria-expanded={isAddOpen}
+                    onClick={() => setIsAddOpen((open) => !open)}
                   >
-                    <Edit2 size={16} className="text-green-400" />
-                    Add {contextMenu.node.type === "array" ? "Item" : "Property"}
+                    <Plus size={16} />
+                    Add node
+                    <ChevronRight
+                      size={14}
+                      className={`ml-auto text-slate-400 transition-transform ${isAddOpen ? "rotate-90" : ""}`}
+                    />
                   </button>
-                )}
+
+                  {isAddOpen && (
+                    <div className="px-2 pb-2">
+                      {/* Where to insert */}
+                      <div role="radiogroup" aria-label="Insert position" className="mb-1.5 flex rounded-md border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-700/60 dark:bg-slate-900/60">
+                        {([
+                          { mode: "child", label: "Child", enabled: canAddChild, disabledHint: "Only objects and arrays can hold children" },
+                          { mode: "sibling", label: "Sibling", enabled: canAddSibling, disabledHint: "The root node has no siblings" },
+                        ] as const).map((option) => {
+                          const active = effectiveMode === option.mode;
+                          return (
+                            <button
+                              key={option.mode}
+                              role="radio"
+                              aria-checked={active}
+                              disabled={!option.enabled}
+                              title={option.enabled ? undefined : option.disabledHint}
+                              onClick={() => setAddMode(option.mode)}
+                              className={`flex-1 rounded px-2 py-1 text-[11px] font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${active
+                                ? "bg-white text-emerald-600 shadow-sm dark:bg-slate-700 dark:text-emerald-400"
+                                : "text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200"
+                                }`}
+                            >
+                              {option.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                      <div className="mb-1.5 truncate px-1 text-[10px] text-slate-400 dark:text-slate-500">
+                        {effectiveMode === "child" ? "Inside " : "Next to this node, in "}
+                        <span className="font-mono text-slate-500 dark:text-slate-400">{targetName || "root"}</span>
+                        {addTargetIsArray ? " (array)" : ""}
+                      </div>
+
+                      <div className="mb-1 px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Basic</div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {EMPTY_CHILD_TYPES.map(({ type, label, hint, icon: Icon }) => (
+                          <button
+                            key={type}
+                            className="flex flex-col items-center gap-0.5 rounded-md border border-slate-200 px-1 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-700 dark:border-slate-700/60 dark:text-slate-300 dark:hover:text-emerald-300"
+                            title={`Add empty ${label.toLowerCase()} (${hint})`}
+                            onClick={() => insertNode(type, "", type)}
+                          >
+                            <Icon size={14} />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      <div className="mb-1 mt-2 flex items-center justify-between px-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">Special nodes</span>
+                        {addTargetIsArray && (
+                          <span className="text-[10px] text-slate-400 dark:text-slate-500">need an object</span>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-1">
+                        {SPECIAL_NODE_TYPES.map(({ suffix, label, icon: Icon, iconClass, type, value }) => (
+                          <button
+                            key={suffix}
+                            disabled={addTargetIsArray}
+                            className="flex flex-col items-center gap-0.5 rounded-md border border-slate-200 px-1 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:border-emerald-500/50 hover:bg-emerald-500/10 hover:text-emerald-700 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:border-slate-200 disabled:hover:bg-transparent dark:border-slate-700/60 dark:text-slate-300 dark:hover:text-emerald-300 dark:disabled:hover:border-slate-700/60"
+                            title={addTargetIsArray
+                              ? "Special nodes are identified by their key, so they can only be added to objects"
+                              : `Add ${label} node (new_${suffix})`}
+                            onClick={() => insertNode(suffix, value, type)}
+                          >
+                            <Icon size={14} className={iconClass} />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+
+                      {effectiveMode === "child" && (
+                        <button
+                          className="mt-1 w-full rounded-md px-2 py-1.5 text-left text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-white/10 dark:hover:text-white flex items-center gap-2"
+                          onClick={() => {
+                            setEditingNode({
+                              node: contextMenu.node,
+                              value: "",
+                              action: "add",
+                              typeOverride: "auto",
+                            });
+                            setContextMenu(null);
+                          }}
+                        >
+                          <Edit2 size={13} className="text-green-400" />
+                          Custom key &amp; value…
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
 
               {contextMenu.node.path !== "root" && (
                 <button
