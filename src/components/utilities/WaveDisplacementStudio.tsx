@@ -359,6 +359,16 @@ export function WaveDisplacementStudio() {
    const handleResizeRef = useRef<(() => void) | null>(null);
    const effectiveFPSRef = useRef<number>(30);
 
+   // Video export via MediaRecorder: the browser's hardware encoder runs off the main thread,
+   // unlike CCapture's WebM path which converts every frame to WebP on the main thread (very
+   // slow on phones, and Safari can't encode WebP at all, which produced stuck frames).
+   const videoTrackRef = useRef<CanvasCaptureMediaStreamTrack | null>(null);
+   const recordedChunksRef = useRef<Blob[]>([]);
+   const recordMimeRef = useRef<string>('');
+   /** performance.now() time at which the next video frame should be rendered and captured */
+   const nextVideoFrameAtRef = useRef<number>(0);
+   const lastProgressRef = useRef<number>(-1);
+
    // Helper: Load HTMLImageElement with cross-origin safety
    const loadHTMLImage = (url: string): Promise<HTMLImageElement> => {
       return new Promise((resolve, reject) => {
@@ -734,13 +744,30 @@ export function WaveDisplacementStudio() {
 
       const animate = (time: number) => {
          const currentTime = time || performance.now();
+
+         // Video recording renders exactly one frame per 1/fps of wall-clock time and skips the
+         // animation frames in between, so slow phones aren't asked to render (and encode) more
+         // than the file needs.
+         const isVideoRecording = isRecordingRef.current && !!mediaRecorderRef.current;
+         if (isVideoRecording) {
+            if (currentTime < nextVideoFrameAtRef.current) {
+               animFrameIdRef.current = NATIVE_RAF(animate);
+               return;
+            }
+            const interval = 1000 / effectiveFPSRef.current;
+            nextVideoFrameAtRef.current += interval;
+            // If the device fell behind, don't burst to catch up; keep frames evenly spaced
+            if (currentTime - nextVideoFrameAtRef.current > interval) {
+               nextVideoFrameAtRef.current = currentTime + interval;
+            }
+         }
+
          let realDelta = (currentTime - lastTime) / 1000;
          if (isNaN(realDelta) || realDelta < 0 || realDelta > 0.5) realDelta = 0.016;
 
-         // CCapture (GIF/PNG) needs fixed time steps for perfect frame-by-frame rendering
-         // MediaRecorder (WebM) records in real-time, so we MUST use real time steps, 
-         // otherwise heavy 4K renders play in slow-motion and don't finish before the timeout.
-         const isFrameByFrame = isRecordingRef.current && !!capturerRef.current;
+         // Recording always advances the animation by a fixed 1/fps per captured frame, so the
+         // exported clip has the exact duration and smooth motion regardless of device speed.
+         const isFrameByFrame = isRecordingRef.current && (!!capturerRef.current || isVideoRecording);
          const deltaTime = isFrameByFrame ? (1.0 / effectiveFPSRef.current) : realDelta;
 
          lastTime = currentTime;
@@ -796,14 +823,31 @@ export function WaveDisplacementStudio() {
             rendererRef.current.render(sceneRef.current, cameraRef.current);
 
             if (isRecordingRef.current) {
-               if (capturerRef.current && canvasRef.current) {
+               if (isVideoRecording) {
+                  // Hand this exact frame to the encoder (captureStream(0) only grabs on request)
+                  videoTrackRef.current?.requestFrame?.();
+                  framesRecordedRef.current += 1;
+                  const elapsed = framesRecordedRef.current / effectiveFPSRef.current;
+                  const progress = Math.min(100, Math.round((elapsed / recordDuration) * 100));
+                  if (progress !== lastProgressRef.current) {
+                     lastProgressRef.current = progress;
+                     setRecordProgress(progress);
+                  }
+                  if (elapsed >= recordDuration) {
+                     stopRecording();
+                  }
+               } else if (capturerRef.current && canvasRef.current) {
                   try {
                      // CCapture frame-by-frame progress
                      capturerRef.current.capture(canvasRef.current);
                      framesRecordedRef.current += 1;
                      const elapsed = framesRecordedRef.current / effectiveFPSRef.current;
                      const progress = Math.min(100, Math.round((elapsed / recordDuration) * 100));
-                     setRecordProgress(progress);
+                     // Re-rendering React every frame slows capture down; only on change
+                     if (progress !== lastProgressRef.current) {
+                        lastProgressRef.current = progress;
+                        setRecordProgress(progress);
+                     }
 
                      // > instead of >= captures 1 extra frame, ensuring the final video's timestamp reaches EXACTLY recordDuration
                      if (elapsed > recordDuration) {
@@ -2005,7 +2049,15 @@ export function WaveDisplacementStudio() {
                }
             }
 
-            const targetHeight = Math.round(targetWidth / aspect);
+            // Phones can't render and encode large frames in real time; cap video/GIF at 1080p wide
+            const isMobileDevice = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+            if (isMobileDevice && exportFormat !== 'png') {
+               targetWidth = Math.min(targetWidth, 1920);
+            }
+            // Video encoders require even dimensions
+            targetWidth = Math.max(2, Math.round(targetWidth / 2) * 2);
+
+            const targetHeight = Math.max(2, Math.round(targetWidth / aspect / 2) * 2);
             rendererRef.current.setSize(targetWidth, targetHeight, false);
             // FIX FOR MOBILE: Force pixel ratio to 1 during export to avoid CCapture memory crash
             rendererRef.current.setPixelRatio(1);
@@ -2018,10 +2070,46 @@ export function WaveDisplacementStudio() {
          const effectiveFPS = exportFormat === 'gif' ? Math.min(recordFramerate, 10) : recordFramerate;
          effectiveFPSRef.current = effectiveFPS;
 
+         lastProgressRef.current = -1;
+
+         // Prefer the browser's hardware video encoder for video export
+         const videoMime = exportFormat === 'webm' ? pickRecorderMimeType() : '';
+         const canvasEl = canvasRef.current;
+
          if (exportFormat === 'png') {
             setStatusMessage('Loading JSZip module...');
             const JSZip = (await import('jszip')).default;
             jszipRef.current = new JSZip();
+         } else if (videoMime && canvasEl && typeof canvasEl.captureStream === 'function') {
+            const width = canvasEl.width;
+            const height = canvasEl.height;
+            // Bitrate from resolution, fps and the quality slider. ~0.02–0.08 bits per pixel per
+            // frame is typical for web video: 720p30 at 80% quality ≈ 1.9 Mbps (≈1 MB per 4s).
+            const bitsPerPixel = 0.02 + (exportQuality / 100) * 0.06;
+            const videoBitsPerSecond = Math.round(
+               Math.min(12_000_000, Math.max(500_000, width * height * effectiveFPS * bitsPerPixel)),
+            );
+
+            // captureStream(0) + requestFrame() captures exactly the frames we render; browsers
+            // without requestFrame fall back to capturing at the target frame rate
+            const probeTrack = canvasEl.captureStream(0).getVideoTracks()[0] as CanvasCaptureMediaStreamTrack | undefined;
+            const supportsRequestFrame = !!probeTrack && typeof probeTrack.requestFrame === 'function';
+            probeTrack?.stop();
+            const stream = canvasEl.captureStream(supportsRequestFrame ? 0 : effectiveFPS);
+            const track = stream.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
+
+            recordedChunksRef.current = [];
+            recordMimeRef.current = videoMime;
+            const recorder = new MediaRecorder(stream, { mimeType: videoMime, videoBitsPerSecond });
+            recorder.ondataavailable = (event) => {
+               if (event.data && event.data.size > 0) recordedChunksRef.current.push(event.data);
+            };
+            // Flush every second so a long recording isn't one huge buffer at the end
+            recorder.start(1000);
+
+            mediaRecorderRef.current = recorder;
+            videoTrackRef.current = supportsRequestFrame ? track : null;
+            nextVideoFrameAtRef.current = performance.now();
          } else {
             // Frame-by-frame export via CCapture (guarantees perfect framerate for WebM/GIF)
             if (!(window as any).CCapture) {
@@ -2050,12 +2138,41 @@ export function WaveDisplacementStudio() {
          setIsRecording(true);
          setRecordProgress(0);
          const resInfo = rendererRef.current ? `${rendererRef.current.domElement.width}×${rendererRef.current.domElement.height}` : '';
-         setStatusMessage(`Recording ${exportFormat.toUpperCase()} (${recordDuration}s, ${resInfo})...`);
+         const formatLabel = mediaRecorderRef.current ? videoExtensionFor(recordMimeRef.current).toUpperCase() : exportFormat.toUpperCase();
+         setStatusMessage(`Recording ${formatLabel} (${recordDuration}s, ${resInfo})...`);
       } catch (err: any) {
          setStatusMessage('Recording error: ' + err.message);
+         mediaRecorderRef.current = null;
+         videoTrackRef.current = null;
          setIsRecording(false);
          isRecordingRef.current = false;
       }
+   };
+
+   /** First video type this browser can record: WebM (Chrome/Android/Firefox), MP4 (Safari/iOS) */
+   const pickRecorderMimeType = (): string => {
+      if (typeof MediaRecorder === 'undefined' || typeof MediaRecorder.isTypeSupported !== 'function') return '';
+      const candidates = [
+         'video/webm;codecs=vp9',
+         'video/webm;codecs=vp8',
+         'video/webm',
+         'video/mp4;codecs=avc1',
+         'video/mp4',
+      ];
+      return candidates.find((type) => MediaRecorder.isTypeSupported(type)) || '';
+   };
+
+   const videoExtensionFor = (mime: string) => (mime.includes('mp4') ? 'mp4' : 'webm');
+
+   const downloadBlob = (blob: Blob, fileName: string) => {
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 10_000);
    };
 
    // Stop Recording & Export
@@ -2070,6 +2187,24 @@ export function WaveDisplacementStudio() {
       const capturer = capturerRef.current;
       capturerRef.current = null;
 
+      // Finish the video before the canvas is resized, or the last frames get the wrong size
+      const recorder = mediaRecorderRef.current;
+      mediaRecorderRef.current = null;
+      videoTrackRef.current = null;
+      if (recorder) {
+         if (!abort) setStatusMessage('Finalizing video...');
+         await new Promise<void>((resolve) => {
+            if (recorder.state === 'inactive') return resolve();
+            recorder.onstop = () => resolve();
+            try {
+               recorder.stop();
+            } catch {
+               resolve();
+            }
+         });
+         recorder.stream.getTracks().forEach((t) => t.stop());
+      }
+
       // Now we can safely restore the viewport size
       if (handleResizeRef.current) {
          if (rendererRef.current) rendererRef.current.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -2078,6 +2213,25 @@ export function WaveDisplacementStudio() {
       
       oldSizeRef.current = null;
       setStatusMessage(abort ? 'Recording cancelled.' : 'Packaging exported multi-image animation... Please wait.');
+
+      if (recorder) {
+         setLoopRestartToggle(prev => !prev);
+         const chunks = recordedChunksRef.current;
+         recordedChunksRef.current = [];
+
+         if (abort || framesRecordedRef.current === 0 || chunks.length === 0) {
+            setStatusMessage(abort ? 'Recording cancelled.' : 'Recording aborted (no frames captured).');
+            return;
+         }
+
+         const mime = recordMimeRef.current;
+         const ext = videoExtensionFor(mime);
+         const blob = new Blob(chunks, { type: mime.split(';')[0] });
+         const sizeMB = (blob.size / (1024 * 1024)).toFixed(1);
+         downloadBlob(blob, `wave_displacement_animation.${ext}`);
+         setStatusMessage(`Export complete! (${sizeMB} MB ${ext.toUpperCase()})`);
+         return;
+      }
 
       if (exportFormat === 'png' && jszipRef.current) {
          const zip = jszipRef.current;

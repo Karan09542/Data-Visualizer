@@ -464,7 +464,7 @@ export function WaveExportTab({ exportFormat, setExportFormat, recordDuration, s
                   </div>
                   {exportFormat === 'webm' && (
                      <p className="mt-2 text-[9px] text-slate-500 leading-relaxed">
-                        💡 WebM uses per-frame encoding — files are larger than MP4. Lower <strong className="text-purple-400">FPS</strong> or <strong className="text-purple-400">Quality</strong> to reduce size.
+                        💡 Encoded by your device's video encoder — WebM on Chrome/Android, MP4 on Safari/iOS. Lower <strong className="text-purple-400">FPS</strong>, <strong className="text-purple-400">Quality</strong> or <strong className="text-purple-400">Size</strong> for smaller files and smoother recording on phones.
                      </p>
                   )}
                </div>
