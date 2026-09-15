@@ -1233,13 +1233,18 @@ export default function GuiEditorPanel() {
 
                 <div className="p-3 bg-[#121824] border border-slate-800 rounded">
                   {newKeyType === "string" && (
-                    <input
-                      type="text"
-                      value={textValue}
-                      onChange={(e) => setTextValue(e.target.value)}
-                      placeholder="String value"
-                      className="w-full text-xs px-2.5 py-1.5 bg-[#090d16] border border-slate-800 rounded text-slate-200"
-                    />
+                    <div className="flex flex-col gap-1.5">
+                      <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">
+                        Initial Text Contents
+                      </span>
+                      <textarea
+                        value={textValue}
+                        onChange={(e) => setTextValue(e.target.value)}
+                        placeholder="Enter string content..."
+                        rows={3}
+                        className="w-full text-xs font-mono px-2.5 py-2 bg-[#090d16] border border-slate-800 focus:border-blue-500/80 rounded-lg text-slate-200 focus:outline-none focus:ring-1 focus:ring-blue-500/30 resize-y min-h-[70px]"
+                      />
+                    </div>
                   )}
                   {newKeyType === "number" && (
                     <input
