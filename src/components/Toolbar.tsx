@@ -39,6 +39,14 @@ import {
   Camera,
   ClipboardPaste,
   Sparkles,
+  ArrowDown,
+  ArrowRight,
+  CircleDot,
+  Waypoints,
+  Shrink,
+  Brain,
+  LayoutGrid,
+  Atom,
 } from "lucide-react";
 import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
@@ -50,7 +58,20 @@ import { QuickUtilsModal } from "./utilities/QuickUtilsModal";
 import { CameraCaptureModal } from "./CameraCaptureModal";
 import { PromptModal } from "./PromptModal";
 import UserMenu, { AuthModals } from "./UserMenu";
-import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES } from "../constants/visualizer";
+import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES, type LayoutMode } from "../constants/visualizer";
+
+const LAYOUT_META: Record<LayoutMode, { label: string; description: string; icon: React.ReactNode }> = {
+  vertical: { label: "Vertical", description: "Top-down tree", icon: <ArrowDown size={14} /> },
+  horizontal: { label: "Horizontal", description: "Left-to-right tree", icon: <ArrowRight size={14} /> },
+  radial: { label: "Radial", description: "Rings around the root", icon: <CircleDot size={14} /> },
+  force: { label: "Force", description: "Physics-based network", icon: <Waypoints size={14} /> },
+  compact: { label: "Compact", description: "Dense, space-saving tree", icon: <Shrink size={14} /> },
+  mindmap: { label: "Mind map", description: "Branches on both sides", icon: <Brain size={14} /> },
+  grid: { label: "Grid", description: "Nodes in rows and columns", icon: <LayoutGrid size={14} /> },
+  molecule: { label: "Molecule", description: "Atom-style clusters", icon: <Atom size={14} /> },
+};
+
+const LAYOUT_OPTIONS = LAYOUT_MODES.map((mode) => ({ value: mode, ...LAYOUT_META[mode] }));
 
 export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const layoutMode = useStore((state) => state.layoutMode);
@@ -888,7 +909,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 setLayoutMode(val as any);
                 useStore.getState().clearDragOverrides();
               }}
-              options={[...LAYOUT_MODES]}
+              options={LAYOUT_OPTIONS}
               className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
             />
             <button
@@ -1274,7 +1295,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     setLayoutMode(val as any);
                     useStore.getState().clearDragOverrides();
                   }}
-                  options={[...LAYOUT_MODES]}
+                  options={LAYOUT_OPTIONS}
                 />
               </div>
 
