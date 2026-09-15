@@ -34,6 +34,13 @@ export class EraserEngine {
 
   private source: CanvasImageSource;
 
+  /**
+   * Optional alpha that is treated as already erased before any stroke, e.g. the
+   * background an AI cut-out removed. Restore strokes subtract from it like any
+   * other erased area, which is what lets them paint original pixels back.
+   */
+  private baseMask: CanvasImageSource | null;
+
   /** Published canvas: source composited with the mask. */
   private output: HTMLCanvasElement;
   private outputCtx: CanvasRenderingContext2D;
@@ -55,8 +62,13 @@ export class EraserEngine {
   private current: EraseStroke | null = null;
   private lastPoint: ErasePoint | null = null;
 
-  constructor(source: CanvasImageSource, width: number, height: number) {
+  /**
+   * @param baseMask Optional starting mask (opaque where pixels start erased). When
+   *   given, the source should be the full original pixels.
+   */
+  constructor(source: CanvasImageSource, width: number, height: number, baseMask: CanvasImageSource | null = null) {
     this.source = source;
+    this.baseMask = baseMask;
     this.width = Math.max(1, Math.round(width));
     this.height = Math.max(1, Math.round(height));
 
@@ -67,6 +79,7 @@ export class EraserEngine {
     this.strokeLayer = createCanvas(this.width, this.height);
     this.strokeCtx = this.strokeLayer.getContext('2d')!;
 
+    this.drawBaseMask();
     this.recomposite();
   }
 
@@ -195,6 +208,12 @@ export class EraserEngine {
     this.recomposite();
   }
 
+  /** Replaces the starting mask (or removes it with null) and rebuilds from the strokes. */
+  setBaseMask(baseMask: CanvasImageSource | null): void {
+    this.baseMask = baseMask;
+    this.replay();
+  }
+
   destroy(): void {
     this.output.width = this.output.height = 0;
     this.committed.width = this.committed.height = 0;
@@ -309,8 +328,15 @@ export class EraserEngine {
   /** Rebuilds the mask from scratch. Used by undo and by setStrokes. */
   private replay(): void {
     this.committedCtx.clearRect(0, 0, this.width, this.height);
+    this.drawBaseMask();
     this.strokes.forEach((stroke) => this.flatten(stroke));
     this.recomposite();
+  }
+
+  /** Lays the starting mask into the committed mask; strokes are replayed on top. */
+  private drawBaseMask(): void {
+    if (!this.baseMask) return;
+    this.committedCtx.drawImage(this.baseMask, 0, 0, this.width, this.height);
   }
 
   /** Bounding box a segment touches, so live drawing only repaints that area. */

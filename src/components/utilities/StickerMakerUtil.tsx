@@ -855,6 +855,9 @@ export function StickerMakerUtil() {
 
       // Pass only the isolated selected portion to AI background removal
       const imageData = ctx.getImageData(0, 0, cropW, cropH);
+      // Untouched copy of what the model sees, so the Restore brush can paint back
+      // pixels the model wrongly removed (the job may transfer or reuse imageData).
+      const restoreSource = new ImageData(new Uint8ClampedArray(imageData.data), cropW, cropH);
       const { jobId, promise } = ai.execute('background-removal', imageData, { modelId }, 1);
       // A first run on an uncached model spends most of its time downloading;
       // without this the button just says "Processing..." for minutes.
@@ -890,7 +893,7 @@ export function StickerMakerUtil() {
 
         setMaskImageData(finalOutput);
         // A new cut-out invalidates any strokes made against the old one.
-        initEraser(finalOutput);
+        initEraser(finalOutput, restoreSource);
         setStickerKey((key) => key + 1);
         // A successful run means the weights are cached now.
         setModelReady((prev) => ({ ...prev, [modelId]: true }));
@@ -996,17 +999,43 @@ export function StickerMakerUtil() {
   };
 
   /**
-   * Binds a freshly cut-out sticker to a new engine. The ImageData handed in
-   * stays the engine's source and is never written to, so undo can always get
-   * back to the untouched cut-out.
+   * Binds a freshly cut-out sticker to a new engine.
+   *
+   * With the original pixels available, they become the engine's source and the
+   * area the model removed becomes the engine's starting mask. Erase adds to that
+   * mask; Restore subtracts from it, so it can bring back parts the model cut away,
+   * not just undo the brush. Undo always gets back to the untouched cut-out.
    */
-  const initEraser = (source: ImageData) => {
+  const initEraser = (cutout: ImageData, original?: ImageData) => {
     resetEraser();
-    const canvas = document.createElement('canvas');
-    canvas.width = source.width;
-    canvas.height = source.height;
-    canvas.getContext('2d')!.putImageData(source, 0, 0);
-    eraserRef.current = new EraserEngine(canvas, source.width, source.height);
+    const { width, height } = cutout;
+
+    const sourceCanvas = document.createElement('canvas');
+    sourceCanvas.width = width;
+    sourceCanvas.height = height;
+    sourceCanvas.getContext('2d')!.putImageData(
+      original && original.width === width && original.height === height ? original : cutout,
+      0,
+      0,
+    );
+
+    let baseMask: HTMLCanvasElement | null = null;
+    if (original && original.width === width && original.height === height) {
+      // Opaque where the model removed the background, clear where it kept the subject
+      const mask = new ImageData(width, height);
+      for (let i = 3; i < cutout.data.length; i += 4) {
+        const kept = cutout.data[i];
+        const originalAlpha = original.data[i];
+        // Only mask what the model took away from pixels that existed in the original
+        mask.data[i] = originalAlpha === 0 ? 0 : 255 - Math.min(255, Math.round((kept * 255) / originalAlpha));
+      }
+      baseMask = document.createElement('canvas');
+      baseMask.width = width;
+      baseMask.height = height;
+      baseMask.getContext('2d')!.putImageData(mask, 0, 0);
+    }
+
+    eraserRef.current = new EraserEngine(sourceCanvas, width, height, baseMask);
   };
 
   /**
@@ -1663,8 +1692,10 @@ export function StickerMakerUtil() {
                     </div>
 
                     <p className="text-[10px] text-slate-400 dark:text-slate-500 leading-snug">
-                      Drag on the sticker to erase. Hold Space to pan. The cut
-                      border redraws when you release.
+                      {eraseMode === 'erase'
+                        ? 'Drag on the sticker to erase leftover background.'
+                        : 'Paint over spots the background removal cut away to bring the original pixels back.'}{' '}
+                      Hold Space to pan. The cut border redraws when you release.
                     </p>
                   </div>
                 )}
