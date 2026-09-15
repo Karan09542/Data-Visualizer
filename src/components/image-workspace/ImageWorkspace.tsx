@@ -53,11 +53,13 @@ import {
    Layers, MousePointer2, Brush, Eraser, Circle, Minus, Edit2, Image as ImageIcon,
    SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, BringToFront, SendToBack, ArrowUp, ArrowDown, AlignLeft, AlignCenter, AlignRight,
    Sparkles, ChevronDown, Plus, Activity, Check, Grid, Expand, MoreHorizontal, Hand, Droplets, Image as LucideImage, Images, Keyboard, Clipboard, Library, Link,
-   Zap, ChevronLeft, ChevronRight, Scan
+   Zap, ChevronLeft, ChevronRight, Scan, Palette
 } from "lucide-react";
 import JSZip from "jszip";
 // @ts-ignore
 import ImageWorker from "../../utils/imageWorker?worker";
+import PaletteWorker from "../../utils/paletteWorker?worker";
+import type { PaletteColor, PaletteResponse } from "../../utils/paletteWorker";
 import { ExportSettings, DEFAULT_EXPORT_SETTINGS } from "../../types/export";
 import { PRESET_REGISTRY, getDimensionsInPixels, ImagePreset, PresetCategory } from "../../lib/imagePresets";
 import { useImageImport } from "../image-import/hooks/useImageImport";
@@ -234,6 +236,10 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    const setNotification = useStore((state) => state.setNotification);
    const canvasRef = useRef<HTMLCanvasElement>(null);
    const fabricRef = useRef<fabric.Canvas | null>(null);
+   /** A press on a color palette swatch; it becomes a color pick on release if the pointer didn't move */
+   const paletteSwatchPressRef = useRef<{ x: number; y: number; color: string; palette: fabric.Group } | null>(null);
+   /** Picks a palette color. Read through a ref because canvas listeners are registered once. */
+   const selectPaletteColorRef = useRef<((color: string, palette: fabric.Group) => void) | null>(null);
    // Mirrors fabricRef as state so hooks needing the live canvas (the eraser)
    // rebind when it is recreated.
    const [canvasInstance, setCanvasInstance] = useState<fabric.Canvas | null>(null);
@@ -4812,6 +4818,21 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          const e = opt.e as any;
          if (!e) return;
 
+         // Remember a press on a palette swatch; it only counts as "select color" if the
+         // pointer doesn't move (otherwise the user is dragging the palette sheet)
+         paletteSwatchPressRef.current = null;
+         if ((opt.target as any)?.isColorPalette) {
+            const swatch = ((opt as any).subTargets || []).find((t: any) => t?.paletteColor);
+            if (swatch) {
+               paletteSwatchPressRef.current = {
+                  x: e.clientX ?? e.touches?.[0]?.clientX ?? 0,
+                  y: e.clientY ?? e.touches?.[0]?.clientY ?? 0,
+                  color: swatch.paletteColor,
+                  palette: opt.target as fabric.Group,
+               };
+            }
+         }
+
          // Alt is the selection brush's "subtract" modifier, and Alt-drag otherwise pans the
          // viewport - which reads as "every shape moved". While any selection tool is armed the
          // modifier belongs to the selection, so panning stands down.
@@ -4861,7 +4882,18 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
 
       canvas.on('object:moving', handleSnapping);
 
-      canvas.on('mouse:up', () => {
+      canvas.on('mouse:up', (opt) => {
+         const press = paletteSwatchPressRef.current;
+         paletteSwatchPressRef.current = null;
+         if (press && !isPanning) {
+            const upEvent = (opt as any).e;
+            const upX = upEvent?.clientX ?? upEvent?.changedTouches?.[0]?.clientX ?? press.x;
+            const upY = upEvent?.clientY ?? upEvent?.changedTouches?.[0]?.clientY ?? press.y;
+            if (Math.hypot(upX - press.x, upY - press.y) < 5) {
+               selectPaletteColorRef.current?.(press.color, press.palette);
+            }
+         }
+
          guidesRef.current = [];
          if (isPanning) {
             canvas.setViewportTransform(canvas.viewportTransform!);
@@ -6500,6 +6532,162 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          }
       };
 
+      // ---------------------------------------------------------------- color palette
+
+      // Uses a palette color as the current color and highlights the picked swatch. It doesn't
+      // go through changeCurrentColor, which would recolor the selected object - here that's
+      // the palette sheet itself.
+      selectPaletteColorRef.current = (color, palette) => {
+         setBrushColor(color);
+         if (fabricRef.current?.freeDrawingBrush) {
+            fabricRef.current.freeDrawingBrush.color = color;
+         }
+
+         palette.getObjects().forEach((child: any) => {
+            if (!child.isPaletteSwatch) return;
+            const picked = child.paletteColor === color;
+            child.set({ stroke: picked ? '#3b82f6' : 'rgba(15,23,42,0.12)', strokeWidth: picked ? 4 : 1 });
+         });
+         palette.set('dirty', true);
+         fabricRef.current?.requestRenderAll();
+
+         navigator.clipboard?.writeText(color).catch(() => { });
+         setNotification({ message: `Selected ${color.toUpperCase()} (copied)`, type: 'success' });
+      };
+
+      /** Runs the palette quantizer in a worker so big images don't block the canvas */
+      const runPaletteWorker = (pixels: ImageData, colorCount: number) =>
+         new Promise<PaletteColor[]>((resolve, reject) => {
+            const worker = new PaletteWorker();
+            const timeout = window.setTimeout(() => {
+               worker.terminate();
+               reject(new Error('Color extraction timed out'));
+            }, 15000);
+            worker.onmessage = (event: MessageEvent<PaletteResponse>) => {
+               window.clearTimeout(timeout);
+               worker.terminate();
+               const response = event.data;
+               if (response.success === true) resolve(response.colors);
+               else reject(new Error(response.error));
+            };
+            worker.onerror = (err) => {
+               window.clearTimeout(timeout);
+               worker.terminate();
+               reject(err);
+            };
+            const buffer = pixels.data.buffer;
+            worker.postMessage({ pixels: buffer, width: pixels.width, height: pixels.height, colorCount }, [buffer]);
+         });
+
+      /** Builds a draggable palette sheet of the image's dominant colors next to it */
+      const extractColorPalette = async (target: fabric.Object | null | undefined) => {
+         const canvas = fabricRef.current;
+         if (!canvas || !target) return;
+
+         // Render the object small (includes crop and filters) and read its pixels
+         let pixels: ImageData;
+         try {
+            const longestSide = Math.max(target.getScaledWidth(), target.getScaledHeight()) || 1;
+            const multiplier = Math.min(1, 256 / longestSide);
+            const element = target.toCanvasElement({ multiplier, withoutShadow: true } as any);
+            const ctx = element.getContext('2d', { willReadFrequently: true });
+            if (!ctx || element.width === 0 || element.height === 0) throw new Error('empty');
+            pixels = ctx.getImageData(0, 0, element.width, element.height);
+         } catch {
+            setNotification({ message: "Can't read this image's colors (it may be blocked by its website)", type: 'error' });
+            return;
+         }
+
+         let colors: PaletteColor[];
+         try {
+            colors = await runPaletteWorker(pixels, 8);
+         } catch (err) {
+            console.error('Palette extraction failed', err);
+            setNotification({ message: 'Could not extract colors from this image', type: 'error' });
+            return;
+         }
+         if (colors.length === 0) {
+            setNotification({ message: 'No visible colors found in this image', type: 'error' });
+            return;
+         }
+
+         // Layout in sheet units, then scaled to sit comfortably beside the image
+         const SWATCH = 72;
+         const GAP = 12;
+         const PAD = 20;
+         const TITLE_H = 34;
+         const LABEL_H = 22;
+         const columns = Math.min(colors.length, 4);
+         const rows = Math.ceil(colors.length / columns);
+         const sheetW = PAD * 2 + columns * SWATCH + (columns - 1) * GAP;
+         const sheetH = PAD * 2 + TITLE_H + rows * (SWATCH + LABEL_H) + (rows - 1) * GAP + 18;
+
+         const children: fabric.Object[] = [
+            new fabric.Rect({
+               left: 0, top: 0, width: sheetW, height: sheetH, rx: 16, ry: 16,
+               fill: '#ffffff', stroke: 'rgba(15,23,42,0.08)', strokeWidth: 1,
+               originX: 'left', originY: 'top',
+               shadow: new fabric.Shadow({ color: 'rgba(15,23,42,0.18)', blur: 24, offsetY: 8 }),
+            }),
+            new fabric.Textbox('Color palette', {
+               left: PAD, top: PAD, width: sheetW - PAD * 2, fontSize: 18, fontWeight: 700,
+               fontFamily: 'Inter, system-ui, sans-serif', fill: '#0f172a', editable: false,
+               originX: 'left', originY: 'top',
+            } as any),
+         ];
+
+         colors.forEach((color, index) => {
+            const col = index % columns;
+            const row = Math.floor(index / columns);
+            const x = PAD + col * (SWATCH + GAP);
+            const y = PAD + TITLE_H + row * (SWATCH + LABEL_H + GAP);
+            const swatch = new fabric.Rect({
+               left: x, top: y, width: SWATCH, height: SWATCH, rx: 10, ry: 10,
+               fill: color.hex, stroke: 'rgba(15,23,42,0.12)', strokeWidth: 1,
+               originX: 'left', originY: 'top', hoverCursor: 'pointer',
+            } as any);
+            (swatch as any).isPaletteSwatch = true;
+            (swatch as any).paletteColor = color.hex;
+
+            const label = new fabric.Textbox(color.hex.toUpperCase(), {
+               left: x, top: y + SWATCH + 5, width: SWATCH, fontSize: 12, textAlign: 'center',
+               fontFamily: 'ui-monospace, SFMono-Regular, Menlo, monospace', fill: '#475569', editable: false,
+               originX: 'left', originY: 'top', hoverCursor: 'pointer',
+            } as any);
+            (label as any).paletteColor = color.hex;
+
+            children.push(swatch, label);
+         });
+
+         children.push(new fabric.Textbox('Click a color to use it', {
+            left: PAD, top: sheetH - PAD - 14, width: sheetW - PAD * 2, fontSize: 11,
+            fontFamily: 'Inter, system-ui, sans-serif', fill: '#94a3b8', editable: false,
+            originX: 'left', originY: 'top',
+         } as any));
+
+         const bounds = target.getBoundingRect();
+         const scale = Math.max(0.35, Math.min(2.5, (bounds.height * 0.8) / sheetH));
+
+         const palette = new fabric.Group(children, {
+            left: bounds.left + bounds.width + 32 * scale,
+            top: bounds.top,
+            originX: 'left',
+            originY: 'top',
+            scaleX: scale,
+            scaleY: scale,
+            subTargetCheck: true,
+            interactive: false,
+         } as any);
+         (palette as any).isColorPalette = true;
+         (palette as any).id = Date.now().toString() + Math.random().toString();
+         (palette as any).artboardId = (target as any).artboardId ?? activeArtboardIdRef.current;
+         (palette as any).customName = 'Color palette';
+         palette.setCoords();
+
+         executeCommand(new AddObjectCommand('Extract Color Palette', palette));
+         setNotification({ message: `Extracted ${colors.length} colors — click one to use it`, type: 'success' });
+      };
+
       /** Set the background color (no side-effects on active objects). */
       const changeBgColor = (newColor: string) => {
          setBgColor(newColor);
@@ -7980,6 +8168,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                       {(activeContextMenu.obj?.type === 'image' || (activeContextMenu.obj as any)?.isFrameGroup) && (
                                                          <>
                                                             <ContextMenuItem icon={Crop} label="Crop Image" onClick={() => { enterCropMode(activeContextMenu.obj as fabric.Image); closeContextMenu(); }} />
+                                                            <ContextMenuItem icon={Palette} label="Extract Color Palette" onClick={() => { extractColorPalette(activeContextMenu.obj); closeContextMenu(); }} />
                                                             <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
                                                          </>
                                                       )}

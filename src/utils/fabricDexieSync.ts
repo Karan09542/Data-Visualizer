@@ -108,6 +108,12 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
       'isFrameGroup', 
       'frameType',
       'isCollageBlock',
+      // Color palette sheet: keeps swatches clickable after reload
+      'isColorPalette',
+      'isPaletteSwatch',
+      'paletteColor',
+      'subTargetCheck',
+      'interactive',
       'cornerRoundingPercent',
       'useIndividualCorners',
       'cornerTopLeftPercent',

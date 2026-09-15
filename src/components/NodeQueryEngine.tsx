@@ -120,7 +120,7 @@ export default function NodeQueryEngine() {
                             }}
                             onFocus={() => setIsFocused(true)}
                             onBlur={() => setIsFocused(false)}
-                            placeholder='Search nodes — type:"array", depth>3 …'
+                            placeholder="Search by name, e.g. email…"
                             aria-label="Query nodes"
                             aria-invalid={hasError}
                             className={`min-w-0 flex-1 border-none bg-transparent font-mono text-[13px] outline-none placeholder:font-sans placeholder:text-slate-400 dark:placeholder:text-slate-500 ${hasError ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-100'
