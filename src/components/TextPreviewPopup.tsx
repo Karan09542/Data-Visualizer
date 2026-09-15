@@ -1,5 +1,15 @@
 import React, { useState, useEffect, useMemo, memo } from 'react';
 import { createPortal } from 'react-dom';
+// Explicit browser build: vite.config aliases 'react-dom' to its folder, which bypasses the package
+// export map, so plain 'react-dom/server' resolves to the Node build (fails on util.TextEncoder)
+import { renderToStaticMarkup } from 'react-dom/server.browser';
+import {
+  collectPreviewableNodes,
+  searchPreviewableNodes,
+  looksLikeHtml,
+  NODE_SEARCH_LIMIT,
+  type PreviewableNode,
+} from '../utils/previewableNodes';
 import {
   X, Copy, Check, Type, Edit3, FileText, Layout, Globe,
   Bold, Italic, List, Link as LinkIcon, Code, ListOrdered, Hash, ChevronRight, ChevronDown, ListTodo, Menu, Settings,
@@ -7,10 +17,11 @@ import {
   ArrowLeft, ArrowRight, ArrowUp, ArrowDown, ArrowLeftToLine, ArrowRightToLine, ClipboardPaste, Quote,
   Undo, Redo, Keyboard, CornerDownLeft, Delete, Minus, Maximize2, Minimize2, MoreVertical, Tag,
   Download, Search, WrapText, ImageOff, Eye,
-  Info, Lightbulb, MessageSquareWarning, TriangleAlert, OctagonAlert, BookOpen, Sun, Moon
+  Info, Lightbulb, MessageSquareWarning, TriangleAlert, OctagonAlert, BookOpen, Sun, Moon,
+  ChevronsDownUp, ChevronsUpDown, Workflow, ShieldCheck, ListTree
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
-import { motion, AnimatePresence } from 'motion/react';
+import { motion, AnimatePresence, useDragControls } from 'motion/react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import remarkMath from 'remark-math';
@@ -21,9 +32,260 @@ import mermaid from 'mermaid';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
 import CustomSelect from './CustomSelect';
 
+// ---------------------------------------------------------------------------
+// HTML preview: rendering + isolation
+// ---------------------------------------------------------------------------
+
+/**
+ * Content-Security-Policy injected into every HTML preview. Together with the iframe sandbox
+ * (scripts only, opaque origin) it means preview JavaScript can run but cannot reach this app,
+ * its storage or the network: no fetch/XHR/WebSocket/beacons, no nested frames, workers, plugins
+ * or form posts. Remote images/styles/fonts/scripts are opt-in.
+ * eval is allowed while JS is on: Alpine.js, Vue templates and in-browser Babel need it (without it
+ * those pages render blank), and inside this sandbox it grants nothing inline scripts can't already do.
+ */
+const buildPreviewCsp = (scriptsEnabled: boolean, allowRemote: boolean) => {
+  const remote = allowRemote ? ' https:' : '';
+  return [
+    "default-src 'none'",
+    `script-src ${scriptsEnabled ? `'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval'${remote}` : "'none'"}`,
+    `style-src 'unsafe-inline'${remote}`,
+    `img-src data: blob:${remote}`,
+    `font-src data:${remote}`,
+    `media-src data: blob:${remote}`,
+    "connect-src 'none'",
+    "form-action 'none'",
+    "frame-src 'none'",
+    "child-src 'none'",
+    "worker-src 'none'",
+    "object-src 'none'",
+    "manifest-src 'none'",
+    "base-uri 'none'",
+  ].join('; ');
+};
+
+// The policy must be the first thing parsed. Keep a leading doctype first so the page stays in
+// standards mode; a <meta> before <html> is still placed into <head> by the HTML parser.
+// `headExtra` (the scrollbar style) lands right after the policy, ahead of the page's own content.
+const withPreviewPolicy = (html: string, csp: string, headExtra = '') => {
+  const meta = `<meta http-equiv="Content-Security-Policy" content="${csp}"><meta name="referrer" content="no-referrer">${headExtra}`;
+  const doctype = /^\s*<!doctype[^>]*>/i.exec(html);
+  return doctype ? doctype[0] + meta + html.slice(doctype[0].length) : meta + html;
+};
+
+// App-style scrollbars for the previewed page (its scrollbar belongs to the sandboxed document, so it
+// can only be styled from inside): thin, rounded thumb, transparent track and no arrow buttons.
+// Neutral grey reads on light and dark pages. Chromium and
+// Safari use the ::-webkit-scrollbar rules; Firefox gets the standard properties instead (set only
+// where the pseudo-elements are unsupported, since they would disable the rounded thumb in Chromium).
+// Placed ahead of the page's own CSS, so a page that styles its scrollbars still wins.
+const PREVIEW_SCROLLBAR_STYLE = `<style data-preview="scrollbar">
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track, ::-webkit-scrollbar-corner { background: transparent; }
+::-webkit-scrollbar-thumb { background-color: rgba(148, 163, 184, 0.5); border: 2px solid transparent; border-radius: 9999px; background-clip: content-box; }
+::-webkit-scrollbar-thumb:hover { background-color: rgba(148, 163, 184, 0.8); }
+::-webkit-scrollbar-button { display: none; width: 0; height: 0; }
+@supports not selector(::-webkit-scrollbar) {
+  html { scrollbar-width: thin; scrollbar-color: rgba(148, 163, 184, 0.6) transparent; }
+}
+</style>`;
+
+
+const escapeHtml = (s: string) =>
+  s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c] as string));
+
+// Readable defaults for markdown shown as a standalone HTML page (nothing loads from outside)
+const PREVIEW_PAGE_CSS = `
+:root { color-scheme: light; }
+body { margin: 0; background: #fff; color: #1f2328; font: 16px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+main { max-width: 780px; margin: 0 auto; padding: 40px 24px 64px; overflow-wrap: break-word; }
+h1, h2, h3, h4, h5, h6 { line-height: 1.25; margin: 1.6em 0 0.6em; }
+h1 { font-size: 2em; margin-top: 0; padding-bottom: 0.3em; border-bottom: 1px solid #d1d9e0; }
+h2 { font-size: 1.5em; padding-bottom: 0.3em; border-bottom: 1px solid #d1d9e0; }
+p, ul, ol, blockquote, pre, table { margin: 0 0 1em; }
+a { color: #0969da; }
+img { max-width: 100%; }
+code { font: 0.875em ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; background: #f6f8fa; padding: 0.15em 0.35em; border-radius: 6px; }
+pre { background: #f6f8fa; padding: 16px; border-radius: 8px; overflow: auto; }
+pre code { background: none; padding: 0; }
+blockquote { margin-left: 0; padding: 0 1em; color: #59636e; border-left: 4px solid #d1d9e0; }
+table { border-collapse: collapse; display: block; overflow: auto; }
+th, td { border: 1px solid #d1d9e0; padding: 6px 12px; }
+th { background: #f6f8fa; }
+hr { border: 0; border-top: 1px solid #d1d9e0; margin: 2em 0; }
+`;
+
+// Markdown is not HTML: shown raw in an iframe it is one run of plain text. Convert it to a page.
+// Math is emitted as MathML so it renders natively without KaTeX CSS/fonts inside the sandbox.
+const markdownToHtmlPage = (markdown: string, title: string) => {
+  const body = renderToStaticMarkup(
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm, remarkMath]}
+      rehypePlugins={[rehypeRaw, [rehypeKatex, { output: 'mathml' }]]}
+    >
+      {markdown}
+    </ReactMarkdown>
+  );
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(title)}</title><style>${PREVIEW_PAGE_CSS}</style></head><body><main>${body}</main></body></html>`;
+};
+
+// Permissions Policy for the preview frame: every powerful feature explicitly off
+const PREVIEW_IFRAME_ALLOW = [
+  'camera', 'microphone', 'geolocation', 'clipboard-read', 'clipboard-write', 'payment', 'usb',
+  'serial', 'bluetooth', 'hid', 'display-capture', 'fullscreen', 'midi', 'accelerometer', 'gyroscope', 'magnetometer',
+].map((feature) => `${feature} 'none'`).join('; ');
+
+// In-document search (Ctrl+F) only looks at text the reader can actually see. Diagram SVG labels,
+// the visually hidden MathML copy of every formula, screen-reader labels and icons would otherwise
+// count as matches that can't be shown (and wrapping SVG text in <mark> breaks the diagram).
+// KaTeX's visible rendering (.katex-html) is aria-hidden in favour of its MathML copy, so it stays searchable.
+const SEARCH_SKIP_SELECTOR = 'svg, script, style, noscript, textarea, .katex-mathml, .sr-only, [aria-hidden="true"]:not(.katex-html)';
+
+/**
+ * Brings a search match into view by scrolling only the preview. `scrollIntoView` would also scroll
+ * every ancestor, including the popup's overflow-hidden wrappers, shifting the popup instead.
+ */
+const revealSearchMatch = (container: HTMLElement, mark: HTMLElement) => {
+  // Open collapsed sections hiding the match
+  for (let details = mark.closest('details'); details; details = details.parentElement?.closest('details') ?? null) {
+    if (!details.open) details.open = true;
+  }
+
+  // Wide code blocks and tables scroll sideways on their own: centre the match inside them
+  for (let el = mark.parentElement; el && el !== container; el = el.parentElement) {
+    if (el.scrollWidth > el.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(el).overflowX)) {
+      const elRect = el.getBoundingClientRect();
+      const markRect = mark.getBoundingClientRect();
+      el.scrollLeft += markRect.left - elRect.left - el.clientWidth / 2 + markRect.width / 2;
+    }
+  }
+
+  // Then the preview itself: centre vertically, and horizontally when it scrolls sideways (raw, no wrap)
+  const containerRect = container.getBoundingClientRect();
+  const markRect = mark.getBoundingClientRect();
+  const top = container.scrollTop + (markRect.top - containerRect.top) - container.clientHeight / 2 + markRect.height / 2;
+  const scrollsSideways = container.scrollWidth > container.clientWidth + 1 && /(auto|scroll)/.test(getComputedStyle(container).overflowX);
+  const left = scrollsSideways
+    ? container.scrollLeft + (markRect.left - containerRect.left) - container.clientWidth / 2 + markRect.width / 2
+    : container.scrollLeft;
+  container.scrollTo({ top: Math.max(0, top), left: Math.max(0, left), behavior: 'smooth' });
+};
+
+// Highlights every case-insensitive occurrence of `query` in `text` (node switcher results)
+const HighlightMatch = ({ text, query }: { text: string; query: string }) => {
+  const needle = query.trim().toLowerCase();
+  if (!needle) return <>{text}</>;
+  const lower = text.toLowerCase();
+  const parts: React.ReactNode[] = [];
+  let from = 0;
+  let at = lower.indexOf(needle);
+  while (at !== -1 && parts.length < 40) {
+    if (at > from) parts.push(text.slice(from, at));
+    parts.push(
+      <mark key={at} className="rounded-sm bg-indigo-500/25 px-px text-inherit">
+        {text.slice(at, at + needle.length)}
+      </mark>
+    );
+    from = at + needle.length;
+    at = lower.indexOf(needle, from);
+  }
+  parts.push(text.slice(from));
+  return <>{parts}</>;
+};
+
+const MERMAID_DOCS_URL = 'https://mermaid.js.org/intro/syntax-reference.html';
+
+// Starter diagrams offered by the editor's Diagram button; each renders as-is
+const MERMAID_TEMPLATES: { label: string; hint: string; code: string }[] = [
+  {
+    label: 'Flowchart',
+    hint: 'Steps & decisions',
+    code: `flowchart TD
+    A[Start] --> B{Is it working?}
+    B -->|Yes| C[Great!]
+    B -->|No| D[Debug]
+    D --> B`,
+  },
+  {
+    label: 'Sequence',
+    hint: 'Messages over time',
+    code: `sequenceDiagram
+    participant User
+    participant App
+    User->>App: Log in
+    App-->>User: Welcome back`,
+  },
+  {
+    label: 'Class',
+    hint: 'Types & relations',
+    code: `classDiagram
+    class Order {
+      +id: string
+      +total() number
+    }
+    Customer "1" --> "*" Order : places`,
+  },
+  {
+    label: 'State',
+    hint: 'States & transitions',
+    code: `stateDiagram-v2
+    [*] --> Draft
+    Draft --> Review : submit
+    Review --> Published : approve
+    Published --> [*]`,
+  },
+  {
+    label: 'ER',
+    hint: 'Database tables',
+    code: `erDiagram
+    CUSTOMER ||--o{ ORDER : places
+    ORDER ||--|{ LINE_ITEM : contains`,
+  },
+  {
+    label: 'Gantt',
+    hint: 'Project timeline',
+    code: `gantt
+    title Project plan
+    dateFormat YYYY-MM-DD
+    section Build
+    Design  :a1, 2024-01-01, 7d
+    Develop :after a1, 14d`,
+  },
+  {
+    label: 'Pie',
+    hint: 'Share of a whole',
+    code: `pie title Traffic sources
+    "Search" : 55
+    "Social" : 30
+    "Direct" : 15`,
+  },
+  {
+    label: 'Mindmap',
+    hint: 'Ideas around a topic',
+    code: `mindmap
+  root((Project))
+    Goals
+    Team
+    Timeline`,
+  },
+];
+
+const MERMAID_TYPE_RE = /^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram(-v2)?|erDiagram|journey|gantt|pie|quadrantChart|requirementDiagram|gitGraph|mindmap|timeline|sankey(-beta)?|xychart(-beta)?|block(-beta)?|packet(-beta)?|kanban|architecture(-beta)?|radar(-beta)?|C4Context|C4Container|C4Component|C4Dynamic|C4Deployment|zenuml)\b/;
+
+// Plain-language reason for a failed render: most often the diagram type line is missing
+const getMermaidHint = (code: string) => {
+  const firstLine = code.split('\n').map((l) => l.trim()).find((l) => l && !l.startsWith('%%'));
+  if (!firstLine) return 'The diagram block is empty. Add a diagram type on the first line, then its content.';
+  if (firstLine.startsWith('---') || MERMAID_TYPE_RE.test(firstLine)) {
+    return 'There is a syntax error in the diagram code. Check arrows (-->), brackets and quotes near the line named in the message below.';
+  }
+  return `The first line must name the diagram type, for example "flowchart TD", "sequenceDiagram" or "pie". Found "${firstLine.slice(0, 40)}".`;
+};
+
 const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) => {
   const [svg, setSvg] = useState<string>('');
   const [hasError, setHasError] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
   const [scale, setScale] = useState(1);
   const [pos, setPos] = useState({ x: 0, y: 0 });
   const [isDragging, setIsDragging] = useState(false);
@@ -31,6 +293,15 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
   const id = useMemo(() => `mermaid-${Math.random().toString(36).substr(2, 9)}`, []);
   const renderCountRef = React.useRef(0);
   const diagramRef = React.useRef<HTMLDivElement>(null);
+
+  // The diagram's natural size (from its SVG viewBox) drives an automatic "fit" zoom and the box
+  // height, so it starts (and resets to) fully visible instead of a fixed 800px width clipped by a 400px box
+  const viewportRef = React.useRef<HTMLDivElement>(null);
+  const [natural, setNatural] = useState<{ w: number; h: number } | null>(null);
+  const [boxHeight, setBoxHeight] = useState(320);
+  const [fitScale, setFitScale] = useState(1);
+  // Once the user zooms or pans, keep their view (even across resizes) until they press reset
+  const userMovedRef = React.useRef(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -56,12 +327,18 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
     mermaid.render(renderId, code).then((result) => {
       cleanupTempNodes();
       if (cancelled) return;
+      const viewBox = /viewBox="\s*[-\d.e]+[\s,]+[-\d.e]+[\s,]+([\d.e]+)[\s,]+([\d.e]+)\s*"/.exec(result.svg);
+      const w = viewBox ? parseFloat(viewBox[1]) : 0;
+      const h = viewBox ? parseFloat(viewBox[2]) : 0;
+      userMovedRef.current = false;
+      setNatural(w > 0 && h > 0 ? { w, h } : { w: 800, h: 500 });
       setSvg(result.svg);
       setHasError(false);
     }).catch(e => {
       cleanupTempNodes();
       if (cancelled) return;
       console.error('Mermaid render error:', e);
+      setErrorMessage(e instanceof Error ? e.message : String(e));
       setHasError(true);
     });
 
@@ -70,52 +347,119 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
     };
   }, [code, id, theme]);
 
-  const handleZoomIn = () => setScale(s => Math.min(s + 0.25, 4));
-  const handleZoomOut = () => setScale(s => Math.max(s - 0.25, 0.25));
-  const handleReset = () => { setScale(1); setPos({ x: 0, y: 0 }); };
-  const handlePan = (dx: number, dy: number) => setPos(p => ({ x: p.x + dx, y: p.y + dy }));
+  // Fit: largest zoom showing the whole diagram with padding (never upscaled past 150%). The box is as
+  // tall as the fitted diagram needs, clamped so wide charts don't waste space and tall ones don't sprawl.
+  // Recomputed when the box width changes (full screen, window resize, outline drawer).
+  React.useLayoutEffect(() => {
+    const el = viewportRef.current;
+    if (!el || !natural) return;
+    const PAD = 40;
+    const MIN_H = 220;
+    const MAX_H = 560;
+    const MAX_UPSCALE = 1.5;
+    const fit = () => {
+      const width = el.clientWidth;
+      if (!width) return;
+      const widthFit = Math.min(MAX_UPSCALE, (width - PAD) / natural.w);
+      const height = Math.round(Math.min(MAX_H, Math.max(MIN_H, natural.h * widthFit + PAD)));
+      const nextFit = Math.min(MAX_UPSCALE, (width - PAD) / natural.w, (height - PAD) / natural.h);
+      setBoxHeight(height);
+      setFitScale(nextFit);
+      if (!userMovedRef.current) {
+        setScale(nextFit);
+        setPos({ x: 0, y: 0 });
+      }
+    };
+    fit();
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [natural]);
+
+  const zoomBy = (factor: number) => {
+    userMovedRef.current = true;
+    setScale(s => Math.min(8, Math.max(0.1, s * factor)));
+  };
+  const handleZoomIn = () => zoomBy(1.25);
+  const handleZoomOut = () => zoomBy(1 / 1.25);
+  const handleReset = () => {
+    userMovedRef.current = false;
+    setScale(fitScale);
+    setPos({ x: 0, y: 0 });
+  };
+  const handlePan = (dx: number, dy: number) => {
+    userMovedRef.current = true;
+    setPos(p => ({ x: p.x + dx, y: p.y + dy }));
+  };
 
   const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    // Dragging pans the diagram; stop the browser from starting a text selection on the SVG labels
+    e.preventDefault();
+    window.getSelection()?.removeAllRanges();
     setIsDragging(true);
     setDragStart({ x: e.clientX - pos.x, y: e.clientY - pos.y });
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (!isDragging) return;
+    // Only real movement counts as a user adjustment; a plain click leaves the view auto-fitting
+    userMovedRef.current = true;
     setPos({ x: e.clientX - dragStart.x, y: e.clientY - dragStart.y });
   };
 
   const handleMouseUp = () => setIsDragging(false);
 
   if (hasError) {
+    // div/span only (no <p>): the markdown themes style paragraphs, which would reshape this card
     return (
-      <div className="relative group rounded-lg overflow-hidden my-4 border border-slate-200 dark:border-slate-800">
-        <div className="flex items-center justify-between px-4 py-2 bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
-          <span className="text-xs font-mono text-slate-500 uppercase">mermaid (fallback)</span>
+      <div className="not-prose relative my-4 rounded-lg overflow-hidden border border-amber-500/40 bg-slate-900 text-left">
+        <div className="flex items-start gap-2.5 px-4 py-3 bg-amber-500/10 border-b border-amber-500/25">
+          <TriangleAlert size={16} className="text-amber-500 shrink-0 mt-0.5" />
+          <div className="min-w-0 text-xs leading-relaxed">
+            <span className="block font-semibold text-amber-500">This diagram couldn't be drawn</span>
+            <span className="block mt-0.5 text-slate-400">{getMermaidHint(code)}</span>
+          </div>
         </div>
-        <pre className="p-4 overflow-x-auto bg-[#1e1e1e] text-[#c9d1d9] text-[13px] font-mono leading-relaxed whitespace-pre-wrap">
+        {errorMessage && (
+          <pre className="m-0 px-4 py-2.5 max-h-28 overflow-auto custom-scrollbar bg-slate-950 border-b border-slate-800 text-[11px] font-mono leading-relaxed text-rose-400 whitespace-pre-wrap">
+            {errorMessage}
+          </pre>
+        )}
+        <pre className="m-0 p-4 overflow-x-auto bg-[#1e1e1e] text-[#c9d1d9] text-[13px] font-mono leading-relaxed whitespace-pre-wrap">
           {code}
         </pre>
+        <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-slate-900 border-t border-slate-800 text-[11px] text-slate-500">
+          <span>Tip: in the editor, the <span className="font-semibold text-slate-300">Diagram</span> button inserts working templates.</span>
+          <a href={MERMAID_DOCS_URL} target="_blank" rel="noopener noreferrer" className="font-medium text-indigo-400 hover:underline">
+            Mermaid syntax guide ↗
+          </a>
+        </div>
       </div>
     );
   }
 
   return (
     <div
-      className="relative group rounded-lg border border-black/10 dark:border-white/10 my-6 overflow-hidden bg-black/5 h-[400px]"
+      ref={viewportRef}
+      className="relative group rounded-lg border border-black/10 dark:border-white/10 my-6 overflow-hidden bg-black/5"
+      style={{ height: boxHeight }}
     >
       <div
-        className={`w-full h-full flex items-center justify-center ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
+        className={`w-full h-full flex items-center justify-center select-none ${isDragging ? 'cursor-grabbing' : 'cursor-grab'}`}
         onMouseDown={handleMouseDown}
         onMouseMove={handleMouseMove}
         onMouseUp={handleMouseUp}
         onMouseLeave={handleMouseUp}
       >
+        {/* Laid out at the diagram's natural size; the transform does all the scaling */}
         <div
           ref={diagramRef}
-          className="mermaid not-prose font-sans !leading-normal [&_text]:!font-sans [&>svg]:!max-w-full [&>svg]:!w-[800px] [&>svg]:!h-auto [&>svg]:min-w-[400px]"
+          className="mermaid not-prose shrink-0 font-sans !leading-normal [&_text]:!font-sans [&>svg]:!w-full [&>svg]:!h-full [&>svg]:!max-w-none"
           dangerouslySetInnerHTML={{ __html: svg }}
           style={{
+            width: natural?.w,
+            height: natural?.h,
             transform: `translate(${pos.x}px, ${pos.y}px) scale(${scale})`,
             transition: isDragging ? 'none' : 'transform 0.2s ease-in-out',
             transformOrigin: 'center center'
@@ -137,7 +481,8 @@ const MermaidDiagram = memo(({ code, theme }: { code: string, theme?: string }) 
 
         <div className="flex bg-slate-900/80 backdrop-blur rounded-lg border border-slate-700/50 shadow-xl overflow-hidden p-1 gap-1 items-center self-end">
           <button onClick={handleZoomOut} title="Zoom Out" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ZoomOut size={16} /></button>
-          <span className="text-xs text-slate-400 font-mono w-10 text-center select-none">{Math.round(scale * 100)}%</span>
+          {/* Relative to the fitted view, so "100%" always means the whole diagram fits */}
+          <span className="text-xs text-slate-400 font-mono w-10 text-center select-none" title="Zoom relative to fit">{Math.round((scale / (fitScale || 1)) * 100)}%</span>
           <button onClick={handleZoomIn} title="Zoom In" className="p-1.5 hover:bg-slate-700/50 text-slate-300 rounded"><ZoomIn size={16} /></button>
         </div>
       </div>
@@ -1044,6 +1389,8 @@ const TextPreviewPopup: React.FC = () => {
   const activePreviewPath = useStore(state => state.activePreviewPath);
   const setActivePreviewText = useStore(state => state.setActivePreviewText);
   const updateNodeValue = useStore(state => state.updateNodeValue);
+  const parsedData = useStore(state => state.parsedData);
+  const uploadedMediaMetadata = useStore(state => state.uploadedMediaMetadata);
   const [copied, setCopied] = React.useState(false);
   const [viewMode, setViewMode] = React.useState<'raw' | 'markdown' | 'html' | 'edit'>('raw');
   const [mdTheme, setMdTheme] = React.useState<string>(() => localStorage.getItem('mdTheme') || 'notebook-dark');
@@ -1199,16 +1546,7 @@ const TextPreviewPopup: React.FC = () => {
       if (!activePreviewText) {
         setViewMode('edit');
       } else {
-        const val = activePreviewText.toLowerCase().trim();
-        if (
-          val.startsWith('<html') ||
-          val.startsWith('<!doc') ||
-          val.includes('<head>') ||
-          val.includes('<body>') ||
-          val.includes('</div>') ||
-          val.includes('</p>') ||
-          val.includes('</a>')
-        ) {
+        if (looksLikeHtml(activePreviewText)) {
           setViewMode('html');
         } else if (activePreviewText.startsWith('#') || activePreviewText.includes('\n# ') || activePreviewPath.endsWith('.md')) {
           setViewMode('markdown');
@@ -1301,11 +1639,31 @@ const TextPreviewPopup: React.FC = () => {
     setCurrentSearchMatch(0);
   }, []);
 
-  const performSearch = React.useCallback((query: string) => {
-    clearSearchHighlights();
-    if (!query.trim() || !contentRef.current) return;
+  // Moves the active highlight to match `index` and brings it into view (inside the preview only)
+  const scrollToMatch = React.useCallback((index: number) => {
+    const container = contentRef.current;
+    if (!container) return;
+    const marks = container.querySelectorAll<HTMLElement>('mark[data-search-highlight]');
+    marks.forEach((m) => m.classList.remove('!bg-indigo-500/60', 'ring-2', 'ring-indigo-400'));
+    const mark = marks[index];
+    if (!mark) return;
+    mark.classList.add('!bg-indigo-500/60', 'ring-2', 'ring-indigo-400');
+    revealSearchMatch(container, mark);
+  }, []);
 
-    const walker = document.createTreeWalker(contentRef.current, NodeFilter.SHOW_TEXT, null);
+  // Highlights every visible match and selects `targetIndex` (wrapping), so a re-run keeps its place
+  const performSearch = React.useCallback((query: string, targetIndex = 0) => {
+    clearSearchHighlights();
+    const container = contentRef.current;
+    if (!query.trim() || !container) return;
+
+    const walker = document.createTreeWalker(container, NodeFilter.SHOW_TEXT, {
+      acceptNode: (node) => {
+        const parent = node.parentElement;
+        if (!parent || !node.textContent || parent.closest(SEARCH_SKIP_SELECTOR)) return NodeFilter.FILTER_REJECT;
+        return NodeFilter.FILTER_ACCEPT;
+      },
+    });
     const textNodes: Text[] = [];
     while (walker.nextNode()) {
       textNodes.push(walker.currentNode as Text);
@@ -1346,39 +1704,40 @@ const TextPreviewPopup: React.FC = () => {
 
     setSearchMatchCount(matchCount);
     if (matchCount > 0) {
-      setCurrentSearchMatch(1);
-      scrollToMatch(0);
+      const index = ((targetIndex % matchCount) + matchCount) % matchCount;
+      setCurrentSearchMatch(index + 1);
+      scrollToMatch(index);
     }
-  }, [clearSearchHighlights]);
+  }, [clearSearchHighlights, scrollToMatch]);
 
-  const scrollToMatch = React.useCallback((index: number) => {
-    if (!contentRef.current) return;
-    const marks = contentRef.current.querySelectorAll('mark[data-search-highlight]');
-    marks.forEach((m) => m.classList.remove('!bg-indigo-500/60', 'ring-2', 'ring-indigo-400'));
-    if (marks[index]) {
-      marks[index].classList.add('!bg-indigo-500/60', 'ring-2', 'ring-indigo-400');
-      marks[index].scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const stepSearchMatch = React.useCallback((step: 1 | -1) => {
+    // From "no current match", next goes to the first match and previous to the last
+    const from = currentSearchMatch > 0 ? currentSearchMatch - 1 : step === 1 ? -1 : 0;
+    const container = contentRef.current;
+    const liveMarks = container ? container.querySelectorAll('mark[data-search-highlight]').length : 0;
+
+    // The preview re-rendered since the search ran (theme/view change, edits) and its highlights are
+    // gone: search again and continue from the same position instead of stepping onto nothing
+    if (searchQuery.trim() && liveMarks !== searchMatchCount) {
+      performSearch(searchQuery, from + step);
+      return;
     }
-  }, []);
-
-  const nextSearchMatch = React.useCallback(() => {
     if (searchMatchCount === 0) return;
-    const next = currentSearchMatch >= searchMatchCount ? 1 : currentSearchMatch + 1;
-    setCurrentSearchMatch(next);
-    scrollToMatch(next - 1);
-  }, [currentSearchMatch, searchMatchCount, scrollToMatch]);
 
-  const prevSearchMatch = React.useCallback(() => {
-    if (searchMatchCount === 0) return;
-    const prev = currentSearchMatch <= 1 ? searchMatchCount : currentSearchMatch - 1;
-    setCurrentSearchMatch(prev);
-    scrollToMatch(prev - 1);
-  }, [currentSearchMatch, searchMatchCount, scrollToMatch]);
+    const index = (((from + step) % searchMatchCount) + searchMatchCount) % searchMatchCount;
+    setCurrentSearchMatch(index + 1);
+    scrollToMatch(index);
+  }, [currentSearchMatch, searchMatchCount, searchQuery, performSearch, scrollToMatch]);
 
+  const nextSearchMatch = React.useCallback(() => stepSearchMatch(1), [stepSearchMatch]);
+  const prevSearchMatch = React.useCallback(() => stepSearchMatch(-1), [stepSearchMatch]);
+
+  // Search (debounced) when the query changes, and again whenever the preview content is re-rendered
+  // (view mode, theme or text changes replace the highlighted DOM)
   React.useEffect(() => {
     const timer = setTimeout(() => performSearch(searchQuery), 200);
     return () => clearTimeout(timer);
-  }, [searchQuery, performSearch]);
+  }, [searchQuery, performSearch, viewMode, mdTheme, editText]);
 
   // Download handler
   const handleDownload = React.useCallback((format: 'md' | 'html' | 'txt') => {
@@ -1408,7 +1767,76 @@ const TextPreviewPopup: React.FC = () => {
     URL.revokeObjectURL(url);
   }, [editText, activePreviewPath]);
 
+  // HTML preview isolation controls. JavaScript runs by default but stays sandboxed;
+  // remote resources are blocked until the user opts in.
+  const [htmlScriptsEnabled, setHtmlScriptsEnabled] = React.useState(true);
+  const [htmlAllowRemote, setHtmlAllowRemote] = React.useState(false);
+  const [htmlReloadKey, setHtmlReloadKey] = React.useState(0);
+
+  // Full screen for the rendered HTML page: an in-app overlay covering the visible viewport
+  // (not the browser Fullscreen API). The iframe stays mounted, so the page keeps its state.
+  const [htmlFullscreen, setHtmlFullscreen] = React.useState(false);
+  const toggleHtmlFullscreen = () => setHtmlFullscreen((on) => !on);
+
+  // Leave full screen when the HTML view goes away (switching tabs or closing the popup; this
+  // component stays mounted between opens, so the next preview must not start full screen)
+  React.useEffect(() => {
+    if (viewMode !== 'html' || activePreviewText == null) setHtmlFullscreen(false);
+  }, [viewMode, activePreviewText]);
+
+  // Esc exits full screen
+  React.useEffect(() => {
+    if (!htmlFullscreen) return;
+    const exitOnEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setHtmlFullscreen(false);
+    };
+    window.addEventListener('keydown', exitOnEscape);
+    return () => window.removeEventListener('keydown', exitOnEscape);
+  }, [htmlFullscreen]);
+  // Built only while the HTML tab is open (markdown conversion renders the whole document).
+  // The page is shown as written: only the policy and app-style scrollbars are added.
+  const htmlPreview = useMemo(() => {
+    if (viewMode !== 'html') return null;
+    const isHtml = looksLikeHtml(editText);
+    const page = isHtml ? editText : markdownToHtmlPage(editText, fileName);
+    return {
+      isHtml,
+      doc: withPreviewPolicy(page, buildPreviewCsp(htmlScriptsEnabled, htmlAllowRemote), PREVIEW_SCROLLBAR_STYLE),
+    };
+  }, [viewMode, editText, fileName, htmlScriptsEnabled, htmlAllowRemote]);
+
+
   const headings = useMemo(() => extractHeadings(editText), [editText]);
+
+  // Outline as a real tree: depth is the nesting depth (not the raw H-level), so a doc that
+  // starts at H2 isn't indented and skipped levels don't leave gaps.
+  const outlineItems = useMemo(() => {
+    const stack: number[] = [];
+    const items = headings.map((h, index) => {
+      while (stack.length && headings[stack[stack.length - 1]].level >= h.level) stack.pop();
+      const ancestors = [...stack];
+      stack.push(index);
+      return { ...h, index, ancestors, depth: Math.min(ancestors.length, 4), hasChildren: false, descendants: 0 };
+    });
+    items.forEach((item) => {
+      const parent = item.ancestors[item.ancestors.length - 1];
+      if (parent !== undefined) items[parent].hasChildren = true;
+      item.ancestors.forEach((a) => { items[a].descendants += 1; });
+    });
+    return items;
+  }, [headings]);
+
+  const [outlineQuery, setOutlineQuery] = React.useState('');
+  const [collapsedOutline, setCollapsedOutline] = React.useState<Set<string>>(() => new Set());
+
+  const toggleOutlineSection = (id: string) => {
+    setCollapsedOutline((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
 
   const markdownComponents = React.useMemo(() => ({
@@ -1716,6 +2144,90 @@ const TextPreviewPopup: React.FC = () => {
     }, 0);
   };
 
+  const [showMermaidHelp, setShowMermaidHelp] = React.useState(false);
+
+  // Inserts a fenced mermaid block on its own lines (blank line before it unless already there)
+  const insertMermaidBlock = (body: string) => {
+    const textarea = textareaRef.current;
+    const before = textarea ? editText.slice(0, textarea.selectionStart) : editText;
+    const lead = before.length === 0 || before.endsWith('\n\n') ? '' : before.endsWith('\n') ? '\n' : '\n\n';
+    insertTextAtCursor(`${lead}\`\`\`mermaid\n${body}\n\`\`\`\n`, '');
+    setShowMermaidHelp(false);
+  };
+
+  // The mobile help sheet drags only from its handle/header, so scrolling the templates never drags it
+  const mermaidSheetDrag = useDragControls();
+
+  // Shared by the desktop inline panel and the mobile bottom sheet
+  const mermaidHelpHeader = (
+    <div className="flex items-start justify-between gap-3 px-3 pt-3 pb-2">
+      <div className="flex items-start gap-2.5 min-w-0">
+        <span className="w-8 h-8 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+          <Workflow size={16} />
+        </span>
+        <div className="min-w-0">
+          <div className="text-sm font-semibold text-white leading-tight">Draw diagrams with Mermaid</div>
+          <div className="mt-0.5 text-[11px] leading-relaxed text-slate-400">
+            Put diagram code inside a <code className="px-1 rounded bg-slate-800 text-slate-200 font-mono">```mermaid</code> block, then switch to <span className="font-semibold text-slate-200">Preview</span> to see it drawn.
+          </div>
+        </div>
+      </div>
+      <button
+        type="button"
+        onClick={() => setShowMermaidHelp(false)}
+        className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-800 shrink-0"
+        aria-label="Close diagram help"
+      >
+        <X size={14} />
+      </button>
+    </div>
+  );
+
+  const mermaidHelpBody = (
+    <div className="px-3 pb-3">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Insert a template</div>
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+        {MERMAID_TEMPLATES.map((template) => (
+          <button
+            key={template.label}
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => insertMermaidBlock(template.code)}
+            className="text-left px-2.5 py-2 rounded-md border border-slate-800 bg-slate-950/60 hover:border-indigo-500/50 hover:bg-indigo-500/10 active:bg-indigo-500/10 transition-colors"
+          >
+            <span className="block text-xs font-medium text-slate-200">{template.label}</span>
+            <span className="block text-[10px] text-slate-500 truncate">{template.hint}</span>
+          </button>
+        ))}
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Example</div>
+          <pre className="m-0 p-2.5 rounded-md bg-slate-950 border border-slate-800 text-[11px] leading-relaxed font-mono text-slate-300 overflow-x-auto">{'```mermaid\nflowchart TD\n  A[Start] --> B{Ready?}\n  B -->|Yes| C[Ship it]\n  B -->|No| D[Fix] --> B\n```'}</pre>
+        </div>
+        <div>
+          <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500 mb-1.5">Syntax tips</div>
+          <ul className="m-0 p-0 list-none space-y-1.5 text-[11px] leading-relaxed text-slate-400">
+            <li><span className="text-slate-200">Line 1</span> picks the type: <code className="font-mono text-indigo-400">flowchart TD</code>, <code className="font-mono text-indigo-400">sequenceDiagram</code>, <code className="font-mono text-indigo-400">pie</code>…</li>
+            <li><span className="text-slate-200">Arrows:</span> <code className="font-mono text-indigo-400">--&gt;</code> solid, <code className="font-mono text-indigo-400">-.-&gt;</code> dotted, <code className="font-mono text-indigo-400">==&gt;</code> thick</li>
+            <li><span className="text-slate-200">Labels:</span> <code className="font-mono text-indigo-400">A --&gt;|text| B</code></li>
+            <li><span className="text-slate-200">Shapes:</span> <code className="font-mono text-indigo-400">[box]</code> <code className="font-mono text-indigo-400">(round)</code> <code className="font-mono text-indigo-400">{'{decision}'}</code> <code className="font-mono text-indigo-400">((circle))</code></li>
+            <li><span className="text-slate-200">Direction:</span> <code className="font-mono text-indigo-400">TD</code> top-down, <code className="font-mono text-indigo-400">LR</code> left-right</li>
+          </ul>
+          <a
+            href={MERMAID_DOCS_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="inline-block mt-2 text-[11px] font-medium text-indigo-400 hover:underline"
+          >
+            Full Mermaid syntax guide ↗
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+
   const handleBackspace = () => {
     const textarea = textareaRef.current;
     if (!textarea) return;
@@ -1757,6 +2269,115 @@ const TextPreviewPopup: React.FC = () => {
     }
     setTimeout(() => setCursorAndScroll(textarea, start), 0);
   };
+
+  // ---------------------------------------------------------------------------
+  // Text node navigation: step to the previous/next previewable text node, or search them all
+  // ---------------------------------------------------------------------------
+  const isPreviewOpen = activePreviewText !== null && activePreviewText !== undefined;
+  const previewNodes = useMemo(
+    () => (isPreviewOpen ? collectPreviewableNodes(parsedData, uploadedMediaMetadata) : []),
+    [isPreviewOpen, parsedData, uploadedMediaMetadata]
+  );
+  const currentNodeIndex = useMemo(
+    () => previewNodes.findIndex((node) => node.path === activePreviewPath),
+    [previewNodes, activePreviewPath]
+  );
+  const prevNode = currentNodeIndex > 0 ? previewNodes[currentNodeIndex - 1] : null;
+  const nextNode = currentNodeIndex < previewNodes.length - 1 ? previewNodes[currentNodeIndex + 1] : null;
+
+  const [showNodeSwitcher, setShowNodeSwitcher] = React.useState(false);
+  const [nodeQuery, setNodeQuery] = React.useState('');
+  const [nodeHighlight, setNodeHighlight] = React.useState(0);
+  const nodeListRef = React.useRef<HTMLDivElement>(null);
+
+  const nodeResults = useMemo(
+    () => (showNodeSwitcher ? searchPreviewableNodes(previewNodes, nodeQuery) : []),
+    [showNodeSwitcher, previewNodes, nodeQuery]
+  );
+
+  // Save edits still waiting on the debounce for the node being left. Left to triggerSave's timer,
+  // the save would also re-open that node when it fires and pull the popup back to it.
+  const flushPendingSave = () => {
+    if (!saveTimeoutRef.current) return;
+    clearTimeout(saveTimeoutRef.current);
+    saveTimeoutRef.current = null;
+    if (activePreviewPath) void updateNodeValue(activePreviewPath, editText);
+  };
+
+  const openPreviewNode = (node: PreviewableNode) => {
+    setShowNodeSwitcher(false);
+    if (node.path === activePreviewPath) return;
+    flushPendingSave();
+    setActivePreviewText(node.value, node.path);
+  };
+
+  const goToAdjacentNode = (step: 1 | -1) => {
+    const target = step === 1 ? nextNode : prevNode;
+    if (target) openPreviewNode(target);
+  };
+
+  const openNodeSwitcher = () => {
+    setNodeQuery('');
+    // With no query the list is in document order, so start on the current node when it's listed
+    setNodeHighlight(currentNodeIndex >= 0 && currentNodeIndex < NODE_SEARCH_LIMIT ? currentNodeIndex : 0);
+    setShowNodeSwitcher(true);
+  };
+
+  const handleNodeSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      setNodeHighlight((i) => Math.min(i + 1, Math.max(nodeResults.length - 1, 0)));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setNodeHighlight((i) => Math.max(i - 1, 0));
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      const match = nodeResults[nodeHighlight];
+      if (match) openPreviewNode(match.node);
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      e.stopPropagation();
+      setShowNodeSwitcher(false);
+    }
+  };
+
+  // Closing the popup also closes the switcher
+  React.useEffect(() => {
+    if (!isPreviewOpen) setShowNodeSwitcher(false);
+  }, [isPreviewOpen]);
+
+  // A newly opened node starts at the top
+  React.useEffect(() => {
+    contentRef.current?.scrollTo({ top: 0 });
+  }, [activePreviewPath]);
+
+  // Keep the highlighted result visible while moving with the arrow keys
+  React.useEffect(() => {
+    if (!showNodeSwitcher) return;
+    nodeListRef.current?.querySelector('[data-node-active="true"]')?.scrollIntoView({ block: 'nearest' });
+  }, [showNodeSwitcher, nodeHighlight, nodeResults]);
+
+  // Ctrl/⌘+K toggles the switcher; Alt+↑/↓ steps through text nodes (not while editing, where the
+  // keys belong to the text). Capture phase, because the popup stops key events from bubbling.
+  React.useEffect(() => {
+    if (!isPreviewOpen) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        if (showNodeSwitcher) setShowNodeSwitcher(false);
+        else openNodeSwitcher();
+      } else if (
+        e.altKey && !e.ctrlKey && !e.metaKey &&
+        (e.key === 'ArrowUp' || e.key === 'ArrowDown') &&
+        viewMode !== 'edit' && !showNodeSwitcher
+      ) {
+        e.preventDefault();
+        goToAdjacentNode(e.key === 'ArrowDown' ? 1 : -1);
+      }
+    };
+    window.addEventListener('keydown', onKeyDown, true);
+    return () => window.removeEventListener('keydown', onKeyDown, true);
+  });
 
   const triggerSave = (newValue: string) => {
     if (saveTimeoutRef.current) {
@@ -1830,9 +2451,19 @@ const TextPreviewPopup: React.FC = () => {
                       </div>
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-1.5 min-w-0">
-                          <h3 className="text-sm font-semibold text-white tracking-tight truncate" title={activePreviewPath || ''}>
-                            {fileName}
-                          </h3>
+                          {/* The file name opens the text node switcher (the main entry point on mobile) */}
+                          <button
+                            type="button"
+                            onClick={openNodeSwitcher}
+                            title={`${activePreviewPath || ''}\nSwitch text node (Ctrl+K)`}
+                            aria-label={`${fileName}: switch text node`}
+                            className="group/title -mx-1 px-1 flex items-center gap-1 min-w-0 rounded-md hover:bg-slate-800/70 transition-colors"
+                          >
+                            <h3 className="text-sm font-semibold text-white tracking-tight truncate">
+                              {fileName}
+                            </h3>
+                            <ChevronDown size={14} className="shrink-0 text-slate-500 group-hover/title:text-slate-300 transition-colors" />
+                          </button>
                           <span className="text-[9px] leading-none bg-slate-800 text-slate-400 px-1.5 py-1 rounded-md border border-slate-700 font-mono uppercase shrink-0">
                             {activePreviewPath?.split('.').pop()}
                           </span>
@@ -1866,6 +2497,41 @@ const TextPreviewPopup: React.FC = () => {
                           <Settings size={18} />
                         </button>
                       )}
+                      {/* Text node navigation (Desktop): previous · position / search · next */}
+                      {previewNodes.length > 0 && (
+                        <div className="hidden sm:flex items-center bg-slate-950 rounded-lg p-0.5 border border-slate-800 shrink-0">
+                          <button
+                            onClick={() => goToAdjacentNode(-1)}
+                            disabled={!prevNode}
+                            title={prevNode ? `Previous text node: ${prevNode.name} (Alt+↑)` : 'No previous text node'}
+                            aria-label="Previous text node"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+                          >
+                            <ChevronUp size={14} />
+                          </button>
+                          <button
+                            onClick={openNodeSwitcher}
+                            title="Go to text node (Ctrl+K)"
+                            aria-label="Go to text node"
+                            className="h-7 px-2 flex items-center gap-1.5 rounded-md text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
+                          >
+                            <ListTree size={14} />
+                            <span className="font-mono text-[11px] tabular-nums text-slate-400">
+                              {currentNodeIndex >= 0 ? `${currentNodeIndex + 1}/${previewNodes.length}` : previewNodes.length}
+                            </span>
+                          </button>
+                          <button
+                            onClick={() => goToAdjacentNode(1)}
+                            disabled={!nextNode}
+                            title={nextNode ? `Next text node: ${nextNode.name} (Alt+↓)` : 'No next text node'}
+                            aria-label="Next text node"
+                            className="p-1.5 rounded-md text-slate-400 hover:text-white hover:bg-slate-800 disabled:opacity-30 disabled:hover:bg-transparent disabled:hover:text-slate-400 transition-colors"
+                          >
+                            <ChevronDown size={14} />
+                          </button>
+                        </div>
+                      )}
+
                       {/* Desktop view switcher (icon-only); mobile gets a labelled row below */}
                       <div className="hidden sm:flex bg-slate-950 rounded-lg p-0.5 border border-slate-800 shrink-0">
                         {VIEW_MODES.map(([mode, , Icon, title]) => (
@@ -1982,6 +2648,164 @@ const TextPreviewPopup: React.FC = () => {
               )}
             </AnimatePresence>
 
+            {/* Text node switcher: jump to or search other previewable text nodes */}
+            <AnimatePresence>
+              {showNodeSwitcher && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="absolute inset-0 z-[70] bg-black/50 backdrop-blur-[2px]"
+                    onClick={() => setShowNodeSwitcher(false)}
+                  />
+                  <motion.div
+                    role="dialog"
+                    aria-label="Go to text node"
+                    initial={{ opacity: 0, y: -8, scale: 0.98 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    exit={{ opacity: 0, y: -8, scale: 0.98 }}
+                    transition={{ duration: 0.16 }}
+                    className="absolute z-[71] inset-x-3 top-3 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:top-16 sm:w-[560px] max-h-[calc(100%-1.5rem)] sm:max-h-[70%] flex flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900 shadow-2xl"
+                  >
+                    <div className="flex items-center gap-2 px-3 border-b border-slate-800 shrink-0">
+                      <Search size={16} className="text-slate-500 shrink-0" />
+                      <input
+                        autoFocus
+                        type="text"
+                        value={nodeQuery}
+                        onChange={(e) => {
+                          setNodeQuery(e.target.value);
+                          setNodeHighlight(0);
+                        }}
+                        onKeyDown={handleNodeSearchKeyDown}
+                        placeholder="Search text nodes by name, path or content…"
+                        aria-label="Search text nodes"
+                        className="flex-1 min-w-0 h-12 bg-transparent text-sm text-white placeholder:text-slate-500 focus:outline-none"
+                      />
+                      <span className="hidden sm:inline shrink-0 rounded border border-slate-700 px-1.5 py-0.5 font-mono text-[10px] text-slate-500">Esc</span>
+                      <button
+                        type="button"
+                        onClick={() => setShowNodeSwitcher(false)}
+                        className="sm:hidden w-8 h-8 flex items-center justify-center rounded-full text-slate-400 active:bg-slate-800 shrink-0"
+                        aria-label="Close text node switcher"
+                      >
+                        <X size={16} />
+                      </button>
+                    </div>
+
+                    <div ref={nodeListRef} role="listbox" aria-label="Text nodes" className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar p-1.5">
+                      {nodeResults.length === 0 ? (
+                        <div className="px-3 py-10 text-center text-xs text-slate-500">
+                          {previewNodes.length === 0 ? 'No text nodes in this workspace' : `No text nodes match “${nodeQuery}”`}
+                        </div>
+                      ) : (
+                        nodeResults.map((match, i) => {
+                          const { node } = match;
+                          const active = i === nodeHighlight;
+                          const isCurrent = node.path === activePreviewPath;
+                          const KindIcon = node.kind === 'html' ? Globe : node.kind === 'markdown' ? FileText : Type;
+                          return (
+                            <button
+                              key={node.path}
+                              type="button"
+                              role="option"
+                              aria-selected={active}
+                              data-node-active={active}
+                              onMouseMove={() => setNodeHighlight(i)}
+                              onClick={() => openPreviewNode(node)}
+                              className={`w-full flex items-start gap-2.5 px-2.5 py-2 rounded-lg text-left transition-colors ${active ? 'bg-indigo-500/10' : ''}`}
+                            >
+                              <span className={`mt-0.5 w-7 h-7 rounded-md flex items-center justify-center shrink-0 ${active ? 'bg-indigo-500/15 text-indigo-400' : 'bg-slate-800 text-slate-400'}`}>
+                                <KindIcon size={14} />
+                              </span>
+                              <span className="flex-1 min-w-0">
+                                <span className="flex items-center gap-2 min-w-0">
+                                  <span className="truncate text-sm font-medium text-slate-200">
+                                    <HighlightMatch text={node.name} query={nodeQuery} />
+                                  </span>
+                                  {isCurrent && (
+                                    <span className="shrink-0 rounded bg-slate-800 px-1.5 py-px text-[10px] text-slate-400">Current</span>
+                                  )}
+                                  <span className="ml-auto shrink-0 text-[10px] uppercase tracking-wide text-slate-500">
+                                    {node.kind === 'markdown' ? 'MD' : node.kind === 'html' ? 'HTML' : 'Text'}
+                                  </span>
+                                </span>
+                                <span className="block truncate font-mono text-[11px] text-slate-500">
+                                  <HighlightMatch text={node.parentPath || 'root'} query={nodeQuery} />
+                                </span>
+                                {match.snippet && (
+                                  <span className="mt-0.5 block text-xs text-slate-400 line-clamp-2 break-words">
+                                    <HighlightMatch text={match.snippet} query={nodeQuery} />
+                                  </span>
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="hidden sm:flex items-center justify-between gap-3 px-3 py-2 border-t border-slate-800 text-[11px] text-slate-500 shrink-0">
+                      <span>
+                        {previewNodes.length} text node{previewNodes.length === 1 ? '' : 's'}
+                        {nodeResults.length >= NODE_SEARCH_LIMIT ? ` · first ${NODE_SEARCH_LIMIT} shown` : ''}
+                      </span>
+                      <span className="flex items-center gap-3">
+                        <span>↑↓ select</span>
+                        <span>Enter open</span>
+                        <span>Alt+↑↓ prev/next</span>
+                      </span>
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+
+            {/* Mermaid help, mobile: bottom sheet (inside the popup so it follows the theme chrome) */}
+            <AnimatePresence>
+              {showMermaidHelp && viewMode === 'edit' && (
+                <>
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="sm:hidden absolute inset-0 z-[60] bg-black/40 backdrop-blur-[2px]"
+                    onClick={() => setShowMermaidHelp(false)}
+                  />
+                  <motion.div
+                    role="dialog"
+                    aria-label="Mermaid diagram help"
+                    initial={{ y: '100%' }}
+                    animate={{ y: 0 }}
+                    exit={{ y: '100%' }}
+                    transition={{ type: 'spring', damping: 32, stiffness: 340 }}
+                    drag="y"
+                    dragControls={mermaidSheetDrag}
+                    dragListener={false}
+                    dragConstraints={{ top: 0, bottom: 0 }}
+                    dragElastic={{ top: 0, bottom: 0.6 }}
+                    onDragEnd={(_, info) => {
+                      if (info.offset.y > 80 || info.velocity.y > 500) setShowMermaidHelp(false);
+                    }}
+                    className="sm:hidden absolute inset-x-0 bottom-0 z-[61] max-h-[85%] flex flex-col bg-slate-900 border-t border-slate-800 rounded-t-2xl shadow-2xl pb-[max(env(safe-area-inset-bottom),12px)]"
+                  >
+                    {/* Drag area: handle + header */}
+                    <div className="shrink-0 touch-none" onPointerDown={(e) => mermaidSheetDrag.start(e)}>
+                      <div className="flex justify-center pt-2.5 pb-1">
+                        <span className="w-10 h-1 rounded-full bg-slate-700" />
+                      </div>
+                      {mermaidHelpHeader}
+                    </div>
+                    <div className="flex-1 min-h-0 overflow-y-auto overscroll-contain custom-scrollbar">
+                      {mermaidHelpBody}
+                    </div>
+                  </motion.div>
+                </>
+              )}
+            </AnimatePresence>
+
             {/* Mobile Actions Sheet (inside the popup so it follows the theme chrome) */}
             <AnimatePresence>
               {showMobileMenu && (
@@ -2039,6 +2863,34 @@ const TextPreviewPopup: React.FC = () => {
                         };
                         const closeThen = (fn: () => void) => () => { fn(); setShowMobileMenu(false); };
                         const sections: { title: string; items: SheetItem[] }[] = [
+                          {
+                            title: 'Navigate',
+                            items: previewNodes.length > 0 ? [
+                              {
+                                key: 'goto',
+                                label: 'Go to text node',
+                                hint: currentNodeIndex >= 0 ? `${currentNodeIndex + 1} of ${previewNodes.length}` : `${previewNodes.length} text nodes`,
+                                icon: <ListTree size={16} />,
+                                onSelect: closeThen(openNodeSwitcher),
+                              },
+                              {
+                                key: 'prev-node',
+                                label: 'Previous text node',
+                                hint: prevNode?.name,
+                                icon: <ChevronUp size={16} />,
+                                disabled: !prevNode,
+                                onSelect: closeThen(() => goToAdjacentNode(-1)),
+                              },
+                              {
+                                key: 'next-node',
+                                label: 'Next text node',
+                                hint: nextNode?.name,
+                                icon: <ChevronDown size={16} />,
+                                disabled: !nextNode,
+                                onSelect: closeThen(() => goToAdjacentNode(1)),
+                              },
+                            ] : [],
+                          },
                           {
                             title: 'View',
                             items: viewMode === 'markdown' ? [
@@ -2215,50 +3067,192 @@ const TextPreviewPopup: React.FC = () => {
                     <div
                       className={`absolute sm:relative z-30 ${outlineFullScreen ? 'w-full' : 'w-64'} sm:w-64 h-full bg-slate-900 border-r border-slate-800 flex flex-col transition-all duration-300 ease-out sm:translate-x-0 ${showOutline ? 'translate-x-0 shadow-2xl' : '-translate-x-full'}`}
                     >
-                      <div className="p-3 border-b border-slate-800 bg-slate-900/50 backdrop-blur sticky top-0 flex items-center justify-between">
-                        <h4 className="text-xs font-semibold text-slate-300 uppercase tracking-wider flex items-center gap-2">
-                          <ListOrdered size={14} /> Outline
-                        </h4>
-                        <div className="flex items-center gap-1 sm:hidden">
-                          <button
-                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
-                            onClick={() => setOutlineFullScreen(!outlineFullScreen)}
-                            title={outlineFullScreen ? "Collapse Width" : "Expand to Full Width"}
-                          >
-                            {outlineFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
-                          </button>
-                          <button
-                            className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-red-400 transition-colors"
-                            onClick={() => setShowOutline(false)}
-                            title="Close Outline"
-                          >
-                            <X size={14} />
-                          </button>
-                        </div>
-                      </div>
-                      <div ref={outlineRef} className="flex-1 overflow-y-auto p-2 custom-scrollbar">
-                        {headings.map((h, i) => {
-                          const isActive = activeHeadingId === h.id || activeHeadingId.startsWith(h.id);
-                          return (
-                            <a
-                              key={i}
-                              data-outline-id={h.id}
-                              href={`#${h.id}`}
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleHeadingClick(h.id);
-                                if (window.innerWidth < 640) setShowOutline(false);
-                              }}
-                              className={`block py-1.5 px-2 rounded-md text-sm truncate transition-colors ${isActive ? 'bg-indigo-500/10 text-indigo-400 font-medium' : 'text-slate-400 hover:bg-slate-800/50 hover:text-slate-200'
-                                }`}
-                              style={{ paddingLeft: `${(h.level - 1) * 12 + 8}px` }}
-                              title={h.text}
-                            >
-                              {h.text}
-                            </a>
-                          )
-                        })}
-                      </div>
+                      {(() => {
+                        const query = outlineQuery.trim().toLowerCase();
+                        // Exact id match first; prefix match only as a fallback for slug variants
+                        const exactIndex = outlineItems.findIndex((item) => item.id === activeHeadingId);
+                        const activeIndex = exactIndex >= 0
+                          ? exactIndex
+                          : outlineItems.findIndex((item) => !!activeHeadingId && activeHeadingId.startsWith(item.id));
+                        const activePath = new Set(activeIndex >= 0 ? outlineItems[activeIndex].ancestors : []);
+                        const parents = outlineItems.filter((item) => item.hasChildren);
+                        const allCollapsed = parents.length > 0 && parents.every((p) => collapsedOutline.has(p.id));
+
+                        // Filtering shows matches plus their parent sections (for context) and ignores collapse
+                        let visible = outlineItems;
+                        if (query) {
+                          const keep = new Set<number>();
+                          outlineItems.forEach((item) => {
+                            if (item.text.toLowerCase().includes(query)) {
+                              keep.add(item.index);
+                              item.ancestors.forEach((a) => keep.add(a));
+                            }
+                          });
+                          visible = outlineItems.filter((item) => keep.has(item.index));
+                        } else {
+                          visible = outlineItems.filter((item) => !item.ancestors.some((a) => collapsedOutline.has(outlineItems[a].id)));
+                        }
+
+                        return (
+                          <>
+                            {/* Outline header */}
+                            <div className="px-3 pt-3 pb-2.5 border-b border-slate-800 bg-slate-900 shrink-0">
+                              <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5 min-w-0">
+                                  <span className="w-7 h-7 rounded-lg bg-indigo-500/10 text-indigo-400 flex items-center justify-center shrink-0">
+                                    <ListOrdered size={14} />
+                                  </span>
+                                  <div className="min-w-0">
+                                    <h4 className="text-[13px] font-semibold text-white leading-tight">Outline</h4>
+                                    <p className="text-[11px] text-slate-500">
+                                      {headings.length} {headings.length === 1 ? 'heading' : 'headings'}
+                                    </p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-0.5 shrink-0">
+                                  {parents.length > 0 && (
+                                    <button
+                                      className="w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors disabled:opacity-40"
+                                      onClick={() => setCollapsedOutline(allCollapsed ? new Set() : new Set(parents.map((p) => p.id)))}
+                                      disabled={!!query}
+                                      title={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}
+                                      aria-label={allCollapsed ? 'Expand all sections' : 'Collapse all sections'}
+                                    >
+                                      {allCollapsed ? <ChevronsUpDown size={14} /> : <ChevronsDownUp size={14} />}
+                                    </button>
+                                  )}
+                                  <button
+                                    className="sm:hidden w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                    onClick={() => setOutlineFullScreen(!outlineFullScreen)}
+                                    title={outlineFullScreen ? 'Collapse width' : 'Expand to full width'}
+                                  >
+                                    {outlineFullScreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                                  </button>
+                                  <button
+                                    className="sm:hidden w-7 h-7 flex items-center justify-center rounded-md text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                                    onClick={() => setShowOutline(false)}
+                                    title="Close outline"
+                                  >
+                                    <X size={14} />
+                                  </button>
+                                </div>
+                              </div>
+
+                              {headings.length >= 8 && (
+                                <div className="relative mt-2.5">
+                                  <Search size={13} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-500 pointer-events-none" />
+                                  <input
+                                    type="text"
+                                    value={outlineQuery}
+                                    onChange={(e) => setOutlineQuery(e.target.value)}
+                                    placeholder="Filter headings"
+                                    aria-label="Filter headings"
+                                    className="w-full h-8 pl-8 pr-7 rounded-lg bg-slate-950 border border-slate-800 text-xs text-slate-200 placeholder:text-slate-500 focus:outline-none focus:border-indigo-500/60 transition-colors"
+                                  />
+                                  {outlineQuery && (
+                                    <button
+                                      onClick={() => setOutlineQuery('')}
+                                      className="absolute right-1.5 top-1/2 -translate-y-1/2 w-5 h-5 flex items-center justify-center rounded text-slate-500 hover:text-white"
+                                      aria-label="Clear filter"
+                                    >
+                                      <X size={12} />
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Outline tree */}
+                            <div ref={outlineRef} role="tree" aria-label="Document outline" className="flex-1 overflow-y-auto px-2 py-2 custom-scrollbar">
+                              {visible.length === 0 ? (
+                                <p className="px-3 py-8 text-center text-xs text-slate-500">No headings match “{outlineQuery}”</p>
+                              ) : visible.map((item) => {
+                                const isActive = item.index === activeIndex;
+                                const inActivePath = activePath.has(item.index);
+                                const isCollapsed = !query && collapsedOutline.has(item.id);
+                                const isMatch = !query || item.text.toLowerCase().includes(query);
+                                // Hierarchy reads from weight, size and brightness, not indentation alone
+                                const size = item.depth === 0 ? 'text-[13px] font-semibold' : item.depth === 1 ? 'text-[13px] font-medium' : 'text-xs';
+                                const tone = isActive
+                                  ? 'text-indigo-400'
+                                  : inActivePath || item.depth === 0
+                                    ? 'text-slate-200 hover:text-white'
+                                    : item.depth === 1
+                                      ? 'text-slate-400 hover:text-slate-200'
+                                      : 'text-slate-500 hover:text-slate-300';
+
+                                return (
+                                  <div
+                                    key={item.index}
+                                    role="treeitem"
+                                    aria-level={item.depth + 1}
+                                    aria-expanded={item.hasChildren && !query ? !isCollapsed : undefined}
+                                    aria-selected={isActive}
+                                    data-outline-id={item.id}
+                                    className={`group relative flex items-center gap-1 pr-1.5 rounded-md transition-colors ${item.depth === 0 && item.index > 0 ? 'mt-1' : ''} ${isActive ? 'bg-indigo-500/10' : 'hover:bg-slate-800/60'} ${isMatch ? '' : 'opacity-60'}`}
+                                    style={{ paddingLeft: item.depth * 14 + 4 }}
+                                  >
+                                    {/* Tree guide lines, one per ancestor level */}
+                                    {Array.from({ length: item.depth }, (_, d) => (
+                                      <span key={d} aria-hidden="true" className="absolute top-0 bottom-0 w-px bg-slate-800" style={{ left: d * 14 + 14 }} />
+                                    ))}
+                                    {isActive && <span aria-hidden="true" className="absolute left-0 top-1.5 bottom-1.5 w-0.5 rounded-full bg-indigo-400" />}
+
+                                    {item.hasChildren && !query ? (
+                                      <button
+                                        type="button"
+                                        onClick={() => toggleOutlineSection(item.id)}
+                                        className="relative w-5 h-5 shrink-0 flex items-center justify-center rounded text-slate-500 hover:text-slate-200 hover:bg-slate-800 transition-colors"
+                                        aria-label={`${isCollapsed ? 'Expand' : 'Collapse'} ${item.text}`}
+                                      >
+                                        <ChevronRight size={13} className={`transition-transform duration-150 ${isCollapsed ? '' : 'rotate-90'}`} />
+                                      </button>
+                                    ) : (
+                                      <span aria-hidden="true" className="relative w-5 h-5 shrink-0 flex items-center justify-center">
+                                        <span className={`rounded-full ${item.depth === 0 ? 'w-1.5 h-1.5' : 'w-1 h-1'} ${isActive ? 'bg-indigo-400' : 'bg-slate-600'}`} />
+                                      </span>
+                                    )}
+
+                                    <a
+                                      href={`#${item.id}`}
+                                      onClick={(e) => {
+                                        e.preventDefault();
+                                        handleHeadingClick(item.id);
+                                        if (window.innerWidth < 640) setShowOutline(false);
+                                      }}
+                                      className={`flex-1 min-w-0 py-1.5 truncate transition-colors ${size} ${tone}`}
+                                      title={item.text}
+                                      aria-current={isActive ? 'location' : undefined}
+                                    >
+                                      {item.text}
+                                    </a>
+
+                                    {isCollapsed && item.descendants > 0 && (
+                                      <span className="shrink-0 min-w-5 px-1 text-center text-[10px] font-mono leading-4 rounded bg-slate-800 text-slate-400" title={`${item.descendants} hidden`}>
+                                        {item.descendants}
+                                      </span>
+                                    )}
+                                    <span className="shrink-0 hidden group-hover:inline text-[9px] font-mono text-slate-600">H{item.level}</span>
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Outline footer: position + back to top */}
+                            <div className="px-3 py-2 border-t border-slate-800 bg-slate-900 shrink-0 flex items-center justify-between gap-2 text-[11px] text-slate-500">
+                              <span className="truncate">
+                                {activeIndex >= 0 ? `Section ${activeIndex + 1} of ${outlineItems.length}` : `${outlineItems.length} sections`}
+                              </span>
+                              <button
+                                onClick={() => contentRef.current?.scrollTo({ top: 0, behavior: 'smooth' })}
+                                className="flex items-center gap-1 px-1.5 py-0.5 rounded text-slate-400 hover:text-white hover:bg-slate-800 transition-colors shrink-0"
+                              >
+                                <ArrowUp size={12} /> Top
+                              </button>
+                            </div>
+                          </>
+                        );
+                      })()}
                     </div>
                   </>
                 )}
@@ -2402,6 +3396,22 @@ const TextPreviewPopup: React.FC = () => {
                     )}
                   </AnimatePresence>
 
+                  {/* Mermaid help, desktop: inline panel above the toolbar (mobile uses a bottom sheet) */}
+                  <AnimatePresence>
+                    {showMermaidHelp && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -6 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.16 }}
+                        className="hidden sm:block shrink-0 max-h-[45vh] overflow-y-auto custom-scrollbar rounded-lg border border-slate-800 bg-slate-900 shadow-sm"
+                      >
+                        {mermaidHelpHeader}
+                        {mermaidHelpBody}
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
                   {/* Formatting & Navigation Toolbar */}
                   <div
                     ref={toolbarRef}
@@ -2499,6 +3509,20 @@ const TextPreviewPopup: React.FC = () => {
                         title="Code Block (```)"
                       >
                         <div className="flex flex-col gap-0.5 items-center justify-center h-3.5 w-3.5"><Code size={10} /><Code size={10} /></div>
+                      </button>
+                      <button
+                        type="button"
+                        onMouseDown={(e) => e.preventDefault()}
+                        onClick={() => setShowMermaidHelp((open) => !open)}
+                        className={`p-1.5 rounded transition-colors shrink-0 flex items-center gap-1.5 ${showMermaidHelp
+                          ? 'bg-indigo-500/15 text-indigo-400'
+                          : 'text-slate-400 hover:text-white hover:bg-slate-800 active:bg-slate-700'
+                          }`}
+                        title="Diagram (Mermaid): templates & syntax help"
+                        aria-expanded={showMermaidHelp}
+                      >
+                        <Workflow size={15} />
+                        <span className="text-[11px] font-medium hidden md:inline">Diagram</span>
                       </button>
                     </div>
 
@@ -2779,13 +3803,100 @@ const TextPreviewPopup: React.FC = () => {
                   </div>
                 </div>
               ) : viewMode === 'html' ? (
-                <div className="flex-1 p-2 bg-slate-950 overflow-hidden flex flex-col">
-                  <iframe
-                    srcDoc={editText}
-                    sandbox="allow-scripts allow-popups"
-                    className="w-full flex-1 rounded-lg bg-white border-0 shadow-inner"
-                    title="HTML Preview"
-                  />
+                <div className="flex-1 min-w-0 bg-slate-950 overflow-hidden flex flex-col">
+                  {/* Sandbox status + isolation controls */}
+                  <div className="shrink-0 flex flex-wrap items-center gap-x-3 gap-y-2 px-3 py-2 border-b border-slate-800 bg-slate-900 text-[11px]">
+                    <span
+                      className="flex items-center gap-1.5 font-semibold text-emerald-400"
+                      title={'Runs in an isolated sandbox with its own origin.\nBlocked: access to this app and its storage/cookies, network requests (fetch, XHR, WebSocket), popups, form submits, downloads, top-level navigation, camera/mic/location/clipboard.'}
+                    >
+                      <ShieldCheck size={14} /> Sandboxed
+                    </span>
+                    <span className="hidden md:inline text-slate-500">No access to this app, its storage or the network</span>
+                    {htmlPreview && !htmlPreview.isHtml && (
+                      <span className="px-1.5 py-0.5 rounded-md border border-indigo-500/25 bg-indigo-500/10 text-indigo-400 font-medium">
+                        Converted from Markdown
+                      </span>
+                    )}
+
+                    <div className="ml-auto flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => setHtmlScriptsEnabled((v) => !v)}
+                        aria-pressed={htmlScriptsEnabled}
+                        title={htmlScriptsEnabled ? 'JavaScript runs inside the sandbox. Click to turn it off.' : 'JavaScript is off. Click to run page scripts (still sandboxed).'}
+                        className={`h-7 px-2 flex items-center gap-1.5 rounded-md border font-medium transition-colors ${htmlScriptsEnabled
+                          ? 'border-slate-700 bg-slate-800 text-slate-200'
+                          : 'border-slate-800 text-slate-500 hover:text-slate-300'
+                          }`}
+                      >
+                        <Code size={12} /> JS {htmlScriptsEnabled ? 'on' : 'off'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHtmlAllowRemote((v) => !v)}
+                        aria-pressed={htmlAllowRemote}
+                        title={htmlAllowRemote
+                          ? 'Remote images, styles, fonts and scripts (https) can load. Network requests from scripts stay blocked.'
+                          : 'Remote images, styles, fonts and scripts are blocked. Click to allow https resources.'}
+                        className={`h-7 px-2 flex items-center gap-1.5 rounded-md border font-medium transition-colors ${htmlAllowRemote
+                          ? 'border-amber-500/40 bg-amber-500/10 text-amber-500'
+                          : 'border-slate-800 text-slate-500 hover:text-slate-300'
+                          }`}
+                      >
+                        <Globe size={12} /> Remote {htmlAllowRemote ? 'allowed' : 'blocked'}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setHtmlReloadKey((k) => k + 1)}
+                        title="Reload preview"
+                        aria-label="Reload preview"
+                        className="w-7 h-7 flex items-center justify-center rounded-md border border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                      >
+                        <RotateCcw size={12} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={toggleHtmlFullscreen}
+                        title={htmlFullscreen ? 'Exit full screen (Esc)' : 'Full screen preview'}
+                        aria-label={htmlFullscreen ? 'Exit full screen' : 'View preview full screen'}
+                        aria-pressed={htmlFullscreen}
+                        className={`w-7 h-7 flex items-center justify-center rounded-md border transition-colors ${htmlFullscreen
+                          ? 'border-slate-700 bg-slate-800 text-white'
+                          : 'border-slate-800 text-slate-400 hover:text-white hover:bg-slate-800'
+                          }`}
+                      >
+                        {htmlFullscreen ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Full screen: the rendered page covers the visible viewport as an in-app overlay. The iframe is
+                      not moved (no reload); fixed positioning resolves to the viewport-sized popup backdrop. */}
+                  <div className={htmlFullscreen ? 'fixed inset-0 z-[10050] bg-slate-950' : 'relative flex-1 min-h-0 p-2 bg-slate-950'}>
+                    {/* Remounted when isolation settings change so the new sandbox/policy applies */}
+                    <iframe
+                      key={`${htmlScriptsEnabled}-${htmlAllowRemote}-${htmlReloadKey}`}
+                      srcDoc={htmlPreview?.doc ?? ''}
+                      sandbox={htmlScriptsEnabled ? 'allow-scripts' : ''}
+                      allow={PREVIEW_IFRAME_ALLOW}
+                      referrerPolicy="no-referrer"
+                      className={`w-full h-full bg-white border-0 rounded-none ${htmlFullscreen ? '' : 'shadow-inner'}`}
+                      title="HTML Preview (sandboxed)"
+                    />
+                    {/* Touch devices have no Esc key: keep a small way out while full screen */}
+                    {htmlFullscreen && (
+                      <button
+                        type="button"
+                        onClick={toggleHtmlFullscreen}
+                        title="Exit full screen (Esc)"
+                        aria-label="Exit full screen"
+                        className="absolute top-3 right-3 z-10 w-9 h-9 flex items-center justify-center rounded-full bg-black/55 text-white opacity-60 hover:opacity-100 focus-visible:opacity-100 backdrop-blur-sm shadow-lg transition-opacity"
+                      >
+                        <Minimize2 size={16} />
+                      </button>
+                    )}
+                  </div>
                 </div>
               ) : (
                 <div ref={contentRef} className="flex-1 overflow-auto bg-slate-950 custom-scrollbar">

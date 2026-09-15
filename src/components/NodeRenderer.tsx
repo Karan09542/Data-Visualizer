@@ -1899,7 +1899,7 @@ function NodeRenderer({
                                   className="inline-block ml-1.5 px-1.5 py-0.5 rounded-md text-[9px] font-bold uppercase tracking-wider bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 border border-indigo-500/20 align-middle whitespace-nowrap shadow-sm backdrop-blur-sm cursor-pointer hover:bg-indigo-500/25 transition-colors"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setActivePreviewText(strVal, data.name);
+                                    setActivePreviewText(strVal, data.path);
                                   }}
                                 >
                                   Open Preview to see all

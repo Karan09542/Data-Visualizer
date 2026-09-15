@@ -4053,3 +4053,22 @@ body.vsc-resizing .monaco-editor {
   --color-emerald-400: #b6e3a1;
   --md-on-accent: #1c2d23;
 }
+
+/* ------------------------------------------------------------------
+   Markdown preview pane (.md-content): scroll vertically only.
+   Wide children (code blocks, tables, math, diagrams) keep their own
+   horizontal scrollers, so the pane never grows a sideways scrollbar
+   and a left-to-right swipe (which opens the outline) is not turned
+   into horizontal panning of the document.
+   ------------------------------------------------------------------ */
+.md-content {
+  overflow-x: hidden;
+  touch-action: pan-y pinch-zoom;
+  overscroll-behavior: contain;
+}
+/* Touch devices scroll by dragging: hide the pane scrollbars so they do not
+   flash whenever the document size changes (theme switch, font load, drawer) */
+@media (pointer: coarse) {
+  .md-content { scrollbar-width: none; }
+  .md-content::-webkit-scrollbar { display: none; }
+}
