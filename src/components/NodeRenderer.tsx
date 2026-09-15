@@ -497,32 +497,65 @@ function NodeRenderer({
 
   const getThemeClasses = (theme: NodeTheme) => {
     switch (theme) {
+      // Dark: VS Code Dark+ / GitHub Dark. Light: VS Code Light+ / GitHub Light.
       case "vscode":
-        return "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md";
+        return appTheme === "dark"
+          ? "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md"
+          : "bg-[#ffffff] border-[#e5e5e5] text-[#3b3b3b] shadow-sm";
       case "github":
-        return "bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm";
+        return appTheme === "dark"
+          ? "bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm"
+          : "bg-[#ffffff] border-[#d1d9e0] text-[#1f2328] shadow-sm";
+      // Dark: clear glass with white text. Light: frosted white glass with dark text (white text
+      // on a see-through card vanished against the light canvas).
       case "glassmorphism":
-        return "bg-white/10 border-white/20 text-white backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]";
+        return appTheme === "dark"
+          ? "bg-white/10 border-white/20 text-white backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]"
+          : "bg-white/55 border-white/80 text-slate-800 backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.12)] ring-1 ring-slate-900/5";
+      // Dark: black with neon green. Light: pale green-tinted card with a deeper neon border and
+      // dark green text, so it keeps the look without glaring on the light canvas.
       case "cyberpunk":
-        return "bg-[#000000] border-[#00ff2a] text-[#00ff2a] shadow-[0_0_10px_#00ff2a]";
+        return appTheme === "dark"
+          ? "bg-[#000000] border-[#00ff2a] text-[#00ff2a] shadow-[0_0_10px_#00ff2a]"
+          : "bg-[#f4fff6] border-[#00a01e] text-[#006b14] shadow-[0_0_10px_rgba(0,160,30,0.35)]";
       case "minimal":
         return "bg-white border-transparent text-slate-800 shadow-sm";
+      // Dark: saturated indigo→purple with white text. Light: soft pastel gradient with dark text,
+      // so it doesn't sit as a heavy dark block on the light canvas.
       case "gradient":
-        return "bg-gradient-to-br from-indigo-500 to-purple-600 border-transparent text-white shadow-lg";
+        return appTheme === "dark"
+          ? "bg-gradient-to-br from-indigo-500 to-purple-600 border-transparent text-white shadow-lg"
+          : "bg-gradient-to-br from-indigo-100 via-violet-100 to-fuchsia-100 border-indigo-200/70 text-indigo-950 shadow-md ring-1 ring-indigo-900/5";
       case "pastel":
         return appTheme === "dark"
           ? "bg-gradient-to-br from-[#2a1b38] to-[#1a233a] border-[#3b2d4a] text-[#e5b3fe] shadow-lg"
           : "bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 border-pink-100 text-purple-900 shadow-md ring-1 ring-purple-100/50";
+      // Dark: black CRT with phosphor green. Light: pale green paper with deep green mono text.
       case "terminal":
-        return "bg-black border-[#33ff00] text-[#33ff00] shadow-none font-mono";
+        return appTheme === "dark"
+          ? "bg-black border-[#33ff00] text-[#33ff00] shadow-none font-mono"
+          : "bg-[#f3fbf1] border-[#2f9e00] text-[#1d5e00] shadow-none font-mono";
+      // Dark: Material dark surface. Light: Material light surface with its elevation shadow.
       case "material":
-        return "bg-[#212121] border-transparent text-white shadow-[0_3px_6px_rgba(0,0,0,0.16),0_3px_6px_rgba(0,0,0,0.23)]";
+        return appTheme === "dark"
+          ? "bg-[#212121] border-transparent text-white shadow-[0_3px_6px_rgba(0,0,0,0.16),0_3px_6px_rgba(0,0,0,0.23)]"
+          : "bg-white border-transparent text-[#212121] shadow-[0_1px_3px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.24)]";
+      // Dark: navy blueprint with cyan lines. Light: white drafting paper with blue ink lines.
       case "blueprint":
-        return "bg-[#003366] border-[#4fa8fb] text-[#4fa8fb] shadow-none";
+        return appTheme === "dark"
+          ? "bg-[#003366] border-[#4fa8fb] text-[#4fa8fb] shadow-none"
+          : "bg-[#f4f9ff] border-[#1f6fd1] text-[#0b4a99] shadow-none";
+      // 80s retro. Dark: deep purple card, orange border, hard pink offset shadow.
+      // Light: cream card, purple border, hard orange offset shadow. (Was purple text on orange: low contrast.)
       case "retro":
-        return "bg-[#ff9900] border-[#8a2be2] text-[#8a2be2] shadow-[4px_4px_0_#8a2be2]";
+        return appTheme === "dark"
+          ? "bg-[#1b1433] border-[#ff9e3d] text-[#ffd9a8] shadow-[4px_4px_0_#ff5fa2]"
+          : "bg-[#fff3dc] border-[#7b3fe4] text-[#3b1f73] shadow-[4px_4px_0_#ff8a3d]";
+      // Dark: deep forest leaf with white text. Light: fresh leaf-green with dark green text.
       case "nature":
-        return "bg-gradient-to-br from-[#2d6a4f] to-[#1b4332] border-[#4a7c44] text-white shadow-xl backdrop-blur-md ring-1 ring-white/20 font-bold";
+        return appTheme === "dark"
+          ? "bg-gradient-to-br from-[#2d6a4f] to-[#1b4332] border-[#4a7c44] text-white shadow-xl backdrop-blur-md ring-1 ring-white/20 font-bold"
+          : "bg-gradient-to-br from-[#e3f4df] to-[#c7e8c0] border-[#7fb77e] text-[#1b4332] shadow-lg ring-1 ring-[#2d6a4f]/15 font-bold";
       case "banyan":
         return "bg-gradient-to-br from-[#1a4d2e] via-[#2d6a4f] to-[#1a4d2e] border-white/20 text-white shadow-2xl backdrop-blur-md ring-1 ring-emerald-400/30 font-bold";
       case "peepal":
@@ -539,14 +572,28 @@ function NodeRenderer({
         return appTheme === "dark"
           ? "bg-[#0a192f]/70 border border-[#3b82f6]/40 text-[#bfdbfe] shadow-[0_4px_24px_rgba(59,130,246,0.15),_inset_0_0_15px_rgba(59,130,246,0.1)] backdrop-blur-xl ring-1 ring-white/5"
           : "bg-white/60 border border-blue-200/60 text-[#1e3a8a] shadow-[0_8px_32px_rgba(59,130,246,0.1),_inset_0_0_20px_rgba(255,255,255,0.7)] backdrop-blur-xl ring-1 ring-blue-100/50";
+      // Circuit board with a faint trace grid (the octagon clip-path hides outer shadows, so none).
+      // Dark: black board, cyan traces. Light: pale board, teal traces and dark teal mono text.
       case "circuit":
-        return "bg-[#0b0e14] border-[#00f3ff] text-[#00f3ff] shadow-[0_0_15px_rgba(0,243,255,0.3)] font-mono border-2";
+        return appTheme === "dark"
+          ? "bg-[#0b0e14] bg-[linear-gradient(rgba(0,243,255,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(0,243,255,0.07)_1px,transparent_1px)] bg-[size:12px_12px] border-[#00f3ff] text-[#7ff9ff] font-mono border-2"
+          : "bg-[#f2fbfc] bg-[linear-gradient(rgba(8,145,178,0.09)_1px,transparent_1px),linear-gradient(90deg,rgba(8,145,178,0.09)_1px,transparent_1px)] bg-[size:12px_12px] border-[#0891b2] text-[#0e4f5c] font-mono border-2";
+      // Galaxy with a few stars. Dark: deep purple space, near-white text.
+      // Light: pale violet/indigo/pink nebula, violet stars, dark violet text.
       case "galaxy":
-        return "bg-gradient-to-br from-[#0b0014] via-[#1a0033] to-[#2d004d] border-purple-500/40 text-purple-100 shadow-[0_0_25px_rgba(168,85,247,0.5),inset_0_0_15px_rgba(255,255,255,0.05)] ring-1 ring-purple-400/20";
+        return appTheme === "dark"
+          ? "bg-[radial-gradient(circle_at_20%_30%,rgba(255,255,255,0.8)_0_1px,transparent_1.5px),radial-gradient(circle_at_72%_62%,rgba(255,255,255,0.6)_0_1px,transparent_1.5px),radial-gradient(circle_at_42%_82%,rgba(255,255,255,0.5)_0_1px,transparent_1.5px),linear-gradient(135deg,#0b0014,#1a0033_55%,#2d004d)] border-purple-400/40 text-purple-50 shadow-[0_0_25px_rgba(168,85,247,0.45)] ring-1 ring-purple-300/20"
+          : "bg-[radial-gradient(circle_at_22%_30%,rgba(139,92,246,0.45)_0_1px,transparent_1.5px),radial-gradient(circle_at_72%_64%,rgba(139,92,246,0.35)_0_1px,transparent_1.5px),radial-gradient(circle_at_44%_82%,rgba(236,72,153,0.3)_0_1px,transparent_1.5px),linear-gradient(135deg,#ede9fe,#e0e7ff_50%,#fae8ff)] border-violet-300/70 text-violet-950 shadow-[0_0_22px_rgba(139,92,246,0.25)] ring-1 ring-violet-200/60";
+      // Dark: clear glass, white text. Light: frosted white glass with dark slate text.
       case "glass":
-        return "bg-white/5 border-white/30 text-white backdrop-blur-xl shadow-2xl ring-1 ring-white/10";
+        return appTheme === "dark"
+          ? "bg-white/5 border-white/30 text-white backdrop-blur-xl shadow-2xl ring-1 ring-white/10"
+          : "bg-white/60 border-white/90 text-slate-800 backdrop-blur-xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10";
+      // Dark: black with glowing magenta. Light: pale pink card, deep magenta border and text, soft glow.
       case "neon":
-        return "bg-black border-[#ff00ff] text-[#ff00ff] shadow-[0_0_20px_#ff00ff] font-bold tracking-wider";
+        return appTheme === "dark"
+          ? "bg-black border-[#ff00ff] text-[#ff00ff] shadow-[0_0_20px_#ff00ff] font-bold tracking-wider"
+          : "bg-[#fff0fb] border-[#e600c8] text-[#a3008c] shadow-[0_0_14px_rgba(230,0,200,0.35)] font-bold tracking-wider";
       case "math":
         return appTheme === "dark"
           ? "bg-[#0f172a] border-[#1e293b] border-l-[#3b82f6] text-slate-200 math-node-dark shadow-lg font-serif ring-1 ring-black/50"
@@ -591,10 +638,18 @@ function NodeRenderer({
         return "bg-[#151b29] border border-[#bfa76f]/40 text-[#e2d8c3] shadow-lg font-serif";
       case "octopus":
         return "bg-gradient-to-br from-[#0f172a]/90 to-[#1e1b4b]/90 backdrop-blur-md border border-[#38bdf8]/50 text-[#e0f2fe] shadow-[0_0_20px_rgba(56,189,248,0.25)]";
+      // Iridescent glass. Dark: soft fuchsia/cyan/violet sheen with near-white cyan text.
+      // Light: pale frosted sheen with dark slate text (cyan-100 text vanished on the light canvas).
       case "holographic":
-        return "bg-gradient-to-tr from-fuchsia-500/30 via-cyan-500/30 to-violet-500/30 border-cyan-400/50 text-cyan-100 backdrop-blur-xl shadow-[0_0_15px_rgba(34,211,238,0.5)]";
+        return appTheme === "dark"
+          ? "bg-gradient-to-tr from-fuchsia-500/25 via-cyan-400/20 to-violet-500/25 border-cyan-300/50 text-cyan-50 backdrop-blur-xl shadow-[0_0_18px_rgba(34,211,238,0.35)] ring-1 ring-white/10"
+          : "bg-gradient-to-tr from-fuchsia-100/90 via-cyan-50/90 to-violet-100/90 border-cyan-300/70 text-slate-800 backdrop-blur-xl shadow-[0_0_18px_rgba(34,211,238,0.25)] ring-1 ring-white/70";
+      // Ruled notebook paper with a red margin. Light: cream paper, faint blue rules.
+      // Dark: dark paper, dim rules, muted red margin, warm light text.
       case "notebook":
-        return "bg-[#fff9e6] border-[#e0d6b8] text-[#4a4a4a] border-l-4 border-l-red-400 shadow-md font-serif";
+        return appTheme === "dark"
+          ? "bg-[#1f1d1a] bg-[linear-gradient(transparent_19px,rgba(148,163,184,0.12)_20px)] bg-[length:100%_20px] border-[#3a352c] text-[#e8e0cf] border-l-4 border-l-[#c05555] shadow-[0_4px_14px_rgba(0,0,0,0.45)] font-serif"
+          : "bg-[#fffdf5] bg-[linear-gradient(transparent_19px,#dbe7f3_20px)] bg-[length:100%_20px] border-[#e7dcc0] text-[#3f3a33] border-l-4 border-l-[#e06666] shadow-[0_2px_8px_rgba(120,100,60,0.15)] font-serif";
       case "chalk":
         return appTheme === "dark"
           ? "chalk-node bg-[#182220] border-2 border-dashed border-slate-300/80 text-slate-100 shadow-[0_4px_16px_rgba(0,0,0,0.5)] ring-1 ring-white/10"
@@ -879,21 +934,9 @@ function NodeRenderer({
   // Custom tweaks per theme
   const isDarkBase =
     [
-      "cyberpunk",
-      "terminal",
-      "material",
-      "blueprint",
-      "glassmorphism",
-      "gradient",
-      "holographic",
       "custom",
-      "nature",
       "banyan",
       "peepal",
-      "circuit",
-      "galaxy",
-      "glass",
-      "neon",
       "neural",
       "river",
       "tree",
@@ -908,9 +951,22 @@ function NodeRenderer({
       "chess",
       "octopus",
       "chalk",
-      "vscode",
-      "github",
     ].includes(nodeTheme) ||
+    (nodeTheme === "glass" && appTheme === "dark") ||
+    (nodeTheme === "neon" && appTheme === "dark") ||
+    (nodeTheme === "circuit" && appTheme === "dark") ||
+    (nodeTheme === "galaxy" && appTheme === "dark") ||
+    (nodeTheme === "nature" && appTheme === "dark") ||
+    (nodeTheme === "notebook" && appTheme === "dark") ||
+    (nodeTheme === "holographic" && appTheme === "dark") ||
+    (nodeTheme === "terminal" && appTheme === "dark") ||
+    (nodeTheme === "material" && appTheme === "dark") ||
+    (nodeTheme === "blueprint" && appTheme === "dark") ||
+    (nodeTheme === "gradient" && appTheme === "dark") ||
+    (nodeTheme === "cyberpunk" && appTheme === "dark") ||
+    (nodeTheme === "glassmorphism" && appTheme === "dark") ||
+    (nodeTheme === "vscode" && appTheme === "dark") ||
+    (nodeTheme === "github" && appTheme === "dark") ||
     (nodeTheme === "cloud" && appTheme === "dark") ||
     (nodeTheme === "pastel" && appTheme === "dark") ||
     (nodeTheme === "math" && appTheme === "dark") ||
@@ -920,9 +976,24 @@ function NodeRenderer({
     (nodeTheme === "hydrogen" && appTheme === "dark") ||
     (nodeTheme === "seed" && data.id === "root");
   const isLightBase =
-    ["minimal", "ludo", "notebook"].includes(
+    ["minimal", "ludo"].includes(
       nodeTheme,
     ) ||
+    (nodeTheme === "glass" && appTheme !== "dark") ||
+    (nodeTheme === "neon" && appTheme !== "dark") ||
+    (nodeTheme === "circuit" && appTheme !== "dark") ||
+    (nodeTheme === "galaxy" && appTheme !== "dark") ||
+    (nodeTheme === "nature" && appTheme !== "dark") ||
+    (nodeTheme === "notebook" && appTheme !== "dark") ||
+    (nodeTheme === "holographic" && appTheme !== "dark") ||
+    (nodeTheme === "terminal" && appTheme !== "dark") ||
+    (nodeTheme === "material" && appTheme !== "dark") ||
+    (nodeTheme === "blueprint" && appTheme !== "dark") ||
+    (nodeTheme === "gradient" && appTheme !== "dark") ||
+    (nodeTheme === "cyberpunk" && appTheme !== "dark") ||
+    (nodeTheme === "glassmorphism" && appTheme !== "dark") ||
+    (nodeTheme === "vscode" && appTheme !== "dark") ||
+    (nodeTheme === "github" && appTheme !== "dark") ||
     (nodeTheme === "math" && appTheme !== "dark") ||
     (nodeTheme === "zen" && appTheme !== "dark") ||
     (nodeTheme === "architect" && appTheme !== "dark") ||
@@ -951,7 +1022,7 @@ function NodeRenderer({
               : isLightBase
                 ? "text-slate-500"
                 : nodeTheme === "retro"
-                  ? "text-[#8a2be2]/70"
+                  ? (appTheme === "dark" ? "text-[#ffb870]/80" : "text-[#6b3fc4]/80")
                   : "text-black/50";
   const valText = isCustom
     ? ""
@@ -972,7 +1043,7 @@ function NodeRenderer({
                 : isLightBase
                   ? "text-slate-900"
                   : nodeTheme === "retro"
-                    ? "text-[#8a2be2]/90"
+                    ? (appTheme === "dark" ? "text-[#ffe7c7]" : "text-[#2e1760]")
                     : "text-black/90";
   const labelText = isCustom ? "" : ""; // Label usually inherits or has own logic
 
@@ -1479,7 +1550,7 @@ function NodeRenderer({
             }}
           >
             {nodeTheme === "nature" && !isSpecialNode && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden opacity-20">
+              <div className={`absolute inset-0 pointer-events-none overflow-hidden ${appTheme === "dark" ? "opacity-20" : "opacity-30 [&>div]:bg-[#2d6a4f]"}`}>
                 <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white -translate-x-1/2" />
                 <div className="absolute top-[30%] left-[55%] w-[40%] h-0.5 bg-white -rotate-[30deg]" />
                 <div className="absolute top-[30%] right-[55%] w-[40%] h-0.5 bg-white rotate-[30deg]" />
@@ -1815,7 +1886,7 @@ function NodeRenderer({
                   ...(!isSpecialNode &&
                     (nodeTheme === "peepal" ||
                       nodeTheme === "banyan" ||
-                      nodeTheme === "nature")
+                      (nodeTheme === "nature" && appTheme === "dark"))
                     ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                     : {}),
                 }}
