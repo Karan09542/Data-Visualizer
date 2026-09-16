@@ -103,6 +103,28 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
     name: string;
   } | null>(null);
 
+  // Row actions normally appear on hover, which touch users never get. Keep them visible when
+  // hovering is unavailable, a touch screen is present, or the window is phone-sized (which also
+  // covers device emulators that still report a mouse).
+  const [alwaysShowRowActions, setAlwaysShowRowActions] = useState(false);
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const update = () => {
+      const noHover = window.matchMedia("(hover: none)").matches;
+      const coarsePointer = window.matchMedia("(pointer: coarse)").matches;
+      const hasTouchScreen = (navigator.maxTouchPoints ?? 0) > 0 || "ontouchstart" in window;
+      const narrowWindow = window.innerWidth < 768;
+      setAlwaysShowRowActions(noHover || coarsePointer || hasTouchScreen || narrowWindow);
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, []);
+  const longPressTimerRef = useRef<number | null>(null);
+  const longPressOriginRef = useRef<{ x: number; y: number } | null>(null);
+  /** Set when a long press opened the menu, so the tap that follows doesn't close it again */
+  const ignoreNextWindowClickRef = useRef(false);
+
   // Drag and Drop State
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverFolderId, setDragOverFolderId] = useState<string | null>(null);
@@ -152,6 +174,10 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
   // Close context menu on outside click
   useEffect(() => {
     const handleClickOutside = () => {
+      if (ignoreNextWindowClickRef.current) {
+        ignoreNextWindowClickRef.current = false;
+        return;
+      }
       if (contextMenu) setContextMenu(null);
     };
     window.addEventListener("click", handleClickOutside);
@@ -782,6 +808,13 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
   };
 
   // Context Menu operations
+  /** Long press on touch opens the same menu a right-click does */
+  const openContextMenuForTouch = (clientX: number, clientY: number, item: ExplorerItem) =>
+    handleContextMenu(
+      { preventDefault() { }, stopPropagation() { }, clientX, clientY } as React.MouseEvent,
+      item,
+    );
+
   const handleContextMenu = (e: React.MouseEvent, item: ExplorerItem) => {
     e.preventDefault();
     e.stopPropagation();
@@ -965,6 +998,35 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
             onDragLeave={handleDragLeave}
             onDrop={(e) => isFolder ? handleDrop(e, item.id) : undefined}
             onContextMenu={(e) => handleContextMenu(e, item)}
+            onTouchStart={(e) => {
+              if (isEditing) return;
+              const touch = e.touches[0];
+              if (!touch) return;
+              const { clientX, clientY } = touch;
+              longPressOriginRef.current = { x: clientX, y: clientY };
+              if (longPressTimerRef.current) window.clearTimeout(longPressTimerRef.current);
+              longPressTimerRef.current = window.setTimeout(() => {
+                longPressTimerRef.current = null;
+                ignoreNextWindowClickRef.current = true;
+                openContextMenuForTouch(clientX, clientY, item);
+              }, 500);
+            }}
+            onTouchMove={(e) => {
+              const origin = longPressOriginRef.current;
+              const touch = e.touches[0];
+              if (!origin || !touch || !longPressTimerRef.current) return;
+              // Scrolling or dragging a finger is not a long press
+              if (Math.hypot(touch.clientX - origin.x, touch.clientY - origin.y) > 10) {
+                window.clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = null;
+              }
+            }}
+            onTouchEnd={() => {
+              if (longPressTimerRef.current) {
+                window.clearTimeout(longPressTimerRef.current);
+                longPressTimerRef.current = null;
+              }
+            }}
             onClick={(e) => handleItemClick(e, item)}
             onDoubleClick={(e) => {
               if (!isFolder) {
@@ -1029,9 +1091,11 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
 
             {/* Quick Action icon triggers */}
             <div
-              className={`hidden group-hover:flex focus-within:flex items-center gap-0.5 pl-3 pr-1.5 h-full absolute right-0 top-0 z-10 ${isSelected ? "bg-[var(--vsc-selection,#e4e6f1)]" : "bg-[var(--vsc-row-actions,#f0f0f0)]"}`}
+              className={alwaysShowRowActions
+                ? "flex items-center pr-1.5 h-full absolute right-0 top-0 z-10"
+                : `hidden group-hover:flex focus-within:flex items-center gap-0.5 pl-3 pr-1.5 h-full absolute right-0 top-0 z-10 ${isSelected ? "bg-[var(--vsc-selection,#e4e6f1)]" : "bg-[var(--vsc-row-actions,#f0f0f0)]"}`}
             >
-              {isFolder && (
+              {isFolder && !alwaysShowRowActions && (
                 <>
                   <button
                     onClick={(e) => {
@@ -1083,7 +1147,8 @@ export default function FileExplorerPanel({ rootPath }: FileExplorerPanelProps =
                     });
                   }
                 }}
-                className="p-0.5 rounded-[3px] text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-active,rgba(0,0,0,0.1))] transition cursor-pointer"
+                aria-label="More actions"
+                className={`rounded-md text-[var(--vsc-fg-muted,#616161)] hover:text-[var(--vsc-fg,#3b3b3b)] hover:bg-[var(--vsc-active,rgba(0,0,0,0.1))] transition cursor-pointer ${alwaysShowRowActions ? "p-1.5" : "p-0.5"}`}
               >
                 <MoreHorizontal size={14} />
               </button>

@@ -78,7 +78,8 @@ export const ImageSlicerUtil: React.FC = () => {
       }
       return lines;
     }
-    return [...cutLinesX].sort((a, b) => a - b);
+    // Rendered in state order so each line's index stays valid for drag and delete
+    return cutLinesX;
   }, [mode, direction, sliceSizeX, sliceCountX, fixedUnit, cutLinesX, imageEl]);
 
   const effectiveCutLinesY = useMemo(() => {
@@ -97,13 +98,15 @@ export const ImageSlicerUtil: React.FC = () => {
       }
       return lines;
     }
-    return [...cutLinesY].sort((a, b) => a - b);
+    // Rendered in state order so each line's index stays valid for drag and delete
+    return cutLinesY;
   }, [mode, direction, sliceSizeY, sliceCountY, fixedUnit, cutLinesY, imageEl]);
 
   const validSlices = useMemo(() => {
     if (!imageEl) return [];
-    const sortedX = [0, ...effectiveCutLinesX, imageEl.width];
-    const sortedY = [0, ...effectiveCutLinesY, imageEl.height];
+    // Cut lines can sit in any order in state, so sort here where positions matter
+    const sortedX = [0, ...effectiveCutLinesX, imageEl.width].sort((a, b) => a - b);
+    const sortedY = [0, ...effectiveCutLinesY, imageEl.height].sort((a, b) => a - b);
     const slices = [];
     for (let r = 0; r < sortedY.length - 1; r++) {
       const startY = sortedY[r], endY = sortedY[r + 1];
