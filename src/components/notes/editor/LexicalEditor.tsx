@@ -14,7 +14,7 @@ import { ListItemNode, ListNode } from '@lexical/list';
 import { CodeNode as LexicalCodeNode, CodeHighlightNode } from '@lexical/code';
 import { LinkNode } from '@lexical/link';
 import { TableNode, TableCellNode, TableRowNode } from '@lexical/table';
-import { DOMConversionMap, NodeKey } from 'lexical';
+import { DOMConversionMap, NodeKey, CAN_UNDO_COMMAND, CAN_REDO_COMMAND, COMMAND_PRIORITY_LOW } from 'lexical';
 import { HorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode';
 import { HorizontalRulePlugin } from '@lexical/react/LexicalHorizontalRulePlugin';
 import { TablePlugin } from '@lexical/react/LexicalTablePlugin';
@@ -67,6 +67,13 @@ interface LexicalEditorProps {
   isEditing: boolean;
   style?: React.CSSProperties;
   editorRef?: React.MutableRefObject<import('lexical').LexicalEditor | null>;
+  /** Tells the parent whether undo and redo currently have anything to do */
+  onHistoryChange?: (state: HistoryState) => void;
+}
+
+export interface HistoryState {
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 const theme = {
@@ -140,7 +147,48 @@ function EditorRefPlugin({ editorRef }: { editorRef?: React.MutableRefObject<imp
   return null;
 }
 
-export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, style, editorRef }: LexicalEditorProps) {
+/** Lexical announces history availability through these two commands */
+function HistoryStatePlugin({ onHistoryChange }: { onHistoryChange?: (state: HistoryState) => void }) {
+  const [editor] = useLexicalComposerContext();
+  const stateRef = React.useRef<HistoryState>({ canUndo: false, canRedo: false });
+
+  React.useEffect(() => {
+    if (!onHistoryChange) return;
+
+    const report = (next: Partial<HistoryState>) => {
+      const merged = { ...stateRef.current, ...next };
+      if (merged.canUndo === stateRef.current.canUndo && merged.canRedo === stateRef.current.canRedo) return;
+      stateRef.current = merged;
+      onHistoryChange(merged);
+    };
+
+    const stopUndo = editor.registerCommand(
+      CAN_UNDO_COMMAND,
+      (payload: boolean) => {
+        report({ canUndo: payload });
+        return false; // listening only, the history plugin still handles it
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+    const stopRedo = editor.registerCommand(
+      CAN_REDO_COMMAND,
+      (payload: boolean) => {
+        report({ canRedo: payload });
+        return false;
+      },
+      COMMAND_PRIORITY_LOW,
+    );
+
+    return () => {
+      stopUndo();
+      stopRedo();
+    };
+  }, [editor, onHistoryChange]);
+
+  return null;
+}
+
+export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, style, editorRef, onHistoryChange }: LexicalEditorProps) {
   
   const initialConfig = useMemo(() => {
     let parsedState = null;
@@ -219,6 +267,7 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
           />
           <HistoryPlugin />
           <EditorRefPlugin editorRef={editorRef} />
+          <HistoryStatePlugin onHistoryChange={onHistoryChange} />
           <ListPlugin />
           <CheckListPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />

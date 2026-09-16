@@ -14,7 +14,32 @@ import {
   $mergeCells,
 } from '@lexical/table';
 import { createPortal } from 'react-dom';
-import { ChevronDown } from 'lucide-react';
+import {
+  ChevronDown,
+  ArrowUpToLine,
+  ArrowDownToLine,
+  ArrowLeftToLine,
+  ArrowRightToLine,
+  Combine,
+  Split,
+  Trash2,
+  ImageDown,
+  Download,
+  Share2,
+  Hash,
+  FileSpreadsheet,
+  Check,
+} from 'lucide-react';
+import {
+  extractTableData,
+  renderTableToCanvas,
+  copyCanvas,
+  downloadCanvas,
+  shareCanvas,
+  canShareImages,
+  tableToMarkdown,
+  tableToCsv,
+} from '../../../../utils/tableImage';
 
 function TableActionMenu({
   onClose,
@@ -146,6 +171,70 @@ function TableActionMenu({
     });
   };
 
+  const [status, setStatus] = useState<string | null>(null);
+  const statusTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (statusTimerRef.current) clearTimeout(statusTimerRef.current);
+  }, []);
+
+  // Say what happened, then close, so the menu is not a dead end
+  const flash = useCallback((message: string) => {
+    setStatus(message);
+    statusTimerRef.current = window.setTimeout(() => {
+      setStatus(null);
+      onClose();
+    }, 1100);
+  }, [onClose]);
+
+  const buildCanvas = useCallback(() => {
+    const table = editor.getElementByKey(cellKey)?.closest('table') as HTMLTableElement | null;
+    if (!table) return null;
+    return renderTableToCanvas(extractTableData(table));
+  }, [editor, cellKey]);
+
+  const fileName = isTodo ? 'todo-table.png' : 'table.png';
+
+  const copyImage = async () => {
+    const canvas = buildCanvas();
+    if (!canvas) return;
+    const result = await copyCanvas(canvas, fileName);
+    flash(result === 'copied' ? 'Image copied' : 'Image saved');
+  };
+
+  const downloadImage = () => {
+    const canvas = buildCanvas();
+    if (!canvas) return;
+    downloadCanvas(canvas, fileName);
+    flash('Image saved');
+  };
+
+  const shareImage = async () => {
+    const canvas = buildCanvas();
+    if (!canvas) return;
+    try {
+      const result = await shareCanvas(canvas, fileName, isTodo ? 'To-do table' : 'Table');
+      if (result === 'shared') flash('Shared');
+      else if (result === 'unsupported') flash('Sharing is unavailable');
+      else onClose();
+    } catch (err) {
+      console.error('Sharing the table failed', err);
+      flash("Couldn't share");
+    }
+  };
+
+  const copyAsText = async (kind: 'markdown' | 'csv') => {
+    const table = editor.getElementByKey(cellKey)?.closest('table') as HTMLTableElement | null;
+    if (!table) return;
+    const data = extractTableData(table);
+    try {
+      await navigator.clipboard.writeText(kind === 'markdown' ? tableToMarkdown(data) : tableToCsv(data));
+      flash(kind === 'markdown' ? 'Markdown copied' : 'CSV copied');
+    } catch (err) {
+      console.error('Copying the table failed', err);
+      flash("Couldn't copy");
+    }
+  };
+
   const [isMerged, setIsMerged] = useState(false);
   const [canMergeRight, setCanMergeRight] = useState(false);
   const [canMergeDown, setCanMergeDown] = useState(false);
@@ -176,65 +265,110 @@ function TableActionMenu({
 
   const rect = buttonRef.current.getBoundingClientRect();
 
+  const itemClass =
+    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-black/80 dark:text-white/80 hover:bg-black/5 dark:hover:bg-white/10 transition-colors';
+  const dangerClass =
+    'flex w-full items-center gap-2.5 px-3 py-2 text-left text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/20 transition-colors';
+  const groupLabelClass =
+    'px-3 pt-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-black/35 dark:text-white/35';
+  const divider = <div className="h-px bg-black/10 dark:bg-white/10 my-1" />;
+
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed w-48 bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 rounded-lg shadow-xl overflow-hidden py-1 text-sm font-medium"
+      className="fixed w-56 max-h-[70vh] overflow-y-auto bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 rounded-lg shadow-xl py-1 text-sm font-medium"
       style={{
         top: rect.bottom + 4,
-        left: rect.left - 160 + rect.width, // align right
+        left: Math.max(8, rect.left - 224 + rect.width), // align right, kept on screen
         zIndex: 999999
       }}
     >
-      <button onClick={() => insertRow(false)} className="w-full text-left px-4 py-2 hover:bg-black/5 dark:hover:bg-white/10 text-black/80 dark:text-white/80">
-        Insert row above
-      </button>
-      <button onClick={() => insertRow(true)} className="w-full text-left px-4 py-2 hover:bg-black/5 dark:hover:bg-white/10 text-black/80 dark:text-white/80">
-        Insert row below
-      </button>
-      <div className="h-px bg-black/10 dark:bg-white/10 my-1" />
-      
-      {isMerged && (
-        <button onClick={unmerge} className="w-full text-left px-4 py-2 hover:bg-black/5 dark:hover:bg-white/10 text-black/80 dark:text-white/80">
-          Unmerge cells
-        </button>
-      )}
-      {!isMerged && canMergeRight && (
-        <button onClick={mergeRight} className="w-full text-left px-4 py-2 hover:bg-black/5 dark:hover:bg-white/10 text-black/80 dark:text-white/80">
-          Merge right
-        </button>
-      )}
-      {!isMerged && canMergeDown && (
-        <button onClick={mergeDown} className="w-full text-left px-4 py-2 hover:bg-black/5 dark:hover:bg-white/10 text-black/80 dark:text-white/80">
-          Merge down
-        </button>
+      {status && (
+        <div className="flex items-center gap-2 px-3 py-2 text-emerald-600 dark:text-emerald-400">
+          <Check size={15} className="shrink-0" />
+          <span>{status}</span>
+        </div>
       )}
 
-      {!isTodo && (
+      {!status && (
         <>
-          <div className="h-px bg-black/10 dark:bg-white/10 my-1" />
-          <button onClick={() => insertColumn(false)} className="w-full text-left px-4 py-2 hover:bg-black/5 dark:hover:bg-white/10 text-black/80 dark:text-white/80">
-            Insert column left
+          <div className={groupLabelClass}>Share</div>
+          <button onClick={copyImage} className={itemClass}>
+            <ImageDown size={15} className="shrink-0 opacity-70" /> Copy as image
           </button>
-          <button onClick={() => insertColumn(true)} className="w-full text-left px-4 py-2 hover:bg-black/5 dark:hover:bg-white/10 text-black/80 dark:text-white/80">
-            Insert column right
+          <button onClick={downloadImage} className={itemClass}>
+            <Download size={15} className="shrink-0 opacity-70" /> Download image
+          </button>
+          {canShareImages() && (
+            <button onClick={shareImage} className={itemClass}>
+              <Share2 size={15} className="shrink-0 opacity-70" /> Share image
+            </button>
+          )}
+          <button onClick={() => copyAsText('markdown')} className={itemClass}>
+            <Hash size={15} className="shrink-0 opacity-70" /> Copy as Markdown
+          </button>
+          <button onClick={() => copyAsText('csv')} className={itemClass}>
+            <FileSpreadsheet size={15} className="shrink-0 opacity-70" /> Copy as CSV
+          </button>
+
+          {divider}
+
+          <div className={groupLabelClass}>Rows</div>
+          <button onClick={() => insertRow(false)} className={itemClass}>
+            <ArrowUpToLine size={15} className="shrink-0 opacity-70" /> Insert row above
+          </button>
+          <button onClick={() => insertRow(true)} className={itemClass}>
+            <ArrowDownToLine size={15} className="shrink-0 opacity-70" /> Insert row below
+          </button>
+
+          {!isTodo && (
+            <>
+              <div className={groupLabelClass}>Columns</div>
+              <button onClick={() => insertColumn(false)} className={itemClass}>
+                <ArrowLeftToLine size={15} className="shrink-0 opacity-70" /> Insert column left
+              </button>
+              <button onClick={() => insertColumn(true)} className={itemClass}>
+                <ArrowRightToLine size={15} className="shrink-0 opacity-70" /> Insert column right
+              </button>
+            </>
+          )}
+
+          {(isMerged || canMergeRight || canMergeDown) && (
+            <>
+              {divider}
+              {isMerged && (
+                <button onClick={unmerge} className={itemClass}>
+                  <Split size={15} className="shrink-0 opacity-70" /> Unmerge cells
+                </button>
+              )}
+              {!isMerged && canMergeRight && (
+                <button onClick={mergeRight} className={itemClass}>
+                  <Combine size={15} className="shrink-0 opacity-70" /> Merge right
+                </button>
+              )}
+              {!isMerged && canMergeDown && (
+                <button onClick={mergeDown} className={itemClass}>
+                  <Combine size={15} className="shrink-0 rotate-90 opacity-70" /> Merge down
+                </button>
+              )}
+            </>
+          )}
+
+          {divider}
+
+          {!isTodo && (
+            <button onClick={deleteColumn} className={dangerClass}>
+              <Trash2 size={15} className="shrink-0" /> Delete column
+            </button>
+          )}
+          <button onClick={deleteRow} className={dangerClass}>
+            <Trash2 size={15} className="shrink-0" /> Delete row
+          </button>
+          <button onClick={deleteTable} className={dangerClass}>
+            <Trash2 size={15} className="shrink-0" /> Delete table
           </button>
         </>
       )}
-      
-      <div className="h-px bg-black/10 dark:bg-white/10 my-1" />
-      
-      {!isTodo && (
-        <button onClick={deleteColumn} className="w-full text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400">
-          Delete column
-        </button>
-      )}
-      <button onClick={deleteRow} className="w-full text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400">
-        Delete row
-      </button>
-      <button onClick={deleteTable} className="w-full text-left px-4 py-2 hover:bg-red-50 dark:hover:bg-red-900/20 text-red-600 dark:text-red-400">
-        Delete table
-      </button>
     </div>,
     document.body
   );
