@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Upload, Camera, Sparkles, ArrowRight, ShieldCheck, BadgeCheck, CreditCard, Globe, FileText } from "lucide-react";
 import { PassportPrintModal } from "../image-workspace/components/shared/PassportPrintModal";
 import { CameraCaptureModal } from "../CameraCaptureModal";
+import { useClipboardImages } from "./useQuickUtilsPaste";
 
 export function PassportStudioUtil() {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -52,6 +53,9 @@ export function PassportStudioUtil() {
     };
     reader.readAsDataURL(file);
   };
+
+  // A pasted photo goes straight into the editor, same as an upload
+  useClipboardImages((images) => handleCameraCapture(images[0]), { enabled: !isModalOpen && !isCameraOpen });
 
   const launchWithImage = (imgSrc: string) => {
     setSelectedImage(imgSrc);
@@ -116,7 +120,7 @@ export function PassportStudioUtil() {
                 Click or Drop Photo File
               </p>
               <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-                JPG, PNG, WEBP high-res files
+                JPG, PNG, WEBP high-res files, or paste with Ctrl+V
               </p>
             </div>
           </div>

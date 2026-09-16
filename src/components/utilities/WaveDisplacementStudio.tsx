@@ -7,8 +7,10 @@ import { arrayMove, SortableContext, sortableKeyboardCoordinates, horizontalList
 import { CSS } from '@dnd-kit/utilities';
 import {
    Upload, Play, Pause, Layers, Trash2, Waves,
-   Plus, Ratio, Clock, Maximize, Minimize, Sliders, X
+   Plus, Ratio, Clock, Maximize, Minimize, Sliders, X, Camera
 } from 'lucide-react';
+import { CameraCaptureModal } from '../CameraCaptureModal';
+import { useClipboardImages } from './useQuickUtilsPaste';
 import { FilterMode, AspectRatioMode, FILTER_PRESETS, ASPECT_PRESETS, QUICK_LOOKS, QuickLook, VERTEX_SHADER, FRAGMENT_SHADER } from './WaveDisplacementShaders';
 import { FONTS, getFontVariants, loadGoogleFontVariant, type FontVariants } from '../../utils/fontRegistry';
 import { WaveInspectorTabs, InspectorTabType } from './WaveInspectorTabs';
@@ -2201,11 +2203,19 @@ export function WaveDisplacementStudio() {
       saveCurrentMask();
    };
 
+   const [isCameraOpen, setIsCameraOpen] = useState(false);
+
    // Handle Image File Uploads
    const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
       if (!e.target.files || e.target.files.length === 0) return;
+      addImageFiles(Array.from(e.target.files));
+      e.target.value = '';
+   };
 
-      const files = Array.from(e.target.files);
+   const addImageFiles = (picked: File[]) => {
+      const files = picked.filter(file => file.type.startsWith('image/'));
+      if (files.length === 0) return;
+
       const newItems: PoolImage[] = files.map(file => ({
          id: Math.random().toString(36).substring(2, 9),
          name: file.name,
@@ -2226,6 +2236,9 @@ export function WaveDisplacementStudio() {
       setImages(updatedList);
       updateTextures(updatedList);
    };
+
+   const pasteRootRef = useRef<HTMLDivElement>(null);
+   useClipboardImages(addImageFiles, { enabled: !isCameraOpen, rootRef: pasteRootRef });
 
    // Prevent Global Drag and Drop
    const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
@@ -2739,6 +2752,7 @@ export function WaveDisplacementStudio() {
 
    return (
       <div
+         ref={pasteRootRef}
          className="w-full h-[100dvh] flex flex-col md:flex-row bg-[#080b11] text-slate-100 overflow-hidden font-sans select-none min-w-0"
          onDrop={handleDrop}
          onDragOver={handleDragOver}
@@ -2768,6 +2782,15 @@ export function WaveDisplacementStudio() {
                      <span>Add Images</span>
                      <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
                   </label>
+                  <button
+                     type="button"
+                     onClick={() => setIsCameraOpen(true)}
+                     className="p-1.5 sm:px-3 sm:py-1.5 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg text-xs font-semibold text-slate-200 transition-all flex items-center gap-1.5 active:scale-95"
+                     title="Take a photo with your camera"
+                  >
+                     <Camera size={14} className="text-cyan-400" />
+                     <span className="hidden sm:inline">Camera</span>
+                  </button>
 
                   <button
                      onClick={() => setIsPlaying(!isPlaying)}
@@ -2860,12 +2883,21 @@ export function WaveDisplacementStudio() {
                         </div>
                         <h3 className="text-sm font-bold text-slate-100">Drag & Drop or Click to Upload Images</h3>
                         <p className="text-xs text-slate-400 max-w-xs mt-1 leading-relaxed">
-                           Procedural GLSL shader demo active. Upload 2+ images to experience directional ocean wave cross-fading.
+                           Procedural GLSL shader demo active. Upload 2+ images to experience directional ocean wave cross-fading. You can also paste images with Ctrl+V.
                         </p>
-                        <label className="mt-4 px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 cursor-pointer transition-all active:scale-95">
-                           Browse Image Pool
-                           <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
-                        </label>
+                        <div className="mt-4 flex flex-wrap items-center justify-center gap-2">
+                           <label className="px-4 py-2 bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-cyan-500/20 cursor-pointer transition-all active:scale-95">
+                              Browse Image Pool
+                              <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
+                           </label>
+                           <button
+                              type="button"
+                              onClick={() => setIsCameraOpen(true)}
+                              className="px-4 py-2 flex items-center gap-1.5 bg-white/5 hover:bg-white/10 border border-white/15 text-slate-100 font-bold text-xs rounded-xl transition-all active:scale-95"
+                           >
+                              <Camera size={14} className="text-cyan-400" /> Take Photo
+                           </button>
+                        </div>
                      </div>
                   )}
 
@@ -2935,6 +2967,14 @@ export function WaveDisplacementStudio() {
                   <Plus size={14} />
                   <input type="file" multiple accept="image/*" onChange={handleFileUpload} className="hidden" />
                </label>
+               <button
+                  type="button"
+                  onClick={() => setIsCameraOpen(true)}
+                  title="Take a photo with your camera"
+                  className="shrink-0 w-9 h-9 md:w-12 md:h-12 rounded-lg md:rounded-xl border border-dashed border-white/20 hover:border-cyan-400/60 bg-white/5 hover:bg-cyan-500/10 flex flex-col items-center justify-center text-slate-400 hover:text-cyan-300 transition-all"
+               >
+                  <Camera size={14} />
+               </button>
             </div>
          </div>
 
@@ -3130,6 +3170,12 @@ export function WaveDisplacementStudio() {
                />
             )}
          </div>
+         {isCameraOpen && (
+            <CameraCaptureModal
+               onClose={() => setIsCameraOpen(false)}
+               onCapture={(file) => addImageFiles([file])}
+            />
+         )}
       </div>
    );
 }

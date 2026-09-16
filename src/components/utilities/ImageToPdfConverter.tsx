@@ -1,5 +1,7 @@
 import React, { useState, useRef } from "react";
-import { FileImage, Download, Trash2, GripVertical, AlertCircle, Eye } from "lucide-react";
+import { FileImage, Download, Trash2, GripVertical, AlertCircle, Eye, Camera } from "lucide-react";
+import { CameraCaptureModal } from "../CameraCaptureModal";
+import { useClipboardImages } from "./useQuickUtilsPaste";
 import { PDFDocument, PageSizes } from "pdf-lib";
 import {
   DndContext,
@@ -161,6 +163,7 @@ export const ImageToPdfConverter = () => {
   const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
   const [isDragOver, setIsDragOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(MouseSensor, {
@@ -192,10 +195,14 @@ export const ImageToPdfConverter = () => {
     }
   };
 
+  // Every pasted image becomes a new page
+  useClipboardImages(addImages, { enabled: !isCameraOpen });
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       addImages(Array.from(e.target.files));
     }
+    e.target.value = "";
   };
 
   const handleDragStart = (event: DragStartEvent) => {
@@ -346,7 +353,7 @@ export const ImageToPdfConverter = () => {
         <span className="text-slate-600 dark:text-slate-300 font-medium">
           {isDragOver ? "Drop images here" : "Click or drag to add images"}
         </span>
-        <span className="text-slate-400 text-xs mt-1">Supports JPG, PNG, WEBP</span>
+        <span className="text-slate-400 text-xs mt-1">Supports JPG, PNG, WEBP · or paste with Ctrl+V</span>
         <input
           ref={fileInputRef}
           type="file"
@@ -356,6 +363,14 @@ export const ImageToPdfConverter = () => {
           className="hidden"
         />
       </div>
+
+      <button
+        type="button"
+        onClick={() => setIsCameraOpen(true)}
+        className="-mt-5 mb-8 w-full py-2.5 flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 rounded-lg text-sm font-semibold transition-colors"
+      >
+        <Camera size={16} /> {images.length > 0 ? "Take Another Photo" : "Take Photo with Camera"}
+      </button>
 
       {error && (
         <div className="w-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 p-3 rounded-lg mb-6 flex items-center gap-2">
@@ -506,6 +521,12 @@ export const ImageToPdfConverter = () => {
           </div>
         )}
       />
+      {isCameraOpen && (
+        <CameraCaptureModal
+          onClose={() => setIsCameraOpen(false)}
+          onCapture={(file) => addImages([file])}
+        />
+      )}
     </div>
   );
 };

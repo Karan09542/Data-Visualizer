@@ -1,6 +1,8 @@
 import React, { useState, useRef, useEffect } from "react";
-import { Pipette, Upload, Copy, Check, Image as ImageIcon } from "lucide-react";
+import { Pipette, Upload, Copy, Check, Image as ImageIcon, Camera, Code2, ImageDown, Download } from "lucide-react";
 import { getColorSync, getPaletteSync, getSwatchesSync } from "colorthief";
+import { CameraCaptureModal } from "../CameraCaptureModal";
+import { useClipboardImages } from "./useQuickUtilsPaste";
 
 interface ColorData {
   hex: string;
@@ -18,6 +20,137 @@ interface Swatches {
   } | null;
 }
 
+// "DarkVibrant" -> "dark-vibrant", so swatch roles make tidy CSS variable names
+const toKebab = (value: string) =>
+  value.replace(/([a-z0-9])([A-Z])/g, "$1-$2").replace(/[\s_]+/g, "-").toLowerCase();
+
+const PNG_WIDTH = 1200;
+const PNG_PADDING = 48;
+const PNG_GAP = 16;
+const PNG_FONT = 'Inter, "Segoe UI", system-ui, sans-serif';
+
+/** Draws every extracted colour onto one card-style image */
+const drawPaletteImage = (
+  dominant: ColorData,
+  palette: ColorData[],
+  swatches: Swatches | null,
+  formatPercentage: (p?: number) => string,
+) => {
+  const swatchList = swatches
+    ? Object.entries(swatches).filter((entry): entry is [string, NonNullable<Swatches[string]>] => !!entry[1])
+    : [];
+
+  const inner = PNG_WIDTH - PNG_PADDING * 2;
+  const titleH = 34;
+  const dominantH = 140;
+  const tileH = 120;
+  const labelH = 48;
+  const sectionGap = 36;
+
+  let height = PNG_PADDING + titleH + dominantH;
+  if (palette.length) height += sectionGap + titleH + tileH + labelH;
+  if (swatchList.length) height += sectionGap + titleH + tileH + labelH;
+  height += PNG_PADDING;
+
+  const scale = 2;
+  const canvas = document.createElement("canvas");
+  canvas.width = PNG_WIDTH * scale;
+  canvas.height = height * scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.scale(scale, scale);
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, PNG_WIDTH, height);
+
+  const roundRect = (x: number, y: number, w: number, h: number, r: number) => {
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, r);
+    ctx.fill();
+  };
+
+  const title = (text: string, y: number) => {
+    ctx.fillStyle = "#64748b";
+    ctx.font = `700 15px ${PNG_FONT}`;
+    ctx.textBaseline = "top";
+    ctx.fillText(text.toUpperCase(), PNG_PADDING, y);
+  };
+
+  const row = (items: { hex: string; top: string; bottom: string; textOnColor: string }[], y: number) => {
+    const count = items.length;
+    const tileW = (inner - PNG_GAP * (count - 1)) / count;
+    items.forEach((item, i) => {
+      const x = PNG_PADDING + i * (tileW + PNG_GAP);
+      ctx.fillStyle = item.hex;
+      roundRect(x, y, tileW, tileH, 12);
+      ctx.strokeStyle = "rgba(15,23,42,0.08)";
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      if (item.top) {
+        ctx.fillStyle = item.textOnColor;
+        ctx.font = `600 13px ${PNG_FONT}`;
+        ctx.textBaseline = "bottom";
+        ctx.fillText(item.top, x + 10, y + tileH - 10, tileW - 20);
+      }
+
+      ctx.fillStyle = "#0f172a";
+      ctx.font = `600 14px ui-monospace, "Cascadia Mono", Consolas, monospace`;
+      ctx.textBaseline = "top";
+      ctx.fillText(item.hex.toUpperCase(), x + 2, y + tileH + 10, tileW - 4);
+      if (item.bottom) {
+        ctx.fillStyle = "#94a3b8";
+        ctx.font = `500 12px ${PNG_FONT}`;
+        ctx.fillText(item.bottom, x + 2, y + tileH + 28, tileW - 4);
+      }
+    });
+  };
+
+  let y = PNG_PADDING;
+
+  title("Dominant colour", y);
+  y += titleH;
+  ctx.fillStyle = dominant.hex;
+  roundRect(PNG_PADDING, y, inner, dominantH, 16);
+  ctx.fillStyle = dominant.textColor || "#ffffff";
+  ctx.textBaseline = "bottom";
+  ctx.font = `700 36px ${PNG_FONT}`;
+  ctx.fillText(dominant.hex.toUpperCase(), PNG_PADDING + 24, y + dominantH - 42);
+  ctx.font = `500 16px ${PNG_FONT}`;
+  ctx.fillText(dominant.rgb, PNG_PADDING + 24, y + dominantH - 18);
+  const share = formatPercentage(dominant.proportion);
+  if (share) {
+    ctx.textAlign = "right";
+    ctx.font = `700 28px ${PNG_FONT}`;
+    ctx.fillText(share, PNG_PADDING + inner - 24, y + dominantH - 18);
+    ctx.textAlign = "left";
+  }
+  y += dominantH;
+
+  if (palette.length) {
+    y += sectionGap;
+    title("Palette", y);
+    y += titleH;
+    row(
+      palette.map((c) => ({ hex: c.hex, top: "", bottom: formatPercentage(c.proportion), textOnColor: c.textColor })),
+      y,
+    );
+    y += tileH + labelH;
+  }
+
+  if (swatchList.length) {
+    y += sectionGap;
+    title("Swatches", y);
+    y += titleH;
+    row(
+      swatchList.map(([role, s]) => ({ hex: s.color.hex, top: role, bottom: "", textOnColor: s.titleTextColor.hex })),
+      y,
+    );
+  }
+
+  return canvas;
+};
+
 export const ImageColorExtractor = () => {
   const [imageSrc, setImageSrc] = useState<string | null>(null);
   const [dominantColor, setDominantColor] = useState<ColorData | null>(null);
@@ -27,6 +160,7 @@ export const ImageColorExtractor = () => {
   const [isProcessing, setIsProcessing] = useState(false);
   const imgRef = useRef<HTMLImageElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
@@ -129,10 +263,68 @@ export const ImageColorExtractor = () => {
     }
   };
 
+  useClipboardImages((images) => setImageSrc(URL.createObjectURL(images[0])), { enabled: !isCameraOpen });
+
   const formatPercentage = (proportion?: number) => {
     if (proportion === undefined) return "";
     return `${Math.round(proportion * 100)}%`;
   };
+
+  const buildCss = (include: { dominant?: boolean; palette?: boolean; swatches?: boolean }) => {
+    const lines: string[] = [];
+    if (include.dominant && dominantColor) {
+      lines.push(`  --color-dominant: ${dominantColor.hex};`);
+    }
+    if (include.palette && palette.length) {
+      if (lines.length) lines.push("");
+      palette.forEach((c, i) => lines.push(`  --palette-${i + 1}: ${c.hex};`));
+    }
+    if (include.swatches && swatches) {
+      const entries = Object.entries(swatches).filter(([, s]) => s);
+      if (entries.length && lines.length) lines.push("");
+      entries.forEach(([role, s]) => lines.push(`  --swatch-${toKebab(role)}: ${s!.color.hex};`));
+    }
+    return `:root {\n${lines.join("\n")}\n}`;
+  };
+
+  const renderPng = () => {
+    if (!dominantColor) return null;
+    return drawPaletteImage(dominantColor, palette, swatches, formatPercentage);
+  };
+
+  const downloadPng = () => {
+    const canvas = renderPng();
+    if (!canvas) return;
+    const link = document.createElement("a");
+    link.download = "color-palette.png";
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    setCopied("png-download");
+    setTimeout(() => setCopied(null), 2000);
+  };
+
+  const copyPng = async () => {
+    const canvas = renderPng();
+    if (!canvas) return;
+    const blob = new Promise<Blob>((resolve, reject) =>
+      canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("Could not create image"))), "image/png"),
+    );
+    try {
+      if (typeof ClipboardItem === "undefined" || !navigator.clipboard?.write) throw new Error("Image copy not supported");
+      // Handing over the promise keeps Safari happy, it wants the write to start right away
+      await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
+      setCopied("png");
+      setTimeout(() => setCopied(null), 2000);
+    } catch (err) {
+      console.warn("Copying the image failed, downloading it instead", err);
+      downloadPng();
+    }
+  };
+
+  const exportButtonClass =
+    "flex items-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-[#161b22] px-3 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-fuchsia-400 hover:text-fuchsia-600 dark:hover:text-fuchsia-400 transition-colors";
+  const sectionCopyClass =
+    "flex items-center gap-1 text-[11px] font-semibold text-slate-400 hover:text-fuchsia-600 dark:hover:text-fuchsia-400 transition-colors";
 
   return (
     <div className="flex-1 flex flex-col items-stretch justify-start p-6 md:p-8 overflow-y-auto w-full max-w-5xl mx-auto">
@@ -176,7 +368,7 @@ export const ImageColorExtractor = () => {
                   className="text-slate-400 group-hover:text-fuchsia-500 mb-3 transition-colors"
                 />
                 <span className="text-slate-600 dark:text-slate-300 font-medium text-sm mb-1 text-center px-4">
-                  Drop an image<br/>or click to browse
+                  Drop, paste or<br/>click to browse
                 </span>
               </>
             )}
@@ -188,6 +380,13 @@ export const ImageColorExtractor = () => {
               className="hidden"
             />
           </div>
+
+          <button
+            onClick={() => setIsCameraOpen(true)}
+            className="w-full py-2 flex items-center justify-center gap-2 bg-fuchsia-50 hover:bg-fuchsia-100 dark:bg-fuchsia-900/20 dark:hover:bg-fuchsia-900/40 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-200 dark:border-fuchsia-800/50 rounded-lg text-sm font-semibold transition-colors"
+          >
+            <Camera size={16} /> {imageSrc ? "Take Another Photo" : "Take Photo with Camera"}
+          </button>
 
           {imageSrc && (
             <button
@@ -217,6 +416,32 @@ export const ImageColorExtractor = () => {
             </div>
           ) : (
             <>
+              {/* Export everything at once */}
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22]/50 px-4 py-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Export all colors</p>
+                  <p className="text-xs text-slate-400 dark:text-slate-500">Dominant color, palette and swatches together</p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => copyToClipboard(buildCss({ dominant: true, palette: true, swatches: true }), "css-all")}
+                    className={exportButtonClass}
+                  >
+                    {copied === "css-all" ? <Check size={14} className="text-emerald-500" /> : <Code2 size={14} />}
+                    {copied === "css-all" ? "Copied" : "Copy as CSS"}
+                  </button>
+                  <button type="button" onClick={copyPng} className={exportButtonClass}>
+                    {copied === "png" ? <Check size={14} className="text-emerald-500" /> : <ImageDown size={14} />}
+                    {copied === "png" ? "Copied" : "Copy as PNG"}
+                  </button>
+                  <button type="button" onClick={downloadPng} className={exportButtonClass} title="Download as PNG">
+                    {copied === "png-download" ? <Check size={14} className="text-emerald-500" /> : <Download size={14} />}
+                    <span className="sr-only sm:not-sr-only">{copied === "png-download" ? "Saved" : "Download"}</span>
+                  </button>
+                </div>
+              </div>
+
               {/* Dominant Color */}
               <div className="flex flex-col gap-3">
                 <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
@@ -255,13 +480,23 @@ export const ImageColorExtractor = () => {
               {/* Palette */}
               {palette.length > 0 && (
                 <div className="flex flex-col gap-3">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Palette
-                  </h3>
-                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-2">
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Palette
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(buildCss({ palette: true }), "css-palette")}
+                      className={sectionCopyClass}
+                    >
+                      {copied === "css-palette" ? <Check size={13} className="text-emerald-500" /> : <Code2 size={13} />}
+                      {copied === "css-palette" ? "Copied" : "Copy as CSS"}
+                    </button>
+                  </div>
+                  <div className="grid grid-cols-5 sm:grid-cols-10 gap-x-2 gap-y-3">
                     {palette.map((color, idx) => (
+                      <div key={idx} className="flex flex-col gap-1 min-w-0">
                       <div
-                        key={idx}
                         onClick={() => copyToClipboard(color.hex, `palette-${idx}`)}
                         className="aspect-square rounded-lg shadow-inner cursor-pointer relative group overflow-hidden"
                         style={{ backgroundColor: color.hex }}
@@ -280,6 +515,10 @@ export const ImageColorExtractor = () => {
                           )}
                         </div>
                       </div>
+                      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                        {copied === `palette-${idx}` ? "Copied" : color.hex.toUpperCase()}
+                      </span>
+                      </div>
                     ))}
                   </div>
                 </div>
@@ -288,9 +527,19 @@ export const ImageColorExtractor = () => {
               {/* Semantic Swatches */}
               {swatches && (
                 <div className="flex flex-col gap-3">
-                  <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                    Semantic Swatches
-                  </h3>
+                  <div className="flex items-center justify-between gap-2">
+                    <h3 className="text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                      Semantic Swatches
+                    </h3>
+                    <button
+                      type="button"
+                      onClick={() => copyToClipboard(buildCss({ swatches: true }), "css-swatches")}
+                      className={sectionCopyClass}
+                    >
+                      {copied === "css-swatches" ? <Check size={13} className="text-emerald-500" /> : <Code2 size={13} />}
+                      {copied === "css-swatches" ? "Copied" : "Copy as CSS"}
+                    </button>
+                  </div>
                   <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
                     {Object.entries(swatches).map(([role, swatch]) => {
                       if (!swatch) return null;
@@ -329,6 +578,15 @@ export const ImageColorExtractor = () => {
           )}
         </div>
       </div>
+
+      {isCameraOpen && (
+        <CameraCaptureModal
+          onClose={() => setIsCameraOpen(false)}
+          onCapture={(file) => {
+            if (file.type.startsWith("image/")) setImageSrc(URL.createObjectURL(file));
+          }}
+        />
+      )}
     </div>
   );
 };

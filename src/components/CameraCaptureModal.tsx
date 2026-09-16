@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Camera, RefreshCcw, Check, ArrowLeft, RotateCw, Video, Square, StopCircle, Zap, ZapOff } from 'lucide-react';
+import { X, Camera, ChevronDown, RefreshCcw, Check, ArrowLeft, RotateCw, Video, Square, StopCircle, Zap, ZapOff } from 'lucide-react';
 import ReactCrop, { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { cn } from '@/lib/utils';
@@ -12,11 +12,23 @@ interface CameraCaptureModalProps {
   initialImageSrc?: string | null;
 }
 
+/** "HD Webcam (04f2:b6dd)" -> "HD Webcam"; unnamed cameras get a number */
+const cameraLabel = (camera: MediaDeviceInfo, index: number) => {
+  const name = camera.label.replace(/\s*\([0-9a-f]{4}:[0-9a-f]{4}\)\s*$/i, '').trim();
+  return name || `Camera ${index + 1}`;
+};
+
 export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null }: CameraCaptureModalProps) {
   const [stream, setStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');
   const [hasMultipleCameras, setHasMultipleCameras] = useState(false);
+  // Every camera the device has, the one asked for, and the one actually streaming
+  const [cameras, setCameras] = useState<MediaDeviceInfo[]>([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
+  const [activeDeviceId, setActiveDeviceId] = useState<string | null>(null);
+  const [isFrontCamera, setIsFrontCamera] = useState(false);
+  const [isCameraMenuOpen, setIsCameraMenuOpen] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
   const [mode, setMode] = useState<'photo' | 'video'>('photo');
@@ -40,14 +52,21 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
   const [aspect, setAspect] = useState<number | undefined>(undefined);
   const [rotation, setRotation] = useState(0);
 
-  useEffect(() => {
-    navigator.mediaDevices.enumerateDevices().then(devices => {
+  // Camera names only show up once permission is granted, so this runs again after the stream starts
+  const refreshCameras = useCallback(() => {
+    navigator.mediaDevices?.enumerateDevices().then(devices => {
       const videoInputs = devices.filter(d => d.kind === 'videoinput');
-      if (videoInputs.length > 1) {
-        setHasMultipleCameras(true);
-      }
+      setCameras(videoInputs);
+      setHasMultipleCameras(videoInputs.length > 1);
     }).catch(console.error);
   }, []);
+
+  useEffect(() => {
+    refreshCameras();
+    // Plugging in or removing a webcam updates the list
+    navigator.mediaDevices?.addEventListener?.('devicechange', refreshCameras);
+    return () => navigator.mediaDevices?.removeEventListener?.('devicechange', refreshCameras);
+  }, [refreshCameras]);
 
   useEffect(() => {
     if (capturedImage || capturedVideo) return;
@@ -61,7 +80,9 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
           stream.getTracks().forEach(track => track.stop());
         }
         const s = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          video: selectedDeviceId
+            ? { deviceId: { exact: selectedDeviceId }, width: { ideal: 1920 }, height: { ideal: 1080 } }
+            : { facingMode, width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: mode === 'video'
         });
         if (!isMounted) {
@@ -78,6 +99,19 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
         }
         setTorchEnabled(false);
 
+        const videoTrack = s.getVideoTracks()[0];
+        const settings = videoTrack?.getSettings?.();
+        setActiveDeviceId(settings?.deviceId ?? null);
+        // Front cameras are mirrored like a mirror; desktop webcams rarely report a facing, so fall back to the label
+        setIsFrontCamera(
+          settings?.facingMode
+            ? settings.facingMode === 'user'
+            : selectedDeviceId
+              ? /front|user|facetime/i.test(videoTrack?.label ?? '')
+              : facingMode === 'user'
+        );
+        refreshCameras();
+
         setStream(s);
         setErrorMsg("");
         if (videoRef.current) {
@@ -85,6 +119,11 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
         }
       } catch (err: any) {
         console.error("Camera access error:", err);
+        // The chosen camera went away (unplugged, or taken by another app): go back to the default one
+        if (selectedDeviceId && (err?.name === 'OverconstrainedError' || err?.name === 'NotFoundError' || err?.name === 'NotReadableError')) {
+          setSelectedDeviceId(null);
+          return;
+        }
         setErrorMsg(err.message || "Failed to access camera");
       }
     };
@@ -100,7 +139,7 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
         stream.getTracks().forEach(t => t.stop());
       }
     };
-  }, [facingMode, capturedImage, capturedVideo, mode]);
+  }, [facingMode, selectedDeviceId, capturedImage, capturedVideo, mode]);
 
   useEffect(() => {
     return () => {
@@ -125,8 +164,18 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
   };
 
   const switchCamera = () => {
+    // With named cameras, step through them in order; otherwise flip between front and back
+    const usable = cameras.filter(c => c.deviceId);
+    if (usable.length > 1) {
+      const at = usable.findIndex(c => c.deviceId === activeDeviceId);
+      setSelectedDeviceId(usable[(at + 1) % usable.length].deviceId);
+      return;
+    }
     setFacingMode(prev => prev === 'environment' ? 'user' : 'environment');
   };
+
+  const activeCameraIndex = cameras.findIndex(c => c.deviceId === activeDeviceId);
+  const activeCameraName = activeCameraIndex >= 0 ? cameraLabel(cameras[activeCameraIndex], activeCameraIndex) : 'Choose camera';
 
   const takePhoto = () => {
     if (!videoRef.current || !stream) return;
@@ -136,7 +185,7 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
     canvas.height = videoEl.videoHeight;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    if (facingMode === 'user') {
+    if (isFrontCamera) {
       ctx.translate(canvas.width, 0);
       ctx.scale(-1, 1);
     }
@@ -479,9 +528,66 @@ export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null 
                 muted={mode === 'photo'}
                 className={cn(
                   "w-full h-full object-cover",
-                  facingMode === 'user' && "scale-x-[-1]"
+                  isFrontCamera && "scale-x-[-1]"
                 )}
               />
+            )}
+
+            {!errorMsg && cameras.length > 1 && !isRecording && (
+              <div className="absolute bottom-36 inset-x-0 z-20 flex justify-center px-4 pointer-events-none">
+                {isCameraMenuOpen && (
+                  <div className="fixed inset-0 pointer-events-auto" onClick={() => setIsCameraMenuOpen(false)} />
+                )}
+                <div className="relative pointer-events-auto">
+                  {isCameraMenuOpen && (
+                    <ul
+                      role="listbox"
+                      aria-label="Available cameras"
+                      className="absolute bottom-full left-1/2 mb-2 w-72 max-w-[85vw] -translate-x-1/2 overflow-hidden rounded-2xl border border-white/10 bg-neutral-900/95 p-1 shadow-2xl backdrop-blur"
+                    >
+                      <li className="px-3 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-white/40">
+                        {cameras.length} cameras available
+                      </li>
+                      {cameras.map((cam, i) => {
+                        const isActive = !!cam.deviceId && cam.deviceId === activeDeviceId;
+                        return (
+                          <li key={cam.deviceId || i}>
+                            <button
+                              type="button"
+                              role="option"
+                              aria-selected={isActive}
+                              disabled={!cam.deviceId}
+                              onClick={() => {
+                                setSelectedDeviceId(cam.deviceId);
+                                setIsCameraMenuOpen(false);
+                              }}
+                              className={cn(
+                                "flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-sm transition-colors disabled:opacity-40",
+                                isActive ? "bg-white/10 text-white" : "text-white/75 hover:bg-white/5 hover:text-white"
+                              )}
+                            >
+                              <Camera size={15} className="shrink-0 opacity-70" />
+                              <span className="flex-1 truncate">{cameraLabel(cam, i)}</span>
+                              {isActive && <Check size={15} className="shrink-0 text-blue-400" />}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  )}
+                  <button
+                    type="button"
+                    onClick={() => setIsCameraMenuOpen(open => !open)}
+                    aria-haspopup="listbox"
+                    aria-expanded={isCameraMenuOpen}
+                    className="flex max-w-[80vw] items-center gap-2 rounded-full border border-white/15 bg-black/50 px-3.5 py-2 text-xs font-medium text-white backdrop-blur transition-colors hover:bg-black/70"
+                  >
+                    <Camera size={14} className="shrink-0" />
+                    <span className="truncate">{activeCameraName}</span>
+                    <ChevronDown size={14} className={cn("shrink-0 transition-transform", isCameraMenuOpen && "rotate-180")} />
+                  </button>
+                </div>
+              </div>
             )}
 
             {!errorMsg && (

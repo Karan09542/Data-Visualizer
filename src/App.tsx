@@ -552,6 +552,9 @@ function App() {
 
   useEffect(() => {
     const handleGlobalPaste = async (e: ClipboardEvent) => {
+      // Quick Utilities handles its own pastes
+      if (document.querySelector('[data-quick-utils-modal="true"]')) return;
+
       // Ignore if user is typing in an input or textarea or monaco editor
       if (
         e.target instanceof HTMLInputElement ||

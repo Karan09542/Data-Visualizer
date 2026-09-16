@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
-import { Binary, Copy, Check, Image as ImageIcon, Upload } from "lucide-react";
+import { Binary, Copy, Check, Image as ImageIcon, Upload, Camera } from "lucide-react";
+import { CameraCaptureModal } from "../CameraCaptureModal";
+import { useClipboardImages } from "./useQuickUtilsPaste";
 
 export const Base64Converter = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [text, setText] = useState("");
   const [base64, setBase64] = useState("");
   const [mode, setMode] = useState<"encode" | "decode">("encode");
@@ -98,8 +101,11 @@ export const Base64Converter = () => {
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (file) readFile(file);
+    e.target.value = "";
+  };
 
+  const readFile = (file: File) => {
     const reader = new FileReader();
     
     // Handle binary images (PNG, JPEG, WebP, GIF, etc.)
@@ -126,9 +132,9 @@ export const Base64Converter = () => {
       };
       reader.readAsText(file);
     }
-    
-    e.target.value = "";
   };
+
+  useClipboardImages((images) => readFile(images[0]), { enabled: !isCameraOpen });
 
   const handleTextChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setText(e.target.value);
@@ -219,6 +225,13 @@ export const Base64Converter = () => {
                   <Upload size={12} /> Upload File
                 </button>
                 <button
+                  onClick={() => setIsCameraOpen(true)}
+                  className="text-xs text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded font-medium"
+                  title="Take a photo and encode it"
+                >
+                  <Camera size={12} /> Camera
+                </button>
+                <button
                   onClick={() => copyToClipboard(text, "text")}
                   className="text-slate-400 hover:text-emerald-600 dark:hover:text-emerald-400 transition-colors"
                   title="Copy to clipboard"
@@ -231,7 +244,7 @@ export const Base64Converter = () => {
               value={text}
               onChange={handleTextChange}
               readOnly={mode === "decode"}
-              placeholder="Enter plain text, SVG code, or upload an image..."
+              placeholder="Enter plain text, SVG code, or upload or paste an image..."
               className="w-full h-full p-4 resize-none bg-transparent text-sm text-slate-800 dark:text-slate-200 focus:outline-none placeholder:text-slate-400 font-mono"
               spellCheck={false}
             />
@@ -292,6 +305,14 @@ export const Base64Converter = () => {
           </div>
         )}
       </div>
+      {isCameraOpen && (
+        <CameraCaptureModal
+          onClose={() => setIsCameraOpen(false)}
+          onCapture={(file) => {
+            if (file.type.startsWith("image/")) readFile(file);
+          }}
+        />
+      )}
     </div>
   );
 };

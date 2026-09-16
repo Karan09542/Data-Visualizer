@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import CustomSelect from "../CustomSelect";
 import MediaCarousel from "../MediaCarousel";
+import { useClipboardImages } from "./useQuickUtilsPaste";
 
 interface SlicePreview {
   index: number;
@@ -272,6 +273,8 @@ export const ImageSlicerUtil: React.FC = () => {
     },
     [imageUrl],
   );
+
+  useClipboardImages((images) => loadImage(images[0]));
 
   const clearImage = useCallback(() => {
     if (imageUrl) URL.revokeObjectURL(imageUrl);
@@ -586,7 +589,7 @@ export const ImageSlicerUtil: React.FC = () => {
             <span className="text-slate-600 dark:text-slate-300 font-medium text-sm">
               {isDragOver ? "Drop image here" : "Click or drag to upload"}
             </span>
-            <span className="text-slate-400 text-xs mt-1">PNG, JPG, WEBP, and more</span>
+            <span className="text-slate-400 text-xs mt-1">PNG, JPG, WEBP, and more · or paste with Ctrl+V</span>
           </div>
         </div>
       ) : (

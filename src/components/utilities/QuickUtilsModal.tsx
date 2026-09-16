@@ -14,6 +14,7 @@ import { PassportStudioUtil } from "./PassportStudioUtil";
 import { ImageSlicerUtil } from "./ImageSlicerUtil";
 import { PdfMergeUtil } from "./PdfMergeUtil";
 import CustomSelect from "../CustomSelect";
+import { useQuickUtilsPasteGuard } from "./useQuickUtilsPaste";
 
 const WaveDisplacementStudio = lazyWithRetry(() => import("./WaveDisplacementStudio").then(m => ({ default: m.WaveDisplacementStudio })), "Wave Displacement Studio");
 // Split out: it pulls in the AI runtime, the eraser engine and d3, none of
@@ -56,6 +57,9 @@ interface QuickUtilsModalProps {
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
   const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
+
+  // Pasted images go to the open tool, never to the import modal behind the popup
+  useQuickUtilsPasteGuard(isOpen);
 
   // Close on Escape key
   useEffect(() => {

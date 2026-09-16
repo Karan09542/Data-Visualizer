@@ -3,6 +3,7 @@ import {
   Sticker,
   ImagePlus,
   UploadCloud,
+  Camera,
   Download,
   Settings,
   Palette,
@@ -38,6 +39,8 @@ import { EraserEngine, BrushCursor } from '../../lib/eraser';
 import type { EraseStroke } from '../../lib/eraser';
 import { ColorPickerTrigger } from '../image-workspace/components/shared/ColorPickers';
 import * as d3 from 'd3';
+import { CameraCaptureModal } from '../CameraCaptureModal';
+import { useClipboardImages } from './useQuickUtilsPaste';
 
 /** The app's range-input styling, kept in one place. */
 const SLIDER_CLASS =
@@ -170,6 +173,7 @@ export function StickerMakerUtil() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const patternInputRef = useRef<HTMLInputElement>(null);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const imageDisplayRef = useRef<HTMLImageElement>(null);
@@ -401,6 +405,8 @@ export function StickerMakerUtil() {
     };
     img.src = url;
   };
+
+  useClipboardImages((images) => handleImageFile(images[0]), { enabled: !isCameraOpen });
 
   const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -1383,6 +1389,15 @@ export function StickerMakerUtil() {
                 <UploadCloud size={12} /> Change Photo
               </button>
             )}
+            {selectedImage && (
+              <button
+                onClick={() => setIsCameraOpen(true)}
+                className="text-[11px] text-purple-600 dark:text-purple-400 hover:text-purple-500 font-semibold flex items-center gap-1 px-2 py-0.5 rounded-full hover:bg-purple-50 dark:hover:bg-purple-950/40 transition-colors"
+                title="Take a new photo"
+              >
+                <Camera size={12} /> Camera
+              </button>
+            )}
           </div>
 
           <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handleImageUpload} />
@@ -1399,7 +1414,16 @@ export function StickerMakerUtil() {
               <span className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                 {isDraggingOver ? "Drop Photo Here" : "Upload or Drop Photo"}
               </span>
-              <span className="text-[10px] text-slate-400">PNG, JPG, WEBP</span>
+              <span className="text-[10px] text-slate-400">PNG, JPG, WEBP · or paste with Ctrl+V</span>
+            </button>
+          )}
+
+          {!selectedImage && (
+            <button
+              onClick={() => setIsCameraOpen(true)}
+              className="w-full mt-2 py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 text-xs font-semibold text-purple-600 dark:text-purple-300 bg-purple-50 dark:bg-purple-950/30 border border-purple-200/70 dark:border-purple-800/50 hover:bg-purple-100 dark:hover:bg-purple-900/40 transition-colors"
+            >
+              <Camera size={15} /> Take Photo with Camera
             </button>
           )}
         </div>
@@ -2712,6 +2736,16 @@ export function StickerMakerUtil() {
           </div>
         )}
       </div>
+
+      {isCameraOpen && (
+        <CameraCaptureModal
+          onClose={() => setIsCameraOpen(false)}
+          onCapture={(file) => {
+            if (file.type.startsWith('image/')) handleImageFile(file);
+            else showToast('error', 'Stickers need a photo, not a video.');
+          }}
+        />
+      )}
 
       {/* Status Toast */}
       {toast && (

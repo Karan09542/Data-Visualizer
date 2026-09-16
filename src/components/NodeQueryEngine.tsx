@@ -87,7 +87,7 @@ export default function NodeQueryEngine() {
                 <motion.div
                     initial={{ y: -12, opacity: 0 }}
                     animate={{ y: 0, opacity: 1 }}
-                    className={`overflow-hidden rounded-xl border bg-white/95 shadow-lg shadow-slate-900/5 backdrop-blur-md transition-[border-color,box-shadow] duration-200 dark:bg-[#0f172a]/95 dark:shadow-black/30 ${isFocused
+                    className={`overflow-hidden rounded-xl border bg-white shadow-lg shadow-slate-900/5 transition-[border-color,box-shadow] duration-200 dark:bg-[#0d1117] dark:shadow-black/30 ${isFocused
                         ? hasError
                             ? 'border-red-500/50 ring-4 ring-red-500/10'
                             : 'border-blue-500/50 ring-4 ring-blue-500/10'
@@ -253,7 +253,7 @@ export default function NodeQueryEngine() {
                                     <div
                                         role="radiogroup"
                                         aria-label="Query mode"
-                                        className="flex shrink-0 rounded-md border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-slate-900"
+                                        className="flex shrink-0 rounded-md border border-slate-200 bg-white p-0.5 dark:border-slate-700 dark:bg-[#0d1117]"
                                         title="Strict mode doesn't auto-correct invalid paths (like array access without [])"
                                     >
                                         {(['permissive', 'strict'] as const).map((mode) => {
@@ -291,7 +291,7 @@ export default function NodeQueryEngine() {
                             animate={{ opacity: 1, y: 0 }}
                             exit={{ opacity: 0, y: -4 }}
                             transition={{ duration: 0.15 }}
-                            className="absolute mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white/95 text-slate-700 shadow-xl shadow-slate-900/10 backdrop-blur-md dark:border-slate-800 dark:bg-[#0f172a]/95 dark:text-slate-300 dark:shadow-black/40"
+                            className="absolute mt-2 w-full overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-700 shadow-xl shadow-slate-900/10 dark:border-slate-800 dark:bg-[#0d1117] dark:text-slate-300 dark:shadow-black/40"
                         >
                             {hasError ? (
                                 <div className="flex items-start gap-2.5 px-3 py-3">
