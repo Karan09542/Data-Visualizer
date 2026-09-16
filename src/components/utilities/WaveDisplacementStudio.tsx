@@ -1,4 +1,5 @@
 import { loadExternalScript } from "../../utils/offlineErrors";
+import { formatFileSize } from "../../lib/formatFileSize";
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as THREE from 'three';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
@@ -8,9 +9,10 @@ import {
    Upload, Play, Pause, Layers, Trash2, Waves,
    Plus, Ratio, Clock, Maximize, Minimize, Sliders, X
 } from 'lucide-react';
-import { FilterMode, AspectRatioMode, FILTER_PRESETS, ASPECT_PRESETS, VERTEX_SHADER, FRAGMENT_SHADER } from './WaveDisplacementShaders';
+import { FilterMode, AspectRatioMode, FILTER_PRESETS, ASPECT_PRESETS, QUICK_LOOKS, QuickLook, VERTEX_SHADER, FRAGMENT_SHADER } from './WaveDisplacementShaders';
+import { FONTS, getFontVariants, loadGoogleFontVariant, type FontVariants } from '../../utils/fontRegistry';
 import { WaveInspectorTabs, InspectorTabType } from './WaveInspectorTabs';
-import { WaveEffectsTab, WaveControlsTab, WaveExportTab, WaveImageTab, WaveMaskTab, WaveTextTab } from './WaveInspectorTabContent';
+import { WaveEffectsTab, WaveControlsTab, WaveExportTab, WaveImageTab, WaveMaskTab, WaveTextTab, type GradientStop } from './WaveInspectorTabContent';
 
 const NATIVE_RAF = typeof window !== 'undefined' ? window.requestAnimationFrame.bind(window) : ((cb: FrameRequestCallback) => setTimeout(cb, 16) as unknown as number);
 const NATIVE_CAF = typeof window !== 'undefined' ? window.cancelAnimationFrame.bind(window) : clearTimeout;
@@ -31,7 +33,10 @@ export interface MaskObject {
    isEraser: boolean;
    x: number;
    y: number;
+   /** Half width; with sizeY absent the shape stays square/circular */
    size: number;
+   /** Half height, set when a shape is dragged out to its own proportions */
+   sizeY?: number;
    rotation: number;
    points?: { x: number, y: number }[];
    bezierPoints?: BezierPoint[];
@@ -41,6 +46,21 @@ export interface MaskObject {
    fontFamily?: string;
    color?: string;
    affectedByWaves?: boolean;
+   fontWeight?: number;
+   italic?: boolean;
+   underline?: boolean;
+   overline?: boolean;
+   lineThrough?: boolean;
+   /** Fills the letters with a two-colour blend instead of a flat colour */
+   gradientEnabled?: boolean;
+   gradientColor?: string;
+   gradientAngle?: number;
+   /** Colour stops across the letters; position is 0 at the start and 1 at the end */
+   gradientStops?: { color: string; pos: number }[];
+   /** Seconds after this frame starts before the text appears (0 = right away) */
+   appearAt?: number;
+   /** Seconds the text stays on screen (0 = until the frame ends) */
+   visibleFor?: number;
 }
 
 export interface PoolImage {
@@ -78,7 +98,7 @@ const generateId = (): string => {
    arr[6] = (arr[6] & 0x0f) | 0x40;
    arr[8] = (arr[8] & 0x3f) | 0x80;
    const hex = Array.from(arr, b => b.toString(16).padStart(2, '0')).join('');
-   return `${hex.slice(0,8)}-${hex.slice(8,12)}-${hex.slice(12,16)}-${hex.slice(16,20)}-${hex.slice(20)}`;
+   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
 };
 
 const SortableThumbnail = ({ id, img, index, currentIndex, onSelect, onRemove }: any) => {
@@ -150,37 +170,26 @@ export function WaveDisplacementStudio() {
    const [sheetHeight, setSheetHeight] = useState(50); // percentage (vh)
    const isDraggingSheetRef = useRef(false);
 
-   useEffect(() => {
-      const handleFullscreenChange = () => {
-         setIsFullscreen(!!(document.fullscreenElement || (document as any).webkitFullscreenElement));
-      };
-      document.addEventListener('fullscreenchange', handleFullscreenChange);
-      document.addEventListener('webkitfullscreenchange', handleFullscreenChange);
-      return () => {
-         document.removeEventListener('fullscreenchange', handleFullscreenChange);
-         document.removeEventListener('webkitfullscreenchange', handleFullscreenChange);
-      };
-   }, []);
+   // The preview fills the window from inside the page rather than through the browser's
+   // own fullscreen mode, so the app keeps its own chrome and nothing flashes on entry.
+   const toggleFullscreen = () => setIsFullscreen(open => !open);
 
-   const toggleFullscreen = () => {
-      const doc = document as any;
-      const fsElement = document.fullscreenElement || doc.webkitFullscreenElement;
-      if (!fsElement) {
-         const el = viewportRef.current as any;
-         if (!el) return;
-         if (el.requestFullscreen) {
-            el.requestFullscreen().catch((err: Error) => console.error(`Fullscreen error: ${err.message}`));
-         } else if (el.webkitRequestFullscreen) {
-            el.webkitRequestFullscreen();
+   useEffect(() => {
+      if (!isFullscreen) return;
+      const onKeyDown = (e: KeyboardEvent) => {
+         if (e.key === 'Escape') {
+            e.stopPropagation();
+            setIsFullscreen(false);
          }
-      } else {
-         if (document.exitFullscreen) {
-            document.exitFullscreen();
-         } else if (doc.webkitExitFullscreen) {
-            doc.webkitExitFullscreen();
-         }
-      }
-   };
+      };
+      const previousOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      window.addEventListener('keydown', onKeyDown, true);
+      return () => {
+         document.body.style.overflow = previousOverflow;
+         window.removeEventListener('keydown', onKeyDown, true);
+      };
+   }, [isFullscreen]);
 
    // DND Sensors
    const sensors = useSensors(
@@ -241,6 +250,10 @@ export function WaveDisplacementStudio() {
    const [maskTool, setMaskTool] = useState<MaskTool>('pen');
    const [maskBrushSize, setMaskBrushSize] = useState<number>(30);
    const [maskRotation, setMaskRotation] = useState<number>(0);
+   /** How far one nudge moves the selection, in pixels */
+   const [nudgeStep, setNudgeStep] = useState<number>(1);
+   const nudgeStepRef = useRef(nudgeStep);
+   useEffect(() => { nudgeStepRef.current = nudgeStep; }, [nudgeStep]);
    const isDrawingRef = useRef<boolean>(false);
    const maskTextureRef = useRef<THREE.CanvasTexture | null>(null);
    const maskStartX = useRef<number>(0);
@@ -263,6 +276,27 @@ export function WaveDisplacementStudio() {
    const [textToolFontFamily, setTextToolFontFamily] = useState<string>("Inter");
    const [textToolColor, setTextToolColor] = useState<string>("#ffffff");
    const [textToolAffectedByWaves, setTextToolAffectedByWaves] = useState<boolean>(true);
+   const [textFontWeight, setTextFontWeight] = useState<number>(400);
+   const [textItalic, setTextItalic] = useState<boolean>(false);
+   const [textUnderline, setTextUnderline] = useState<boolean>(false);
+   const [textOverline, setTextOverline] = useState<boolean>(false);
+   const [textLineThrough, setTextLineThrough] = useState<boolean>(false);
+   const [textGradientEnabled, setTextGradientEnabled] = useState<boolean>(false);
+   const [textGradientColor, setTextGradientColor] = useState<string>("#38bdf8");
+   const [textGradientStops, setTextGradientStops] = useState<GradientStop[]>([
+      { color: "#ffffff", pos: 0 },
+      { color: "#38bdf8", pos: 1 },
+   ]);
+   const [textGradientAngle, setTextGradientAngle] = useState<number>(0);
+   /** Weights and italics the chosen family actually ships */
+   const [fontVariants, setFontVariants] = useState<FontVariants>({ weights: [400, 700], hasItalic: true });
+   const [textAppearAt, setTextAppearAt] = useState<number>(0);
+   const [textVisibleFor, setTextVisibleFor] = useState<number>(0);
+   /** Seconds played since the current frame began, used to time text in and out */
+   const frameElapsedRef = useRef<number>(0);
+   /** True only while the animation runs; paused editing always shows every text */
+   const textTimingActiveRef = useRef<boolean>(false);
+   const lastTextVisibilityRef = useRef<string>("");
    const textCanvasDisplacedRef = useRef<HTMLCanvasElement | null>(null);
    const textCanvasOverlayRef = useRef<HTMLCanvasElement | null>(null);
    const textTextureDisplacedRef = useRef<THREE.CanvasTexture | null>(null);
@@ -277,7 +311,7 @@ export function WaveDisplacementStudio() {
    const [hoverHandle, setHoverHandle] = useState<TransformHandle | null>(null);
    const dragHandleRef = useRef<TransformHandle | null>(null);
    const initialTransformRef = useRef<{
-      size: number; rotation: number; mouseX: number; mouseY: number; objX: number; objY: number;
+      size: number; sizeY?: number; rotation: number; mouseX: number; mouseY: number; objX: number; objY: number;
       points?: { x: number, y: number }[];
       bezierPoints?: BezierPoint[];
       bounds?: { minX: number, minY: number, maxX: number, maxY: number, centerX: number, centerY: number, width: number, height: number };
@@ -294,6 +328,19 @@ export function WaveDisplacementStudio() {
             setTextToolAffectedByWaves(obj.affectedByWaves !== false);
             setMaskBrushSize(Math.round(obj.size || 30));
             setMaskRotation(Math.round(obj.rotation || 0));
+            setTextFontWeight(obj.fontWeight ?? 400);
+            setTextItalic(obj.italic === true);
+            setTextUnderline(obj.underline === true);
+            setTextOverline(obj.overline === true);
+            setTextLineThrough(obj.lineThrough === true);
+            setTextGradientEnabled(obj.gradientEnabled === true);
+            setTextGradientColor(obj.gradientColor ?? "#38bdf8");
+            setTextGradientAngle(obj.gradientAngle ?? 0);
+            setTextGradientStops(obj.gradientStops?.length
+               ? obj.gradientStops.map(s => ({ ...s }))
+               : [{ color: obj.color ?? "#ffffff", pos: 0 }, { color: obj.gradientColor ?? "#38bdf8", pos: 1 }]);
+            setTextAppearAt(obj.appearAt ?? 0);
+            setTextVisibleFor(obj.visibleFor ?? 0);
          }
       }
    }, [activeMaskObjectId, inspectorTab]);
@@ -307,7 +354,18 @@ export function WaveDisplacementStudio() {
                obj.color !== textToolColor ||
                obj.affectedByWaves !== textToolAffectedByWaves ||
                Math.round(obj.size) !== maskBrushSize ||
-               Math.round(obj.rotation) !== maskRotation) {
+               Math.round(obj.rotation) !== maskRotation ||
+               (obj.appearAt ?? 0) !== textAppearAt ||
+               (obj.fontWeight ?? 400) !== textFontWeight ||
+               (obj.italic === true) !== textItalic ||
+               (obj.underline === true) !== textUnderline ||
+               (obj.overline === true) !== textOverline ||
+               (obj.lineThrough === true) !== textLineThrough ||
+               (obj.gradientEnabled === true) !== textGradientEnabled ||
+               (obj.gradientColor ?? "#38bdf8") !== textGradientColor ||
+               (obj.gradientAngle ?? 0) !== textGradientAngle ||
+               JSON.stringify(obj.gradientStops ?? []) !== JSON.stringify(textGradientStops) ||
+               (obj.visibleFor ?? 0) !== textVisibleFor) {
 
                obj.textContent = textToolContent;
                obj.fontFamily = textToolFontFamily;
@@ -315,6 +373,17 @@ export function WaveDisplacementStudio() {
                obj.affectedByWaves = textToolAffectedByWaves;
                obj.size = maskBrushSize;
                obj.rotation = maskRotation;
+               obj.appearAt = textAppearAt;
+               obj.visibleFor = textVisibleFor;
+               obj.fontWeight = textFontWeight;
+               obj.italic = textItalic;
+               obj.underline = textUnderline;
+               obj.overline = textOverline;
+               obj.lineThrough = textLineThrough;
+               obj.gradientEnabled = textGradientEnabled;
+               obj.gradientColor = textGradientColor;
+               obj.gradientAngle = textGradientAngle;
+               obj.gradientStops = textGradientStops.map(s => ({ ...s }));
 
                renderTextObjects();
                renderUIOverlay();
@@ -322,7 +391,34 @@ export function WaveDisplacementStudio() {
             }
          }
       }
-   }, [textToolContent, textToolFontFamily, textToolColor, textToolAffectedByWaves, maskBrushSize, maskRotation]);
+   }, [textToolContent, textToolFontFamily, textToolColor, textToolAffectedByWaves, maskBrushSize, maskRotation, textAppearAt, textVisibleFor,
+      textFontWeight, textItalic, textUnderline, textOverline, textLineThrough, textGradientEnabled, textGradientColor, textGradientAngle, textGradientStops]);
+
+   // Ask the font service which weights this family has, and load the one in use
+   useEffect(() => {
+      const entry = FONTS.find(f => f.fontFamily === textToolFontFamily);
+      if (!entry) return;
+      let cancelled = false;
+      getFontVariants(entry.googleFontName).then((variants) => {
+         if (cancelled) return;
+         setFontVariants(variants);
+         // Snap to the nearest available weight if this family lacks the current one
+         if (!variants.weights.includes(textFontWeight)) {
+            const nearest = variants.weights.reduce(
+               (best, w) => (Math.abs(w - textFontWeight) < Math.abs(best - textFontWeight) ? w : best),
+               variants.weights[0] ?? 400,
+            );
+            setTextFontWeight(nearest);
+         }
+      });
+      return () => { cancelled = true; };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [textToolFontFamily]);
+
+   useEffect(() => {
+      const entry = FONTS.find(f => f.fontFamily === textToolFontFamily);
+      if (entry) loadGoogleFontVariant(entry.googleFontName, textFontWeight, textItalic);
+   }, [textToolFontFamily, textFontWeight, textItalic]);
 
    // Missing State Variables
    const [globalFilters, setGlobalFilters] = useState({ brightness: 1.0, contrast: 1.0, exposure: 1.0, hue: 0.0, sepia: 0.0 });
@@ -342,6 +438,8 @@ export function WaveDisplacementStudio() {
    const [loopRestartToggle, setLoopRestartToggle] = useState<boolean>(false);
    const [statusMessage, setStatusMessage] = useState<string>('');
    const [compressQuality, setCompressQuality] = useState<number>(0.8);
+   const [isCompressing, setIsCompressing] = useState<boolean>(false);
+   const [compressionInfo, setCompressionInfo] = useState<string | null>(null);
    const exportLoopRef = useRef<boolean>(false);
    useEffect(() => { exportLoopRef.current = exportLoop; }, [exportLoop]);
 
@@ -523,13 +621,30 @@ export function WaveDisplacementStudio() {
 
    // Switch preview active index when clicking a pool thumbnail
    const selectPoolImage = (idx: number) => {
+      frameElapsedRef.current = 0;
       currentIndexRef.current = idx;
       setCurrentIndex(idx);
       transitionProgressRef.current = 0.0;
       setManualProgress(0.0);
       bindTexturesForIndex(idx);
+      // While paused the animation loop doesn't touch the uniforms, so clear the blend here or
+      // the canvas keeps showing the mix of the two images it was paused on.
+      if (materialRef.current) {
+         materialRef.current.uniforms.uTransitionProgress.value = 0.0;
+      }
       setLoopRestartToggle(prev => !prev);
    };
+
+   // Keep the paused canvas in step with the blend slider and the selected image
+   useEffect(() => {
+      if (isPlaying || isRecordingRef.current || !materialRef.current) return;
+      materialRef.current.uniforms.uTransitionProgress.value = autoTransition
+         ? transitionProgressRef.current
+         : manualProgress;
+      if (rendererRef.current && sceneRef.current && cameraRef.current) {
+         rendererRef.current.render(sceneRef.current, cameraRef.current);
+      }
+   }, [isPlaying, autoTransition, manualProgress, currentIndex]);
 
    // Initialize Three.js WebGL Scene
    useEffect(() => {
@@ -772,8 +887,21 @@ export function WaveDisplacementStudio() {
 
          lastTime = currentTime;
 
+         textTimingActiveRef.current = isPlaying || isRecordingRef.current;
+
          if (materialRef.current && (isPlaying || isRecordingRef.current)) {
             materialRef.current.uniforms.uTime.value += deltaTime;
+            frameElapsedRef.current += deltaTime;
+
+            // Redraw only when the set of visible texts actually changes
+            const dueNow = currentMaskObjectsRef.current
+               .filter(o => o.type === "text" && o.textContent && isTextDue(o, frameElapsedRef.current))
+               .map(o => o.id)
+               .join("|");
+            if (dueNow !== lastTextVisibilityRef.current) {
+               lastTextVisibilityRef.current = dueNow;
+               renderTextObjects();
+            }
 
             const textures = imagesRef.current;
             if (textures.length > 1) {
@@ -803,6 +931,7 @@ export function WaveDisplacementStudio() {
                         materialRef.current.uniforms.uTransitionProgress.value = 0.0;
                      } else {
                         const nextIdx = nextRaw % textures.length;
+                        frameElapsedRef.current = 0;
                         currentIndexRef.current = nextIdx;
                         setCurrentIndex(nextIdx);
                         bindTexturesForIndex(nextIdx);
@@ -906,12 +1035,38 @@ export function WaveDisplacementStudio() {
       }
    }, [isMaskMode, bindTexturesForIndex]);
 
-   // Tab switching disables mask mode
+   // Remembers whether masking was on when you left, so returning picks up where you were
+   const maskModeBeforeLeavingRef = useRef(false);
+
    useEffect(() => {
-      if (inspectorTab !== 'mask' && isMaskMode) {
+      if (inspectorTab === 'mask' && maskModeBeforeLeavingRef.current) {
+         maskModeBeforeLeavingRef.current = false;
+         setIsMaskMode(true);
+      }
+   }, [inspectorTab]);
+
+   // Leaving the mask tab puts the tools away: no mask tint, nothing armed to draw with,
+   // and no leftover selection marks on the canvas.
+   useEffect(() => {
+      if (inspectorTab === 'mask') return;
+      if (isMaskMode) {
+         maskModeBeforeLeavingRef.current = true;
          setIsMaskMode(false);
       }
-   }, [inspectorTab, isMaskMode]);
+      const drawingTools: MaskTool[] = ['brush', 'eraser', 'pen', 'circle', 'square', 'triangle'];
+      if (drawingTools.includes(maskTool) || (inspectorTab !== 'text' && maskTool === 'text')) {
+         setMaskTool('select');
+      }
+      if (inspectorTab !== 'text') {
+         setActiveMaskObjectId(null);
+         activeBezierPathIdRef.current = null;
+         isDrawingRef.current = false;
+         // Wipe the selection marks directly: this runs before renderUIOverlay is defined
+         const overlay = uiOverlayCanvasRef.current;
+         const ctx = overlay?.getContext("2d");
+         if (overlay && ctx) ctx.clearRect(0, 0, overlay.width, overlay.height);
+      }
+   }, [inspectorTab, isMaskMode, maskTool]);
 
 
    // Clear selection when switching tools
@@ -935,6 +1090,14 @@ export function WaveDisplacementStudio() {
       if (maskTextureRef.current) maskTextureRef.current.needsUpdate = true;
    };
 
+   /** Whether a text should be on screen this many seconds into its frame */
+   const isTextDue = (obj: MaskObject, elapsed: number) => {
+      const start = obj.appearAt ?? 0;
+      const span = obj.visibleFor ?? 0;
+      if (elapsed < start) return false;
+      return span <= 0 || elapsed < start + span;
+   };
+
    const renderTextObjects = useCallback(() => {
       if (!textCanvasDisplacedRef.current || !textCanvasOverlayRef.current) return;
 
@@ -956,18 +1119,58 @@ export function WaveDisplacementStudio() {
 
       objs.forEach(obj => {
          if (obj.type !== 'text' || !obj.textContent) return;
+         // While playing, respect each text's own appear/disappear times
+         if (textTimingActiveRef.current && !isTextDue(obj, frameElapsedRef.current)) return;
          const ctx = obj.affectedByWaves ? ctxDisp : ctxOver;
          if (obj.affectedByWaves) hasDisp = true;
          else hasOver = true;
 
+         const pixelSize = Math.round(obj.size * dpr);
          ctx.save();
          ctx.translate(obj.x * dpr, obj.y * dpr);
          ctx.rotate((obj.rotation * Math.PI) / 180);
-         ctx.font = `${Math.round(obj.size * dpr)}px "${obj.fontFamily}", sans-serif`;
-         ctx.fillStyle = obj.color || '#fff';
+         ctx.font = `${obj.italic ? "italic " : ""}${obj.fontWeight ?? 400} ${pixelSize}px "${obj.fontFamily}", sans-serif`;
          ctx.textAlign = 'center';
          ctx.textBaseline = 'middle';
+
+         const metrics = ctx.measureText(obj.textContent);
+         const textWidth = metrics.width;
+         const ascent = metrics.actualBoundingBoxAscent || pixelSize * 0.7;
+         const descent = metrics.actualBoundingBoxDescent || pixelSize * 0.25;
+
+         if (obj.gradientEnabled) {
+            // Blend across the letters, along the chosen angle
+            const angle = ((obj.gradientAngle ?? 0) * Math.PI) / 180;
+            const reach = Math.hypot(textWidth, ascent + descent) / 2;
+            const gradient = ctx.createLinearGradient(
+               -Math.cos(angle) * reach, -Math.sin(angle) * reach,
+               Math.cos(angle) * reach, Math.sin(angle) * reach,
+            );
+            const stops = obj.gradientStops?.length
+               ? [...obj.gradientStops].sort((a, b) => a.pos - b.pos)
+               : [{ color: obj.color || '#fff', pos: 0 }, { color: obj.gradientColor || '#38bdf8', pos: 1 }];
+            stops.forEach(stop => gradient.addColorStop(Math.min(1, Math.max(0, stop.pos)), stop.color));
+            ctx.fillStyle = gradient;
+         } else {
+            ctx.fillStyle = obj.color || '#fff';
+         }
+
          ctx.fillText(obj.textContent, 0, 0);
+
+         if (obj.underline || obj.overline || obj.lineThrough) {
+            ctx.strokeStyle = ctx.fillStyle;
+            ctx.lineWidth = Math.max(1, pixelSize / 14);
+            const drawRule = (y: number) => {
+               ctx.beginPath();
+               ctx.moveTo(-textWidth / 2, y);
+               ctx.lineTo(textWidth / 2, y);
+               ctx.stroke();
+            };
+            if (obj.overline) drawRule(-ascent - ctx.lineWidth);
+            if (obj.lineThrough) drawRule((descent - ascent) / 4);
+            if (obj.underline) drawRule(descent + ctx.lineWidth);
+         }
+
          ctx.restore();
       });
 
@@ -1034,12 +1237,13 @@ export function WaveDisplacementStudio() {
             ctx.translate(obj.x, obj.y);
             ctx.rotate((obj.rotation * Math.PI) / 180);
 
+            const halfH = obj.sizeY ?? obj.size;
             if (obj.type === 'circle') {
-               ctx.beginPath(); ctx.arc(0, 0, obj.size, 0, Math.PI * 2); ctx.fill();
+               ctx.beginPath(); ctx.ellipse(0, 0, Math.max(0.5, obj.size), Math.max(0.5, halfH), 0, 0, Math.PI * 2); ctx.fill();
             } else if (obj.type === 'square') {
-               ctx.fillRect(-obj.size, -obj.size, obj.size * 2, obj.size * 2);
+               ctx.fillRect(-obj.size, -halfH, obj.size * 2, halfH * 2);
             } else if (obj.type === 'triangle') {
-               ctx.beginPath(); ctx.moveTo(0, -obj.size); ctx.lineTo(obj.size, obj.size); ctx.lineTo(-obj.size, obj.size); ctx.closePath(); ctx.fill();
+               ctx.beginPath(); ctx.moveTo(0, -halfH); ctx.lineTo(obj.size, halfH); ctx.lineTo(-obj.size, halfH); ctx.closePath(); ctx.fill();
             }
          }
          ctx.restore();
@@ -1084,10 +1288,11 @@ export function WaveDisplacementStudio() {
          minY = -height / 2 - 4; maxY = height / 2 + 4;
          return { minX, minY, maxX, maxY, centerX: obj.x, centerY: obj.y, width: maxX - minX, height: maxY - minY, isLocal: true };
       } else {
-         let s = obj.size + 4;
-         if (obj.type === 'triangle') s += 2;
-         minX = -s; maxX = s;
-         minY = -s; maxY = s;
+         let sx = obj.size + 4;
+         let sy = (obj.sizeY ?? obj.size) + 4;
+         if (obj.type === 'triangle') { sx += 2; sy += 2; }
+         minX = -sx; maxX = sx;
+         minY = -sy; maxY = sy;
          return { minX, minY, maxX, maxY, centerX: obj.x, centerY: obj.y, width: maxX - minX, height: maxY - minY, isLocal: true };
       }
 
@@ -1133,14 +1338,18 @@ export function WaveDisplacementStudio() {
             if (obj.type === 'text') {
                ctx.strokeRect(bounds.minX, bounds.minY, bounds.width, bounds.height);
             } else if (obj.type === 'circle') {
-               const s = obj.size + 4;
-               ctx.beginPath(); ctx.arc(0, 0, s, 0, Math.PI * 2); ctx.stroke();
+               // Outline follows the shape itself, including stretched ellipses
+               const sx = obj.size + 4;
+               const sy = (obj.sizeY ?? obj.size) + 4;
+               ctx.beginPath(); ctx.ellipse(0, 0, Math.max(0.5, sx), Math.max(0.5, sy), 0, 0, Math.PI * 2); ctx.stroke();
             } else if (obj.type === 'square') {
-               const s = obj.size + 4;
-               ctx.strokeRect(-s, -s, s * 2, s * 2);
+               const sx = obj.size + 4;
+               const sy = (obj.sizeY ?? obj.size) + 4;
+               ctx.strokeRect(-sx, -sy, sx * 2, sy * 2);
             } else if (obj.type === 'triangle') {
-               const s = obj.size + 6;
-               ctx.beginPath(); ctx.moveTo(0, -s); ctx.lineTo(s, s - 2); ctx.lineTo(-s, s - 2); ctx.closePath(); ctx.stroke();
+               const sx = obj.size + 6;
+               const sy = (obj.sizeY ?? obj.size) + 6;
+               ctx.beginPath(); ctx.moveTo(0, -sy); ctx.lineTo(sx, sy - 2); ctx.lineTo(-sx, sy - 2); ctx.closePath(); ctx.stroke();
             } else {
                // For paths/beziers, draw the bounding box
                ctx.strokeRect(bounds.minX, bounds.minY, bounds.width, bounds.height);
@@ -1322,9 +1531,11 @@ export function WaveDisplacementStudio() {
                const height = obj.size * 1.2;
                if (Math.abs(ux) <= width / 2 + 4 && Math.abs(uy) <= height / 2 + 4) return obj;
             } else if (obj.type === 'circle') {
-               if (Math.hypot(ux, uy) <= obj.size) return obj;
+               const rx = Math.max(0.5, obj.size);
+               const ry = Math.max(0.5, obj.sizeY ?? obj.size);
+               if ((ux * ux) / (rx * rx) + (uy * uy) / (ry * ry) <= 1) return obj;
             } else if (obj.type === 'square' || obj.type === 'triangle') {
-               if (Math.abs(ux) <= obj.size && Math.abs(uy) <= obj.size) return obj;
+               if (Math.abs(ux) <= obj.size && Math.abs(uy) <= (obj.sizeY ?? obj.size)) return obj;
             }
          }
       }
@@ -1359,11 +1570,28 @@ export function WaveDisplacementStudio() {
          pushMaskHistory();
       }
 
-      const dataUrl = maskCanvasRef.current.toDataURL('image/png');
       const imgId = imagesRef.current[currentIndexRef.current]?.id;
       if (!imgId) return;
 
       const objectsCopy = JSON.parse(JSON.stringify(currentMaskObjectsRef.current));
+
+      // Text is drawn on its own layer, so only real shapes and strokes make a mask. With none
+      // left, drop the mask entirely: a blank mask would switch the effect off for this photo.
+      const hasMaskShapes = currentMaskObjectsRef.current.some(o => o.type !== 'text');
+      if (!hasMaskShapes) {
+         texturesMapRef.current.delete(`mask_${imgId}`);
+         setImages(prev => {
+            const copy = [...prev];
+            if (copy[currentIndexRef.current]) {
+               copy[currentIndexRef.current] = { ...copy[currentIndexRef.current], maskDataUrl: undefined, maskObjects: objectsCopy };
+            }
+            return copy;
+         });
+         bindTexturesForIndex(currentIndexRef.current);
+         return;
+      }
+
+      const dataUrl = maskCanvasRef.current.toDataURL('image/png');
 
       const img = new Image();
       img.onload = () => {
@@ -1382,7 +1610,7 @@ export function WaveDisplacementStudio() {
          }
          return copy;
       });
-   }, [pushMaskHistory]);
+   }, [pushMaskHistory, bindTexturesForIndex]);
 
    const undoMask = useCallback(() => {
       if (maskHistoryIndexRef.current > 0) {
@@ -1493,6 +1721,54 @@ export function WaveDisplacementStudio() {
       return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
    }, [isMaskMode, maskTool, activeMaskObjectId, saveCurrentMask, renderMaskObjects, renderUIOverlay, undoMask, redoMask]);
 
+   /** Moves the selected shape or text by a few pixels at a time */
+   const nudgeActiveObject = useCallback((dx: number, dy: number) => {
+      const obj = currentMaskObjectsRef.current.find(o => o.id === activeMaskObjectId);
+      if (!obj) return;
+
+      obj.x += dx;
+      obj.y += dy;
+      if (obj.points) obj.points.forEach(pt => { pt.x += dx; pt.y += dy; });
+      if (obj.bezierPoints) {
+         obj.bezierPoints.forEach(pt => {
+            pt.x += dx; pt.y += dy;
+            if (pt.handleIn) { pt.handleIn.x += dx; pt.handleIn.y += dy; }
+            if (pt.handleOut) { pt.handleOut.x += dx; pt.handleOut.y += dy; }
+         });
+      }
+
+      renderMaskObjects();
+      renderTextObjects();
+      renderUIOverlay(null);
+      saveCurrentMask();
+      pushMaskHistory();
+      updateUndoRedoState();
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+   }, [activeMaskObjectId]);
+
+   // Arrow keys step the selection: one step normally, five with Shift
+   useEffect(() => {
+      if (!activeMaskObjectId || (!isMaskMode && inspectorTab !== 'text')) return;
+      const onKeyDown = (e: KeyboardEvent) => {
+         const target = e.target as HTMLElement | null;
+         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+
+         const steps: Record<string, [number, number]> = {
+            ArrowLeft: [-1, 0],
+            ArrowRight: [1, 0],
+            ArrowUp: [0, -1],
+            ArrowDown: [0, 1],
+         };
+         const step = steps[e.key];
+         if (!step) return;
+         e.preventDefault();
+         const amount = nudgeStepRef.current * (e.shiftKey ? 5 : 1);
+         nudgeActiveObject(step[0] * amount, step[1] * amount);
+      };
+      window.addEventListener('keydown', onKeyDown);
+      return () => window.removeEventListener('keydown', onKeyDown);
+   }, [activeMaskObjectId, isMaskMode, inspectorTab, nudgeActiveObject]);
+
    const handlePointerDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
       const isInteractionAllowed = isMaskMode || inspectorTab === 'text';
       if (!isInteractionAllowed || !maskCanvasRef.current) return;
@@ -1525,6 +1801,7 @@ export function WaveDisplacementStudio() {
 
                   initialTransformRef.current = {
                      size: activeObj.size,
+                     sizeY: activeObj.sizeY ?? activeObj.size,
                      rotation: activeObj.rotation,
                      mouseX: x, mouseY: y,
                      objX: activeObj.x, objY: activeObj.y,
@@ -1693,14 +1970,25 @@ export function WaveDisplacementStudio() {
                   const dx = Math.abs(lx);
                   const dy = Math.abs(ly);
 
-                  if (dragHandleRef.current.startsWith('resize-t') || dragHandleRef.current.startsWith('resize-b')) {
-                     newSize = dragHandleRef.current.length > 8 ? Math.hypot(dx, dy) / Math.SQRT2 - 4 : dy - 4;
-                  } else if (dragHandleRef.current.startsWith('resize-l') || dragHandleRef.current.startsWith('resize-r')) {
-                     newSize = dx - 4;
+                  // Corner handles carry two letters (resize-tl), side handles one (resize-l)
+                  const handleName = dragHandleRef.current.replace('resize-', '');
+                  const isCorner = handleName.length > 1;
+                  const touchesSide = handleName.includes('l') || handleName.includes('r');
+                  const touchesTopBottom = handleName.includes('t') || handleName.includes('b');
+
+                  if (isCorner) {
+                     obj.size = Math.max(1, dx - 4);
+                     obj.sizeY = Math.max(1, dy - 4);
+                     newSize = obj.size;
+                  } else if (touchesSide) {
+                     obj.size = Math.max(1, dx - 4);
+                     if (obj.sizeY === undefined) obj.sizeY = init.sizeY ?? init.size;
+                     newSize = obj.size;
+                  } else if (touchesTopBottom) {
+                     obj.sizeY = Math.max(1, dy - 4);
+                     newSize = obj.size;
                   }
 
-                  if (newSize < 1) newSize = 1;
-                  obj.size = newSize;
                   setMaskBrushSize(Math.round(newSize));
                }
             } else if (init.bounds && (init.points || init.bezierPoints)) {
@@ -1816,10 +2104,26 @@ export function WaveDisplacementStudio() {
 
       if (activeObj.type === 'path' && activeObj.points) {
          activeObj.points.push({ x, y });
-      } else if (activeObj.type !== 'bezier') {
+      } else if (activeObj.type === 'text') {
          const dx = x - activeObj.x;
          const dy = y - activeObj.y;
          activeObj.size = Math.sqrt(dx * dx + dy * dy);
+      } else if (activeObj.type !== 'bezier') {
+         // Drag from one corner to the other, so shapes can be any proportion.
+         // Hold Shift for a perfect circle or square.
+         const startX = maskStartX.current;
+         const startY = maskStartY.current;
+         let halfW = Math.abs(x - startX) / 2;
+         let halfH = Math.abs(y - startY) / 2;
+         if (e.shiftKey) {
+            const even = Math.max(halfW, halfH);
+            halfW = even;
+            halfH = even;
+         }
+         activeObj.x = e.shiftKey ? startX + Math.sign(x - startX || 1) * halfW : (startX + x) / 2;
+         activeObj.y = e.shiftKey ? startY + Math.sign(y - startY || 1) * halfH : (startY + y) / 2;
+         activeObj.size = Math.max(1, halfW);
+         activeObj.sizeY = Math.max(1, halfH);
       }
       renderMaskObjects();
    };
@@ -1842,9 +2146,51 @@ export function WaveDisplacementStudio() {
             isDrawingRef.current = false;
             isDraggingObjectRef.current = false;
             saveCurrentMask();
+
+            // A shape you just drew is almost always the thing you want to adjust next,
+            // so hand it over to the move tool already selected.
+            const shapeTools: MaskTool[] = ['circle', 'square', 'triangle'];
+            if (shapeTools.includes(maskTool)) {
+               setMaskTool('select');
+               renderUIOverlay(null);
+            }
          }
       }
    };
+
+   // One-key tool switching, the way drawing apps do it
+   useEffect(() => {
+      if (inspectorTab !== 'mask' && inspectorTab !== 'text') return;
+
+      const shortcuts: Record<string, MaskTool> = {
+         v: 'select',
+         b: 'brush',
+         e: 'eraser',
+         p: 'pen',
+         s: 'square',
+         c: 'circle',
+         t: 'triangle',
+      };
+
+      const onKeyDown = (e: KeyboardEvent) => {
+         if (e.ctrlKey || e.metaKey || e.altKey) return;
+         const target = e.target as HTMLElement | null;
+         if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+
+         const tool = shortcuts[e.key.toLowerCase()];
+         if (!tool) return;
+
+         // The text tab only deals with text, so it keeps the move tool and nothing else
+         if (inspectorTab === 'text' && tool !== 'select') return;
+
+         e.preventDefault();
+         setMaskTool(tool);
+         if (tool !== 'select') setActiveMaskObjectId(null);
+      };
+
+      window.addEventListener('keydown', onKeyDown);
+      return () => window.removeEventListener('keydown', onKeyDown);
+   }, [inspectorTab]);
 
    const clearMask = () => {
       currentMaskObjectsRef.current = [];
@@ -1924,6 +2270,49 @@ export function WaveDisplacementStudio() {
    };
 
    // Update single image property
+   /** Applies a ready-made look to every photo in the pool */
+   const applyQuickLook = (look: QuickLook) => {
+      setFilterMode(look.mode);
+      setDisplacementFunc(look.func);
+      setWaveSpeed(look.speed);
+      setWaveFrequency(look.frequency);
+      setWaveAmplitude(look.amplitude);
+      setWaveAngle(look.angle);
+
+      // Clear per-photo effects so the look really is applied everywhere
+      if (images.some(img => img.filterOverride)) {
+         const cleared = images.map(img => ({ ...img, filterOverride: null }));
+         setImages(cleared);
+         imagesRef.current = cleared;
+         bindTexturesForIndex(currentIndexRef.current);
+      }
+   };
+
+   /**
+    * Gives each photo a different effect from the quick looks, keeping one shared
+    * displacement shape and wave feel so the sequence still hangs together.
+    */
+   const applyMixedLooks = () => {
+      if (images.length === 0) return;
+      const base = QUICK_LOOKS[Math.floor(Math.random() * QUICK_LOOKS.length)];
+      setDisplacementFunc(base.func);
+      setWaveSpeed(base.speed);
+      setWaveFrequency(base.frequency);
+      setWaveAmplitude(base.amplitude);
+      setWaveAngle(base.angle);
+      setFilterMode(base.mode);
+
+      // Deal the remaining looks out, one per photo, starting from a random spot
+      const offset = Math.floor(Math.random() * QUICK_LOOKS.length);
+      const mixed = images.map((img, i) => ({
+         ...img,
+         filterOverride: QUICK_LOOKS[(offset + i) % QUICK_LOOKS.length].mode,
+      }));
+      setImages(mixed);
+      imagesRef.current = mixed;
+      bindTexturesForIndex(currentIndexRef.current);
+   };
+
    const updateImageProperty = (property: keyof PoolImage, value: any) => {
       if (images.length === 0 || currentIndex >= images.length) return;
       const updated = [...images];
@@ -1976,10 +2365,20 @@ export function WaveDisplacementStudio() {
 
    // CCapture Recording Engine with Multi-Image Cycle Reset
 
+   /** Rough byte size of a data URL, for the before/after readout */
+   const approxUrlBytes = (url: string) => {
+      const comma = url.indexOf(",");
+      if (!url.startsWith("data:") || comma === -1) return 0;
+      return Math.round((url.length - comma - 1) * 0.75);
+   };
+
    const doCompress = async () => {
-      if (images.length === 0) return;
+      if (images.length === 0 || isCompressing) return;
       const quality = compressQuality;
       const updated = [...images];
+      const bytesBefore = updated.reduce((sum, img) => sum + approxUrlBytes(img.url), 0);
+      setIsCompressing(true);
+      setCompressionInfo("Compressing " + updated.length + (updated.length === 1 ? " photo..." : " photos..."));
 
       try {
          for (let i = 0; i < updated.length; i++) {
@@ -2003,8 +2402,21 @@ export function WaveDisplacementStudio() {
          setImages(updated);
          imagesRef.current = updated;
          updateTextures(updated);
+
+         const bytesAfter = updated.reduce((sum, img) => sum + approxUrlBytes(img.url), 0);
+         if (bytesBefore > 0 && bytesAfter > 0) {
+            const saved = Math.max(0, Math.round((1 - bytesAfter / bytesBefore) * 100));
+            setCompressionInfo(
+               formatFileSize(bytesBefore, "B", 1) + " to " + formatFileSize(bytesAfter, "B", 1) + " (" + saved + "% smaller)",
+            );
+         } else {
+            setCompressionInfo("Compressed " + updated.length + (updated.length === 1 ? " photo" : " photos") + " to WebP");
+         }
       } catch (e) {
          console.error('Global compression failed', e);
+         setCompressionInfo("Could not compress these photos");
+      } finally {
+         setIsCompressing(false);
       }
    };
 
@@ -2182,7 +2594,7 @@ export function WaveDisplacementStudio() {
       // Permanently drop the recording lock
       isRecordingRef.current = false;
       setIsRecording(false);
-      
+
       // Detach the capturer instantly so the native render loop stops feeding it frames!
       const capturer = capturerRef.current;
       capturerRef.current = null;
@@ -2210,7 +2622,7 @@ export function WaveDisplacementStudio() {
          if (rendererRef.current) rendererRef.current.setPixelRatio(Math.min(window.devicePixelRatio, 2));
          handleResizeRef.current();
       }
-      
+
       oldSizeRef.current = null;
       setStatusMessage(abort ? 'Recording cancelled.' : 'Packaging exported multi-image animation... Please wait.');
 
@@ -2318,6 +2730,13 @@ export function WaveDisplacementStudio() {
       return acc + hold + transitionDuration;
    }, 0);
 
+   // Where the frame being edited sits on the timeline, for the text timing controls
+   const frameDurations = images.map(img => (img.holdDurationOverride ?? holdDuration) + transitionDuration);
+   const frameStartTime = frameDurations.slice(0, currentIndex).reduce((a, b) => a + b, 0);
+   const frameDuration = frameDurations[currentIndex] ?? 0;
+   const frameEndTime = frameStartTime + frameDuration;
+   const remainingDuration = Math.max(0, totalSequenceDuration - frameStartTime);
+
    return (
       <div
          className="w-full h-[100dvh] flex flex-col md:flex-row bg-[#080b11] text-slate-100 overflow-hidden font-sans select-none min-w-0"
@@ -2391,7 +2810,13 @@ export function WaveDisplacementStudio() {
 
             {/* Canvas Viewport Box - Dynamically Shrinkwraps Aspect Ratio */}
             <div className="flex-1 relative flex items-center justify-center p-3 md:p-6 overflow-hidden min-h-0 bg-[#06080d]">
-               <div ref={viewportRef} className="relative w-full h-full shadow-2xl flex items-center justify-center group bg-black border border-white/10 overflow-hidden rounded-xl">
+               <div
+                  ref={viewportRef}
+                  className={`shadow-2xl flex items-center justify-center group bg-black overflow-hidden ${isFullscreen
+                     ? 'fixed inset-0 z-[900] h-[100dvh] w-screen border-0'
+                     : 'relative w-full h-full border border-white/10'
+                     }`}
+               >
                   <canvas ref={canvasRef} className="block shadow-xl" />
                   <canvas
                      ref={maskCanvasRef}
@@ -2472,8 +2897,9 @@ export function WaveDisplacementStudio() {
                   {!isRecording && (
                      <button
                         onClick={toggleFullscreen}
-                        className="absolute top-3 right-3 p-2 rounded-lg bg-black/70 backdrop-blur-md border border-white/15 text-slate-200 hover:text-cyan-400 hover:bg-black/90 transition-all z-40 opacity-100 md:opacity-0 md:group-hover:opacity-100 active:scale-90"
-                        title="Toggle Fullscreen"
+                        className={`absolute top-3 right-3 p-2 rounded-lg bg-black/70 backdrop-blur-md border border-white/15 text-slate-200 hover:text-cyan-400 hover:bg-black/90 transition-all z-40 active:scale-90 ${isFullscreen ? 'opacity-100' : 'opacity-100 md:opacity-0 md:group-hover:opacity-100'}`}
+                        title={isFullscreen ? "Leave full view (Esc)" : "Fill the screen"}
+                        aria-label={isFullscreen ? "Leave full view" : "Fill the screen"}
                      >
                         {isFullscreen ? <Minimize size={18} /> : <Maximize size={18} />}
                      </button>
@@ -2514,7 +2940,7 @@ export function WaveDisplacementStudio() {
 
          {/* MOBILE DRAG HANDLE — must be OUTSIDE the scrollable sidebar */}
          {isMobileSheetOpen && (
-            <div 
+            <div
                className="md:hidden w-full flex justify-center items-center py-2 cursor-ns-resize bg-[#0c1018] border-t border-white/10 flex-none z-10"
                onPointerDown={(e) => {
                   e.preventDefault();
@@ -2530,11 +2956,11 @@ export function WaveDisplacementStudio() {
                }}
                onPointerUp={(e) => {
                   isDraggingSheetRef.current = false;
-                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch(err){}
+                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) { }
                }}
                onPointerCancel={(e) => {
                   isDraggingSheetRef.current = false;
-                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch(err){}
+                  try { e.currentTarget.releasePointerCapture(e.pointerId); } catch (err) { }
                }}
                style={{ touchAction: 'none' }}
             >
@@ -2543,9 +2969,9 @@ export function WaveDisplacementStudio() {
          )}
 
          {/* RIGHT INSPECTOR SIDEBAR */}
-         <div 
+         <div
             className={`w-full md:w-80 lg:w-96 xl:w-[380px] bg-[#0c1018] flex flex-col flex-none overflow-y-auto md:shrink-0 border-t md:border-t-0 border-white/10 min-w-0 md:h-full ${isMobileSheetOpen ? 'md:h-full' : 'hidden md:flex'}`}
-            style={isMobileSheetOpen ? { height: `${sheetHeight}dvh` } : {}}  
+            style={isMobileSheetOpen ? { height: `${sheetHeight}dvh` } : {}}
          >
 
             {/* Inspector Navigation Tabs */}
@@ -2556,6 +2982,10 @@ export function WaveDisplacementStudio() {
             {inspectorTab === 'effects' && (
                <WaveEffectsTab
                   waveAngle={waveAngle} setWaveAngle={setWaveAngle}
+                  applyQuickLook={applyQuickLook}
+                  applyMixedLooks={applyMixedLooks}
+                  imageCount={images.length}
+                  mixedLooksActive={images.some(img => !!img.filterOverride)}
                   filterMode={filterMode} setFilterMode={setFilterMode}
                   displacementFunc={displacementFunc} setDisplacementFunc={setDisplacementFunc}
                   globalFilters={globalFilters} setGlobalFilters={setGlobalFilters}
@@ -2586,6 +3016,8 @@ export function WaveDisplacementStudio() {
                   exportLoop={exportLoop} setExportLoop={setExportLoop}
                   isRecording={isRecording} startRecording={startRecording} stopRecording={stopRecording}
                   statusMessage={statusMessage}
+                  compressQuality={compressQuality} setCompressQuality={setCompressQuality}
+                  doCompress={doCompress} isCompressing={isCompressing} compressionInfo={compressionInfo}
                />
             )}
 
@@ -2595,8 +3027,7 @@ export function WaveDisplacementStudio() {
                   images={images} currentIndex={currentIndex}
                   updateImageProperty={updateImageProperty} updateImageFilter={updateImageFilter}
                   resetImageFilters={resetImageFilters} resetImageGeometry={resetImageGeometry} globalFilters={globalFilters}
-                  holdDuration={holdDuration} compressQuality={compressQuality}
-                  setCompressQuality={setCompressQuality} doCompress={doCompress}
+                  holdDuration={holdDuration}
                />
             )}
 
@@ -2605,6 +3036,9 @@ export function WaveDisplacementStudio() {
                <WaveMaskTab
                   isMaskMode={isMaskMode}
                   setIsMaskMode={setIsMaskMode}
+                  nudgeStep={nudgeStep}
+                  setNudgeStep={setNudgeStep}
+                  nudgeActiveObject={nudgeActiveObject}
                   maskTool={maskTool}
                   setMaskTool={setMaskTool}
                   maskBrushSize={maskBrushSize}
@@ -2643,6 +3077,36 @@ export function WaveDisplacementStudio() {
                   setTextToolColor={setTextToolColor}
                   textToolAffectedByWaves={textToolAffectedByWaves}
                   setTextToolAffectedByWaves={setTextToolAffectedByWaves}
+                  textFontWeight={textFontWeight}
+                  setTextFontWeight={setTextFontWeight}
+                  availableWeights={fontVariants.weights}
+                  familyHasItalic={fontVariants.hasItalic}
+                  textItalic={textItalic}
+                  setTextItalic={setTextItalic}
+                  textUnderline={textUnderline}
+                  setTextUnderline={setTextUnderline}
+                  textOverline={textOverline}
+                  setTextOverline={setTextOverline}
+                  textLineThrough={textLineThrough}
+                  setTextLineThrough={setTextLineThrough}
+                  textGradientEnabled={textGradientEnabled}
+                  setTextGradientEnabled={setTextGradientEnabled}
+                  textGradientColor={textGradientColor}
+                  setTextGradientColor={setTextGradientColor}
+                  textGradientStops={textGradientStops}
+                  setTextGradientStops={setTextGradientStops}
+                  textGradientAngle={textGradientAngle}
+                  setTextGradientAngle={setTextGradientAngle}
+                  textAppearAt={textAppearAt}
+                  setTextAppearAt={setTextAppearAt}
+                  textVisibleFor={textVisibleFor}
+                  setTextVisibleFor={setTextVisibleFor}
+                  frameIndex={currentIndex}
+                  frameCount={images.length}
+                  frameStartTime={frameStartTime}
+                  frameEndTime={frameEndTime}
+                  frameDuration={frameDuration}
+                  remainingDuration={remainingDuration}
                   maskBrushSize={maskBrushSize}
                   setMaskBrushSize={setMaskBrushSize}
                   maskRotation={maskRotation}

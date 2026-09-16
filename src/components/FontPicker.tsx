@@ -11,9 +11,12 @@ interface FontPickerProps {
   triggerClassName?: string;
   selectedText?: string;
   onHover?: (fontFamily: string | null) => void;
+  /** Surface colours, so the picker can match the panel it sits in */
+  triggerSurfaceClass?: string;
+  menuSurfaceClass?: string;
 }
 
-export function FontPicker({ value, onChange, className = "", triggerClassName = "", selectedText = "", onHover }: FontPickerProps) {
+export function FontPicker({ value, onChange, className = "", triggerClassName = "", selectedText = "", onHover, triggerSurfaceClass = "bg-[#181818] border-[#3A3A3A] rounded", menuSurfaceClass = "bg-[#1E1E1E] border-[#3A3A3A]" }: FontPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<'all' | 'hindi' | 'english'>('all');
@@ -170,7 +173,7 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
     <div className={`relative ${className}`} ref={pickerRef} onKeyDown={handleKeyDown}>
       <button
         type="button"
-        className={`w-full flex items-center justify-between text-xs bg-[#181818] border border-[#3A3A3A] px-3 py-2 rounded text-white hover:border-[#4A4A4A] transition-colors focus:border-blue-500 focus:outline-none truncate ${triggerClassName}`}
+        className={`w-full flex items-center justify-between text-xs border px-3 py-2 text-white hover:border-[#4A4A4A] transition-colors focus:border-blue-500 focus:outline-none truncate ${triggerSurfaceClass} ${triggerClassName}`}
         onClick={() => setIsOpen(!isOpen)}
         style={{ fontFamily: value }}
       >
@@ -179,7 +182,7 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
       </button>
 
       {isOpen && (
-        <div className="absolute top-full left-0 z-50 mt-1 w-72 bg-[#1E1E1E] border border-[#3A3A3A] rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150">
+        <div className={`absolute top-full left-0 z-50 mt-1 w-72 border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${menuSurfaceClass}`}>
           
           {/* Search Header */}
           <div className="p-3 border-b border-[#2C2C2C] space-y-2">

@@ -85,3 +85,83 @@ export const loadGoogleFont = (fontName: string) => {
   link.rel = 'stylesheet';
   document.head.appendChild(link);
 };
+
+/** Weights worth asking Google Fonts about; it simply omits the ones a family lacks. */
+const WEIGHT_CANDIDATES = [100, 200, 300, 400, 500, 600, 700, 800, 900];
+
+export interface FontVariants {
+  /** Weights this family really has, ascending */
+  weights: number[];
+  /** Whether the family ships a true italic */
+  hasItalic: boolean;
+}
+
+const DEFAULT_VARIANTS: FontVariants = { weights: [400, 700], hasItalic: true };
+const variantCache = new Map<string, Promise<FontVariants>>();
+
+/**
+ * Which weights and italics a family actually provides.
+ *
+ * Google returns only the faces that exist, so the stylesheet it serves is the list. The
+ * answer is cached per family (in memory and in localStorage) because it never changes.
+ */
+export const getFontVariants = (googleFontName: string): Promise<FontVariants> => {
+  const cached = variantCache.get(googleFontName);
+  if (cached) return cached;
+
+  const storageKey = `font_variants_${googleFontName}`;
+  try {
+    const stored = localStorage.getItem(storageKey);
+    if (stored) {
+      const parsed = JSON.parse(stored) as FontVariants;
+      if (parsed?.weights?.length) {
+        const ready = Promise.resolve(parsed);
+        variantCache.set(googleFontName, ready);
+        return ready;
+      }
+    }
+  } catch { /* private mode or bad JSON: just ask again */ }
+
+  const request = (async (): Promise<FontVariants> => {
+    try {
+      const spec = WEIGHT_CANDIDATES.flatMap((w) => [String(w), `${w}i`]).join(',');
+      const url = `https://fonts.googleapis.com/css?family=${googleFontName.replace(/\s+/g, '+')}:${spec}&display=swap`;
+      const css = await (await fetch(url)).text();
+
+      const weights = new Set<number>();
+      let hasItalic = false;
+      // Each @font-face block states the weight and style it covers
+      css.split("@font-face").forEach((block) => {
+        const weight = block.match(/font-weight:\s*(\d{3})/);
+        if (weight) weights.add(Number(weight[1]));
+        if (/font-style:\s*italic/.test(block)) hasItalic = true;
+      });
+
+      const result: FontVariants = weights.size
+        ? { weights: Array.from(weights).sort((a, b) => a - b), hasItalic }
+        : DEFAULT_VARIANTS;
+      try {
+        localStorage.setItem(storageKey, JSON.stringify(result));
+      } catch { /* storage full or blocked: memory cache still helps */ }
+      return result;
+    } catch {
+      return DEFAULT_VARIANTS;
+    }
+  })();
+
+  variantCache.set(googleFontName, request);
+  return request;
+};
+
+/** Loads one specific weight/italic of a family, for text that uses it. */
+export const loadGoogleFontVariant = (fontName: string, weight: number, italic: boolean) => {
+  if (typeof document === 'undefined') return;
+  const linkId = `font-${fontName.replace(/\s+/g, '-')}-${weight}${italic ? 'i' : ''}`;
+  if (document.getElementById(linkId)) return;
+
+  const link = document.createElement('link');
+  link.id = linkId;
+  link.href = `https://fonts.googleapis.com/css?family=${fontName.replace(/\s+/g, '+')}:${weight}${italic ? 'i' : ''}&display=swap`;
+  link.rel = 'stylesheet';
+  document.head.appendChild(link);
+};

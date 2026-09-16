@@ -1,10 +1,10 @@
 import React from 'react';
-import { Waves, Wind, Droplet, RotateCw, Droplets, Zap, Flame, Triangle, BarChart3, Activity, Sigma, TrendingDown, Binary, Spline, Radical, Box, Atom, Magnet, Grid3X3 } from 'lucide-react';
+import { Waves, Wind, Droplet, RotateCw, Droplets, Zap, Flame, Triangle, BarChart3, Activity, Sigma, TrendingDown, Binary, Spline, Radical, Box, Atom, Magnet, Grid3X3, Gem, Snowflake, Leaf } from 'lucide-react';
 
 /**
  * Filter Mode Definitions for GLSL Displacement Shader
  */
-export type FilterMode = 'directional' | 'diagonal_wipe' | 'wave' | 'vortex' | 'noise' | 'glitch' | 'radial';
+export type FilterMode = 'directional' | 'diagonal_wipe' | 'wave' | 'vortex' | 'noise' | 'glitch' | 'radial' | 'shatter' | 'freeze' | 'nature';
 export type AspectRatioMode = 'auto' | '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
 
 // Displacement Math Function Definitions
@@ -55,6 +55,40 @@ export const FILTER_PRESETS: FilterPreset[] = [
    { id: 'noise', name: 'Water Noise', description: 'Multi-layered FBM fluid noise', icon: <Droplets size={18} className="text-sky-400" />, category: 'Organic' },
    { id: 'glitch', name: 'Cyber Glitch', description: 'Digital chromatic displacement shift', icon: <Zap size={18} className="text-amber-400" />, category: 'FX' },
    { id: 'radial', name: 'Heat Haze', description: 'Radial expanding heat pulse wave', icon: <Flame size={18} className="text-rose-400" />, category: 'FX' },
+   { id: 'shatter', name: 'Mirror Break', description: 'Cracked glass shards sliding apart', icon: <Gem size={18} className="text-slate-300" />, category: 'FX' },
+   { id: 'freeze', name: 'Ice Freeze', description: 'Frost crystals creeping across the frame', icon: <Snowflake size={18} className="text-cyan-200" />, category: 'Organic' },
+   { id: 'nature', name: 'Nature Sway', description: 'Leaves and grass bending in the breeze', icon: <Leaf size={18} className="text-emerald-400" />, category: 'Organic' },
+];
+
+export interface QuickLook {
+   id: string;
+   name: string;
+   description: string;
+   icon: React.ReactNode;
+   mode: FilterMode;
+   /** Index into DISPLACEMENT_FUNCTIONS */
+   func: number;
+   speed: number;
+   frequency: number;
+   amplitude: number;
+   angle: number;
+}
+
+/**
+ * One-tap looks: an effect, a displacement shape and the wave settings that suit it.
+ * Applied to every photo at once.
+ */
+export const QUICK_LOOKS: QuickLook[] = [
+   { id: 'ocean', name: 'Ocean Roll', description: 'Slow swell rolling across', icon: <Waves size={16} className="text-cyan-400" />, mode: 'directional', func: 0, speed: 0.45, frequency: 0.5, amplitude: 0.45, angle: 0 },
+   { id: 'dreamy', name: 'Dreamy Ripple', description: 'Soft liquid drift', icon: <Droplet size={16} className="text-teal-300" />, mode: 'wave', func: 14, speed: 0.35, frequency: 0.45, amplitude: 0.35, angle: 45 },
+   { id: 'whirl', name: 'Whirlpool', description: 'Spiral pull with a springy edge', icon: <RotateCw size={16} className="text-indigo-400" />, mode: 'vortex', func: 11, speed: 0.6, frequency: 0.7, amplitude: 0.5, angle: 90 },
+   { id: 'current', name: 'River Current', description: 'Flowing water, gentle noise', icon: <Droplets size={16} className="text-sky-400" />, mode: 'noise', func: 0, speed: 0.5, frequency: 0.55, amplitude: 0.4, angle: 0 },
+   { id: 'glitchpop', name: 'Glitch Pop', description: 'Sharp digital slices', icon: <Zap size={16} className="text-amber-400" />, mode: 'glitch', func: 6, speed: 1.2, frequency: 1.1, amplitude: 0.55, angle: 0 },
+   { id: 'mirage', name: 'Desert Mirage', description: 'Shimmering heat rings', icon: <Flame size={16} className="text-rose-400" />, mode: 'radial', func: 9, speed: 0.5, frequency: 0.8, amplitude: 0.3, angle: 45 },
+   { id: 'shards', name: 'Shattered Glass', description: 'Pieces breaking outward', icon: <Gem size={16} className="text-slate-300" />, mode: 'shatter', func: 1, speed: 0.6, frequency: 0.7, amplitude: 0.5, angle: 135 },
+   { id: 'frost', name: 'Frozen Over', description: 'Crystals creeping in', icon: <Snowflake size={16} className="text-cyan-200" />, mode: 'freeze', func: 15, speed: 0.4, frequency: 0.9, amplitude: 0.45, angle: 0 },
+   { id: 'breeze', name: 'Summer Breeze', description: 'Leaves swaying gently', icon: <Leaf size={16} className="text-emerald-400" />, mode: 'nature', func: 8, speed: 0.5, frequency: 0.6, amplitude: 0.5, angle: 90 },
+   { id: 'sweep', name: 'Wave Sweep', description: 'A wave front wiping between photos', icon: <Wind size={16} className="text-blue-400" />, mode: 'diagonal_wipe', func: 7, speed: 0.7, frequency: 0.6, amplitude: 0.5, angle: 45 },
 ];
 
 export const ASPECT_PRESETS: { id: AspectRatioMode; label: string; ratio: number | null }[] = [
@@ -427,44 +461,132 @@ vec2 getDisplacement(vec2 uv, int filterMode, float t, float waveAmplitude, floa
     }
     // Filter Mode 2: Liquid Ripple
     else if (filterMode == 2) {
-        float waveX = evaluateScalarFunc(uv.y * waveFrequency * 12.0 + t * 1.2, df) * evaluateScalarFunc(uv.x * waveFrequency * 9.0 + t * 0.8 + 1.57, df) * waveAmplitude * 0.06;
-        float waveY = evaluateScalarFunc(uv.x * waveFrequency * 14.0 - t * 1.4 + 1.57, df) * evaluateScalarFunc(uv.y * waveFrequency * 10.0 + t * 0.6, df) * waveAmplitude * 0.06;
-        return vec2(waveX, waveY);
+        // Built on proj/perpProj so the ripple turns with the wave direction
+        float along = evaluateScalarFunc(perpProj * waveFrequency * 12.0 + t * 1.2, df) * evaluateScalarFunc(proj * waveFrequency * 9.0 + t * 0.8 + 1.57, df) * waveAmplitude * 0.06;
+        float across = evaluateScalarFunc(proj * waveFrequency * 14.0 - t * 1.4 + 1.57, df) * evaluateScalarFunc(perpProj * waveFrequency * 10.0 + t * 0.6, df) * waveAmplitude * 0.06;
+        return dir * along + perp * across;
     } 
     // Filter Mode 3: Vortex Swirl
     else if (filterMode == 3) {
-        vec2 center = vec2(0.5, 0.5);
+        // The eye of the whirl sits upstream of the wave direction, and the rings ride along it
+        vec2 center = vec2(0.5, 0.5) - dir * 0.12;
         vec2 delta = uv - center;
         float len = length(delta);
         float angle = atan(delta.y, delta.x);
-        float waveVal = evaluateScalarFunc(len * waveFrequency * 18.0 - t * 2.5, df);
+        float travel = dot(delta, dir) * waveFrequency * 6.0;
+        float waveVal = evaluateScalarFunc(len * waveFrequency * 18.0 + travel - t * 2.5, df);
         float twirl = waveVal * waveAmplitude * 2.5 * exp(-len * 3.0);
         angle += twirl;
-        return (center + vec2(cos(angle), sin(angle)) * len) - uv;
+        vec2 swirl = (center + vec2(cos(angle), sin(angle)) * len) - uv;
+        // A little push downstream, so turning the dial is visible even in the calm middle
+        return swirl + dir * waveVal * waveAmplitude * 0.03;
     }
     // Filter Mode 4: Water Noise
     else if (filterMode == 4) {
-        vec2 nUv = uv * waveFrequency * 5.0 + vec2(t * 0.5, t * 0.3);
+        // The noise field drifts along the wave direction, and the push follows it too
+        vec2 nUv = uv * waveFrequency * 5.0 + dir * t * 0.6 + perp * t * 0.2;
         float n1 = fbm(nUv);
         float n2 = fbm(nUv + vec2(5.2, 1.3));
         float m1 = evaluateScalarFunc(n1 * 6.2832, df) * 0.5;
         float m2 = evaluateScalarFunc(n2 * 6.2832 + 1.57, df) * 0.5;
-        return vec2(m1, m2) * waveAmplitude * 0.08;
+        return (dir * m1 + perp * m2) * waveAmplitude * 0.08;
     }
     // Filter Mode 5: Cyber Glitch
     else if (filterMode == 5) {
-        float strip = floor(uv.y * waveFrequency * 16.0);
+        // Slices are cut across the wave direction and slide along it
+        float strip = floor(perpProj * waveFrequency * 16.0);
         float noiseVal = rand(vec2(strip, floor(t * 8.0)));
         float rawShift = (noiseVal > 0.55) ? (rand(vec2(strip, t)) - 0.5) : 0.0;
         float shift = evaluateScalarFunc(rawShift * 6.2832 + proj * 10.0, df) * waveAmplitude * 0.09;
-        return vec2(shift, 0.0);
+        return dir * shift;
     }
     // Filter Mode 6: Heat Haze (Radial)
     else if (filterMode == 6) {
+        // Rings still spread from the middle, but the heat drifts the way the waves travel
         vec2 center = vec2(0.5, 0.5);
         float dist = length(uv - center);
-        float pulse = evaluateScalarFunc(dist * waveFrequency * 22.0 - t * 2.2, df) * waveAmplitude * 0.06;
-        return normalize(uv - center + vec2(0.0001)) * pulse;
+        float pulse = evaluateScalarFunc(dist * waveFrequency * 22.0 + proj * waveFrequency * 5.0 - t * 2.2, df) * waveAmplitude * 0.06;
+        return normalize(uv - center + vec2(0.0001)) * pulse + dir * pulse * 0.6;
+    }
+    // Filter Mode 7: Mirror Break
+    else if (filterMode == 7) {
+        // Irregular shards: a warped grid, so edges are not a tidy checkerboard
+        float shardScale = max(2.0, waveFrequency * 5.0);
+        vec2 local = vec2(proj, perpProj) * shardScale;
+        local += 0.45 * vec2(sin(local.y * 1.7 + 2.1), cos(local.x * 1.3 - 0.7));
+        vec2 cell = floor(local);
+
+        // One random per shard; everything below is constant inside the shard, so the piece
+        // moves as one instead of smearing
+        float seed = rand(cell);
+        float seed2 = rand(cell + vec2(37.1, 17.9));
+
+        // Shard centre back in picture space
+        vec2 centerLocal = (cell + 0.5) / shardScale;
+        vec2 shardCenter = vec2(0.5) + dir * centerLocal.x + perp * centerLocal.y;
+
+        // The crack starts upstream and races outward, then the pieces keep drifting
+        vec2 impact = vec2(0.5) - dir * 0.18;
+        vec2 away = shardCenter - impact;
+        float spread = length(away) + 0.0001;
+        float front = clamp(t * 0.9 - spread * 1.6, 0.0, 1.0);
+        float ease = front * front * (3.0 - 2.0 * front);
+
+        float travel = waveAmplitude * 0.05 * ease * (0.35 + seed);
+        vec2 offset = (away / spread) * travel + dir * travel * 0.35;
+
+        // Each piece tilts a little as it goes, pivoting on its own centre
+        float spin = (seed2 - 0.5) * 0.5 * ease * waveAmplitude * 0.08;
+        vec2 fromCenter = uv - shardCenter;
+        vec2 turned = vec2(
+            fromCenter.x * cos(spin) - fromCenter.y * sin(spin),
+            fromCenter.x * sin(spin) + fromCenter.y * cos(spin)
+        );
+        return offset + (turned - fromCenter);
+    }
+    // Filter Mode 8: Ice Freeze
+    else if (filterMode == 8) {
+        // Flat crystal plates: one direction and one depth per facet, so light breaks in steps
+        float facetScale = max(3.0, waveFrequency * 8.0);
+        vec2 local = vec2(proj, perpProj) * facetScale;
+        local += 0.35 * vec2(sin(local.y * 2.1), cos(local.x * 1.8));
+        vec2 cell = floor(local);
+
+        float seed = rand(cell);
+        float seed2 = rand(cell + vec2(9.4, 23.7));
+
+        // Frost spreads from the upstream edge with a ragged, per-facet edge
+        float reach = fract(t * 0.18) * 1.6;
+        float ragged = proj + 0.5 + (seed - 0.5) * 0.22;
+        float frozen = smoothstep(reach - 0.25, reach, 1.0 - ragged + 0.5);
+
+        // Stepped depth gives plates rather than ripples
+        float depth = floor(seed2 * 5.0) / 5.0 - 0.5;
+        vec2 facetDir = normalize(vec2(seed - 0.5, seed2 - 0.5) + vec2(0.0001));
+
+        // Needles reach along the direction the frost travels
+        float needle = 0.35 + 0.65 * fract(seed * 7.3);
+        vec2 crystal = facetDir * depth + dir * needle * depth * 0.8;
+
+        // A slow twinkle on a few facets
+        float sparkle = step(0.93, rand(cell + floor(t * 2.0))) * 0.35;
+
+        return crystal * (waveAmplitude * 0.05) * frozen + facetDir * sparkle * waveAmplitude * 0.01 * frozen;
+    }
+    // Filter Mode 9: Nature Sway
+    else if (filterMode == 9) {
+        // Rooted at the upstream edge: still at the root, freest at the tip
+        float rooted = clamp(proj + 0.5, 0.0, 1.0);
+        float reach = rooted * rooted;
+
+        // Gusts drifting through the scene, so the sway is never uniform
+        float gust = fbm(vec2(perpProj * waveFrequency * 2.5, t * 0.35));
+        float breeze = evaluateScalarFunc(t * 1.1 + perpProj * waveFrequency * 5.0, df);
+        float flutter = evaluateScalarFunc(t * 3.3 + perpProj * waveFrequency * 16.0, df) * 0.25;
+
+        float bend = (breeze * (0.55 + gust * 0.9) + flutter) * reach;
+        // Leaves swing sideways and dip a little as they bend
+        return (perp * bend + dir * abs(bend) * 0.25) * waveAmplitude * 0.07;
     }
     
     return vec2(0.0);
