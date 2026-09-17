@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useLexicalComposerContext } from '@lexical/react/LexicalComposerContext';
 import { $getNearestNodeFromDOMNode, $getNodeByKey, LexicalEditor } from 'lexical';
 import {
@@ -186,30 +186,62 @@ function TableActionMenu({
     }, 1100);
   }, [onClose]);
 
-  const buildCanvas = useCallback(() => {
-    const table = editor.getElementByKey(cellKey)?.closest('table') as HTMLTableElement | null;
+  /**
+   * Drawing the image needs the fonts and any pictures loaded, which is asynchronous. Sharing has
+   * to be called straight out of the click that asked for it, so the image is prepared as soon as
+   * the menu opens and the buttons then work from the finished canvas.
+   */
+  const preparedCanvasRef = useRef<HTMLCanvasElement | null>(null);
+
+  const tableElement = useCallback(
+    () => editor.getElementByKey(cellKey)?.closest('table') as HTMLTableElement | null,
+    [editor, cellKey],
+  );
+
+  useEffect(() => {
+    let cancelled = false;
+    const table = tableElement();
+    if (!table) return;
+
+    renderTableToCanvas(extractTableData(table))
+      .then((canvas) => {
+        if (!cancelled) preparedCanvasRef.current = canvas;
+      })
+      .catch((err) => console.error('Preparing the table image failed', err));
+
+    return () => {
+      cancelled = true;
+    };
+  }, [tableElement]);
+
+  const buildCanvas = useCallback(async () => {
+    if (preparedCanvasRef.current) return preparedCanvasRef.current;
+    const table = tableElement();
     if (!table) return null;
-    return renderTableToCanvas(extractTableData(table));
-  }, [editor, cellKey]);
+    const canvas = await renderTableToCanvas(extractTableData(table));
+    preparedCanvasRef.current = canvas;
+    return canvas;
+  }, [tableElement]);
 
   const fileName = isTodo ? 'todo-table.png' : 'table.png';
 
   const copyImage = async () => {
-    const canvas = buildCanvas();
+    const canvas = await buildCanvas();
     if (!canvas) return;
     const result = await copyCanvas(canvas, fileName);
     flash(result === 'copied' ? 'Image copied' : 'Image saved');
   };
 
-  const downloadImage = () => {
-    const canvas = buildCanvas();
+  const downloadImage = async () => {
+    const canvas = await buildCanvas();
     if (!canvas) return;
     downloadCanvas(canvas, fileName);
     flash('Image saved');
   };
 
   const shareImage = async () => {
-    const canvas = buildCanvas();
+    // Uses the canvas prepared when the menu opened, so no await sits between the tap and sharing
+    const canvas = preparedCanvasRef.current ?? (await buildCanvas());
     if (!canvas) return;
     try {
       const result = await shareCanvas(canvas, fileName, isTodo ? 'To-do table' : 'Table');
@@ -223,7 +255,7 @@ function TableActionMenu({
   };
 
   const copyAsText = async (kind: 'markdown' | 'csv') => {
-    const table = editor.getElementByKey(cellKey)?.closest('table') as HTMLTableElement | null;
+    const table = tableElement();
     if (!table) return;
     const data = extractTableData(table);
     try {
@@ -261,9 +293,57 @@ function TableActionMenu({
     });
   }, [editor, cellKey]);
 
-  if (!buttonRef.current) return null;
+  /**
+   * The menu used to sit at `button.bottom + 4` with no regard for the viewport, so opening it
+   * near the bottom or the right edge cut it off. This measures both and flips it above the
+   * button when there is more room there, then caps its height so its own scrollbar takes over.
+   */
+  const [placement, setPlacement] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
 
-  const rect = buttonRef.current.getBoundingClientRect();
+  useLayoutEffect(() => {
+    const button = buttonRef.current;
+    const menu = menuRef.current;
+    if (!button || !menu) return;
+
+    const place = () => {
+      const rect = button.getBoundingClientRect();
+      const margin = 8;
+      const gap = 4;
+      const menuWidth = menu.offsetWidth || 224;
+      const menuHeight = menu.scrollHeight;
+
+      const roomBelow = window.innerHeight - rect.bottom - margin - gap;
+      const roomAbove = rect.top - margin - gap;
+
+      let top: number;
+      let maxHeight: number;
+      if (menuHeight <= roomBelow || roomBelow >= roomAbove) {
+        top = rect.bottom + gap;
+        maxHeight = Math.max(140, roomBelow);
+      } else {
+        maxHeight = Math.max(140, roomAbove);
+        top = Math.max(margin, rect.top - gap - Math.min(menuHeight, maxHeight));
+      }
+
+      // Right-aligned with the button, but never past either edge
+      const rightAligned = rect.right - menuWidth;
+      const furthestLeft = Math.max(margin, window.innerWidth - menuWidth - margin);
+      const left = Math.min(Math.max(margin, rightAligned), furthestLeft);
+
+      setPlacement({ top, left, maxHeight });
+    };
+
+    place();
+    window.addEventListener('resize', place);
+    // Capture, so scrolling any container the table sits in keeps the menu on the button
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [status, isMerged, canMergeRight, canMergeDown, isTodo]);
+
+  if (!buttonRef.current) return null;
 
   const itemClass =
     'flex w-full items-center gap-2.5 px-3 py-2 text-left text-black/80 dark:text-white/80 hover:bg-black/5 dark:hover:bg-white/10 transition-colors';
@@ -276,10 +356,13 @@ function TableActionMenu({
   return createPortal(
     <div
       ref={menuRef}
-      className="fixed w-56 max-h-[70vh] overflow-y-auto bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 rounded-lg shadow-xl py-1 text-sm font-medium"
+      className="custom-scrollbar fixed w-56 overflow-y-auto overscroll-contain bg-white dark:bg-[#1f1f1f] border border-black/10 dark:border-white/10 rounded-lg shadow-xl py-1 text-sm font-medium"
       style={{
-        top: rect.bottom + 4,
-        left: Math.max(8, rect.left - 224 + rect.width), // align right, kept on screen
+        top: placement?.top ?? -9999,
+        left: placement?.left ?? -9999,
+        maxHeight: placement?.maxHeight,
+        // Hidden for the single frame before it has been measured
+        visibility: placement ? 'visible' : 'hidden',
         zIndex: 999999
       }}
     >

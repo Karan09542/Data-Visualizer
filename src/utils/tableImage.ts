@@ -9,10 +9,18 @@ export interface TableChecklistItem {
   checked: boolean;
 }
 
+export interface TableCellImage {
+  src: string;
+  naturalWidth: number;
+  naturalHeight: number;
+}
+
 export interface TableCellData {
   text: string;
   /** Checklist items found in the cell, which are drawn with real checkboxes */
   items: TableChecklistItem[];
+  /** Pictures inside the cell, drawn under its text */
+  images: TableCellImage[];
   isHeader: boolean;
   colSpan: number;
   rowSpan: number;
@@ -53,13 +61,53 @@ const readCell = (cell: HTMLTableCellElement): TableCellData => {
     text = (clone.textContent || '').replace(/ /g, ' ').trim();
   }
 
+  const images: TableCellImage[] = Array.from(cell.querySelectorAll('img'))
+    .filter((image) => !!image.currentSrc || !!image.src)
+    .map((image) => ({
+      src: image.currentSrc || image.src,
+      naturalWidth: image.naturalWidth || image.width || 1,
+      naturalHeight: image.naturalHeight || image.height || 1,
+    }));
+
   return {
     text,
     items,
+    images,
     isHeader: cell.tagName === 'TH' || cell.classList.contains('editor-tableCellHeader'),
     colSpan: Math.max(1, cell.colSpan || 1),
     rowSpan: Math.max(1, cell.rowSpan || 1),
   };
+};
+
+/**
+ * Loads every picture in the table before anything is drawn. A cross-origin picture without
+ * permission would taint the canvas and make the export throw, so those are skipped instead.
+ */
+export const loadTableImages = async (data: TableData) => {
+  const sources = new Set<string>();
+  data.rows.forEach((cells) => cells.forEach((cell) => cell.images.forEach((image) => sources.add(image.src))));
+
+  const loaded = new Map<string, HTMLImageElement>();
+  await Promise.all(
+    Array.from(sources).map(
+      (source) =>
+        new Promise<void>((resolve) => {
+          const image = new Image();
+          if (/^https?:/i.test(source)) image.crossOrigin = 'anonymous';
+          image.onload = () => {
+            loaded.set(source, image);
+            resolve();
+          };
+          image.onerror = () => {
+            console.warn('Could not load a table image for the export', source);
+            resolve();
+          };
+          image.src = source;
+        }),
+    ),
+  );
+
+  return loaded;
 };
 
 export const extractTableData = (table: HTMLTableElement): TableData => {
@@ -116,6 +164,9 @@ const placeCells = (data: TableData): PlacedCell[] => {
 /* ─────────────────────────── Text export ─────────────────────────── */
 
 const cellToText = (cell: TableCellData) => {
+  if (cell.items.length === 0 && cell.images.length > 0 && !cell.text) {
+    return cell.images.length === 1 ? '[image]' : `[${cell.images.length} images]`;
+  }
   if (cell.items.length === 0) return cell.text;
   const list = cell.items.map((item) => `${item.checked ? '[x]' : '[ ]'} ${item.text}`).join(' • ');
   return cell.text ? `${cell.text} ${list}` : list;
@@ -148,8 +199,11 @@ export const tableToCsv = (data: TableData) =>
 
 /* ─────────────────────────── Drawing ─────────────────────────── */
 
-const FONT = '"Segoe UI", Inter, system-ui, -apple-system, sans-serif';
-const SCALE = 2;
+// System fonts first so the text matches what the person sees, with Devanagari covered
+const FONT = '-apple-system, "Segoe UI", Roboto, Inter, "Noto Sans", "Noto Sans Devanagari", "Helvetica Neue", Arial, sans-serif';
+const SCALE = 3;
+const IMAGE_MAX_HEIGHT = 200;
+const IMAGE_GAP = 8;
 const PADDING_X = 14;
 const PADDING_Y = 11;
 const LINE_HEIGHT = 21;
@@ -174,6 +228,9 @@ const COLORS = {
 };
 
 const bodyFont = (weight = 400, size = 14) => `${weight} ${size}px ${FONT}`;
+
+/** Canvas blurs text drawn on a fraction of a pixel, so every position is snapped */
+const snap = (value: number) => Math.round(value);
 
 /** Splits text to fit a width, breaking inside a word only when it cannot fit at all */
 const wrapText = (ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] => {
@@ -223,6 +280,11 @@ const measureCellWidth = (ctx: CanvasRenderingContext2D, cell: TableCellData) =>
   for (const item of cell.items) {
     widest = Math.max(widest, ctx.measureText(item.text).width + CHECKBOX + 8);
   }
+  for (const image of cell.images) {
+    // Enough room for the picture at its capped height, so it is not shrunk to a sliver
+    const ratio = Math.min(IMAGE_MAX_HEIGHT / (image.naturalHeight || 1), 1);
+    widest = Math.max(widest, (image.naturalWidth || 1) * ratio);
+  }
   return widest + PADDING_X * 2;
 };
 
@@ -254,7 +316,15 @@ const drawCheckbox = (ctx: CanvasRenderingContext2D, x: number, y: number, check
   }
 };
 
-export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null => {
+export const renderTableToCanvas = async (data: TableData): Promise<HTMLCanvasElement | null> => {
+  // Waiting for the fonts stops the first export being drawn in a fallback face
+  try {
+    await document.fonts?.ready;
+  } catch {
+    // Font loading is a nicety, not a requirement
+  }
+  const images = await loadTableImages(data);
+
   const measureCanvas = document.createElement('canvas');
   const measureCtx = measureCanvas.getContext('2d');
   if (!measureCtx) return null;
@@ -292,8 +362,17 @@ export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null =
     return width;
   };
 
-  // Lay out the text now, so heights are known before anything is drawn
-  const layouts = new Map<PlacedCell, { lines: string[]; items: { lines: string[]; checked: boolean }[] }>();
+  interface DrawnImage {
+    image: HTMLImageElement;
+    width: number;
+    height: number;
+  }
+
+  // Lay out the text and pictures now, so heights are known before anything is drawn
+  const layouts = new Map<
+    PlacedCell,
+    { lines: string[]; items: { lines: string[]; checked: boolean }[]; images: DrawnImage[] }
+  >();
   placed.forEach((cell) => {
     const inner = spanWidth(cell) - PADDING_X * 2;
     measureCtx.font = bodyFont(cell.isHeader ? 700 : 400);
@@ -302,7 +381,25 @@ export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null =
       lines: wrapText(measureCtx, item.text || ' ', inner - CHECKBOX - 8),
       checked: item.checked,
     }));
-    layouts.set(cell, { lines, items });
+
+    // Pictures keep their shape, fitted to the column and capped in height
+    const cellImages: DrawnImage[] = [];
+    cell.images.forEach((entry) => {
+      const image = images.get(entry.src);
+      if (!image) return;
+      const naturalWidth = image.naturalWidth || entry.naturalWidth;
+      const naturalHeight = image.naturalHeight || entry.naturalHeight;
+      if (!naturalWidth || !naturalHeight) return;
+
+      const ratio = Math.min(inner / naturalWidth, IMAGE_MAX_HEIGHT / naturalHeight, 1);
+      cellImages.push({
+        image,
+        width: Math.max(1, Math.round(naturalWidth * ratio)),
+        height: Math.max(1, Math.round(naturalHeight * ratio)),
+      });
+    });
+
+    layouts.set(cell, { lines, items, images: cellImages });
   });
 
   const contentHeight = (cell: PlacedCell) => {
@@ -310,6 +407,9 @@ export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null =
     let height = layout.lines.length * LINE_HEIGHT;
     layout.items.forEach((item, index) => {
       height += item.lines.length * LINE_HEIGHT + (index > 0 ? ITEM_GAP : layout.lines.length > 0 ? ITEM_GAP : 0);
+    });
+    layout.images.forEach((image, index) => {
+      height += image.height + (index > 0 || layout.lines.length > 0 || layout.items.length > 0 ? IMAGE_GAP : 0);
     });
     return height + PADDING_Y * 2;
   };
@@ -351,6 +451,8 @@ export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null =
   if (!ctx) return null;
   ctx.scale(SCALE, SCALE);
   ctx.textBaseline = 'top';
+  // Chrome honours this and keeps small text from being over-thinned
+  (ctx as CanvasRenderingContext2D & { textRendering?: string }).textRendering = 'optimizeLegibility';
 
   ctx.fillStyle = COLORS.page;
   ctx.fillRect(0, 0, width, height);
@@ -388,7 +490,7 @@ export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null =
       ctx.font = bodyFont(cell.isHeader ? 700 : 400);
       ctx.fillStyle = cell.isHeader ? COLORS.headerText : COLORS.text;
       layout.lines.forEach((line) => {
-        ctx.fillText(line, x + PADDING_X, textY);
+        ctx.fillText(line, snap(x + PADDING_X), snap(textY));
         textY += LINE_HEIGHT;
       });
       if (layout.items.length > 0) textY += ITEM_GAP;
@@ -402,7 +504,7 @@ export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null =
       ctx.fillStyle = item.checked ? COLORS.muted : COLORS.text;
       const textX = x + PADDING_X + CHECKBOX + 8;
       item.lines.forEach((line) => {
-        ctx.fillText(line, textX, textY);
+        ctx.fillText(line, snap(textX), snap(textY));
         if (item.checked && line) {
           // Done items are struck through, the same as in the editor
           const lineWidth = ctx.measureText(line).width;
@@ -415,6 +517,26 @@ export const renderTableToCanvas = (data: TableData): HTMLCanvasElement | null =
         }
         textY += LINE_HEIGHT;
       });
+    });
+
+    // Pictures sit under whatever text the cell has, clipped to rounded corners
+    layout.images.forEach((entry, index) => {
+      if (index > 0 || layout.lines.length > 0 || layout.items.length > 0) textY += IMAGE_GAP;
+      const imageX = snap(x + PADDING_X);
+      const imageY = snap(textY);
+
+      ctx.save();
+      roundRect(ctx, imageX, imageY, entry.width, entry.height, 8);
+      ctx.clip();
+      ctx.drawImage(entry.image, imageX, imageY, entry.width, entry.height);
+      ctx.restore();
+
+      ctx.strokeStyle = COLORS.border;
+      ctx.lineWidth = 1;
+      roundRect(ctx, imageX + 0.5, imageY + 0.5, entry.width - 1, entry.height - 1, 8);
+      ctx.stroke();
+
+      textY += entry.height;
     });
   });
 

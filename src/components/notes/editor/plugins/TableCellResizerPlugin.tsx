@@ -7,11 +7,62 @@ import { createPortal } from 'react-dom';
 const MIN_COLUMN_WIDTH = 50;
 const MIN_ROW_HEIGHT = 30;
 
+interface Segment {
+  start: number;
+  size: number;
+}
+
+/**
+ * A merged cell straddles the boundary its neighbours share, so the resize bar must not be drawn
+ * across it. This takes the table's full span and cuts out every cell that crosses the boundary,
+ * leaving the stretches where the boundary genuinely exists.
+ */
+const boundarySegments = (
+  table: HTMLTableElement,
+  axis: 'row' | 'col',
+  boundary: number,
+): Segment[] => {
+  const tableRect = table.getBoundingClientRect();
+  const from = axis === 'row' ? tableRect.left : tableRect.top;
+  const to = axis === 'row' ? tableRect.right : tableRect.bottom;
+
+  let spans: { from: number; to: number }[] = [{ from, to }];
+
+  for (const row of Array.from(table.rows)) {
+    for (const cell of Array.from(row.cells)) {
+      const rect = cell.getBoundingClientRect();
+      const crossesStart = axis === 'row' ? rect.top : rect.left;
+      const crossesEnd = axis === 'row' ? rect.bottom : rect.right;
+      // Only a cell that starts before and ends after the boundary is straddling it
+      if (crossesStart >= boundary - 1 || crossesEnd <= boundary + 1) continue;
+
+      const blockFrom = axis === 'row' ? rect.left : rect.top;
+      const blockTo = axis === 'row' ? rect.right : rect.bottom;
+
+      const remaining: typeof spans = [];
+      for (const span of spans) {
+        if (blockTo <= span.from || blockFrom >= span.to) {
+          remaining.push(span);
+          continue;
+        }
+        if (blockFrom > span.from) remaining.push({ from: span.from, to: blockFrom });
+        if (blockTo < span.to) remaining.push({ from: blockTo, to: span.to });
+      }
+      spans = remaining;
+    }
+  }
+
+  return spans
+    .filter(span => span.to - span.from > 2)
+    .map(span => ({ start: span.from, size: span.to - span.from }));
+};
+
 export default function TableCellResizerPlugin() {
   const [editor] = useLexicalComposerContext();
   const [resizerPosition, setResizerPosition] = useState({ top: 0, left: 0, width: 0, height: 0, tableTop: 0, tableLeft: 0, tableWidth: 0, tableHeight: 0 });
   const [activeCellKey, setActiveCellKey] = useState<string | null>(null);
   const [resizeDirection, setResizeDirection] = useState<'col' | 'row' | null>(null);
+  const [segments, setSegments] = useState<Segment[]>([]);
   const [isResizing, setIsResizing] = useState(false);
   const activeDOMCellRef = useRef<HTMLElement | null>(null);
   const initialXRef = useRef(0);
@@ -99,7 +150,19 @@ export default function TableCellResizerPlugin() {
             setActiveCellKey(key);
             setResizeDirection(newDir);
             activeDOMCellRef.current = targetCell;
-            const tableRect = targetCell.closest('table')?.getBoundingClientRect();
+            const table = targetCell.closest('table') as HTMLTableElement | null;
+            const tableRect = table?.getBoundingClientRect();
+
+            // Where the bar would sit, so the parts crossed by a merged cell can be cut out
+            const boundary = newDir === 'row' ? targetRect.bottom : targetRect.right;
+            const available = table ? boundarySegments(table, newDir, boundary) : [];
+            if (available.length === 0) {
+              setActiveCellKey(null);
+              setResizeDirection(null);
+              return;
+            }
+            setSegments(available);
+
             setResizerPosition({
               top: targetRect.top,
               left: targetRect.left,
@@ -159,23 +222,26 @@ export default function TableCellResizerPlugin() {
   const isCol = resizeDirection === 'col';
 
   return createPortal(
+    <>
+      {segments.map((segment, i) => (
     <div
+      key={i}
       className={`table-resizer-handle fixed z-[999999] transition-colors ${isCol ? 'cursor-col-resize' : 'cursor-row-resize'
         } ${isResizing ? 'bg-indigo-500' : 'bg-indigo-500/50 hover:bg-indigo-500'
         }`}
       style={{
         ...(isCol
           ? {
-            top: resizerPosition.tableTop - 4,
+            top: segment.start,
             left: resizerPosition.left + resizerPosition.width - 2,
-            height: resizerPosition.tableHeight + 8,
+            height: segment.size,
             width: 4
           }
           : {
             top: resizerPosition.top + resizerPosition.height - 2,
-            left: resizerPosition.tableLeft - 4,
+            left: segment.start,
             height: 4,
-            width: resizerPosition.tableWidth + 8
+            width: segment.size
           }
         )
       }}
@@ -191,7 +257,9 @@ export default function TableCellResizerPlugin() {
           initialHeightRef.current = tr ? tr.getBoundingClientRect().height : 0;
         }
       }}
-    />,
+    />
+      ))}
+    </>,
     document.body
   );
 }

@@ -1,8 +1,7 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Search, Star, Clock, ChevronDown, Check } from 'lucide-react';
 import { FONTS, FontNode, loadGoogleFont } from '../utils/fontRegistry';
-import { useStore } from '../store/useStore';
 
 interface FontPickerProps {
   value: string;
@@ -14,15 +13,19 @@ interface FontPickerProps {
   /** Surface colours, so the picker can match the panel it sits in */
   triggerSurfaceClass?: string;
   menuSurfaceClass?: string;
+  /** Trigger text colour, for panels that are not dark */
+  triggerTextClass?: string;
+  /** Lets the host keep itself open while the font list is showing */
+  onOpenChange?: (open: boolean) => void;
 }
 
-export function FontPicker({ value, onChange, className = "", triggerClassName = "", selectedText = "", onHover, triggerSurfaceClass = "bg-[#181818] border-[#3A3A3A] rounded", menuSurfaceClass = "bg-[#1E1E1E] border-[#3A3A3A]" }: FontPickerProps) {
+export function FontPicker({ value, onChange, className = "", triggerClassName = "", selectedText = "", onHover, triggerSurfaceClass = "bg-[#181818] border-[#3A3A3A] rounded", menuSurfaceClass = "bg-[#1E1E1E] border-[#3A3A3A]", triggerTextClass = "text-white", onOpenChange }: FontPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<'all' | 'hindi' | 'english'>('all');
   const [hoveredFont, setHoveredFont] = useState<FontNode | null>(null);
   const [focusedIndex, setFocusedIndex] = useState(-1);
-  
+
   const [favorites, setFavorites] = useState<string[]>(() => {
     try {
       return JSON.parse(localStorage.getItem('studio_favorite_fonts') || '[]');
@@ -38,13 +41,97 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
     }
   });
 
+  useEffect(() => {
+    onOpenChange?.(isOpen);
+  }, [isOpen, onOpenChange]);
+
   const pickerRef = useRef<HTMLDivElement>(null);
-  const [hoverCardPos, setHoverCardPos] = useState<{top: number, right: number} | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [hoverCardPos, setHoverCardPos] = useState<{ top: number, right: number } | null>(null);
+  // The menu is shown through a portal, so a host with overflow hidden cannot clip it
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; maxHeight: number } | null>(null);
+
+  /**
+   * Positions the menu from the trigger before it first renders, so it never paints in the
+   * top corner and then jumps. The layout effect below refines this once the real size is known.
+   */
+  const openMenu = () => {
+    const trigger = pickerRef.current;
+    if (trigger) {
+      const rect = trigger.getBoundingClientRect();
+      const margin = 8;
+      const gap = 4;
+      const estimatedWidth = 288;
+      const estimatedHeight = 380;
+
+      const roomBelow = window.innerHeight - rect.bottom - margin - gap;
+      const roomAbove = rect.top - margin - gap;
+      const below = estimatedHeight <= roomBelow || roomBelow >= roomAbove;
+
+      setMenuPos({
+        top: below
+          ? rect.bottom + gap
+          : Math.max(margin, rect.top - gap - Math.min(estimatedHeight, roomAbove)),
+        left: Math.min(
+          Math.max(margin, rect.left),
+          Math.max(margin, window.innerWidth - estimatedWidth - margin),
+        ),
+        maxHeight: Math.max(180, below ? roomBelow : roomAbove),
+      });
+    }
+    setIsOpen(true);
+  };
+
+  useLayoutEffect(() => {
+    if (!isOpen) {
+      setMenuPos(null);
+      return;
+    }
+    const trigger = pickerRef.current;
+    const menu = menuRef.current;
+    if (!trigger || !menu) return;
+
+    const place = () => {
+      const rect = trigger.getBoundingClientRect();
+      const margin = 8;
+      const gap = 4;
+      const width = menu.offsetWidth || 288;
+      const height = menu.scrollHeight;
+
+      const roomBelow = window.innerHeight - rect.bottom - margin - gap;
+      const roomAbove = rect.top - margin - gap;
+
+      let top: number;
+      let maxHeight: number;
+      if (height <= roomBelow || roomBelow >= roomAbove) {
+        top = rect.bottom + gap;
+        maxHeight = Math.max(180, roomBelow);
+      } else {
+        maxHeight = Math.max(180, roomAbove);
+        top = Math.max(margin, rect.top - gap - Math.min(height, maxHeight));
+      }
+
+      const left = Math.min(
+        Math.max(margin, rect.left),
+        Math.max(margin, window.innerWidth - width - margin),
+      );
+
+      setMenuPos({ top, left, maxHeight });
+    };
+
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+    };
+  }, [isOpen, search, filter]);
 
   useEffect(() => {
     if (hoveredFont && pickerRef.current) {
-       const rect = pickerRef.current.getBoundingClientRect();
-       setHoverCardPos({ top: rect.top, right: window.innerWidth - rect.left + 8 });
+      const rect = pickerRef.current.getBoundingClientRect();
+      setHoverCardPos({ top: rect.top, right: window.innerWidth - rect.left + 8 });
     }
   }, [hoveredFont]);
 
@@ -58,7 +145,7 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
 
   const toggleFavorite = (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    setFavorites(prev => 
+    setFavorites(prev =>
       prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]
     );
   };
@@ -66,40 +153,40 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
   const handleSelect = (font: FontNode) => {
     loadGoogleFont(font.googleFontName);
     onChange(font.fontFamily);
-    
+
     const newRecents = [font.id, ...recents.filter(id => id !== font.id)].slice(0, 10);
     setRecents(newRecents);
-    
+
     setIsOpen(false);
   };
 
   const filteredFonts = useMemo(() => {
     let result = FONTS;
-    
+
     // Setup exact match for testing query logic
     const s = search.toLowerCase();
-    
+
     if (s) {
-       result = result.filter(f => 
-          f.fontFamily.toLowerCase().includes(s) || 
-          f.category.toLowerCase().includes(s)
-       );
+      result = result.filter(f =>
+        f.fontFamily.toLowerCase().includes(s) ||
+        f.category.toLowerCase().includes(s)
+      );
     }
-    
+
     if (s === 'devanagari') {
-       result = FONTS.filter(f => f.supportsHindi);
+      result = FONTS.filter(f => f.supportsHindi);
     } else if (s === 'serif') {
-       result = FONTS.filter(f => f.category.toLowerCase().includes('serif'));
+      result = FONTS.filter(f => f.category.toLowerCase().includes('serif'));
     } else if (s === 'creative') {
-       result = FONTS.filter(f => f.category.toLowerCase().includes('creative'));
+      result = FONTS.filter(f => f.category.toLowerCase().includes('creative'));
     }
-    
+
     if (filter === 'hindi') {
       result = result.filter(f => f.supportsHindi);
     } else if (filter === 'english') {
       result = result.filter(f => !f.supportsHindi);
     }
-    
+
     return result;
   }, [search, filter]);
 
@@ -108,7 +195,10 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
 
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
-      if (pickerRef.current && !pickerRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      const insideTrigger = pickerRef.current?.contains(target);
+      const insideMenu = menuRef.current?.contains(target);
+      if (!insideTrigger && !insideMenu) {
         setIsOpen(false);
       }
     };
@@ -127,16 +217,16 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
   useEffect(() => {
     setFocusedIndex(-1);
   }, [search, filter]);
-  
+
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (!isOpen) {
       if (e.key === 'Enter' || e.key === ' ' || e.key === 'ArrowDown') {
         e.preventDefault();
-        setIsOpen(true);
+        openMenu();
       }
       return;
     }
-    
+
     if (e.key === 'Escape') {
       e.preventDefault();
       setIsOpen(false);
@@ -173,17 +263,29 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
     <div className={`relative ${className}`} ref={pickerRef} onKeyDown={handleKeyDown}>
       <button
         type="button"
-        className={`w-full flex items-center justify-between text-xs border px-3 py-2 text-white hover:border-[#4A4A4A] transition-colors focus:border-blue-500 focus:outline-none truncate ${triggerSurfaceClass} ${triggerClassName}`}
-        onClick={() => setIsOpen(!isOpen)}
+        className={`w-full flex items-center justify-between text-xs border px-3 py-2 hover:border-[#4A4A4A] transition-colors focus:border-blue-500 focus:outline-none truncate ${triggerTextClass} ${triggerSurfaceClass} ${triggerClassName}`}
+        onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
         style={{ fontFamily: value }}
       >
         <span className="truncate flex-1 text-left">{value || "Select Font"}</span>
         <ChevronDown size={14} className="text-[#8A8A8A] shrink-0 ml-2" />
       </button>
 
-      {isOpen && (
-        <div className={`absolute top-full left-0 z-50 mt-1 w-72 border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${menuSurfaceClass}`}>
-          
+      {isOpen && createPortal(
+        <div
+          ref={menuRef}
+          style={{
+            position: 'fixed',
+            top: menuPos?.top ?? -9999,
+            left: menuPos?.left ?? -9999,
+            maxHeight: menuPos?.maxHeight,
+            visibility: menuPos ? 'visible' : 'hidden',
+            zIndex: 100001,
+          }}
+          className={`w-72 max-w-[calc(100vw-1rem)] border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${menuSurfaceClass}`}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+
           {/* Search Header */}
           <div className="p-3 border-b border-[#2C2C2C] space-y-2">
             <div className="relative">
@@ -197,23 +299,23 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            
+
             <div className="flex bg-[#121212] p-1 rounded-lg border border-[#2C2C2C]">
-               {(['all', 'hindi', 'english'] as const).map(f => (
-                  <button
-                     key={f}
-                     onClick={() => setFilter(f)}
-                     className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-md transition-colors ${filter === f ? 'bg-blue-600/20 text-blue-400' : 'text-[#6A6A6A] hover:bg-[#222]'}`}
-                  >
-                     {f}
-                  </button>
-               ))}
+              {(['all', 'hindi', 'english'] as const).map(f => (
+                <button
+                  key={f}
+                  onClick={() => setFilter(f)}
+                  className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-md transition-colors ${filter === f ? 'bg-blue-600/20 text-blue-400' : 'text-[#6A6A6A] hover:bg-[#222]'}`}
+                >
+                  {f}
+                </button>
+              ))}
             </div>
           </div>
 
           {/* List Area */}
           <div className="max-h-[360px] overflow-y-auto no-scrollbar py-2">
-            
+
             {!search && filter === 'all' && favoriteFonts.length > 0 && (
               <div className="mb-2">
                 <div className="px-4 py-1.5 text-[10px] uppercase font-bold text-[#A0A0A0] flex items-center gap-1.5">
@@ -239,52 +341,53 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
             <div className="px-4 py-1.5 text-[10px] uppercase font-bold text-[#A0A0A0]">
               {search ? 'Search Results' : 'All Fonts'}
             </div>
-            
+
             {filteredFonts.length === 0 ? (
-               <div className="px-4 py-6 text-center text-xs text-[#6A6A6A]">
-                  No fonts found.
-               </div>
+              <div className="px-4 py-6 text-center text-xs text-[#6A6A6A]">
+                No fonts found.
+              </div>
             ) : (
-               <div className="pb-2">
-                 {filteredFonts.map((f, i) => (
-                   <FontItem key={f.id} font={f} selected={value === f.fontFamily} isFocused={focusedIndex === i} selectedText={selectedText} onSelect={handleSelect} onToggleFav={toggleFavorite} isFav={favorites.includes(f.id)} onMouseEnter={(font) => { setHoveredFont(font); onHover?.(font.fontFamily); loadGoogleFont(font.googleFontName); }} onMouseLeave={() => { setHoveredFont(null); onHover?.(null); }} />
-                 ))}
-               </div>
+              <div className="pb-2">
+                {filteredFonts.map((f, i) => (
+                  <FontItem key={f.id} font={f} selected={value === f.fontFamily} isFocused={focusedIndex === i} selectedText={selectedText} onSelect={handleSelect} onToggleFav={toggleFavorite} isFav={favorites.includes(f.id)} onMouseEnter={(font) => { setHoveredFont(font); onHover?.(font.fontFamily); loadGoogleFont(font.googleFontName); }} onMouseLeave={() => { setHoveredFont(null); onHover?.(null); }} />
+                ))}
+              </div>
             )}
           </div>
-        </div>
+        </div>,
+        document.body
       )}
 
       {/* Floating Hover Card */}
       {hoveredFont && hoverCardPos && createPortal(
-         <div 
-            className="fixed z-[1000] pointer-events-none w-64 md:w-80 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl shadow-2xl p-4 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-100 hidden md:flex" 
-            style={{ 
-               top: `${hoverCardPos.top}px`, 
-               right: `${hoverCardPos.right}px`,
-               transform: "translateY(10px)" 
-            }}
-         >
-            <div>
-               <div className="flex items-center justify-between">
-                  <h3 className="text-white font-bold text-sm tracking-tight">{hoveredFont.fontFamily}</h3>
-                  <span className="text-[10px] uppercase font-bold text-[#6A6A6A] tracking-wider">{hoveredFont.category}</span>
-               </div>
-               <div className="text-[#8A8A8A] text-xs mt-0.5">
-                  {hoveredFont.supportsHindi ? 'Hindi + English' : 'English only'}
-               </div>
+        <div
+          className="fixed z-[1000] pointer-events-none w-64 md:w-80 bg-[#1A1A1A] border border-[#3A3A3A] rounded-xl shadow-2xl p-4 flex flex-col gap-3 animate-in fade-in zoom-in-95 duration-100 hidden md:flex"
+          style={{
+            top: `${hoverCardPos.top}px`,
+            right: `${hoverCardPos.right}px`,
+            transform: "translateY(10px)"
+          }}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <h3 className="text-white font-bold text-sm tracking-tight">{hoveredFont.fontFamily}</h3>
+              <span className="text-[10px] uppercase font-bold text-[#6A6A6A] tracking-wider">{hoveredFont.category}</span>
             </div>
-            
-            <div className="bg-[#121212] border border-[#2C2C2C] rounded p-3 overflow-hidden">
-               <div 
-                  className="text-white text-base leading-snug break-words" 
-                  style={{ fontFamily: `"${hoveredFont.fontFamily}", sans-serif` }}
-               >
-                 {selectedText || hoveredFont.previewText || (hoveredFont.supportsHindi ? "Aa राम" : "The quick brown fox jumps over the lazy dog")}
-               </div>
+            <div className="text-[#8A8A8A] text-xs mt-0.5">
+              {hoveredFont.supportsHindi ? 'Hindi + English' : 'English only'}
             </div>
-         </div>,
-         document.body
+          </div>
+
+          <div className="bg-[#121212] border border-[#2C2C2C] rounded p-3 overflow-hidden">
+            <div
+              className="text-white text-base leading-snug break-words"
+              style={{ fontFamily: `"${hoveredFont.fontFamily}", sans-serif` }}
+            >
+              {selectedText || hoveredFont.previewText || (hoveredFont.supportsHindi ? "Aa राम" : "The quick brown fox jumps over the lazy dog")}
+            </div>
+          </div>
+        </div>,
+        document.body
       )}
     </div>
   );
@@ -308,7 +411,7 @@ const FontItem = React.memo(({ font, selected, isFocused, selectedText, onSelect
   }, [font.googleFontName]);
 
   return (
-    <div 
+    <div
       ref={isObserverRef}
       className={`px-3 py-2 flex flex-col gap-1 cursor-pointer transition-colors group ${selected ? 'bg-blue-600/10' : (isFocused ? 'bg-[#3A3A3A]' : 'hover:bg-[#252525]')}`}
       onClick={() => onSelect(font)}
@@ -325,19 +428,19 @@ const FontItem = React.memo(({ font, selected, isFocused, selectedText, onSelect
             {font.fontFamily}
           </span>
           {font.supportsHindi && (
-             <span className="text-[9px] px-1.5 bg-purple-500/10 text-purple-400 rounded uppercase font-bold tracking-tighter">Dual</span>
+            <span className="text-[9px] px-1.5 bg-purple-500/10 text-purple-400 rounded uppercase font-bold tracking-tighter">Dual</span>
           )}
         </div>
-        <button 
+        <button
           onClick={(e) => onToggleFav(e, font.id)}
           className={`opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity p-1 ${isFav ? 'opacity-100 text-yellow-500' : 'text-[#4A4A4A] hover:text-yellow-400'}`}
         >
           <Star size={14} fill={isFav ? "currentColor" : "none"} />
         </button>
       </div>
-      <div 
-         className="text-white text-base truncate opacity-80 mt-0.5" 
-         style={{ fontFamily: `"${font.fontFamily}", sans-serif` }}
+      <div
+        className="text-white text-base truncate opacity-80 mt-0.5"
+        style={{ fontFamily: `"${font.fontFamily}", sans-serif` }}
       >
         {selectedText || font.previewText || (font.supportsHindi ? "Aa राम" : "The quick brown fox")}
       </div>

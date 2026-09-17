@@ -1,12 +1,12 @@
 import React from 'react';
-import { LexicalEditor, $getSelection, $isRangeSelection, $createParagraphNode } from 'lexical';
+import { LexicalEditor, LexicalNode, $getSelection, $isRangeSelection, $createParagraphNode, $isRootNode } from 'lexical';
 import { MenuOption } from '@lexical/react/LexicalTypeaheadMenuPlugin';
 import { $createHeadingNode, $createQuoteNode } from '@lexical/rich-text';
 import { $setBlocksType } from '@lexical/selection';
 import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND } from '@lexical/list';
 import { $createCodeNode } from '@lexical/code';
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
-import { Type, List, ListOrdered, CheckSquare, Quote, Code, Heading1, Heading2, Heading3, Minus, ImageIcon, Camera, Mic, Table, ListTodo } from 'lucide-react';
+import { Type, List, ListOrdered, CheckSquare, Quote, Code, Heading1, Heading2, Heading3, Minus, ImageIcon, Camera, Mic, Table, ListTodo, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
 import { INSERT_TABLE_COMMAND, $createTableNodeWithDimensions, TableRowNode, TableCellNode } from '@lexical/table';
 import { $insertNodeToNearestRoot } from '@lexical/utils';
 import { $createListNode, $createListItemNode } from '@lexical/list';
@@ -31,6 +31,40 @@ export class CommandOption extends MenuOption {
     this.type = options.type;
   }
 }
+
+/**
+ * Climbs to the block that sits directly in the document.
+ *
+ * getTopLevelElement() stops at the nearest shadow root, and a table cell is one, so from inside
+ * a table it hands back the paragraph in that cell. Walking up to the real root instead means a
+ * new line lands outside the table rather than inside a cell.
+ */
+const rootLevelBlock = (node: LexicalNode): LexicalNode | null => {
+  let current: LexicalNode | null = node;
+  while (current) {
+    const parent: LexicalNode | null = current.getParent();
+    if (parent === null) return null;
+    if ($isRootNode(parent)) return current;
+    current = parent;
+  }
+  return null;
+};
+
+/** Puts an empty paragraph either side of the block the cursor is in, and moves there */
+const addBlock = (editor: LexicalEditor, where: 'before' | 'after') => {
+  editor.update(() => {
+    const selection = $getSelection();
+    if (!$isRangeSelection(selection)) return;
+
+    const block = rootLevelBlock(selection.anchor.getNode());
+    if (!block) return;
+
+    const paragraph = $createParagraphNode();
+    if (where === 'before') block.insertBefore(paragraph);
+    else block.insertAfter(paragraph);
+    paragraph.select();
+  });
+};
 
 export const getBaseOptions = () => [
   new CommandOption('Text', <Type size={16} />, {
@@ -191,5 +225,11 @@ export const getBaseOptions = () => [
         });
       }, 0);
     },
+  }),
+  new CommandOption('Add line above', <ArrowUpToLine size={16} />, {
+    onSelect: (editor) => addBlock(editor, 'before'),
+  }),
+  new CommandOption('Add line below', <ArrowDownToLine size={16} />, {
+    onSelect: (editor) => addBlock(editor, 'after'),
   }),
 ];

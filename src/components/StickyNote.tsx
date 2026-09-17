@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Maximize2, Minimize2, Trash2, GripVertical, Clipboard, CopyPlus, Check, Eraser, Type, Minus, Plus, MoreHorizontal, Undo2, Redo2 } from 'lucide-react';
+import { X, Maximize2, Minimize2, Trash2, GripVertical, Clipboard, CopyPlus, Check, Eraser, Type, Minus, Plus, MoreHorizontal, Undo2, Redo2, ImageDown, Hash, Code2 } from 'lucide-react';
 import type { StickyNote as IStickyNote } from '../lib/db';
 import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
 import { getMinNoteWidth } from '../utils/NoteUtils';
@@ -10,6 +10,12 @@ import { UNDO_COMMAND, REDO_COMMAND, $getRoot, LexicalEditor as ILexicalEditor }
 
 
 
+import { $convertToMarkdownString, TRANSFORMERS } from '@lexical/markdown';
+import { $generateHtmlFromNodes } from '@lexical/html';
+import * as snapdom from '@zumer/snapdom';
+import { copyCanvas } from '../utils/tableImage';
+import { FontPicker } from './FontPicker';
+
 import StickyConfirmModal from './notes/StickyConfirmModal';
 
 const DEFAULT_STICKY_FONT = 'Hind';
@@ -18,8 +24,6 @@ const FULLSCREEN_DEFAULT_FONT_SIZE = 18;
 const MIN_NOTE_HEIGHT = 180;
 const MIN_FONT_SIZE = 12;
 const MAX_FONT_SIZE = 28;
-const STICKY_FONT_IDS = ['hind', 'mukta', 'poppins', 'inter', 'tirodevanagari', 'martel', 'baloo2', 'opensans'];
-const STICKY_FONT_OPTIONS = FONTS.filter(font => STICKY_FONT_IDS.includes(font.id));
 const getStickyFontStack = (fontFamily: string) => `"${fontFamily}", "Noto Sans Devanagari", "Noto Sans", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif`;
 
 interface Props {
@@ -40,9 +44,12 @@ const COLORS = [
   '#fbcfe8', // Pink
 ];
 
-/** One surface for every popover, so the note reads as a single piece of UI */
+/**
+ * One surface for every popover, so the note reads as a single piece of UI. note-export-hide
+ * keeps whichever popover is open out of the picture when the note is copied as an image.
+ */
 const POPOVER_SURFACE =
-  'rounded-2xl border border-black/7 dark:border-white/12 bg-white/95 dark:bg-[#1c1c1f]/95 shadow-[0_20px_44px_-16px_rgba(0,0,0,0.45)] backdrop-blur-xl';
+  'note-export-hide rounded-2xl border border-black/7 dark:border-white/12 bg-white/95 dark:bg-[#1c1c1f]/95 shadow-[0_20px_44px_-16px_rgba(0,0,0,0.45)] backdrop-blur-xl';
 const POPOVER_LABEL =
   'px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-black/40 dark:text-white/40';
 const TOOL_BUTTON =
@@ -91,6 +98,12 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
   const [showMoreActions, setShowMoreActions] = useState(false);
   const [previewFontFamily, setPreviewFontFamily] = useState<string | null>(null);
   const [copyStatus, setCopyStatus] = useState(false);
+  // Which of the copy actions just ran, so its row can show a tick
+  const [copiedKind, setCopiedKind] = useState<string | null>(null);
+  const copiedTimerRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+  }, []);
   const [duplicateStatus, setDuplicateStatus] = useState(false);
   const [clearKey, setClearKey] = useState(0);
   const [history, setHistory] = useState<HistoryState>({ canUndo: false, canRedo: false });
@@ -99,6 +112,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
   // Size while a resize is in progress; null when the stored size is in charge
   const [liveSize, setLiveSize] = useState<{ width: number; height: number } | null>(null);
   const resizeRef = useRef<{ startX: number; startY: number; width: number; height: number; startWidth: number; startHeight: number; frame: number } | null>(null);
+  const resizeHandleRef = useRef<HTMLDivElement>(null);
   const minNoteWidth = useMinNoteWidth();
 
   const updatedLabel = useMemo(() => TIME_FORMAT.format(note.updatedAt), [note.updatedAt]);
@@ -169,10 +183,6 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
     onUpdate({ ...note, content: latestContentRef.current, fontFamily, updatedAt: Date.now() });
   }, [note, onUpdate]);
 
-  const handlePreviewFont = useCallback((fontFamily: string, googleFontName: string) => {
-    loadGoogleFont(googleFontName);
-    setPreviewFontFamily(fontFamily);
-  }, []);
 
   const changeFontSize = useCallback((delta: number) => {
     const fontSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, clampedFontSize + delta));
@@ -181,6 +191,8 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
 
   const handleDragEnd = (_: any, info: any) => {
     if (note.isMaximized) return;
+    // A resize that leaked into a drag would write the old size back over the new one
+    if (resizeRef.current) return;
     const newX = note.x + info.offset.x;
     const newY = note.y + info.offset.y;
     onUpdate({ ...note, content: latestContentRef.current, x: newX, y: newY, updatedAt: Date.now() });
@@ -189,24 +201,43 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
   // Resizing used to write to the database on every pointer move, and each write re-ran the
   // live query that re-renders every note. Now the gesture only moves local state, at most once
   // per frame, and the note is saved once when the pointer is released.
-  const handleResizeStart = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+  // Read by the native listener below without making it re-subscribe on every change
+  const resizeStartSizeRef = useRef({ width: note.width, height: note.height, minWidth: minNoteWidth });
+  resizeStartSizeRef.current = { width: note.width, height: note.height, minWidth: minNoteWidth };
 
-    const startWidth = Math.max(note.width, minNoteWidth);
-    const startHeight = Math.max(note.height, MIN_NOTE_HEIGHT);
-    resizeRef.current = {
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth,
-      startHeight,
-      width: startWidth,
-      height: startHeight,
-      frame: 0,
+  /**
+   * Framer Motion arms dragging from a native pointerdown listener on the note itself. A React
+   * handler here runs later, at the React root, so the note had already begun dragging and its
+   * drag-end write then put the old size back. Starting the resize from a native listener on the
+   * handle lets stopPropagation land before Motion ever sees the event.
+   */
+  useEffect(() => {
+    const handle = resizeHandleRef.current;
+    if (!handle) return;
+
+    const onPointerDown = (e: PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      handle.setPointerCapture?.(e.pointerId);
+
+      const { width, height, minWidth } = resizeStartSizeRef.current;
+      const startWidth = Math.max(width, minWidth);
+      const startHeight = Math.max(height, MIN_NOTE_HEIGHT);
+      resizeRef.current = {
+        startX: e.clientX,
+        startY: e.clientY,
+        startWidth,
+        startHeight,
+        width: startWidth,
+        height: startHeight,
+        frame: 0,
+      };
+      setLiveSize({ width: startWidth, height: startHeight });
     };
-    setLiveSize({ width: startWidth, height: startHeight });
-  }, [note.width, note.height, minNoteWidth]);
+
+    handle.addEventListener('pointerdown', onPointerDown);
+    return () => handle.removeEventListener('pointerdown', onPointerDown);
+  }, [isMax]);
 
   const handleResizeMove = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
     const state = resizeRef.current;
@@ -228,9 +259,15 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
     if (!state) return;
     if (state.frame) cancelAnimationFrame(state.frame);
     resizeRef.current = null;
-    setLiveSize(null);
+    // liveSize is kept until the saved note catches up, otherwise the note springs back to its
+    // old size for the frames between releasing the pointer and the database write arriving.
     onUpdate({ ...note, content: latestContentRef.current, width: state.width, height: state.height, updatedAt: Date.now() });
   }, [note, onUpdate]);
+
+  useEffect(() => {
+    if (!liveSize || resizeRef.current) return;
+    if (note.width === liveSize.width && note.height === liveSize.height) setLiveSize(null);
+  }, [note.width, note.height, liveSize]);
 
   // A resize left running by an unmount would keep its frame queued
   useEffect(() => () => {
@@ -250,6 +287,119 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
     setCopyStatus(true);
     setTimeout(() => setCopyStatus(false), 2000);
   };
+
+  const flashCopied = useCallback((kind: string) => {
+    setCopiedKind(kind);
+    if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
+    copiedTimerRef.current = window.setTimeout(() => setCopiedKind(null), 1600);
+  }, []);
+
+  /** The note's text as Markdown, headings, lists and all */
+  const copyAsMarkdown = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    let markdown = '';
+    editor.getEditorState().read(() => {
+      markdown = $convertToMarkdownString(TRANSFORMERS);
+    });
+    if (!markdown.trim()) return;
+
+    try {
+      await navigator.clipboard.writeText(markdown);
+      flashCopied('markdown');
+    } catch (err) {
+      console.error('Copying the note as Markdown failed', err);
+    }
+  }, [flashCopied]);
+
+  /**
+   * Written to the clipboard as rich text as well as source, so pasting into a document keeps
+   * the formatting while pasting into an editor gives you the markup.
+   */
+  const copyAsHtml = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    let html = '';
+    editor.getEditorState().read(() => {
+      html = $generateHtmlFromNodes(editor, null);
+    });
+    if (!html.trim()) return;
+
+    try {
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({
+            'text/html': new Blob([html], { type: 'text/html' }),
+            'text/plain': new Blob([html], { type: 'text/plain' }),
+          }),
+        ]);
+      } else {
+        await navigator.clipboard.writeText(html);
+      }
+      flashCopied('html');
+    } catch (err) {
+      console.error('Copying the note as HTML failed', err);
+    }
+  }, [flashCopied]);
+
+  /** A picture of the note itself, with the toolbar and footer left out */
+  const copyAsImage = useCallback(async () => {
+    const element = containerRef.current;
+    if (!element) return;
+
+    /**
+     * The note is a fixed-size box with the editor scrolling inside it, so capturing it directly
+     * only gets what happens to be on screen. This copies it off to the side, opens up every
+     * scrolling area so the whole note is laid out at its true height, and photographs that.
+     */
+    const clone = element.cloneNode(true) as HTMLElement;
+
+    // cloneNode keeps the tree identical, so the two walk in step and computed styles carry over
+    const originals = [element, ...Array.from(element.querySelectorAll('*'))];
+    const copies = [clone, ...Array.from(clone.querySelectorAll('*'))];
+    originals.forEach((original, i) => {
+      const copy = copies[i];
+      if (!(original instanceof HTMLElement) || !(copy instanceof HTMLElement)) return;
+
+      const styles = getComputedStyle(original);
+      const scrolls = ['auto', 'scroll'].includes(styles.overflowY) || ['auto', 'scroll'].includes(styles.overflowX);
+      if (scrolls || original.scrollHeight > original.clientHeight + 1) {
+        copy.style.setProperty('overflow', 'visible', 'important');
+        copy.style.setProperty('max-height', 'none', 'important');
+        copy.style.setProperty('height', 'auto', 'important');
+      }
+    });
+
+    // Parked off screen, free of the note's fixed placement and its animated size
+    clone.style.setProperty('position', 'fixed', 'important');
+    clone.style.setProperty('left', '-10000px', 'important');
+    clone.style.setProperty('top', '0', 'important');
+    clone.style.setProperty('transform', 'none', 'important');
+    clone.style.setProperty('width', `${element.getBoundingClientRect().width}px`, 'important');
+    clone.style.setProperty('height', 'auto', 'important');
+    clone.style.setProperty('max-height', 'none', 'important');
+    clone.style.setProperty('overflow', 'visible', 'important');
+    document.body.appendChild(clone);
+
+    try {
+      const canvas = await snapdom.snapdom.toCanvas(clone, {
+        scale: 2,
+        embedFonts: true,
+        backgroundColor: note.color,
+        // Dropped rather than hidden, so the picture has no empty band where they were
+        exclude: ['.note-export-hide'],
+        excludeMode: 'remove',
+      });
+      const result = await copyCanvas(canvas, `sticky-note-${note.id.slice(0, 6)}.png`);
+      flashCopied(result === 'copied' ? 'image' : 'image-saved');
+    } catch (err) {
+      console.error('Copying the note as an image failed', err);
+    } finally {
+      clone.remove();
+    }
+  }, [note.color, note.id, flashCopied]);
 
   const handleDuplicateClick = () => {
     setDuplicateStatus(true);
@@ -341,7 +491,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       />
 
       {/* Header / Drag Handle */}
-      <div className={`relative h-12 flex items-center justify-between gap-2 pl-2.5 pr-2.5 cursor-grab active:cursor-grabbing shrink-0 ${isMax ? 'cursor-default' : ''}`}>
+      <div className={`note-export-hide relative h-12 flex items-center justify-between gap-2 pl-2.5 pr-2.5 cursor-grab active:cursor-grabbing shrink-0 ${isMax ? 'cursor-default' : ''}`}>
         <div className="flex items-center gap-1 min-w-0">
           {!isMax && (
             <span
@@ -458,6 +608,25 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               {copyStatus ? <Check size={15} className="shrink-0 text-emerald-500" /> : <Clipboard size={15} className="shrink-0 opacity-60" />}
               <span>{copyStatus ? 'Copied' : 'Copy text'}</span>
             </button>
+            <button type="button" onClick={copyAsMarkdown} className={MENU_ITEM}>
+              {copiedKind === 'markdown' ? <Check size={15} className="shrink-0 text-emerald-500" /> : <Hash size={15} className="shrink-0 opacity-60" />}
+              <span>{copiedKind === 'markdown' ? 'Copied' : 'Copy as Markdown'}</span>
+            </button>
+            <button type="button" onClick={copyAsHtml} className={MENU_ITEM}>
+              {copiedKind === 'html' ? <Check size={15} className="shrink-0 text-emerald-500" /> : <Code2 size={15} className="shrink-0 opacity-60" />}
+              <span>{copiedKind === 'html' ? 'Copied' : 'Copy as HTML'}</span>
+            </button>
+            <button type="button" onClick={copyAsImage} className={MENU_ITEM}>
+              {copiedKind === 'image' || copiedKind === 'image-saved'
+                ? <Check size={15} className="shrink-0 text-emerald-500" />
+                : <ImageDown size={15} className="shrink-0 opacity-60" />}
+              <span>
+                {copiedKind === 'image' ? 'Copied' : copiedKind === 'image-saved' ? 'Saved' : 'Copy as image'}
+              </span>
+            </button>
+
+            <div className="my-1 h-px bg-black/7 dark:bg-white/10" />
+
             <button type="button" onClick={handleMobileDuplicateClick} className={MENU_ITEM}>
               <CopyPlus size={15} className="shrink-0 opacity-60" />
               <span>Duplicate note</span>
@@ -562,37 +731,19 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
             </div>
 
             <div className={`${POPOVER_LABEL} mt-4`}>Typeface</div>
-            {/* Shown as a list rather than a dropdown inside a popover, which never sat right */}
-            <div
-              className="mt-1.5 max-h-52 overflow-y-auto rounded-xl border border-black/6 dark:border-white/10 p-1 sticky-note-scrollbar"
-              onMouseLeave={() => setPreviewFontFamily(null)}
-            >
-              {STICKY_FONT_OPTIONS.map(font => {
-                const isSelected = activeFontFamily === font.fontFamily;
-                return (
-                  <button
-                    type="button"
-                    key={font.id}
-                    onMouseEnter={() => handlePreviewFont(font.fontFamily, font.googleFontName)}
-                    onFocus={() => handlePreviewFont(font.fontFamily, font.googleFontName)}
-                    onClick={() => changeFontFamily(font.fontFamily)}
-                    className={`flex h-9 w-full items-center justify-between gap-2 rounded-lg px-2.5 text-left transition-colors ${isSelected
-                      ? 'bg-black/7 dark:bg-white/14 text-black dark:text-white'
-                      : 'text-black/70 dark:text-white/70 hover:bg-black/5 dark:hover:bg-white/8'
-                      }`}
-                  >
-                    <span
-                      className="min-w-0 truncate text-[14px] leading-none"
-                      style={{ fontFamily: getStickyFontStack(font.fontFamily) }}
-                    >
-                      {font.fontFamily}
-                    </span>
-                    {isSelected && <Check size={14} className="shrink-0 text-emerald-500" />}
-                  </button>
-                );
-              })}
+            {/* The full picker, with search, favourites and hover preview */}
+            <div className="mt-1.5">
+              <FontPicker
+                value={activeFontFamily}
+                onChange={changeFontFamily}
+                onHover={(family) => setPreviewFontFamily(family)}
+                selectedText="The quick brown fox"
+                triggerClassName="!py-2 rounded-lg"
+                triggerTextClass="text-black/80 dark:text-white/80"
+                triggerSurfaceClass="bg-black/4 border-black/8 dark:bg-white/6 dark:border-white/12 rounded-lg"
+                menuSurfaceClass="bg-white dark:bg-[#1E1E1E] border-black/10 dark:border-[#3A3A3A]"
+              />
             </div>
-
             <div className="mt-3 rounded-xl bg-black/4 dark:bg-black/25 px-3 py-2.5">
               <div className={`${POPOVER_LABEL} px-0 pb-1`}>Preview</div>
               <div className="text-black/70 dark:text-white/75 truncate" style={noteTextStyle}>
@@ -648,12 +799,12 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       {/* Resize Handle */}
       {!isMax && (
         <div
-          onPointerDown={handleResizeStart}
+          ref={resizeHandleRef}
           onPointerMove={handleResizeMove}
           onPointerUp={handleResizeEnd}
           onPointerCancel={handleResizeEnd}
           style={{ touchAction: 'none' }}
-          className="absolute bottom-0 right-0 w-7 h-7 cursor-nwse-resize flex items-end justify-end p-1.5 text-black/20 dark:text-white/20 opacity-0 group-hover:opacity-100 hover:text-black/45 dark:hover:text-white/45 transition-all"
+          className="note-export-hide absolute bottom-0 right-0 w-7 h-7 cursor-nwse-resize flex items-end justify-end p-1.5 text-black/20 dark:text-white/20 opacity-0 group-hover:opacity-100 hover:text-black/45 dark:hover:text-white/45 transition-all"
           title="Drag to resize"
         >
           <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
@@ -663,7 +814,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       )}
 
       {/* Footer Info */}
-      <div className="h-7 shrink-0 px-4 flex items-center justify-end select-none">
+      <div className="note-export-hide h-7 shrink-0 px-4 flex items-center justify-end select-none">
         <span className="text-[10px] font-medium tabular-nums text-black/25 dark:text-white/25">
           Edited {updatedLabel}
         </span>

@@ -77,7 +77,7 @@ export interface HistoryState {
 }
 
 const theme = {
-  paragraph: 'mb-4 leading-relaxed',
+  paragraph: 'mb-2 leading-relaxed',
   text: {
     bold: 'font-bold',
     italic: 'italic',
@@ -118,14 +118,15 @@ const theme = {
     url: 'editor-tokenOperator',
     variable: 'editor-tokenVariable',
   },
+  // first:mt-0 stops a note that opens with a heading from starting with a band of blank space
   heading: {
-    h1: 'text-3xl font-extrabold mb-4 mt-8 tracking-tight text-black dark:text-white',
-    h2: 'text-2xl font-bold mb-3 mt-6 tracking-tight text-black/90 dark:text-white/90',
-    h3: 'text-xl font-semibold mb-2 mt-4 tracking-tight text-black/80 dark:text-white/80',
+    h1: 'text-3xl font-extrabold leading-tight mb-1.5 mt-5 first:mt-0 tracking-tight text-black dark:text-white',
+    h2: 'text-2xl font-bold leading-tight mb-1.5 mt-4 first:mt-0 tracking-tight text-black/90 dark:text-white/90',
+    h3: 'text-xl font-semibold leading-snug mb-1 mt-3 first:mt-0 tracking-tight text-black/80 dark:text-white/80',
   },
   list: {
-    ul: 'list-disc ml-6 mb-4 space-y-1',
-    ol: 'list-decimal ml-6 mb-4 space-y-1',
+    ul: 'list-disc ml-6 mb-2 space-y-1',
+    ol: 'list-decimal ml-6 mb-2 space-y-1',
     listitem: 'leading-relaxed',
     listitemChecked: 'lexical-checklist-checked',
     listitemUnchecked: 'lexical-checklist-unchecked',
