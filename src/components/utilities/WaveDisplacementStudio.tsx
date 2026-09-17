@@ -11,7 +11,7 @@ import {
 } from 'lucide-react';
 import { CameraCaptureModal } from '../CameraCaptureModal';
 import { useClipboardImages } from './useQuickUtilsPaste';
-import { FilterMode, AspectRatioMode, FILTER_PRESETS, ASPECT_PRESETS, QUICK_LOOKS, QuickLook, VERTEX_SHADER, FRAGMENT_SHADER } from './WaveDisplacementShaders';
+import { FilterMode, AspectRatioMode, ImageFitMode, fitModeIndex, FILTER_PRESETS, ASPECT_PRESETS, QUICK_LOOKS, QuickLook, VERTEX_SHADER, FRAGMENT_SHADER } from './WaveDisplacementShaders';
 import { FONTS, getFontVariants, loadGoogleFontVariant, type FontVariants } from '../../utils/fontRegistry';
 import { WaveInspectorTabs, InspectorTabType } from './WaveInspectorTabs';
 import { WaveEffectsTab, WaveControlsTab, WaveExportTab, WaveImageTab, WaveMaskTab, WaveTextTab, type GradientStop } from './WaveInspectorTabContent';
@@ -78,6 +78,8 @@ export interface PoolImage {
    flipY: boolean;
    filterOverride: FilterMode | null;
    holdDurationOverride: number | null;
+   /** How the photo fills the frame; missing means Cover, which is what it has always done */
+   fitMode?: ImageFitMode;
    filters: {
       brightness: number;
       contrast: number;
@@ -506,6 +508,7 @@ export function WaveDisplacementStudio() {
       mat.uniforms.uHasTexture1.value = !!tex1;
       mat.uniforms.uHasMask1.value = !!mask1;
       mat.uniforms.uScale1.value = img1.scale ?? 1.0;
+      mat.uniforms.uFit1.value = fitModeIndex(img1.fitMode);
       mat.uniforms.uDispIntensity1.value = img1.dispIntensity ?? 1.0;
 
       const globalMode = mat.uniforms.uFilterMode ? mat.uniforms.uFilterMode.value : 0;
@@ -530,6 +533,7 @@ export function WaveDisplacementStudio() {
       mat.uniforms.uHasTexture2.value = !!tex2;
       mat.uniforms.uHasMask2.value = !!mask2;
       mat.uniforms.uScale2.value = img2.scale ?? 1.0;
+      mat.uniforms.uFit2.value = fitModeIndex(img2.fitMode);
       mat.uniforms.uDispIntensity2.value = img2.dispIntensity ?? 1.0;
 
       mat.uniforms.uFilterMode2.value = getFilterIndex(img2.filterOverride);
@@ -698,6 +702,8 @@ export function WaveDisplacementStudio() {
             uHasTextOverlay: { value: false },
             uScale1: { value: 1.0 },
             uScale2: { value: 1.0 },
+            uFit1: { value: 0 },
+            uFit2: { value: 0 },
             uDispIntensity1: { value: 1.0 },
             uDispIntensity2: { value: 1.0 },
             uRotation1: { value: 0.0 },
@@ -2335,6 +2341,15 @@ export function WaveDisplacementStudio() {
       bindTexturesForIndex(currentIndex);
    };
 
+   /** The same fit for every photo, so a whole reel can be set in one go */
+   const applyFitToAll = (fitMode: ImageFitMode) => {
+      if (images.length === 0) return;
+      const updated = images.map(img => ({ ...img, fitMode }));
+      setImages(updated);
+      imagesRef.current = updated;
+      bindTexturesForIndex(currentIndexRef.current);
+   };
+
    const updateImageFilter = (filterName: keyof NonNullable<PoolImage['filters']>, value: number) => {
       if (images.length === 0 || currentIndex >= images.length) return;
       const updated = [...images];
@@ -3066,7 +3081,7 @@ export function WaveDisplacementStudio() {
                <WaveImageTab
                   images={images} currentIndex={currentIndex}
                   updateImageProperty={updateImageProperty} updateImageFilter={updateImageFilter}
-                  resetImageFilters={resetImageFilters} resetImageGeometry={resetImageGeometry} globalFilters={globalFilters}
+                  resetImageFilters={resetImageFilters} resetImageGeometry={resetImageGeometry} applyFitToAll={applyFitToAll} globalFilters={globalFilters}
                   holdDuration={holdDuration}
                />
             )}

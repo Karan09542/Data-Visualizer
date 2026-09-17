@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { Check, Link2, Globe, X } from 'lucide-react';
 
@@ -158,6 +158,65 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeHeight = 1
   };
 
   const frameWidth = POPOVER_WIDTH + FRAME_PADDING * 2;
+
+  /**
+   * The popover lives inside the canvas, so its x and y are graph units, not pixels. Whether it
+   * fits is a question about the screen though, and the canvas can be zoomed and panned. Its
+   * rendered rect answers both: it is already in screen pixels, and comparing its width with the
+   * width it was asked to be gives the zoom, which converts an overflow back into graph units.
+   */
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [placeAbove, setPlaceAbove] = useState(false);
+
+  useLayoutEffect(() => {
+    const el = wrapperRef.current;
+    if (!el) return;
+
+    const place = () => {
+      const margin = 12;
+      const rect = el.getBoundingClientRect();
+      const zoom = rect.width / POPOVER_WIDTH || 1;
+
+      // Where it would sit with no correction, which is just below the node
+      const baseTop = rect.top - offset.y * zoom;
+      const baseLeft = rect.left - offset.x * zoom;
+
+      // The node sits directly above that, with the 4 unit gap the frame already allows
+      const nodeTop = baseTop - (nodeHeight + 4) * zoom;
+      const roomBelow = window.innerHeight - baseTop - margin;
+      const roomAbove = nodeTop - margin;
+
+      const above = rect.height > roomBelow && roomAbove > roomBelow;
+      let nextY = above ? (nodeTop - 8 * zoom - rect.height - baseTop) / zoom : 0;
+
+      // Neither side has room: sit as high as the screen allows rather than run off it
+      const top = baseTop + nextY * zoom;
+      if (top < margin) {
+        nextY += (margin - top) / zoom;
+      } else if (top + rect.height > window.innerHeight - margin) {
+        const overflow = top + rect.height - (window.innerHeight - margin);
+        nextY -= Math.min(overflow, top - margin) / zoom;
+      }
+
+      let nextX = 0;
+      if (baseLeft < margin) {
+        nextX = (margin - baseLeft) / zoom;
+      } else if (baseLeft + rect.width > window.innerWidth - margin) {
+        nextX = (window.innerWidth - margin - rect.width - baseLeft) / zoom;
+      }
+
+      setPlaceAbove(above);
+      setOffset((previous) =>
+        Math.abs(previous.x - nextX) < 0.5 && Math.abs(previous.y - nextY) < 0.5
+          ? previous
+          : { x: nextX, y: nextY },
+      );
+    };
+    place();
+    window.addEventListener('resize', place);
+    return () => window.removeEventListener('resize', place);
+    // Re-measured when the node moves, or the form changes height with the response view
+  }, [nodeX, nodeY, nodeHeight, view, offset.x, offset.y]);
   const chipBase = 'h-8 rounded-lg border text-xs font-semibold transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40';
   const chipIdle = 'border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-800 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-400 dark:hover:border-slate-600 dark:hover:text-slate-200';
   const labelClass = 'text-xs font-medium text-slate-600 dark:text-slate-300';
@@ -165,8 +224,8 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeHeight = 1
   return (
     <foreignObject
       // Centered under the node, just below its bottom edge
-      x={nodeX - frameWidth / 2}
-      y={nodeY + nodeHeight / 2 + 4}
+      x={nodeX - frameWidth / 2 + offset.x}
+      y={nodeY + nodeHeight / 2 + 4 + offset.y}
       width={frameWidth}
       height={540}
       className="overflow-visible"
@@ -193,7 +252,10 @@ export function InlineApiEditor({ initialUrl, path, nodeX, nodeY, nodeHeight = 1
         {/* Arrow pointing up at the node */}
         <span
           aria-hidden
-          className="absolute -top-[7px] left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 rounded-tl-[3px] border-l border-t border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0f172a]"
+          className={`absolute left-1/2 h-3 w-3 -translate-x-1/2 rotate-45 border-slate-200 bg-white dark:border-slate-800 dark:bg-[#0f172a] ${placeAbove
+            ? '-bottom-[7px] rounded-br-[3px] border-b border-r'
+            : '-top-[7px] rounded-tl-[3px] border-l border-t'
+            }`}
         />
 
         {/* Header */}

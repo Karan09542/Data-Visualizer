@@ -1,6 +1,6 @@
 import React from 'react';
-import { ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Plus, Shuffle, Compass, Sparkles, Check, Palette, RotateCcw, SlidersHorizontal, RefreshCw, Film, Download, Pause, Image as ImageIcon, ArrowRightLeft, ArrowUpDown, Move, Clock, Zap, X, PenTool, Circle, Square, Triangle, Trash2, Eraser, MousePointer2, Brush, Undo, Redo, Type, Waves } from 'lucide-react';
-import { FilterMode, FILTER_PRESETS, QUICK_ANGLES, DISPLACEMENT_FUNCTIONS, QUICK_LOOKS, QuickLook } from './WaveDisplacementShaders';
+import { Crop, ChevronRight, ChevronLeft, ChevronDown, ChevronUp, Plus, Shuffle, Compass, Sparkles, Check, Palette, RotateCcw, SlidersHorizontal, RefreshCw, Film, Download, Pause, Image as ImageIcon, ArrowRightLeft, ArrowUpDown, Move, Clock, Zap, X, PenTool, Circle, Square, Triangle, Trash2, Eraser, MousePointer2, Brush, Undo, Redo, Type, Waves } from 'lucide-react';
+import { FilterMode, ImageFitMode, FIT_MODES, FILTER_PRESETS, QUICK_ANGLES, DISPLACEMENT_FUNCTIONS, QUICK_LOOKS, QuickLook } from './WaveDisplacementShaders';
 import type { PoolImage } from './WaveDisplacementStudio';
 import { FontPicker } from '../FontPicker';
 import { ColorPickerTrigger } from '../image-workspace/components/shared/ColorPickers';
@@ -726,11 +726,13 @@ export interface WaveImageTabProps {
    updateImageFilter: (property: keyof NonNullable<PoolImage['filters']>, value: number) => void;
    resetImageFilters: () => void;
    resetImageGeometry?: () => void;
+   /** Sets the same fit on every photo at once */
+   applyFitToAll?: (fitMode: ImageFitMode) => void;
    globalFilters: { brightness: number; contrast: number; exposure: number; hue: number; sepia: number };
    holdDuration: number;
 }
 
-export function WaveImageTab({ images, currentIndex, updateImageProperty, updateImageFilter, resetImageFilters, resetImageGeometry, globalFilters, holdDuration }: WaveImageTabProps) {
+export function WaveImageTab({ images, currentIndex, updateImageProperty, updateImageFilter, resetImageFilters, resetImageGeometry, applyFitToAll, globalFilters, holdDuration }: WaveImageTabProps) {
    if (images.length === 0 || !images[currentIndex]) {
       return (
          <div className="p-4 space-y-4 overflow-x-hidden min-w-0">
@@ -757,8 +759,55 @@ export function WaveImageTab({ images, currentIndex, updateImageProperty, update
       }
    };
 
+   const activeFit: ImageFitMode = images[currentIndex].fitMode ?? 'cover';
+   const everyPhotoMatches = images.every(img => (img.fitMode ?? 'cover') === activeFit);
+
    return (
       <div className="p-4 space-y-4 overflow-x-hidden min-w-0">
+         {/* How the photo sits in the frame */}
+         <div className="bg-[#131824]/60 border border-white/10 p-4 rounded-2xl space-y-3 min-w-0">
+            <span className="text-xs font-extrabold uppercase tracking-wider text-fuchsia-400 flex items-center gap-1.5">
+               <Crop size={14} className="text-fuchsia-400" />
+               Frame Fit
+            </span>
+
+            <div className="grid grid-cols-3 gap-1.5">
+               {FIT_MODES.map(mode => {
+                  const isActive = activeFit === mode.id;
+                  return (
+                     <button
+                        key={mode.id}
+                        onClick={() => updateImageProperty('fitMode', mode.id)}
+                        title={mode.description}
+                        aria-pressed={isActive}
+                        className={`rounded-xl px-2 py-2 text-[11px] font-bold transition-colors ${isActive
+                           ? 'bg-fuchsia-500/20 text-fuchsia-300 border border-fuchsia-500/40'
+                           : 'bg-white/5 text-slate-400 border border-transparent hover:bg-white/10 hover:text-slate-200'
+                           }`}
+                     >
+                        {mode.label}
+                     </button>
+                  );
+               })}
+            </div>
+
+            <p className="text-[10px] leading-relaxed text-slate-500">
+               {FIT_MODES.find(mode => mode.id === activeFit)?.description}
+            </p>
+
+            {applyFitToAll && images.length > 1 && (
+               <button
+                  onClick={() => applyFitToAll(activeFit)}
+                  disabled={everyPhotoMatches}
+                  className="w-full rounded-xl bg-white/5 px-3 py-2 text-[11px] font-bold text-slate-300 transition-colors hover:bg-white/10 hover:text-white disabled:pointer-events-none disabled:opacity-40"
+               >
+                  {everyPhotoMatches
+                     ? `All ${images.length} photos use ${FIT_MODES.find(m => m.id === activeFit)?.label}`
+                     : `Use ${FIT_MODES.find(m => m.id === activeFit)?.label} for all ${images.length} photos`}
+               </button>
+            )}
+         </div>
+
          <div className="bg-[#131824]/60 border border-white/10 p-4 rounded-2xl space-y-4 min-w-0">
             <div className="flex justify-between items-center">
                <span className="text-xs font-extrabold uppercase tracking-wider text-fuchsia-400 flex items-center gap-1.5">

@@ -7,6 +7,19 @@ import { Waves, Wind, Droplet, RotateCw, Droplets, Zap, Flame, Triangle, BarChar
 export type FilterMode = 'directional' | 'diagonal_wipe' | 'wave' | 'vortex' | 'noise' | 'glitch' | 'radial' | 'shatter' | 'freeze' | 'nature';
 export type AspectRatioMode = 'auto' | '16:9' | '9:16' | '1:1' | '4:3' | '3:4';
 
+/** How a photo is fitted into the frame, mirroring CSS object-fit */
+export type ImageFitMode = 'cover' | 'contain' | 'fill';
+
+export const FIT_MODES: { id: ImageFitMode; label: string; description: string }[] = [
+  { id: 'cover', label: 'Cover', description: 'Fills the frame, trimming what does not fit' },
+  { id: 'contain', label: 'Contain', description: 'Shows the whole photo, with bars around it' },
+  { id: 'fill', label: 'Stretch', description: 'Stretches the photo to the frame exactly' },
+];
+
+/** The shader takes the mode as a number */
+export const fitModeIndex = (mode: ImageFitMode | null | undefined) =>
+  mode === 'contain' ? 1 : mode === 'fill' ? 2 : 0;
+
 // Displacement Math Function Definitions
 export interface DisplacementFunctionPreset {
    id: number;
@@ -164,6 +177,8 @@ uniform vec2 uTranslate2;
 uniform int uFilterMode1;
 uniform int uFilterMode2;
 uniform vec4 uColorSettings1; // x: brightness, y: contrast, z: exposure, w: hue
+uniform int uFit1;
+uniform int uFit2;
 uniform float uSepia1;
 uniform vec4 uColorSettings2;
 uniform float uSepia2;
@@ -405,18 +420,38 @@ float fbm(vec2 st) {
     return value;
 }
 
-// Object-Fit COVER calculation for aspect ratio matching
-vec2 getCoverUv(vec2 uv, vec2 canvasRes, vec2 imageRes) {
+// Object-fit for aspect ratio matching: 0 cover, 1 contain, 2 stretch
+vec2 getFitUv(vec2 uv, vec2 canvasRes, vec2 imageRes, int fit) {
+    // Stretching is simply the frame's own coordinates, so the photo is squashed to fit
+    if (fit == 2) return uv;
     if (imageRes.x <= 0.0 || imageRes.y <= 0.0 || canvasRes.x <= 0.0 || canvasRes.y <= 0.0) return uv;
+
     float canvasAspect = canvasRes.x / canvasRes.y;
     float imageAspect = imageRes.x / imageRes.y;
     vec2 scale = vec2(1.0);
-    if (canvasAspect > imageAspect) {
-        scale = vec2(1.0, imageAspect / canvasAspect);
+
+    if (fit == 1) {
+        // Contain: shrink the photo until the long side fits, leaving bars on the short side
+        if (canvasAspect > imageAspect) {
+            scale = vec2(canvasAspect / imageAspect, 1.0);
+        } else {
+            scale = vec2(1.0, imageAspect / canvasAspect);
+        }
     } else {
-        scale = vec2(canvasAspect / imageAspect, 1.0);
+        // Cover: grow the photo until the frame is filled, trimming the overflow
+        if (canvasAspect > imageAspect) {
+            scale = vec2(1.0, imageAspect / canvasAspect);
+        } else {
+            scale = vec2(canvasAspect / imageAspect, 1.0);
+        }
     }
+
     return (uv - 0.5) * scale + 0.5;
+}
+
+/** True once the coordinate has left the photo, which is how the bars around Contain are drawn */
+bool isOutsideImage(vec2 uv) {
+    return uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0;
 }
 
 // Transform UV coordinates (Rotation and Flip)
@@ -627,12 +662,12 @@ void main() {
     vec2 distortedUv2 = clamp(uv + (shift2 * uDispIntensity2 * maskVal2), 0.0, 1.0);
 
     // Apply Aspect-Ratio Cover, Scale & Translate UV transformation for each texture
-    vec2 coverUv1 = getCoverUv(distortedUv1, uResolution, uImageRes1);
+    vec2 coverUv1 = getFitUv(distortedUv1, uResolution, uImageRes1, uFit1);
     coverUv1 = applyTransform(coverUv1, uRotation1, uFlip1);
     coverUv1 = (coverUv1 - 0.5) / uScale1 + 0.5;
     coverUv1 += uTranslate1;
     
-    vec2 coverUv2 = getCoverUv(distortedUv2, uResolution, uImageRes2);
+    vec2 coverUv2 = getFitUv(distortedUv2, uResolution, uImageRes2, uFit2);
     coverUv2 = applyTransform(coverUv2, uRotation2, uFlip2);
     coverUv2 = (coverUv2 - 0.5) / uScale2 + 0.5;
     coverUv2 += uTranslate2;
@@ -640,6 +675,10 @@ void main() {
     // Sample Textures
     vec4 col1 = (uHasTexture1 && uImageRes1.x > 0.0) ? texture2D(uTexture1, coverUv1) : getProceduralGradient(distortedUv1, t);
     vec4 col2 = (uHasTexture2 && uImageRes2.x > 0.0) ? texture2D(uTexture2, coverUv2) : col1;
+
+    // Contain leaves the frame wider than the photo; those edges are filled, not smeared
+    if (uFit1 == 1 && uHasTexture1 && isOutsideImage(coverUv1)) col1 = vec4(0.0, 0.0, 0.0, 1.0);
+    if (uFit2 == 1 && uHasTexture2 && isOutsideImage(coverUv2)) col2 = vec4(0.0, 0.0, 0.0, 1.0);
 
     // Apply Dynamic Per-Image Color Filters
     if (uHasTexture1 && uImageRes1.x > 0.0) col1.rgb = applyColorFilters(col1.rgb, uColorSettings1, uSepia1);

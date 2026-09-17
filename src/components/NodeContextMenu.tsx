@@ -166,31 +166,31 @@ export function NodeContextMenu({
   };
 
   useLayoutEffect(() => {
-    if (contextMenu && contextMenuRef.current) {
-      const rect = contextMenuRef.current.getBoundingClientRect();
-      const x = contextMenu.x;
-      const y = contextMenu.y;
+    const menu = contextMenuRef.current;
+    if (!contextMenu || !menu) return;
 
-      let newX = x;
-      let newY = y;
+    const margin = 10;
 
-      if (x + rect.width > window.innerWidth) {
-        newX = window.innerWidth - rect.width - 10;
-      }
-      if (y + rect.height > window.innerHeight) {
-        newY = window.innerHeight - rect.height - 10;
-      }
+    /*
+     * Capped before measuring, so the position below is worked out from the height the menu
+     * will really have once the add-node section is open.
+     *
+     * The cap used to be a max-h-[calc(100vh-20px)] class while the clamp below measured
+     * window.innerHeight. Those disagree wherever 100vh counts space the page cannot use, most
+     * obviously on mobile where it includes the address bar: the menu was allowed to grow taller
+     * than the room available, so its last items sat off the bottom of the screen. Both now come
+     * from innerHeight.
+     */
+    menu.style.maxHeight = `${window.innerHeight - margin * 2}px`;
 
-      newX = Math.max(10, newX);
-      newY = Math.max(10, newY);
+    const rect = menu.getBoundingClientRect();
+    const left = Math.max(margin, Math.min(contextMenu.x, window.innerWidth - rect.width - margin));
+    const top = Math.max(margin, Math.min(contextMenu.y, window.innerHeight - rect.height - margin));
 
-      if (newX !== x || newY !== y) {
-        contextMenuRef.current.style.left = `${newX}px`;
-        contextMenuRef.current.style.top = `${newY}px`;
-      }
-    }
-    // Re-check when the add section expands, since the menu gets taller
-  }, [contextMenu, isAddOpen]);
+    menu.style.left = `${left}px`;
+    menu.style.top = `${top}px`;
+    // Re-measured when the add section opens, or switches between child and sibling
+  }, [contextMenu, isAddOpen, addMode]);
 
   if (!contextMenu) return null;
 
@@ -198,7 +198,7 @@ export function NodeContextMenu({
           <div className={appTheme}>
             <div
               ref={contextMenuRef}
-              className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-x-hidden overflow-y-auto custom-scrollbar max-h-[calc(100vh-20px)] min-w-[220px] max-w-[260px] no-export"
+              className="fixed z-50 bg-white dark:bg-[#1e293b] border border-slate-300 dark:border-slate-700/50 shadow-2xl rounded-md py-1 overflow-x-hidden overflow-y-auto custom-scrollbar min-w-[220px] max-w-[260px] no-export"
               style={{ top: contextMenu.y, left: contextMenu.x }}
               onClick={(e) => e.stopPropagation()}
               onMouseDown={(e) => e.stopPropagation()}
