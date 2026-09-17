@@ -1,12 +1,10 @@
 import React, { useState } from 'react';
-import { RotateCw, Trash2, LayoutGrid, MoreHorizontal, Copy, Image as ImageIcon, Check, Anchor, X, Minus } from 'lucide-react';
+import { LayoutGrid, MoreHorizontal, Check, Anchor, X, Minus } from 'lucide-react';
 import { useLayers } from '../../contexts/LayersContext';
-import { useCanvas } from '../../contexts/CanvasContext';
 import { useSelection } from '../../contexts/SelectionContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
 import { LayerThumbnail } from './LayerThumbnail';
 import { ModernSelect } from '../shared/ModernSelect';
-import { useStore } from '../../../../store/useStore';
 import * as fabric from 'fabric';
 
 type ThumbSize = 'small' | 'standard' | 'medium' | 'large';
@@ -22,13 +20,21 @@ const getPxForSize = (s: ThumbSize) => {
 };
 
 export const LayersTab: React.FC = () => {
-   const { layers, selectedLayerId, selectLayer, toggleLayerSelection, setLayerSelection, moveLayerUp } = useLayers();
-   const { deleteActiveObject } = useCanvas();
+   const { layers, selectedLayerId, selectLayer, toggleLayerSelection, setLayerSelection } = useLayers();
    const { activeObjs, parentAlignmentObj, setParentAlignmentObj } = useSelection();
-   const { artboards } = useWorkspaceUI();
-   const setNotification = useStore((state) => state.setNotification);
+   const { artboards, openObjectContextMenu } = useWorkspaceUI();
    const [thumbSize, setThumbSize] = useState<ThumbSize>('standard');
-   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
+
+   /**
+    * Opens the object's own menu, the same one the canvas shows, so a row offers every action
+    * rather than the handful this panel used to repeat.
+    */
+   const openMenuFor = (layer: fabric.Object, x: number, y: number) => {
+      if (!openObjectContextMenu) return;
+      // A row already in a multi-selection keeps it, so the menu can act on the whole group
+      if (!activeObjs.includes(layer)) selectLayer((layer as any).id);
+      openObjectContextMenu(x, y, layer);
+   };
 
    // Only layers that can actually be selected count towards "all": hidden ones (other artboards
    // on mobile) and locked helpers would otherwise keep the header box from ever reading as full.
@@ -64,26 +70,6 @@ export const LayersTab: React.FC = () => {
       }
 
       toggleLayerSelection((layer as any).id);
-   };
-
-   const copyLayerObject = (layer: fabric.Object) => {
-      navigator.clipboard.writeText(JSON.stringify({ __fabricInternalClipboard: true })).catch(() => { });
-      layer.clone(['id', 'artboardId']).then((cloned) => {
-         (window as any)._fabricInternalClipboard = cloned;
-         setNotification({ message: 'Object copied', type: 'success' });
-      });
-   };
-
-   const copyLayerPNG = async (layer: fabric.Object) => {
-      try {
-         const dataUrl = layer.toDataURL({ format: 'png' });
-         const res = await fetch(dataUrl);
-         const blob = await res.blob();
-         await navigator.clipboard.write([new ClipboardItem({ [blob.type]: blob })]);
-         setNotification({ message: 'Copied as PNG', type: 'success' });
-      } catch (e) {
-         setNotification({ message: 'Failed to copy PNG', type: 'error' });
-      }
    };
 
    return (
@@ -168,7 +154,15 @@ export const LayersTab: React.FC = () => {
                const sizePx = getPxForSize(thumbSize);
 
                return (
-                  <div key={(layer as any).id || idx} onClick={() => selectLayer((layer as any).id)} className={`flex items-center group px-2 py-1.5 rounded-md cursor-pointer transition-colors ${isSelected ? 'bg-blue-600/20 text-blue-100 border border-blue-500/30' : 'hover:bg-[#2C2C2C] text-[#C0C0C0] border border-transparent'}`}>
+                  <div
+                     key={(layer as any).id || idx}
+                     onClick={() => selectLayer((layer as any).id)}
+                     onContextMenu={(e) => {
+                        e.preventDefault();
+                        openMenuFor(layer, e.clientX, e.clientY);
+                     }}
+                     className={`flex items-center group px-2 py-1.5 rounded-md cursor-pointer transition-colors ${isSelected ? 'bg-blue-600/20 text-blue-100 border border-blue-500/30' : 'hover:bg-[#2C2C2C] text-[#C0C0C0] border border-transparent'}`}
+                  >
                      {/* Tap target for building a multi-selection without a keyboard */}
                      <button
                         type="button"
@@ -218,39 +212,19 @@ export const LayersTab: React.FC = () => {
                         </span>
                      </div>
 
-                     <div className={`flex gap-1 shrink-0 ml-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity relative`}>
+                     <div className="flex gap-1 shrink-0 ml-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
                         <button
                            className="p-1.5 hover:bg-[#3A3A3A] hover:text-white rounded text-[#8A8A8A]"
                            onClick={(e) => {
                               e.stopPropagation();
-                              selectLayer((layer as any).id);
-                              setMenuOpenId(menuOpenId === (layer as any).id ? null : (layer as any).id);
+                              // Anchored to the button, so the menu lands beside the row it belongs to
+                              const rect = e.currentTarget.getBoundingClientRect();
+                              openMenuFor(layer, rect.right, rect.bottom + 4);
                            }}
-                           title="Options"
+                           title="Layer options"
                         >
                            <MoreHorizontal size={14} />
                         </button>
-
-                        {menuOpenId === (layer as any).id && (
-                           <div
-                              className="absolute right-0 top-full mt-1 z-50 bg-[#1A1A1A] border border-[#333] shadow-xl rounded-lg w-40 py-1 overflow-hidden"
-                              onMouseLeave={() => setMenuOpenId(null)}
-                           >
-                              <button className="w-full text-left px-3 py-2 text-[11px] font-medium text-slate-300 hover:bg-[#2A2A2A] hover:text-white flex items-center gap-2 transition-colors" onClick={(e) => { e.stopPropagation(); selectLayer((layer as any).id); copyLayerObject(layer as any); setMenuOpenId(null); }}>
-                                 <Copy size={12} /> Copy Object
-                              </button>
-                              <button className="w-full text-left px-3 py-2 text-[11px] font-medium text-slate-300 hover:bg-[#2A2A2A] hover:text-white flex items-center gap-2 transition-colors" onClick={(e) => { e.stopPropagation(); selectLayer((layer as any).id); copyLayerPNG(layer as any); setMenuOpenId(null); }}>
-                                 <ImageIcon size={12} /> Copy as PNG
-                              </button>
-                              <div className="h-px bg-[#333] my-1 mx-2" />
-                              <button className="w-full text-left px-3 py-2 text-[11px] font-medium text-slate-300 hover:bg-[#2A2A2A] hover:text-white flex items-center gap-2 transition-colors" onClick={(e) => { e.stopPropagation(); selectLayer((layer as any).id); setTimeout(() => moveLayerUp((layer as any).id), 50); setMenuOpenId(null); }}>
-                                 <RotateCw size={12} /> Bring Forward
-                              </button>
-                              <button className="w-full text-left px-3 py-2 text-[11px] font-medium text-red-400 hover:bg-red-500/10 flex items-center gap-2 transition-colors" onClick={(e) => { e.stopPropagation(); selectLayer((layer as any).id); setTimeout(() => deleteActiveObject(), 50); setMenuOpenId(null); }}>
-                                 <Trash2 size={12} /> Delete
-                              </button>
-                           </div>
-                        )}
                      </div>
                   </div>
                );

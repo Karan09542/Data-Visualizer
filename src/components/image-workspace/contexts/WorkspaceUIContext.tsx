@@ -28,6 +28,11 @@ interface WorkspaceUIContextType {
   /** Shift+arrow nudge distance in px. */
   nudgeStepLarge: number;
   setNudgeStepLarge: (v: number) => void;
+  /**
+   * Opens the canvas object menu at a point on screen, for panels outside the canvas such as
+   * the layers list. Passing an object selects it first, the same as right-clicking it.
+   */
+  openObjectContextMenu?: (x: number, y: number, target?: any) => void;
   /** True while the host app has hidden its title bar and tab strip. */
   chromeHidden?: boolean;
   /** Toggles the host app's chrome; absent when no host provides it. */

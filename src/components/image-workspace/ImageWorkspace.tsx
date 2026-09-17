@@ -5435,6 +5435,29 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       };
    }, [performUndo, performRedo, brushType, applyBrushSettings, handleLayerOrder, updateCursorRing, nudgeSelection, commitNudge]);
 
+   /**
+    * The same menu the canvas opens on right-click, reachable from panels that sit outside it.
+    * The layers list uses this so a row offers everything the object itself does.
+    */
+   const openObjectContextMenu = (x: number, y: number, target?: fabric.Object | null) => {
+      const canvas = fabricRef.current;
+      if (!canvas) return;
+
+      let activeObjects = canvas.getActiveObjects();
+      if (target && !activeObjects.includes(target as any)) {
+         canvas.setActiveObject(target as any);
+         canvas.requestRenderAll();
+         activeObjects = [target as any];
+      }
+
+      setActiveContextMenu({
+         x,
+         y,
+         obj: (target as any) || (activeObjects[0] as any) || null,
+         targets: activeObjects,
+      });
+   };
+
    const handleContextMenu = (e: React.MouseEvent) => {
       e.preventDefault();
       if (!fabricRef.current) return;
@@ -7284,7 +7307,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                  createArtboard, createArtboardFromPreset, duplicateArtboard, deleteArtboard,
                                  updateArtboardProp, onArtboardPropStart, onArtboardPropCommit,
                                  nudgeStep, setNudgeStep, nudgeStepLarge, setNudgeStepLarge,
-                                 chromeHidden, onToggleChrome
+                                 openObjectContextMenu, chromeHidden, onToggleChrome
                               }}>
                                  <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, toggleLayerSelection, setLayerSelection, moveLayerUp, moveLayerDown }}>
                                     <div

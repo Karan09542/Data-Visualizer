@@ -12,6 +12,7 @@ import {
   Minimize,
   Maximize,
   Maximize2,
+  Expand,
   RotateCcw,
   Paintbrush,
   PanelLeft,
@@ -48,6 +49,7 @@ import {
   LayoutGrid,
   Atom,
 } from "lucide-react";
+import { useFullscreen } from "../hooks/useFullscreen";
 import CustomSelect from "./CustomSelect";
 import { estimateShareSize } from "../utils/shareUtils";
 import { useAnnotationStore } from "../store/useAnnotationStore";
@@ -293,6 +295,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       useStore.getState().setNotification({ message: 'Failed to access clipboard. Please check permissions.', type: 'error' });
     }
   };
+
+  const { isFullscreen, isSupported: canGoFullscreen, toggleFullscreen } = useFullscreen();
 
   const toggleTheme = () => {
     if (appTheme === "dark") {
@@ -1140,6 +1144,16 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               >
                 <Camera size={16} />
               </button>
+              {canGoFullscreen && (
+                <button
+                  onClick={toggleFullscreen}
+                  className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                  title={isFullscreen ? "Leave fullscreen (Esc)" : "Fullscreen"}
+                  aria-pressed={isFullscreen}
+                >
+                  {isFullscreen ? <Shrink size={16} /> : <Expand size={16} />}
+                </button>
+              )}
               <button
                 onClick={toggleTheme}
                 className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
