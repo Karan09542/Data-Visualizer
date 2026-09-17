@@ -1,5 +1,5 @@
 import { formatFileSize } from "../lib/formatFileSize";
-import React, { useEffect, useRef } from "react";
+import React, { useEffect, useLayoutEffect, useRef } from "react";
 import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
@@ -174,6 +174,54 @@ function NodeRenderer({
 
   const [isDraggingLocally, setIsDraggingLocally] = React.useState(false);
   const isBeingDragged = useStore((state) => state.draggingNodeIds.has(node.data.id));
+
+  /**
+   * A node is placed by its centre, so growing it pushes every edge outward, including the one
+   * the pointer is dragging. The browser measures a native resize from the element's left edge,
+   * so that edge sliding away makes the resize chase itself and the node appears to wander.
+   * Moving the centre by half the growth keeps the top-left corner still and the corner being
+   * dragged under the pointer.
+   *
+   * It runs as a layout effect: done after paint, the browser shows the shifted position for a
+   * frame and then the corrected one, which reads as the node vibrating while it is resized.
+   */
+  const [isResizing, setIsResizing] = React.useState(false);
+  const lastSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const resizeSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useLayoutEffect(() => {
+    const size = nodeSizes[node.data.id];
+    if (!size) {
+      lastSizeRef.current = null;
+      return;
+    }
+
+    const previous = lastSizeRef.current;
+    lastSizeRef.current = { width: size.width, height: size.height };
+    if (!previous) return;
+
+    const dx = (size.width - previous.width) / 2;
+    const dy = (size.height - previous.height) / 2;
+    if (dx === 0 && dy === 0) return;
+
+    const store = useStore.getState();
+    const current = store.dragOverrides[node.data.id] ?? {
+      x: nodeRef.current.x,
+      y: nodeRef.current.y,
+    };
+    store.setMultipleDragOverrides({
+      [node.data.id]: { x: current.x + dx, y: current.y + dy },
+    });
+
+    // The move must not be eased while resizing, or it lags behind the pointer
+    setIsResizing(true);
+    if (resizeSettleRef.current) clearTimeout(resizeSettleRef.current);
+    resizeSettleRef.current = setTimeout(() => setIsResizing(false), 200);
+  }, [nodeSizes, node.data.id]);
+
+  useEffect(() => () => {
+    if (resizeSettleRef.current) clearTimeout(resizeSettleRef.current);
+  }, []);
 
   useEffect(() => {
     if (!foreignRef.current) return;
@@ -1433,7 +1481,7 @@ function NodeRenderer({
         overflow: "visible",
         touchAction: "none",
         pointerEvents: "none",
-        transition: (isDraggingLocally || isBeingDragged) ? "none" : "opacity 500ms ease-out, filter 500ms ease-out, transform 500ms ease-out",
+        transition: (isDraggingLocally || isBeingDragged || isResizing) ? "none" : "opacity 500ms ease-out, filter 500ms ease-out, transform 500ms ease-out",
       }}
     >
       <div className="w-full h-full flex items-center justify-center">

@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useNodeResize } from '../hooks/useNodeResize';
 import { createPortal } from 'react-dom';
 import { Highlight, themes } from 'prism-react-renderer';
 import {
@@ -191,30 +192,11 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
 
   useEffect(() => setVisibleLines(LINES_PER_PAGE), [data]);
 
-  // Persist the size when the user drags the resize corner (same approach as the JS nodes)
-  const sizeRef = useRef({ width, height });
-  sizeRef.current = { width, height };
-  useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
-    let frame = 0;
-    const observer = new ResizeObserver(() => {
-      cancelAnimationFrame(frame);
-      frame = requestAnimationFrame(() => {
-        const nextWidth = Math.round(el.offsetWidth);
-        const nextHeight = Math.round(el.offsetHeight);
-        if (nextWidth <= 0 || nextHeight <= 0) return;
-        const current = sizeRef.current;
-        if (Math.abs(nextWidth - current.width) < 1 && Math.abs(nextHeight - current.height) < 1) return;
-        setCustomNodeSize(path, nextWidth, nextHeight);
-      });
-    });
-    observer.observe(el);
-    return () => {
-      cancelAnimationFrame(frame);
-      observer.disconnect();
-    };
-  }, [path, setCustomNodeSize]);
+  // Stored once the corner is released, rather than on every frame of the drag
+  useNodeResize(
+    containerRef,
+    useCallback((w: number, h: number) => setCustomNodeSize(path, w, h), [path, setCustomNodeSize]),
+  );
 
   // Scroll the file instead of zooming the canvas while the pointer is over it
   useEffect(() => {

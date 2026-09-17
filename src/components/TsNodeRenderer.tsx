@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useCallback } from "react";
+import { useNodeResize } from '../hooks/useNodeResize';
 import { useStore } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
 import {
@@ -73,24 +74,11 @@ export function TsNodeRenderer({ path, code, width, height }: TsNodeRendererProp
     }
   };
 
-  useEffect(() => {
-    if (containerRef.current) {
-      const obs = new ResizeObserver((entries) => {
-        for (let entry of entries) {
-          const target = entry.target as HTMLDivElement;
-          const w = target.offsetWidth;
-          const h = target.offsetHeight;
-          if (w > 0 && h > 0) {
-            window.requestAnimationFrame(() => {
-              setCustomNodeSize(path, w, h);
-            });
-          }
-        }
-      });
-      obs.observe(containerRef.current);
-      return () => obs.disconnect();
-    }
-  }, [path, setCustomNodeSize]);
+  // Stored once the corner is released, rather than on every frame of the drag
+  useNodeResize(
+    containerRef,
+    useCallback((w: number, h: number) => setCustomNodeSize(path, w, h), [path, setCustomNodeSize]),
+  );
 
   // Compute footer metadata
   const responseData = jsNodeResponses[path];
