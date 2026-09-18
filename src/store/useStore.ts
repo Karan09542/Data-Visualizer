@@ -4,7 +4,6 @@ import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
 import { transformToTree, type ApiResponseView } from "../utils/transformer";
 
-import { sanitizeWorkspaceData } from "../utils/workspaceSanitizer";
 import SearchWorker from "../utils/searchWorker?worker";
 
 
@@ -1421,9 +1420,6 @@ export const useStore = create<StoreState>()(
           } else {
             newData = readValue(newValue);
           }
-
-          // Enforce Search Node data validation before serialization
-          sanitizeWorkspaceData(newData);
 
           // Detect format
           const isYaml = codeFormat === "yaml";

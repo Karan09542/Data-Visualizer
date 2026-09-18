@@ -89,17 +89,6 @@ export const transformToTree = (
     return node;
   }
 
-  let isSearchNode = false;
-  if (typeof name === 'string' && (name.endsWith('_search_node') || name.endsWith('.search'))) {
-    isSearchNode = true;
-  }
-
-  if (isSearchNode) {
-    node.value = data;
-    node.children = undefined;
-    return node;
-  }
-
   let isMathNode = false;
   if (typeof name === 'string' && (name.endsWith('_math_node') || name.endsWith('.math') || name.toLowerCase().endsWith('graph') || name.toLowerCase().endsWith('math'))) {
     isMathNode = true;

@@ -30,7 +30,6 @@ const SPECIAL_NODE_TYPES = [
   { suffix: "py_node", label: "Python", icon: Terminal, iconClass: "text-emerald-500", type: "string", value: "print('Python execution starts here!')" },
   { suffix: "todo_node", label: "Todo", icon: ListTodo, iconClass: "text-purple-500", type: "string", value: JSON.stringify({ title: "Tasks", tasks: [] }) },
   { suffix: "math_node", label: "Math", icon: Sigma, iconClass: "text-rose-500", type: "string", value: "f(x) = sin(x)" },
-  { suffix: "search_node", label: "Search", icon: Search, iconClass: "text-sky-500", type: "object", value: "{}" },
   { suffix: "transfer_node", label: "Transfer", icon: Share2, iconClass: "text-indigo-500", type: "string", value: "" },
   { suffix: "image_node", label: "Image", icon: ImageIcon, iconClass: "text-cyan-500", type: "string", value: "" },
 ] as const;

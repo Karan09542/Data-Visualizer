@@ -53,7 +53,6 @@ export function useEditorFile(path: string | null) {
     media,
     isImg,
     isTodo: ext.endsWith("_todo_node") || ext === "todo",
-    isSearch: ext.endsWith("_search_node") || ext === "search",
     // Images open in their editor unless asked for on their own; other media have no editor.
     showMediaOnly: !!media && !!path && (media.kind !== "image" || !!mediaViewOnly[path]),
     language: path ? editorLanguageFor(path) : "plaintext",

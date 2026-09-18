@@ -14,8 +14,7 @@ export type SpecialNodeType =
   | "math_node"
   | "todo_node"
   | "image_node"
-  | "transfer_node"
-  | "search_node";
+  | "transfer_node";
 
 /** The JavaScript logo: black letters on the yellow square. */
 const JsLogo = ({ size = 20 }: { size?: number }) => (
@@ -56,7 +55,6 @@ const SPECIAL_NODES: SpecialNode[] = [
   { type: "todo_node", label: "Todo", hint: "A task list", color: "#10B981", ink: ["#059669", "#34D399"], icon: <ListTodo size={18} strokeWidth={2.2} /> },
   { type: "image_node", label: "Image", hint: "An image you can edit", color: "#EC4899", ink: ["#DB2777", "#F472B6"], icon: <ImageIcon size={18} strokeWidth={2.2} /> },
   { type: "transfer_node", label: "Transfer", hint: "Send files and text between devices", color: "#F59E0B", ink: ["#D97706", "#FBBF24"], icon: <ArrowRightLeft size={18} strokeWidth={2.2} /> },
-  { type: "search_node", label: "Search", hint: "Search the web and keep the results", color: "#06B6D4", ink: ["#0891B2", "#22D3EE"], icon: <Search size={18} strokeWidth={2.4} /> },
 ];
 
 /** A hex colour at some opacity, for tints. */

@@ -110,8 +110,6 @@ export function getAllFiles(data: any, path: string = "root"): FlatFileItem[] {
       items.push({ id: currentPath, name: keyLower.endsWith(".transfer") ? key : key.replace(/_transfer_node$/i, ".transfer"), type: "transfer_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_math_node") || keyLower.endsWith(".math")) {
       items.push({ id: currentPath, name: keyLower.endsWith(".math") ? key : key.replace(/_math_node$/i, ".math"), type: "math_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_search_node") || keyLower.endsWith(".search")) {
-      items.push({ id: currentPath, name: keyLower.endsWith(".search") ? key : key.replace(/_search_node$/i, ".search"), type: "search_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_json")) {
       items.push({ id: currentPath, name: key.replace(/_json$/i, ".json"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
     } else if (keyLower.endsWith("_yaml")) {
@@ -395,8 +393,6 @@ function renderOverlayFileIcon(type: string, name: string) {
     return <Globe className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />;
   } else if (type === "math_node" || name.endsWith(".math")) {
     return <Sparkles className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400 shrink-0" />;
-  } else if (type === "search_node" || name.endsWith(".search")) {
-    return <Search className="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0" />;
   } else if (type === "folder") {
     return <Folder className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />;
   } else {

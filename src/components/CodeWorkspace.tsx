@@ -62,7 +62,6 @@ import { ProxySettingsModal } from "./ProxySettingsModal";
 import { GlobalAlertModal } from "./GlobalAlertModal";
 import { lazyWithRetry } from "../utils/lazyWithRetry";
 const ImageWorkspace = lazyWithRetry(() => import("./image-workspace/ImageWorkspace"), 'ImageWorkspace');
-import { SearchNodeWorkspace } from "./SearchNodeWorkspace";
 import { MatplotlibPlotViewer } from "./MatplotlibPlotViewer";
 import { useAssistantStore } from "../programming-assistant/stores/useAssistantStore";
 import {
@@ -259,7 +258,6 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     !activeFileView.media &&
     !activeFileView.isImg &&
     !activeFileView.isTodo &&
-    !activeFileView.isSearch &&
     activeEditorInstance?.getModel?.()
       ? activeEditorInstance
       : null;
@@ -345,10 +343,6 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   );
   const isTodo = useMemo(
     () => fileExt.endsWith("_todo_node") || fileExt === "todo",
-    [fileExt],
-  );
-  const isSearch = useMemo(
-    () => fileExt.endsWith("_search_node") || fileExt === "search",
     [fileExt],
   );
   // Distraction-free mode for the image editor: hides the title bar and tab strip so the canvas
@@ -585,7 +579,7 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   }, [isTs, isJs, isPy]);
 
   // True when the tab is backed by the Monaco editor (so a caret exists).
-  const hasTextEditor = !isTodo && !isImg && !isSearch;
+  const hasTextEditor = !isTodo && !isImg;
 
   // Input data check
   const getJsNodeInputData = (pData: any, nPath: string): any => {
@@ -1277,10 +1271,10 @@ declare const console: {
   const currentPrompt = activePrompts[currentFilePath];
 
   useEffect(() => {
-    if (isTodo || isImg || isSearch) {
+    if (isTodo || isImg) {
       setTerminalState("hidden");
     }
-  }, [isTodo, isImg, isSearch]);
+  }, [isTodo, isImg]);
 
   // Auto-focus terminal input whenever a STDIN or alert/prompt/confirm prompt details are activated
   useEffect(() => {
@@ -2555,12 +2549,7 @@ declare const console: {
                     </button>
                   </div>
                 )}
-                {mainFile.isSearch ? (
-                  <SearchNodeWorkspace
-                    key={mainFilePath}
-                    path={mainFilePath}
-                  />
-                ) : mainFile.isTodo ? (
+                {mainFile.isTodo ? (
                   <TodoWorkspace key={mainFilePath} path={mainFilePath} />
                 ) : mainFile.showMediaOnly && mainFile.media ? (
                   <MediaFileViewer

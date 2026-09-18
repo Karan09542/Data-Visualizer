@@ -37,7 +37,6 @@ import { PyNodeTerminalRenderer } from "./PyNodeTerminalRenderer";
 import { MathNodeRenderer } from "./MathNodeRenderer";
 import { TransferNodeRenderer } from "./TransferNodeRenderer";
 import { TodoNodeRenderer } from "./TodoNodeRenderer";
-import { SearchNodeRenderer } from "./SearchNodeRenderer";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 
 import { SafeModelViewer } from "./SafeModelViewer";
@@ -56,7 +55,6 @@ const MemoPyNodeTerminalRenderer = React.memo(PyNodeTerminalRenderer);
 const MemoMathNodeRenderer = React.memo(MathNodeRenderer);
 const MemoTransferNodeRenderer = React.memo(TransferNodeRenderer);
 const MemoTodoNodeRenderer = React.memo(TodoNodeRenderer);
-const MemoSearchNodeRenderer = React.memo(SearchNodeRenderer);
 
 interface NodeProps {
   key?: React.Key;
@@ -438,9 +436,6 @@ function NodeRenderer({
       data.name.endsWith(".math") ||
       data.name.toLowerCase().endsWith("graph") ||
       data.name.toLowerCase().endsWith("math"));
-  const isSearchNode =
-    typeof data.name === "string" &&
-    (data.name.endsWith("_search_node") || data.name.endsWith(".search"));
 
   const isSpecialNode =
     isApiNode ||
@@ -456,8 +451,7 @@ function NodeRenderer({
     isPyNode ||
     isTodoNode ||
     isTransferNode ||
-    isMathNode ||
-    isSearchNode;
+    isMathNode;
   const isManuallyRendered =
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
       ? manuallyRenderedNodes[data.id]
@@ -1147,9 +1141,7 @@ function NodeRenderer({
             ? isExpanded
               ? 520
               : 320
-            : isSearchNode
-              ? 340
-              : isJsNode || isTsNode || isPyNode
+            : isJsNode || isTsNode || isPyNode
                 ? 440
                 : isJsCode || isTsCode || isPyCode
                   ? 420
@@ -1174,9 +1166,7 @@ function NodeRenderer({
           ? isExpanded
             ? 350
             : 250
-          : isSearchNode
-            ? 420
-            : isMedia
+          : isMedia
               ? mediaType === "audio"
                 ? 140
                 : 240
@@ -1990,8 +1980,7 @@ function NodeRenderer({
                   !isPyTerminal &&
                   !isTransferNode &&
                   !isTodoNode &&
-                  !isMathNode &&
-                  !isSearchNode && (
+                  !isMathNode && (
                     <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
                       <div
                         className={`flex-1 min-w-0 ${isExpanded ? `nodrag overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}
@@ -2175,13 +2164,6 @@ function NodeRenderer({
                     isExpanded={isExpanded}
                     width={fWidth}
                     height={fHeight}
-                  />
-                )}
-                {isSearchNode && (
-                  <MemoSearchNodeRenderer
-                    key={data.path}
-                    nodeId={data.id}
-                    data={data}
                   />
                 )}
                 {hasChildren && isCollapsed && (

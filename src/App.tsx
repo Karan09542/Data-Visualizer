@@ -159,10 +159,9 @@ function App() {
     const isTsNode = name.endsWith("_ts_node");
     const isPyNode = name.endsWith("_py_node");
     const isTodoNode = name.endsWith("_todo_node") || name.endsWith(".todo");
-    const isSearchNode = name.endsWith("_search_node") || name.endsWith(".search");
 
     // CodeWorkspace handles these generically if we set expandedJsNodeId
-    if (isJsNode || isTsNode || isPyNode || isTodoNode || isSearchNode || name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".py") || name.endsWith(".json") || name.endsWith(".md") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") || name.endsWith(".gif")) {
+    if (isJsNode || isTsNode || isPyNode || isTodoNode || name.endsWith(".js") || name.endsWith(".ts") || name.endsWith(".py") || name.endsWith(".json") || name.endsWith(".md") || name.endsWith(".png") || name.endsWith(".jpg") || name.endsWith(".jpeg") || name.endsWith(".webp") || name.endsWith(".gif")) {
       return 'workspace';
     }
 

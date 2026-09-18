@@ -51,7 +51,7 @@ const looksLikeMarkdown = (name: string, text: string) =>
 
 const SPECIAL_SUFFIXES = [
   '_api_node', '_js_node', '_ts_node', '_py_node', '_image_node',
-  '_todo_node', '.todo', '_transfer_node', '.transfer', '_math_node', '.math', '_search_node', '.search',
+  '_todo_node', '.todo', '_transfer_node', '.transfer', '_math_node', '.math',
 ];
 
 /** Mirrors transformer.ts / NodeRenderer.tsx: keys that render as special nodes rather than text */

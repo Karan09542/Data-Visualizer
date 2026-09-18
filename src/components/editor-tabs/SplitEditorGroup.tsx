@@ -12,7 +12,6 @@ import { ChevronRight, Columns2, ExternalLink, Rows2, X } from "lucide-react";
 import SafeEditor from "../SafeEditor";
 import MediaFileViewer from "../MediaFileViewer";
 import { TodoWorkspace } from "../TodoWorkspace";
-import { SearchNodeWorkspace } from "../SearchNodeWorkspace";
 import { useStore, type EditorGroupId, type EditorSplit } from "../../store/useStore";
 import { mediaFileName } from "../../utils/mediaFiles";
 import { executableKindFor } from "../../utils/editorLanguage";
@@ -86,8 +85,6 @@ export function SplitEditorGroup({
     body = <div className="flex-1" />;
   } else if (file.isTodo) {
     body = <TodoWorkspace key={path} path={path} />;
-  } else if (file.isSearch) {
-    body = <SearchNodeWorkspace key={path} path={path} />;
   } else if (file.media) {
     body = (
       <MediaFileViewer
