@@ -1469,7 +1469,7 @@ export const TransferNodeRenderer: React.FC<{
     if (stream.offset >= stream.file.size) {
       // Done
       dcRef.current.send(JSON.stringify({ type: "stream_end", msgId, checksum: stream.checksum }));
-      updateStreamMessage(msgId, { status: "sent", streamState: "completed" });
+      updateStreamMessage(msgId, { status: "sent", streamState: "completed", type: "file" as any });
       delete outgoingStreamsRef.current[msgId];
       if (Object.keys(outgoingStreamsRef.current).length === 0) {
         setTransferProgress(0);
@@ -1808,7 +1808,8 @@ export const TransferNodeRenderer: React.FC<{
           updateStreamMessage(msgId, {
             content: url,
             originalBlob: blob,
-            streamState: "completed"
+            streamState: "completed",
+            type: "file" as any
           });
         }
       };
@@ -2734,7 +2735,8 @@ export const TransferNodeRenderer: React.FC<{
                     updateStreamMessage(item.id, {
                       content: url,
                       originalBlob: blob,
-                      streamState: "completed"
+                      streamState: "completed",
+                      type: "file" as any
                     });
                   }
                 };
@@ -4751,7 +4753,8 @@ export const TransferNodeRenderer: React.FC<{
                                                       updateStreamMessage(att.id, {
                                                         content: url,
                                                         originalBlob: blob,
-                                                        streamState: "completed"
+                                                        streamState: "completed",
+                                                        type: "file" as any
                                                       });
                                                     }
                                                   };
@@ -5252,7 +5255,7 @@ export const TransferNodeRenderer: React.FC<{
                                 onFocus={() => setChatInputFocused(true)}
                                 onBlur={() => setChatInputFocused(false)}
                                 placeholder="Type a message..."
-                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0 resize-none max-h-32 overflow-y-auto leading-relaxed"
+                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0 resize-none max-h-32 overflow-y-auto leading-relaxed [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
                               />
                               {!chatInputFocused && chatInput.length > 0 && (
                                 <button
