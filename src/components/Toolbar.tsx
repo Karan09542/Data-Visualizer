@@ -1219,11 +1219,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         <div className="lg:hidden flex items-center gap-2">
           <button
             onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-xs font-bold shadow-sm active:scale-95 transition-all"
+            className="flex items-center justify-center p-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm active:scale-95 transition-all"
             title="Ask AI Command Palette"
           >
-            <Sparkles size={13} className="animate-pulse" />
-            <span>Ask AI</span>
+            <Sparkles size={16} className="animate-pulse" />
           </button>
           <button
             onClick={() => setIsWikiSearchOpen(true)}

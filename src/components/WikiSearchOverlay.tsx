@@ -51,6 +51,39 @@ const accentFor = (seed: string): string => {
   return `linear-gradient(135deg, hsl(${hue} 68% 55%), hsl(${(hue + 38) % 360} 68% 45%))`;
 };
 
+/**
+ * Renders a string, turning any bare URL into a clickable link.
+ * Handles http(s) and www-prefixed URLs.
+ */
+const Linkify: React.FC<{ text: string }> = ({ text }) => {
+  const urlRegex = /(https?:\/\/[^\s]+|www\.[^\s]+)/gi;
+  const parts = text.split(urlRegex);
+  if (parts.length === 1) return <>{text}</>;
+
+  return (
+    <>
+      {parts.map((part, i) => {
+        if (urlRegex.lastIndex = 0, urlRegex.test(part)) {
+          const href = part.startsWith("http") ? part : `https://${part}`;
+          return (
+            <a
+              key={i}
+              href={href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-500 hover:text-blue-400 underline underline-offset-2 break-all"
+              onClick={(e) => e.stopPropagation()}
+            >
+              {part}
+            </a>
+          );
+        }
+        return <React.Fragment key={i}>{part}</React.Fragment>;
+      })}
+    </>
+  );
+};
+
 /** Heading depth shown as colour, so nesting is readable without deep indentation. */
 const LEVEL_ACCENT = [
   "border-l-blue-500",
@@ -328,22 +361,27 @@ export function WikiSearchOverlay({ open, onClose }: Props) {
               </button>
             )}
 
-            <div className="relative flex-1 min-w-0">
+            <form
+              className="relative flex-1 min-w-0"
+              onSubmit={(e) => {
+                e.preventDefault();
+                runSearch(inputValue);
+              }}
+            >
               <Search
                 size={16}
                 className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none"
               />
               <input
                 ref={inputRef}
+                type="search"
+                enterKeyHint="search"
                 value={inputValue}
                 onChange={(e) => setInputValue(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") runSearch(inputValue);
-                }}
                 placeholder="Search Wikipedia"
                 className="w-full h-9 pl-9 pr-3 rounded-lg bg-white dark:bg-[#0F1623] border border-slate-200 dark:border-slate-700 text-sm text-slate-800 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-500"
               />
-            </div>
+            </form>
 
             <div className="relative shrink-0">
               <Globe
@@ -664,7 +702,7 @@ function ArticleView({
 
               {isOpen && (
                 <p className="px-3 py-2.5 text-[13px] leading-relaxed text-slate-600 dark:text-slate-400 whitespace-pre-wrap max-h-52 overflow-y-auto border-t border-slate-200 dark:border-slate-800">
-                  {s.text}
+                  <Linkify text={s.text} />
                 </p>
               )}
             </div>
