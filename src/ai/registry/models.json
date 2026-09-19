@@ -58,20 +58,57 @@
     ]
   },
   {
-    "id": "vdsr",
-    "version": "2.0.1",
-    "task": "upscale",
-    "name": "VDSR Upscaler",
-    "description": "Very Deep Super-Resolution",
+    "id": "zero_dce",
+    "version": "1.0.0",
+    "task": "low-light",
+    "name": "Zero-DCE (Low Light)",
+    "description": "Ultra-fast deep curve estimation for low light enhancement",
+    "size": 190000,
     "sources": [
       {
-        "type": "local",
-        "url": "/models/vdsr_256.tflite"
+        "type": "huggingface",
+        "url": "https://huggingface.co/mlboydaisuke/zero-dce-litert/resolve/main/zerodce_512_fp16.tflite?download=true"
+      }
+    ],
+    "supports": [
+      "enhance-low-light"
+    ]
+  },
+  {
+    "id": "realesrgan_x4",
+    "version": "3.0.0",
+    "task": "upscale",
+    "name": "Real-ESRGAN (x4)",
+    "description": "High-quality AI upscaler that reconstructs realistic textures and details",
+    "size": 3549456,
+    "sources": [
+      {
+        "type": "huggingface",
+        "url": "https://huggingface.co/litert-community/real-esrgan-x4v3-litert/resolve/main/realesr_general_x4v3.tflite?download=true"
       }
     ],
     "supports": [
       "upscale"
-    ]
+    ],
+    "customConfig": {
+      "id": "realesrgan_x4",
+      "name": "Real-ESRGAN (x4)",
+      "requiresTiling": true,
+      "tileSize": {
+        "inputWidth": 128,
+        "inputHeight": 128,
+        "outputScaleFactor": 4,
+        "overlap": 8
+      },
+      "preprocessing": {
+        "normalization": "zero_to_one",
+        "channels": 3
+      },
+      "postprocessing": {
+        "outputNormalized": true,
+        "channelOrder": "RGB"
+      }
+    }
   },
   {
     "id": "blaze_face_short_range",
@@ -86,5 +123,61 @@
       }
     ],
     "supports": []
+  },
+  {
+    "id": "midas_small",
+    "version": "2.1.0",
+    "task": "depth-estimation",
+    "name": "MiDaS Small Depth Map",
+    "description": "Monocular depth estimation — grayscale map, colored map, or interactive 3D viewer",
+    "size": 33512530,
+    "sources": [
+      {
+        "type": "huggingface",
+        "url": "https://huggingface.co/mlboydaisuke/midas-small-litert/resolve/main/midas_small_256_fp16.tflite?download=true"
+      }
+    ],
+    "supports": [
+      "depth-map",
+      "grayscale-depth-map",
+      "colored-depth-map",
+      "3d-depth-view"
+    ]
+  },
+  {
+    "id": "style_predict",
+    "version": "1.0.0",
+    "task": "style-transfer",
+    "name": "Magenta Style Encoder",
+    "description": "Internal encoder that extracts a style bottleneck from the reference image",
+    "size": 2904555,
+    "sources": [
+      {
+        "type": "cdn",
+        "url": "https://storage.googleapis.com/tfhub-lite-models/google/lite-model/magenta/arbitrary-image-stylization-v1-256/int8/prediction/1.tflite"
+      }
+    ],
+    "supports": [],
+    "internal": true
+  },
+  {
+    "id": "style_transform",
+    "version": "1.0.0",
+    "task": "style-transfer",
+    "name": "Magenta Arbitrary Style Transfer",
+    "description": "Applies the chosen reference-image style to the selected image",
+    "size": 2828838,
+    "sources": [
+      {
+        "type": "cdn",
+        "url": "https://storage.googleapis.com/tfhub-lite-models/google/lite-model/magenta/arbitrary-image-stylization-v1-256/int8/transfer/1.tflite"
+      }
+    ],
+    "supports": [
+      "style-transfer"
+    ],
+    "dependencies": [
+      "style_predict"
+    ]
   }
 ]

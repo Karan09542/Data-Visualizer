@@ -1,19 +1,23 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { ai } from '../../../../ai';
-import { AITask, AIProgressState } from '../../../../ai/types';
+import { AITask, AIProgressState, DepthEstimationResult } from '../../../../ai/types';
 import { aiEventBus } from '../../../../ai/events/AIEventBus';
 import { useSelection } from '../../contexts/SelectionContext';
-import { Sparkles, Scissors, Sun, Zap, Search, Settings2, Loader2, X, CheckCircle2, AlertCircle, Download, Briefcase } from 'lucide-react';
+import { Sparkles, Scissors, Sun, Zap, Search, Settings2, Loader2, X, CheckCircle2, AlertCircle, Download, Briefcase, Layers, Palette, ScanSearch, CircleDot, Box } from 'lucide-react';
 import * as fabric from 'fabric';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
 import { UpscaleCommand } from '../../commands/ai/UpscaleCommand';
 import { EnhanceLowLightCommand } from '../../commands/ai/EnhanceLowLightCommand';
 import { SegmentationCommand } from '../../commands/ai/SegmentationCommand';
+import { AutoEnhanceCommand } from '../../commands/ai/AutoEnhanceCommand';
 import { FaceUtilityCommand } from '../../commands/ai/FaceUtilityCommand';
+import { DepthEstimationCommand, DepthMode } from '../../commands/ai/DepthEstimationCommand';
+import { StyleTransferCommand } from '../../commands/ai/StyleTransferCommand';
 import { AIModelManagerModal } from '../shared/AIModelManagerModal';
 import { SegmentationPanel } from './SegmentationPanel';
 import { OfficeUtilitiesPanel } from './OfficeUtilitiesPanel';
 import { PassportPrintModal } from '../shared/PassportPrintModal';
+import { Depth3DViewerModal } from '../shared/Depth3DViewerModal';
 import { aiQueue } from '../../../../ai/manager/AIQueue';
 import { ModelDownloadGate } from '../shared/ModelDownloadGate';
 import { useModelDownload } from '../../../../ai/hooks/useModelDownload';
@@ -44,8 +48,23 @@ const TASK_CONFIG: Record<string, { label: string, desc: string, icon: React.Rea
     label: 'AI Auto Enhance',
     desc: 'One-click AI chained enhancement',
     icon: <Sparkles size={14} />,
+    commandClass: AutoEnhanceCommand,
     colorClass: 'text-emerald-400 border-emerald-500 bg-emerald-500',
     accentHex: '#10b981'
+  },
+  'depth-estimation': {
+    label: 'Depth Map',
+    desc: 'Depth map, colored map, or interactive 3D',
+    icon: <Layers size={14} />,
+    colorClass: 'text-cyan-400 border-cyan-500 bg-cyan-500',
+    accentHex: '#06b6d4'
+  },
+  'style-transfer': {
+    label: 'Style Transfer',
+    desc: 'Apply artistic style from another image',
+    icon: <Palette size={14} />,
+    colorClass: 'text-purple-400 border-purple-500 bg-purple-500',
+    accentHex: '#a855f7'
   }
 };
 
@@ -76,7 +95,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
 }) => {
   const config = TASK_CONFIG[task];
   
-  const models = modelRegistry.getAll().filter(m => m.task === task);
+  const models = modelRegistry.getForTask(task);
   const [selectedModel, setSelectedModel] = useState(models.length > 0 ? models[0].id : undefined);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
@@ -99,7 +118,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
 
   // The model has to be on the device before the task can run. Surfacing it here means the
   // download is explicit and interruptible, rather than happening silently on first use.
-  if (!isReady && !isActive) {
+  if (!isReady && !isActive && models.length > 0) {
     return (
       <div className="relative rounded-xl z-10">
         <ModelDownloadGate modelId={selectedModel} label={config.label} />
@@ -269,6 +288,15 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
   
   const [segModel, setSegModel] = useState<string>('ormbg');
 
+  // Depth 3D viewer state
+  const [depth3DViewer, setDepth3DViewer] = useState<{
+    depthResult: DepthEstimationResult;
+    originalImage: ImageData;
+    sourceObj: fabric.Image;
+    canvas: fabric.Canvas;
+    updateLayers: () => void;
+  } | null>(null);
+
   const [taskJobs, setTaskJobsState] = useState<Record<string, TaskJobInfo>>(globalTaskJobsStore.taskJobs);
 
   useEffect(() => {
@@ -319,6 +347,30 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
 
   }, [trackJob]);
 
+  const handleDepthEstimation = useCallback((depthMode: DepthMode, modelId?: string) => {
+    if (!activeObj || (!(activeObj as any).isType?.('image') && activeObj.type !== 'image')) {
+      alert("Please select an image to apply AI features.");
+      return;
+    }
+
+    if (taskJobs['depth-estimation'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['depth-estimation'].state)) {
+      return;
+    }
+
+    const cmd = new DepthEstimationCommand(activeObj as fabric.Image, modelId, depthMode);
+
+    if (depthMode === '3d') {
+      cmd.on3DViewReady = (depthResult, originalImage, sourceObj, fabricCanvas, updateLayers) => {
+        setDepth3DViewer({ depthResult, originalImage, sourceObj, canvas: fabricCanvas, updateLayers });
+      };
+    }
+
+    if (cmd.lastJobId) {
+      trackJob(cmd.lastJobId, 'depth-estimation');
+    }
+    executeCommand(cmd);
+  }, [activeObj, taskJobs, trackJob, executeCommand]);
+
   const handleTaskClick = (task: AITask, modelId?: string) => {
     if (!activeObj || (!(activeObj as any).isType?.('image') && activeObj.type !== 'image')) {
       alert("Please select an image to apply AI features.");
@@ -326,6 +378,40 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
     }
 
     if (taskJobs[task] && !['completed', 'failed', 'cancelled'].includes(taskJobs[task].state)) {
+      return;
+    }
+
+    if (task === 'depth-estimation') {
+      // Default depth mode is 'colored' when clicked from the main button
+      handleDepthEstimation('colored', modelId);
+      return;
+    }
+
+    if (task === 'style-transfer') {
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.onchange = async (e: any) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        const img = new Image();
+        img.src = URL.createObjectURL(file);
+        await new Promise(r => img.onload = r);
+        
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = img.width;
+        tempCanvas.height = img.height;
+        const tempCtx = tempCanvas.getContext('2d')!;
+        tempCtx.drawImage(img, 0, 0);
+        const styleImageData = tempCtx.getImageData(0, 0, img.width, img.height);
+        
+        const cmd = new StyleTransferCommand(activeObj as fabric.Image, styleImageData, modelId);
+        if (cmd.lastJobId) {
+          trackJob(cmd.lastJobId, task);
+        }
+        executeCommand(cmd);
+      };
+      input.click();
       return;
     }
 
@@ -420,13 +506,41 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
           )}
 
           {activeTab === 'tools' && tasks.filter(t => t !== 'background-removal' && t !== 'face-detection').map(task => (
-            <AIToolButton 
-              key={task} 
-              task={task}
-              jobInfo={taskJobs[task] || null}
-              onClick={(modelId) => handleTaskClick(task, modelId)} 
-              onCancel={() => handleCancel(task)}
-            />
+            <React.Fragment key={task}>
+              <AIToolButton 
+                task={task}
+                jobInfo={taskJobs[task] || null}
+                onClick={(modelId) => handleTaskClick(task, modelId)} 
+                onCancel={() => handleCancel(task)}
+              />
+              {task === 'depth-estimation' && (
+                <div className="flex gap-1.5 -mt-0.5 ml-12 mb-1">
+                  {([
+                    { mode: 'grayscale' as DepthMode, label: 'Grayscale', icon: <CircleDot size={11} className="text-slate-400" /> },
+                    { mode: 'colored' as DepthMode, label: 'Colored', icon: <Palette size={11} className="text-cyan-400" /> },
+                    { mode: '3d' as DepthMode, label: '3D View', icon: <Box size={11} className="text-indigo-400" /> },
+                  ]).map(({ mode, label, icon }) => (
+                    <button
+                      key={mode}
+                      onClick={() => {
+                        const models = modelRegistry.getForTask('depth-estimation');
+                        handleDepthEstimation(mode, models[0]?.id);
+                      }}
+                      disabled={!!taskJobs['depth-estimation'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['depth-estimation']?.state)}
+                      className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all
+                        bg-white dark:bg-[#161616] border-slate-200 dark:border-[#2D2D2D] 
+                        text-slate-600 dark:text-white/60
+                        hover:bg-cyan-500/10 hover:border-cyan-500/30 hover:text-cyan-500 dark:hover:text-cyan-400
+                        disabled:opacity-40 disabled:cursor-not-allowed
+                        active:scale-95"
+                    >
+                      {icon}
+                      <span>{label}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </React.Fragment>
           ))}
 
           {activeTab === 'office-utilities' && (
@@ -464,6 +578,17 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
         <PassportPrintModal 
           sourceImage={(activeObj as fabric.Image).toDataURL({})} 
           onClose={() => setShowPrintModal(false)} 
+        />
+      )}
+
+      {depth3DViewer && (
+        <Depth3DViewerModal
+          depthResult={depth3DViewer.depthResult}
+          originalImage={depth3DViewer.originalImage}
+          sourceObj={depth3DViewer.sourceObj}
+          canvas={depth3DViewer.canvas}
+          updateLayers={depth3DViewer.updateLayers}
+          onClose={() => setDepth3DViewer(null)}
         />
       )}
     </div>

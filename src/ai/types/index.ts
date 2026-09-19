@@ -10,7 +10,9 @@ export type AITask =
   | 'caption-generation'
   | 'segmentation'
   | 'auto-enhance'
-  | 'face-detection';
+  | 'face-detection'
+  | 'depth-estimation'
+  | 'style-transfer';
 
 export type AIBackend = 'webgpu' | 'webnn' | 'wasm';
 
@@ -28,6 +30,8 @@ export interface ModelManifest {
   sources: ModelSource[];
   size?: number; // Estimated size in bytes
   supports?: string[]; // E.g., ['remove', 'portrait', 'passport']
+  dependencies?: string[]; // Other registered model ids required by this model/pipeline.
+  internal?: boolean; // Hide implementation-only model shards from user-facing pickers.
   customConfig?: ModelConfig;
 }
 
@@ -57,11 +61,12 @@ export interface AIExecutionOptions {
   preferredBackend?: AIBackend;
   modelId?: string;
   signal?: AbortSignal;
+  metadata?: Record<string, any>;
 }
 
 export interface AIExecutionResult {
   // Output format can be an ImageBitmap, standard ImageData, generic Blob, or structured detection result
-  output: ImageBitmap | ImageData | Blob | FaceDetectionResult | null;
+  output: ImageBitmap | ImageData | Blob | FaceDetectionResult | DepthEstimationResult | null;
   metadata?: Record<string, any>;
 }
 
@@ -94,6 +99,14 @@ export interface FaceDetectionResult {
   modelId: string;
   inferenceTime: number;
 }
+
+export interface DepthEstimationResult {
+  depthMap: ImageData;      // Grayscale depth visualization
+  rawDepth: Float32Array;   // Raw depth values for programmatic use
+  width: number;
+  height: number;
+}
+
 
 // Web Worker Communication Types
 export type WorkerMessageType = 

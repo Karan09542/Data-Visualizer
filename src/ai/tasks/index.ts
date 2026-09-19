@@ -17,11 +17,22 @@ export function registerTasks() {
   });
 
   taskRegistry.register('auto-enhance', async () => {
-    throw new Error('Auto Enhance is a placeholder for a future composite AI pipeline.');
+    const { AutoEnhancePipeline } = await import('../pipelines/AutoEnhancePipeline');
+    return new AutoEnhancePipeline();
   });
 
   taskRegistry.register('face-detection', async () => {
     const { FaceDetectionPipeline } = await import('../pipelines/FaceDetectionPipeline');
     return new FaceDetectionPipeline();
+  });
+
+  taskRegistry.register('depth-estimation', async () => {
+    const { DepthEstimationPipeline } = await import('../pipelines/DepthEstimationPipeline');
+    return new DepthEstimationPipeline();
+  });
+
+  taskRegistry.register('style-transfer', async () => {
+    const { StyleTransferPipeline } = await import('../pipelines/StyleTransferPipeline');
+    return new StyleTransferPipeline();
   });
 }

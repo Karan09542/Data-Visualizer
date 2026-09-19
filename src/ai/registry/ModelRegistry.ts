@@ -78,12 +78,16 @@ class ModelRegistry {
     return Array.from(this.models.values());
   }
 
+  getVisible(): ModelManifest[] {
+    return this.getAll().filter(m => !m.internal);
+  }
+
   getForTask(task: string): ModelManifest[] {
-    return this.getAll().filter(m => m.task === task);
+    return this.getVisible().filter(m => m.task === task);
   }
 
   getSupportingEffect(effect: string): ModelManifest[] {
-    return this.getAll().filter(m => m.supports?.includes(effect));
+    return this.getVisible().filter(m => m.supports?.includes(effect));
   }
 }
 

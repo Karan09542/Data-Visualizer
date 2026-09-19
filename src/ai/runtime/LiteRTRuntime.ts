@@ -1,5 +1,7 @@
 import { AIBackend } from '../types';
 
+export type RuntimeTensorData = Float32Array | Uint8Array | Int32Array;
+
 /**
  * Adapter for @litertjs/core.
  * The runtime only knows how to load a model blob and execute tensors.
@@ -20,6 +22,14 @@ export class LiteRTRuntime {
 
   get isLoaded(): boolean {
     return this.session !== null;
+  }
+
+  getInputDetails(): any[] {
+    return this.session?.getInputDetails?.() || [];
+  }
+
+  getOutputDetails(): any[] {
+    return this.session?.getOutputDetails?.() || [];
   }
 
   /**
@@ -140,7 +150,7 @@ export class LiteRTRuntime {
    *                     If not provided, it will be inferred from the model's input details.
    * @returns The raw output as a Float32Array (or TypedArray).
    */
-  async execute(inputs: Float32Array | any, inputShape?: number[]): Promise<Float32Array> {
+  async execute(inputs: Float32Array | Uint8Array | Int32Array | any, inputShape?: number[]): Promise<RuntimeTensorData> {
     if (!this.session) {
       throw new Error('LiteRT session not loaded. Call loadModel() first.');
     }
@@ -148,7 +158,7 @@ export class LiteRTRuntime {
     const { Tensor } = await import('@litertjs/core');
     
     // If inputs is already a Tensor, use it directly
-    let inputTensor: InstanceType<typeof Tensor>;
+    let inputTensor: any;
     
     if (inputs instanceof Float32Array || inputs instanceof Uint8Array || inputs instanceof Int32Array) {
       // Get the expected shape from model details if not provided
@@ -164,7 +174,7 @@ export class LiteRTRuntime {
         }
       }
       
-      inputTensor = new Tensor(inputs, inputShape);
+      inputTensor = new Tensor(inputs as any, inputShape);
     } else {
       // Assume it's already a Tensor or compatible object
       inputTensor = inputs;
@@ -183,7 +193,7 @@ export class LiteRTRuntime {
     // outputTensors is Tensor[] when using positional inputs
     if (Array.isArray(outputTensors) && outputTensors.length > 0) {
       const rawData = await outputTensors[0].data();
-      const outputData = new Float32Array(rawData);
+      const outputData = rawData as RuntimeTensorData;
       // Clean up output tensors
       outputTensors.forEach((t: any) => { try { t.delete(); } catch(_){} });
       // Clean up input tensor
@@ -201,14 +211,14 @@ export class LiteRTRuntime {
    * Needed for models like BlazeFace that produce multiple outputs
    * (e.g., regressors + classifiers).
    */
-  async executeMultiOutput(inputs: Float32Array | any, inputShape?: number[]): Promise<Float32Array[]> {
+  async executeMultiOutput(inputs: Float32Array | Uint8Array | Int32Array | any, inputShape?: number[]): Promise<RuntimeTensorData[]> {
     if (!this.session) {
       throw new Error('LiteRT session not loaded. Call loadModel() first.');
     }
     
     const { Tensor } = await import('@litertjs/core');
     
-    let inputTensor: InstanceType<typeof Tensor>;
+    let inputTensor: any;
     
     if (inputs instanceof Float32Array || inputs instanceof Uint8Array || inputs instanceof Int32Array) {
       if (!inputShape) {
@@ -219,7 +229,7 @@ export class LiteRTRuntime {
           }
         } catch (e) {}
       }
-      inputTensor = new Tensor(inputs, inputShape);
+      inputTensor = new Tensor(inputs as any, inputShape);
     } else {
       inputTensor = inputs;
     }
@@ -232,11 +242,11 @@ export class LiteRTRuntime {
     const elapsed = performance.now() - startTime;
     // console.log(`[LiteRTRuntime] Multi-output inference completed in ${elapsed.toFixed(0)}ms`);
     
-    const results: Float32Array[] = [];
+    const results: RuntimeTensorData[] = [];
     if (Array.isArray(outputTensors)) {
       for (const t of outputTensors) {
         const data = await t.data();
-        results.push(new Float32Array(data));
+        results.push(data as RuntimeTensorData);
         try { t.delete(); } catch(_){}
       }
     }
@@ -248,6 +258,48 @@ export class LiteRTRuntime {
     }
     
     return results;
+  }
+
+  /**
+   * Execute inference with multiple inputs (e.g. Style Transfer predict+transform).
+   */
+  async executeMultiInput(inputs: any[], inputShapes?: number[][]): Promise<RuntimeTensorData> {
+    if (!this.session) {
+      throw new Error('LiteRT session not loaded. Call loadModel() first.');
+    }
+    
+    const { Tensor } = await import('@litertjs/core');
+    const inputTensors: any[] = [];
+
+    const inputDetails = this.session.getInputDetails();
+
+    for (let i = 0; i < inputs.length; i++) {
+      let input = inputs[i];
+      if (input instanceof Float32Array || input instanceof Uint8Array || input instanceof Int32Array) {
+        let shape = inputShapes?.[i];
+        if (!shape && inputDetails && inputDetails[i]) {
+          shape = inputDetails[i].shape as number[];
+        }
+        inputTensors.push(new Tensor(input as any, shape));
+      } else {
+        inputTensors.push(input);
+      }
+    }
+
+    const startTime = performance.now();
+    const outputTensors = await this.session.run(inputTensors);
+    const elapsed = performance.now() - startTime;
+    
+    if (Array.isArray(outputTensors) && outputTensors.length > 0) {
+      const rawData = await outputTensors[0].data();
+      const outputData = rawData as RuntimeTensorData;
+      outputTensors.forEach((t: any) => { try { t.delete(); } catch(_){} });
+      inputTensors.forEach((t: any) => { try { t.delete(); } catch(_){} });
+      return outputData;
+    }
+    
+    inputTensors.forEach((t: any) => { try { t.delete(); } catch(_){} });
+    throw new Error('Model produced no output tensors');
   }
 
   /**

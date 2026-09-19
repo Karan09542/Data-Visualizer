@@ -6,7 +6,7 @@ import { imageToImageData } from '../utils';
 import { AIProgressState } from '../types';
 
 export class UpscalePipeline extends ImagePipeline {
-  protected modelId = 'vdsr';
+  protected modelId = 'realesrgan_x4';
   private bicubicData: ImageData | null = null;
   private config?: ModelConfig;
 
@@ -138,12 +138,31 @@ export class UpscalePipeline extends ImagePipeline {
       }
     }
 
+    let isNchwOutput = false;
+    try {
+      const details = (this.runtime as any)?.session?.getOutputDetails?.();
+      if (details && details.length > 0) {
+        const shape = details[0].shape;
+        if (shape && shape.length === 4 && shape[1] === config.preprocessing.channels) {
+           isNchwOutput = true;
+        }
+      }
+    } catch(e) {}
+
     const isBGR = config.postprocessing.channelOrder === 'BGR';
 
     for (let i = 0; i < rawNumPixels; i++) {
-      let r = rawData[i * 3 + (isBGR ? 2 : 0)] * finalMultiplier;
-      let g = rawData[i * 3 + 1] * finalMultiplier;
-      let b = rawData[i * 3 + (isBGR ? 0 : 2)] * finalMultiplier;
+      let r, g, b;
+      
+      if (isNchwOutput) {
+         r = rawData[(isBGR ? 2 : 0) * rawNumPixels + i] * finalMultiplier;
+         g = rawData[1 * rawNumPixels + i] * finalMultiplier;
+         b = rawData[(isBGR ? 0 : 2) * rawNumPixels + i] * finalMultiplier;
+      } else {
+         r = rawData[i * config.preprocessing.channels + (isBGR ? 2 : 0)] * finalMultiplier;
+         g = rawData[i * config.preprocessing.channels + 1] * finalMultiplier;
+         b = rawData[i * config.preprocessing.channels + (isBGR ? 0 : 2)] * finalMultiplier;
+      }
 
       outData[i * 4 + 0] = Math.max(0, Math.min(255, Math.round(r)));
       outData[i * 4 + 1] = Math.max(0, Math.min(255, Math.round(g)));

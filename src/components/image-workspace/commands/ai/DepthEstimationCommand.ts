@@ -1,36 +1,50 @@
 import * as fabric from "fabric";
 import { Command } from "../base/Command";
 import { ai } from "../../../../ai";
-import { AITask } from "../../../../ai/types";
+import { AITask, DepthEstimationResult } from "../../../../ai/types";
 import { generateId } from "../../../../ai/utils";
 import { aiEventBus } from "../../../../ai/events/AIEventBus";
 
-export abstract class AICommand implements Command {
-  name: string;
-  protected obj: fabric.Image;
-  protected beforeSrc: string;
-  protected afterSrc: string | null = null;
-  protected task: AITask;
-  protected modelId?: string;
+export type DepthMode = 'grayscale' | 'colored' | '3d';
+
+export class DepthEstimationCommand implements Command {
+  name = 'Depth Estimation';
+  private obj: fabric.Image;
+  private beforeSrc: string;
+  private afterSrc: string | null = null;
+  private task: AITask = 'depth-estimation';
+  private modelId?: string;
+  private depthMode: DepthMode;
   public lastJobId: string | null = null;
 
-  constructor(name: string, obj: fabric.Image, task: AITask, modelId?: string) {
-    this.name = name;
+  // Store the depth result for the 3D viewer
+  private depthResult: DepthEstimationResult | null = null;
+  private originalImageData: ImageData | null = null;
+
+  // Callback for opening 3D viewer (set by the panel)
+  public on3DViewReady?: (
+    depthResult: DepthEstimationResult,
+    originalImage: ImageData,
+    sourceObj: fabric.Image,
+    canvas: fabric.Canvas,
+    updateLayers: () => void
+  ) => void;
+
+  constructor(obj: fabric.Image, modelId?: string, depthMode: DepthMode = 'colored') {
     this.obj = obj;
-    this.task = task;
     this.modelId = modelId;
+    this.depthMode = depthMode;
     this.beforeSrc = obj.getSrc();
     this.lastJobId = generateId();
   }
 
-  protected async applySrc(canvas: fabric.Canvas, src: string, updateLayers: () => void) {
+  private async applySrc(canvas: fabric.Canvas, src: string, updateLayers: () => void) {
     const obj = this.obj;
     const oldWidth = obj.width || 1;
     const oldHeight = obj.height || 1;
     const oldScaleX = obj.scaleX || 1;
     const oldScaleY = obj.scaleY || 1;
-    
-    // Save properties we want to literally preserve
+
     const savedState = {
       left: obj.left,
       top: obj.top,
@@ -46,8 +60,7 @@ export abstract class AICommand implements Command {
     };
 
     await obj.setSrc(src, { crossOrigin: 'anonymous' } as any);
-    
-    // Adjust scale to maintain visual size if the image dimensions changed
+
     const newWidth = obj.width || 1;
     const newHeight = obj.height || 1;
     const scaleX = (oldWidth * oldScaleX) / newWidth;
@@ -58,15 +71,11 @@ export abstract class AICommand implements Command {
       scaleX,
       scaleY
     });
-    
-    // Re-apply filters and force canvas re-render
+
     obj.applyFilters();
-    
-    // Force Fabric to update the cache and bounding boxes
     obj.setCoords();
     obj.dirty = true;
-    
-    // If it's the active object, rebuild the selection to force controls to update visually
+
     const activeObject = canvas.getActiveObject();
     if (activeObject === obj) {
       canvas.discardActiveObject();
@@ -74,8 +83,8 @@ export abstract class AICommand implements Command {
     } else if (activeObject) {
       activeObject.setCoords();
     }
-    
-    canvas.renderAll(); // Use synchronous render to guarantee it happens immediately
+
+    canvas.renderAll();
     updateLayers();
   }
 
@@ -89,12 +98,11 @@ export abstract class AICommand implements Command {
     try {
       const src = this.obj.getSrc();
       const img = new Image();
-      img.crossOrigin = 'anonymous'; // Prevents tainted canvas if URL is cross-origin
-      
-      await new Promise<void>((resolve, reject) => {
+      img.crossOrigin = 'anonymous';
+
+      await new Promise<void>((resolve) => {
         img.onload = () => resolve();
         img.onerror = () => {
-          // If crossOrigin fails, fallback to object's dataURL which Fabric resolves
           img.crossOrigin = '';
           img.src = this.obj.toDataURL({ format: 'png' });
         };
@@ -106,16 +114,22 @@ export abstract class AICommand implements Command {
       tempCanvas.height = img.naturalHeight;
       const tempCtx = tempCanvas.getContext('2d');
       if (!tempCtx) return;
-      
+
       tempCtx.drawImage(img, 0, 0);
       imageData = tempCtx.getImageData(0, 0, tempCanvas.width, tempCanvas.height);
     } catch (e) {
-      console.error('[AICommand] Failed to extract image data:', e);
+      console.error('[DepthEstimationCommand] Failed to extract image data:', e);
       return;
     }
 
-    const { jobId, promise } = ai.execute(this.task, imageData, { modelId: this.modelId }, 5);
-    
+    // Save original image data for 3D viewer
+    this.originalImageData = imageData;
+
+    const { jobId, promise } = ai.execute(this.task, imageData, {
+      modelId: this.modelId,
+      metadata: { depthMode: this.depthMode }
+    } as any, 5);
+
     const unsubProgress = aiEventBus.subscribe(jobId, (event) => {
       if (this.lastJobId) {
         aiEventBus.emit(this.lastJobId, { ...event });
@@ -126,47 +140,58 @@ export abstract class AICommand implements Command {
     let isCancelling = false;
     if (this.lastJobId) {
       cancelUnsub = aiEventBus.subscribe(this.lastJobId, (evt) => {
-         if (evt.state === 'cancelled' && !isCancelling) {
-            isCancelling = true;
-            ai.cancel(jobId);
-         }
+        if (evt.state === 'cancelled' && !isCancelling) {
+          isCancelling = true;
+          ai.cancel(jobId);
+        }
       });
     }
-    
+
     promise.then(result => {
       unsubProgress();
       if (cancelUnsub) cancelUnsub();
-      
-      let outputImage: ImageData | ImageBitmap | null = null;
-      if (result.output instanceof ImageData || result.output instanceof ImageBitmap) {
-        outputImage = result.output;
-      }
-      
-      if (outputImage) {
+
+      const depthResult = result.output as DepthEstimationResult;
+      if (!depthResult?.depthMap) return;
+
+      this.depthResult = depthResult;
+
+      if (this.depthMode === '3d') {
+        // For 3D mode, open the 3D viewer modal instead of replacing the image
+        if (this.on3DViewReady && this.originalImageData) {
+          this.on3DViewReady(depthResult, this.originalImageData, this.obj, canvas, updateLayers);
+        }
+        // Also generate a colored depth map as afterSrc for undo/redo
         const canvasEl = document.createElement('canvas');
-        canvasEl.width = outputImage.width;
-        canvasEl.height = outputImage.height;
+        canvasEl.width = depthResult.depthMap.width;
+        canvasEl.height = depthResult.depthMap.height;
         const ctx = canvasEl.getContext('2d');
         if (ctx) {
-          if (outputImage instanceof ImageData) {
-            ctx.putImageData(outputImage, 0, 0);
-          } else {
-            ctx.drawImage(outputImage, 0, 0);
-          }
+          ctx.putImageData(depthResult.depthMap, 0, 0);
+          this.afterSrc = canvasEl.toDataURL();
+        }
+      } else {
+        // For grayscale/colored mode, replace the image with the depth map
+        const canvasEl = document.createElement('canvas');
+        canvasEl.width = depthResult.depthMap.width;
+        canvasEl.height = depthResult.depthMap.height;
+        const ctx = canvasEl.getContext('2d');
+        if (ctx) {
+          ctx.putImageData(depthResult.depthMap, 0, 0);
           this.afterSrc = canvasEl.toDataURL();
           this.applySrc(canvas, this.afterSrc, updateLayers);
         }
       }
     }).catch(e => {
-       unsubProgress();
-       if (cancelUnsub) cancelUnsub();
-       
-       if (e === 'AbortError' || (e as Error)?.message === 'AbortError') {
-         console.log(`[AICommand] Task ${this.task} was cancelled.`);
-         return;
-       }
-       console.error(`[AICommand] Task ${this.task} failed:`, e);
-       alert(`AI Task Failed: ${e.message || e}`);
+      unsubProgress();
+      if (cancelUnsub) cancelUnsub();
+
+      if (e === 'AbortError' || (e as Error)?.message === 'AbortError') {
+        console.log(`[DepthEstimationCommand] Task was cancelled.`);
+        return;
+      }
+      console.error(`[DepthEstimationCommand] Task failed:`, e);
+      alert(`AI Task Failed: ${e.message || e}`);
     });
   }
 

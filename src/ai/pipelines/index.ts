@@ -5,6 +5,7 @@ export * from './BackgroundRemovalPipeline';
 export * from './UpscalePipeline';
 export * from './LowLightPipeline';
 export * from './FaceDetectionPipeline';
+export * from './AutoEnhancePipeline';
 
 taskRegistry.register('background-removal', async () => {
   const { BackgroundRemovalPipeline } = await import('./BackgroundRemovalPipeline');
@@ -25,3 +26,19 @@ taskRegistry.register('face-detection', async () => {
   const { FaceDetectionPipeline } = await import('./FaceDetectionPipeline');
   return new FaceDetectionPipeline();
 });
+
+taskRegistry.register('depth-estimation', async () => {
+  const { DepthEstimationPipeline } = await import('./DepthEstimationPipeline');
+  return new DepthEstimationPipeline();
+});
+
+taskRegistry.register('style-transfer', async () => {
+  const { StyleTransferPipeline } = await import('./StyleTransferPipeline');
+  return new StyleTransferPipeline();
+});
+
+taskRegistry.register('auto-enhance', async () => {
+  const { AutoEnhancePipeline } = await import('./AutoEnhancePipeline');
+  return new AutoEnhancePipeline();
+});
+

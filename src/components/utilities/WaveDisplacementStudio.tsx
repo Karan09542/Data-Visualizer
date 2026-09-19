@@ -526,7 +526,7 @@ export function WaveDisplacementStudio() {
       const gF = globalFiltersRef.current;
       mat.uniforms.uColorSettings1.value.set(img1.filters?.brightness ?? gF.brightness, img1.filters?.contrast ?? gF.contrast, img1.filters?.exposure ?? gF.exposure, img1.filters?.hue ?? gF.hue);
       mat.uniforms.uSepia1.value = img1.filters?.sepia ?? gF.sepia;
-      if (tex1 && tex1.image) mat.uniforms.uImageRes1.value.set(tex1.image.width || 1, tex1.image.height || 1);
+      if (tex1 && tex1.image) mat.uniforms.uImageRes1.value.set((tex1.image as any).width || 1, (tex1.image as any).height || 1);
 
       mat.uniforms.uTexture2.value = tex2;
       mat.uniforms.uMaskTexture2.value = mask2;
@@ -543,7 +543,7 @@ export function WaveDisplacementStudio() {
 
       mat.uniforms.uColorSettings2.value.set(img2.filters?.brightness ?? gF.brightness, img2.filters?.contrast ?? gF.contrast, img2.filters?.exposure ?? gF.exposure, img2.filters?.hue ?? gF.hue);
       mat.uniforms.uSepia2.value = img2.filters?.sepia ?? gF.sepia;
-      if (tex2 && tex2.image) mat.uniforms.uImageRes2.value.set(tex2.image.width || 1, tex2.image.height || 1);
+      if (tex2 && tex2.image) mat.uniforms.uImageRes2.value.set((tex2.image as any).width || 1, (tex2.image as any).height || 1);
    }, []);
 
    // Update bind when global filters change
@@ -569,13 +569,13 @@ export function WaveDisplacementStudio() {
       const validIds = new Set(imgList.map(img => img.id));
 
       // Cleanup removed textures
-      for (const [id, tex] of map.entries()) {
+      Array.from(map.entries()).forEach(([id, tex]) => {
          const baseId = id.startsWith('mask_') ? id.replace('mask_', '') : id;
          if (!validIds.has(baseId)) {
             tex.dispose();
             map.delete(id);
          }
-      }
+      });
 
       // Load missing textures
       const missing = imgList.filter(img => !map.has(img.id));
@@ -2252,13 +2252,13 @@ export function WaveDisplacementStudio() {
       e.stopPropagation();
       if (!e.dataTransfer.files || e.dataTransfer.files.length === 0) return;
 
-      const files = Array.from(e.dataTransfer.files).filter(f => f.type.startsWith('image/'));
+      const files = Array.from(e.dataTransfer.files as Iterable<File> | ArrayLike<File>).filter((f: File) => f.type.startsWith('image/'));
       if (files.length === 0) return;
 
-      const newItems: PoolImage[] = files.map(file => ({
+      const newItems: PoolImage[] = files.map((file: File) => ({
          id: Math.random().toString(36).substring(2, 9),
          name: file.name,
-         url: URL.createObjectURL(file),
+         url: URL.createObjectURL(file as Blob),
          scale: 1.0,
          dispIntensity: 1.0,
          rotation: 0,
@@ -2518,7 +2518,8 @@ export function WaveDisplacementStudio() {
 
          if (exportFormat === 'png') {
             setStatusMessage('Loading JSZip module...');
-            const JSZip = (await import('jszip')).default;
+            const JSZipModule = await import('jszip');
+            const JSZip = (JSZipModule as any).default || JSZipModule;
             jszipRef.current = new JSZip();
          } else if (videoMime && canvasEl && typeof canvasEl.captureStream === 'function') {
             const width = canvasEl.width;

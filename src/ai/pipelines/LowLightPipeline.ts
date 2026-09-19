@@ -2,7 +2,7 @@ import { ImagePipeline } from './ImagePipeline';
 import { PipelineExecutionArgs } from '../registry/TaskRegistry';
 
 export class LowLightPipeline extends ImagePipeline {
-  protected modelId = 'mirnet';
+  protected modelId = 'zero_dce';
   
   async execute(args: PipelineExecutionArgs) {
     args.options = { ...args.options, preferredBackend: 'wasm' };

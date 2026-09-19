@@ -284,7 +284,7 @@ const ModelItem = ({ manifest, onCustomDelete, onEdit }: { manifest: ModelManife
 };
 
 export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClose }) => {
-  const [models, setModels] = useState(() => modelRegistry.getAll());
+  const [models, setModels] = useState(() => modelRegistry.getVisible());
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
@@ -309,7 +309,7 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
   }, []);
 
   const refreshModels = () => {
-    setModels([...modelRegistry.getAll()]); // Ensure a new array reference to force re-render
+    setModels([...modelRegistry.getVisible()]); // Ensure a new array reference to force re-render
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {

@@ -192,10 +192,10 @@ export class FaceDetectionPipeline implements TaskPipeline {
     notify('inference', 0);
 
     // BlazeFace produces 2 output tensors — use multi-output execution
-    const outputs = await this.runtime.executeMultiOutput(
+    const outputs = (await this.runtime.executeMultiOutput(
       tensorData,
       [1, this.inputSize, this.inputSize, 3]
-    );
+    )).map(output => output instanceof Float32Array ? output : Float32Array.from(output));
     notify('inference', 100);
 
     notify('post-processing', 0);
