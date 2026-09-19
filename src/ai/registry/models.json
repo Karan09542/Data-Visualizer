@@ -150,11 +150,11 @@
     "task": "style-transfer",
     "name": "Magenta Style Encoder",
     "description": "Internal encoder that extracts a style bottleneck from the reference image",
-    "size": 2904555,
+    "size": 4708350,
     "sources": [
       {
-        "type": "cdn",
-        "url": "https://storage.googleapis.com/tfhub-lite-models/google/lite-model/magenta/arbitrary-image-stylization-v1-256/int8/prediction/1.tflite"
+        "type": "huggingface",
+        "url": "https://storage.googleapis.com/download.tensorflow.org/models/tflite/arbitrary_style_transfer/style_predict_f16_256.tflite"
       }
     ],
     "supports": [],
@@ -166,11 +166,11 @@
     "task": "style-transfer",
     "name": "Magenta Arbitrary Style Transfer",
     "description": "Applies the chosen reference-image style to the selected image",
-    "size": 2828838,
+    "size": 422086,
     "sources": [
       {
-        "type": "cdn",
-        "url": "https://storage.googleapis.com/tfhub-lite-models/google/lite-model/magenta/arbitrary-image-stylization-v1-256/int8/transfer/1.tflite"
+        "type": "huggingface",
+        "url": "https://storage.googleapis.com/download.tensorflow.org/models/tflite/arbitrary_style_transfer/style_transfer_f16_384.tflite"
       }
     ],
     "supports": [
