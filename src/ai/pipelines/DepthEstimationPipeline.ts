@@ -4,7 +4,7 @@ import { imageToImageData } from '../utils';
 import { AIProgressState, DepthEstimationResult } from '../types';
 import { LiteRTRuntime } from '../runtime/LiteRTRuntime';
 
-type DepthMode = 'grayscale' | 'colored' | '3d';
+type DepthMode = 'grayscale' | 'colored' | '3d' | 'portrait-blur' | 'relighting' | 'fog';
 
 export class DepthEstimationPipeline implements TaskPipeline {
   private runtime: LiteRTRuntime | null = null;
@@ -44,7 +44,7 @@ export class DepthEstimationPipeline implements TaskPipeline {
     notify('inference', 100);
 
     notify('post-processing', 0);
-    const result = this.postprocess(outputTensor, imageData.width, imageData.height, depthMode);
+    const result = this.postprocess(outputTensor, imageData, depthMode);
     notify('post-processing', 100);
 
     notify('encoding', 100);
@@ -86,10 +86,11 @@ export class DepthEstimationPipeline implements TaskPipeline {
 
   private postprocess(
     outputTensor: any,
-    width: number,
-    height: number,
+    originalImage: ImageData,
     depthMode: DepthMode
   ): DepthEstimationResult {
+    const width = originalImage.width;
+    const height = originalImage.height;
     const tensorData = outputTensor as Float32Array | Uint8Array | Int32Array;
     const { width: outWidth, height: outHeight } = this.resolveOutputSize(tensorData.length);
     const pixelCount = outWidth * outHeight;
@@ -132,10 +133,19 @@ export class DepthEstimationPipeline implements TaskPipeline {
     finalCtx.imageSmoothingEnabled = true;
     finalCtx.drawImage(tempCanvas, 0, 0, width, height);
 
-    const depthMap = finalCtx.getImageData(0, 0, width, height);
+    let depthMap = finalCtx.getImageData(0, 0, width, height);
 
     // Also resize rawDepth to original dimensions via bilinear interpolation
     const rawDepth = this.resizeDepthMap(normalized, outWidth, outHeight, width, height);
+
+    // Apply advanced depth effects if selected
+    if (depthMode === 'portrait-blur') {
+      depthMap = this.applyPortraitBlur(originalImage, rawDepth, width, height);
+    } else if (depthMode === 'relighting') {
+      depthMap = this.applyRelighting(originalImage, rawDepth, width, height);
+    } else if (depthMode === 'fog') {
+      depthMap = this.applyFog(originalImage, rawDepth, width, height);
+    }
 
     return {
       depthMap,
@@ -143,6 +153,109 @@ export class DepthEstimationPipeline implements TaskPipeline {
       width,
       height
     };
+  }
+
+  private applyPortraitBlur(original: ImageData, rawDepth: Float32Array, width: number, height: number): ImageData {
+    // Render blurred version of original image
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d')!;
+    
+    // Put original image on a temporary canvas
+    const tempCanvas = document.createElement('canvas');
+    tempCanvas.width = width;
+    tempCanvas.height = height;
+    tempCanvas.getContext('2d')!.putImageData(original, 0, 0);
+    
+    // Draw with strong blur
+    ctx.filter = 'blur(12px)';
+    ctx.drawImage(tempCanvas, 0, 0);
+    
+    const blurredData = ctx.getImageData(0, 0, width, height);
+    const outData = new ImageData(width, height);
+    
+    // Blend based on depth (closest objects = sharp, furthest = blurred)
+    // MiDaS depth: larger values = closer to camera. So normalized=1 is very close, 0 is very far.
+    const pixelCount = width * height;
+    for (let i = 0; i < pixelCount; i++) {
+      // invert depth: 1 = far (blur), 0 = close (sharp)
+      const blurBlend = Math.max(0, Math.min(1, 1.0 - rawDepth[i]));
+      
+      outData.data[i * 4 + 0] = original.data[i * 4 + 0] * (1 - blurBlend) + blurredData.data[i * 4 + 0] * blurBlend;
+      outData.data[i * 4 + 1] = original.data[i * 4 + 1] * (1 - blurBlend) + blurredData.data[i * 4 + 1] * blurBlend;
+      outData.data[i * 4 + 2] = original.data[i * 4 + 2] * (1 - blurBlend) + blurredData.data[i * 4 + 2] * blurBlend;
+      outData.data[i * 4 + 3] = 255;
+    }
+    
+    return outData;
+  }
+
+  private applyRelighting(original: ImageData, rawDepth: Float32Array, width: number, height: number): ImageData {
+    const outData = new ImageData(width, height);
+    
+    // Virtual Light vector (coming from top-left, slightly forward)
+    const lx = -0.5, ly = -0.5, lz = 1.0;
+    const lMag = Math.sqrt(lx*lx + ly*ly + lz*lz);
+    const nLx = lx/lMag, nLy = ly/lMag, nLz = lz/lMag;
+    
+    // Depth scaling factor for normals
+    const depthScale = 15.0; 
+    
+    for (let y = 0; y < height; y++) {
+      for (let x = 0; x < width; x++) {
+        const i = y * width + x;
+        
+        // Calculate gradients for surface normal
+        const right = x < width - 1 ? rawDepth[y * width + (x + 1)] : rawDepth[i];
+        const left = x > 0 ? rawDepth[y * width + (x - 1)] : rawDepth[i];
+        const down = y < height - 1 ? rawDepth[(y + 1) * width + x] : rawDepth[i];
+        const up = y > 0 ? rawDepth[(y - 1) * width + x] : rawDepth[i];
+        
+        // dx, dy from depth map
+        const dx = (right - left) * depthScale;
+        const dy = (down - up) * depthScale;
+        
+        // Normal vector: (-dx, -dy, 1)
+        const nx = -dx, ny = -dy, nz = 1.0;
+        const nMag = Math.sqrt(nx*nx + ny*ny + nz*nz);
+        const nNx = nx/nMag, nNy = ny/nMag, nNz = nz/nMag;
+        
+        // Diffuse reflection (dot product of Normal and Light)
+        let intensity = Math.max(0, nNx * nLx + nNy * nLy + nNz * nLz);
+        
+        // Add ambient light and scale
+        intensity = 0.3 + intensity * 0.9;
+        
+        // Multiply blend
+        outData.data[i * 4 + 0] = Math.min(255, original.data[i * 4 + 0] * intensity);
+        outData.data[i * 4 + 1] = Math.min(255, original.data[i * 4 + 1] * intensity);
+        outData.data[i * 4 + 2] = Math.min(255, original.data[i * 4 + 2] * intensity);
+        outData.data[i * 4 + 3] = 255;
+      }
+    }
+    
+    return outData;
+  }
+
+  private applyFog(original: ImageData, rawDepth: Float32Array, width: number, height: number): ImageData {
+    const outData = new ImageData(width, height);
+    const fogColor = [220, 230, 240]; // Light cool gray/blue
+    
+    const pixelCount = width * height;
+    for (let i = 0; i < pixelCount; i++) {
+      // invert depth: 1 = far (max fog), 0 = close (no fog)
+      // Apply a curve to make fog denser further back
+      let fogBlend = Math.max(0, Math.min(1, 1.0 - rawDepth[i]));
+      fogBlend = Math.pow(fogBlend, 1.5); // Exponential fog dropoff
+      
+      outData.data[i * 4 + 0] = original.data[i * 4 + 0] * (1 - fogBlend) + fogColor[0] * fogBlend;
+      outData.data[i * 4 + 1] = original.data[i * 4 + 1] * (1 - fogBlend) + fogColor[1] * fogBlend;
+      outData.data[i * 4 + 2] = original.data[i * 4 + 2] * (1 - fogBlend) + fogColor[2] * fogBlend;
+      outData.data[i * 4 + 3] = 255;
+    }
+    
+    return outData;
   }
 
   /**

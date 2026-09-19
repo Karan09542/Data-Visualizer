@@ -5,7 +5,7 @@ import { AITask, DepthEstimationResult } from "../../../../ai/types";
 import { generateId } from "../../../../ai/utils";
 import { aiEventBus } from "../../../../ai/events/AIEventBus";
 
-export type DepthMode = 'grayscale' | 'colored' | '3d';
+export type DepthMode = 'grayscale' | 'colored' | '3d' | 'portrait-blur' | 'relighting' | 'fog';
 
 export class DepthEstimationCommand implements Command {
   name = 'Depth Estimation';

@@ -3,7 +3,7 @@ import { ai } from '../../../../ai';
 import { AITask, AIProgressState, DepthEstimationResult } from '../../../../ai/types';
 import { aiEventBus } from '../../../../ai/events/AIEventBus';
 import { useSelection } from '../../contexts/SelectionContext';
-import { Sparkles, Scissors, Sun, Zap, Search, Settings2, Loader2, X, CheckCircle2, AlertCircle, Download, Briefcase, Layers, Palette, ScanSearch, CircleDot, Box } from 'lucide-react';
+import { Sparkles, Scissors, Sun, Zap, Search, Settings2, Loader2, X, CheckCircle2, AlertCircle, Download, Briefcase, Layers, Palette, ScanSearch, CircleDot, Box, Droplet, Cloud } from 'lucide-react';
 import * as fabric from 'fabric';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
 import { UpscaleCommand } from '../../commands/ai/UpscaleCommand';
@@ -514,8 +514,11 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
                 onCancel={() => handleCancel(task)}
               />
               {task === 'depth-estimation' && (
-                <div className="flex gap-1.5 -mt-0.5 ml-12 mb-1">
+                <div className="flex flex-wrap gap-1.5 -mt-0.5 ml-12 mb-1 pr-2">
                   {([
+                    { mode: 'portrait-blur' as DepthMode, label: 'Portrait Blur', icon: <Droplet size={11} className="text-blue-400" /> },
+                    { mode: 'relighting' as DepthMode, label: 'Studio Light', icon: <Sun size={11} className="text-amber-400" /> },
+                    { mode: 'fog' as DepthMode, label: 'Fog', icon: <Cloud size={11} className="text-slate-400" /> },
                     { mode: 'grayscale' as DepthMode, label: 'Grayscale', icon: <CircleDot size={11} className="text-slate-400" /> },
                     { mode: 'colored' as DepthMode, label: 'Colored', icon: <Palette size={11} className="text-cyan-400" /> },
                     { mode: '3d' as DepthMode, label: '3D View', icon: <Box size={11} className="text-indigo-400" /> },

@@ -28,6 +28,7 @@ const ArtboardsTab = lazyWithRetry(() => import('./components/panels/ArtboardsTa
 const LayersTab = lazyWithRetry(() => import('./components/panels/LayersTab').then(m => ({ default: m.LayersTab })), 'Layers');
 const AIToolsPanel = lazyWithRetry(() => import('./components/panels/AIToolsPanel').then(m => ({ default: m.AIToolsPanel })), 'AI Tools');
 const FilterStudioTab = lazyWithRetry(() => import('./components/panels/FilterStudioTab').then(m => ({ default: m.FilterStudioTab })), 'Filter Studio');
+const BlurStudioTab = lazyWithRetry(() => import('./components/panels/BlurStudioTab').then(m => ({ default: m.BlurStudioTab })), 'Blur Studio');
 const QuickActionsTab = lazyWithRetry(() => import('./components/panels/QuickActionsTab').then(m => ({ default: m.QuickActionsTab })), 'Quick Actions');
 const ExportStudio = lazyWithRetry(() => import('../export/ExportStudio').then(m => ({ default: m.ExportStudio })), 'Export Studio');
 const AssetGallery = lazyWithRetry(() => import('../image-import/gallery/AssetGallery').then(m => ({ default: m.AssetGallery })), 'Asset Gallery');
@@ -142,6 +143,7 @@ import { computeArtboardReflow, BoardGeom } from './services/artboards/reflow';
 import { CropShape, traceCropShape } from '../../utils/cropShapes';
 import { buildShapeMaskCommand } from './services/image/shapeMask';
 import { CropShapePicker } from './components/shared/CropShapePicker';
+import { useBlurStudio } from './hooks/useBlurStudio';
 import { ai } from '../../ai';
 import {
    generateArtboardPixelBuffer as renderArtboardToBuffer,
@@ -733,7 +735,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
 
    // UI Panels
-   const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "export" | "artboards" | "quick" | "selection">("properties");
+   const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "blur-studio" | "export" | "artboards" | "quick" | "selection" | "ai">("properties");
 
    useEffect(() => {
       if (activeTab === 'export') {
@@ -1120,6 +1122,8 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       setHistoryNames(commandsListRef.current.map(c => c.name));
    }, [updateLayersList]);
 
+   const blurStudio = useBlurStudio(fabricRef.current, activeTab, executeCommand);
+
    const [duplicateGap, setDuplicateGap] = useState(20);
    const duplicateGapRef = useRef(duplicateGap);
    useEffect(() => { duplicateGapRef.current = duplicateGap; }, [duplicateGap]);
@@ -1329,6 +1333,12 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          } as any);
       }
    });
+
+   // Blur Studio previews and applies inside the current selection, when there is one.
+   const setBlurSelection = blurStudio.setSelectionShape;
+   useEffect(() => {
+      setBlurSelection(imageSelection.selection ?? null);
+   }, [imageSelection.selection, setBlurSelection]);
 
    useEffect(() => {
       selectionToolRef.current = imageSelection.activeSelectionTool;
@@ -7945,6 +7955,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                       <TabBtn tab="quick" active={activeTab} set={setActiveTab} label="Quick" icon={Activity} />
                                                       <TabBtn tab="ai" active={activeTab} set={setActiveTab} label="AI Tools" icon={Zap} />
                                                       <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
+                                                      <TabBtn tab="blur-studio" active={activeTab} set={setActiveTab} label="Blur Studio" icon={Droplets} />
                                                       <TabBtn tab="selection" active={activeTab} set={setActiveTab} label="Select" icon={SquareDashed} />
                                                       <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
                                                       <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
@@ -7998,6 +8009,11 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
 
                                                       {/* FILTERS PANEL */}
                                                       {activeTab === 'filters' && <FilterStudioTab />}
+
+                                                      {/* BLUR STUDIO PANEL */}
+                                                      {activeTab === 'blur-studio' && (
+                                                         <BlurStudioTab studio={blurStudio} />
+                                                      )}
 
                                                       {/* LAYERS PANEL */}
                                                       {activeTab === 'selection' && (
