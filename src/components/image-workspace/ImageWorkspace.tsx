@@ -5216,6 +5216,11 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    // Global Keyboard Isolation Phase
    useEffect(() => {
       const handleKeyDown = (e: KeyboardEvent) => {
+         // Isolate keyboard events if an isolated modal (such as Depth3DViewerModal) is open
+         if (document.querySelector('[data-isolate-modal="true"]') || (e.target as HTMLElement)?.closest?.('[data-isolate-modal="true"]')) {
+            return;
+         }
+
          if (e.altKey) setIsAltPressed(true);
          if (e.shiftKey) setIsShiftPressed(true);
          if (e.ctrlKey) setIsCtrlPressed(true);

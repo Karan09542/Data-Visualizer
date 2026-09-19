@@ -18,7 +18,14 @@ import {
   Move,
   ZoomIn,
   Sliders,
-  Layers
+  Layers,
+  Paintbrush,
+  Eraser,
+  Undo2,
+  Redo2,
+  Trash2,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -114,6 +121,30 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const meshRef = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> | null>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
 
+  // Depth Mask & Overlay Refs
+  const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const maskTextureRef = useRef<THREE.CanvasTexture | null>(null);
+  const maskMeshRef = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null>(null);
+  const planeDimsRef = useRef<{ width: number; height: number }>({ width: 1.15, height: 1.15 });
+
+  // Undo / Redo stacks (STRICTLY LOCAL TO MODAL)
+  const undoStackRef = useRef<ImageData[]>([]);
+  const redoStackRef = useRef<ImageData[]>([]);
+  const strokeStartSnapshotRef = useRef<ImageData | null>(null);
+  const isPaintingRef = useRef(false);
+  const lastUVRef = useRef<{ u: number; v: number } | null>(null);
+
+  // Tools & Display State
+  const [activeTool, setActiveTool] = useState<'orbit' | 'brush' | 'eraser'>('orbit');
+  const [brushSize, setBrushSize] = useState(32);
+  const [showMaskOverlay, setShowMaskOverlay] = useState(true);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
+  const [hasMask, setHasMask] = useState(false);
+  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: -100, y: -100 });
+  const [isPointerInCanvas, setIsPointerInCanvas] = useState(false);
+
+  // 3D Parameters State
   const [displacement, setDisplacement] = useState(0.35);
   const [isInverted, setIsInverted] = useState(false);
   const [isWireframe, setIsWireframe] = useState(false);
@@ -121,16 +152,224 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const [isLoaded, setIsLoaded] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // Close on Escape key
+  // Ref to hold current state for handlers
+  const showMaskOverlayRef = useRef(showMaskOverlay);
+  showMaskOverlayRef.current = showMaskOverlay;
+
+  /**
+   * Updates mesh vertex Z values based on depthResult, displacement, inversion,
+   * AND the brush mask (where mask alpha > 0 flattens depth to 0).
+   */
+  const updateMeshVertices = useCallback(() => {
+    if (!meshRef.current || !depthResult || !maskCanvasRef.current) return;
+
+    const geometry = meshRef.current.geometry;
+    const posAttr = geometry.attributes.position;
+    const uvAttr = geometry.attributes.uv;
+
+    const maskW = maskCanvasRef.current.width;
+    const maskH = maskCanvasRef.current.height;
+    const maskCtx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
+    const maskData = maskCtx ? maskCtx.getImageData(0, 0, maskW, maskH).data : null;
+
+    const depthW = depthResult.width;
+    const depthH = depthResult.height;
+    const rawDepth = depthResult.rawDepth;
+
+    for (let i = 0; i < posAttr.count; i++) {
+      const u = uvAttr.getX(i);
+      const v = uvAttr.getY(i);
+
+      const px = Math.min(depthW - 1, Math.max(0, Math.floor(u * depthW)));
+      const py = Math.min(depthH - 1, Math.max(0, Math.floor((1 - v) * depthH)));
+      const rawVal = rawDepth[py * depthW + px] || 0;
+      const depthVal = isInverted ? (1 - rawVal) : rawVal;
+
+      // Mask alpha determines depth reduction: 0 = full depth, 255 = 0 depth (flat)
+      let depthFactor = 1.0;
+      if (maskData) {
+        const mx = Math.min(maskW - 1, Math.max(0, Math.floor(u * maskW)));
+        const my = Math.min(maskH - 1, Math.max(0, Math.floor((1 - v) * maskH)));
+        const maskAlpha = maskData[(my * maskW + mx) * 4 + 3];
+        depthFactor = Math.max(0, 1.0 - (maskAlpha / 255));
+      }
+
+      posAttr.setZ(i, depthVal * depthFactor * displacement * 0.4);
+    }
+
+    posAttr.needsUpdate = true;
+    geometry.computeVertexNormals();
+
+    if (maskTextureRef.current) {
+      maskTextureRef.current.needsUpdate = true;
+    }
+  }, [depthResult, isInverted, displacement]);
+
+  /**
+   * Helper to check if mask has any painted pixels.
+   */
+  const checkMaskPixels = useCallback(() => {
+    if (!maskCanvasRef.current) return false;
+    const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return false;
+    const imgData = ctx.getImageData(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    const data = imgData.data;
+    for (let i = 3; i < data.length; i += 4) {
+      if (data[i] > 10) return true;
+    }
+    return false;
+  }, []);
+
+  /**
+   * Pushes a mask snapshot onto the local undo stack.
+   */
+  const pushUndo = useCallback((snapshot: ImageData) => {
+    undoStackRef.current.push(snapshot);
+    if (undoStackRef.current.length > 30) {
+      undoStackRef.current.shift();
+    }
+    redoStackRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+    setHasMask(checkMaskPixels());
+  }, [checkMaskPixels]);
+
+  /**
+   * Strictly Local Undo for brush strokes.
+   */
+  const handleUndo = useCallback(() => {
+    if (undoStackRef.current.length === 0 || !maskCanvasRef.current) return;
+    const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const currentSnapshot = ctx.getImageData(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    redoStackRef.current.push(currentSnapshot);
+
+    const previousSnapshot = undoStackRef.current.pop()!;
+    ctx.putImageData(previousSnapshot, 0, 0);
+
+    updateMeshVertices();
+    setCanUndo(undoStackRef.current.length > 0);
+    setCanRedo(true);
+    setHasMask(checkMaskPixels());
+  }, [updateMeshVertices, checkMaskPixels]);
+
+  /**
+   * Strictly Local Redo for brush strokes.
+   */
+  const handleRedo = useCallback(() => {
+    if (redoStackRef.current.length === 0 || !maskCanvasRef.current) return;
+    const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const currentSnapshot = ctx.getImageData(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    undoStackRef.current.push(currentSnapshot);
+
+    const nextSnapshot = redoStackRef.current.pop()!;
+    ctx.putImageData(nextSnapshot, 0, 0);
+
+    updateMeshVertices();
+    setCanUndo(true);
+    setCanRedo(redoStackRef.current.length > 0);
+    setHasMask(checkMaskPixels());
+  }, [updateMeshVertices, checkMaskPixels]);
+
+  /**
+   * Resets the mask (restoring depth everywhere).
+   */
+  const handleClearMask = useCallback(() => {
+    if (!maskCanvasRef.current) return;
+    const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const currentSnapshot = ctx.getImageData(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    undoStackRef.current.push(currentSnapshot);
+    redoStackRef.current = [];
+
+    ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    updateMeshVertices();
+    setCanUndo(true);
+    setCanRedo(false);
+    setHasMask(false);
+  }, [updateMeshVertices]);
+
+  // Keyboard events: strictly isolated to modal (never leaks to ImageWorkspace or global undo/redo)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      const ctrlOrCmd = e.ctrlKey || e.metaKey;
+      const key = e.key.toLowerCase();
+
+      // Undo: Ctrl+Z (without Shift)
+      if (ctrlOrCmd && key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        handleUndo();
+        return;
+      }
+
+      // Redo: Ctrl+Y or Ctrl+Shift+Z
+      if (ctrlOrCmd && (key === 'y' || (key === 'z' && e.shiftKey))) {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
+        handleRedo();
+        return;
+      }
+
+      // Close modal on Escape
       if (e.key === 'Escape') {
+        e.preventDefault();
+        e.stopPropagation();
+        e.stopImmediatePropagation();
         onClose();
+        return;
+      }
+
+      // Brush size shortcuts: [ and ]
+      if (e.key === '[' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        setBrushSize(s => Math.max(5, s - 5));
+        return;
+      }
+      if (e.key === ']' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        setBrushSize(s => Math.min(120, s + 5));
+        return;
+      }
+
+      // Tool switches: B for brush, E for eraser, V for orbit / navigate
+      if (key === 'b' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTool('brush');
+        return;
+      }
+      if (key === 'e' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTool('eraser');
+        return;
+      }
+      if (key === 'v' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTool('orbit');
+        return;
+      }
+      if (key === 'x' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTool(t => (t === 'brush' ? 'eraser' : 'brush'));
+        return;
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose]);
+
+    window.addEventListener('keydown', handleKeyDown, { capture: true });
+    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
+  }, [handleUndo, handleRedo, onClose]);
 
   // Main Three.js setup
   useEffect(() => {
@@ -169,7 +408,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     container.appendChild(renderer.domElement);
     rendererRef.current = renderer;
 
-    // OrbitControls for natural 3D interaction (drag rotate, right-click pan, scroll zoom)
+    // OrbitControls for natural 3D interaction
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.07;
@@ -218,6 +457,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     const planeWidth = aspect >= 1 ? 1.15 : 1.15 * aspect;
     const planeHeight = aspect >= 1 ? 1.15 / aspect : 1.15;
+    planeDimsRef.current = { width: planeWidth, height: planeHeight };
 
     const geometry = new THREE.PlaneGeometry(planeWidth, planeHeight, segmentsX, segmentsY);
 
@@ -253,6 +493,33 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     scene.add(mesh);
     meshRef.current = mesh;
 
+    // Mask Canvas & Overlay Mesh for visual feedback of painted regions
+    const maskCanvas = document.createElement('canvas');
+    maskCanvas.width = depthResult.width;
+    maskCanvas.height = depthResult.height;
+    maskCanvasRef.current = maskCanvas;
+
+    const maskTexture = new THREE.CanvasTexture(maskCanvas);
+    maskTexture.minFilter = THREE.LinearFilter;
+    maskTexture.magFilter = THREE.LinearFilter;
+    maskTextureRef.current = maskTexture;
+
+    const maskMaterial = new THREE.MeshBasicMaterial({
+      map: maskTexture,
+      transparent: true,
+      opacity: 0.55,
+      depthWrite: false,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+      side: THREE.DoubleSide
+    });
+
+    const maskMesh = new THREE.Mesh(geometry, maskMaterial);
+    maskMesh.visible = activeTool !== 'orbit' && showMaskOverlayRef.current;
+    scene.add(maskMesh);
+    maskMeshRef.current = maskMesh;
+
     setIsLoaded(true);
 
     // Animation loop
@@ -285,42 +552,28 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       renderer.dispose();
       geometry.dispose();
       material.dispose();
+      maskMaterial.dispose();
       texture.dispose();
+      maskTexture.dispose();
       if (renderer.domElement && renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
       meshRef.current = null;
+      maskMeshRef.current = null;
       materialRef.current = null;
       rendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
+      maskCanvasRef.current = null;
+      maskTextureRef.current = null;
     };
   }, [depthResult, originalImage]);
 
-  // Real-time displacement & inversion updates (fast vertex update, no re-initialization)
+  // Update mesh vertices whenever displacement or inversion changes
   useEffect(() => {
-    if (!meshRef.current || !depthResult) return;
-
-    const geometry = meshRef.current.geometry;
-    const posAttr = geometry.attributes.position;
-    const uvAttr = geometry.attributes.uv;
-
-    for (let i = 0; i < posAttr.count; i++) {
-      const u = uvAttr.getX(i);
-      const v = uvAttr.getY(i);
-
-      const px = Math.min(depthResult.width - 1, Math.max(0, Math.floor(u * depthResult.width)));
-      const py = Math.min(depthResult.height - 1, Math.max(0, Math.floor((1 - v) * depthResult.height)));
-      const rawVal = depthResult.rawDepth[py * depthResult.width + px] || 0;
-      const depthVal = isInverted ? (1 - rawVal) : rawVal;
-
-      posAttr.setZ(i, depthVal * displacement * 0.4);
-    }
-
-    posAttr.needsUpdate = true;
-    geometry.computeVertexNormals();
-  }, [displacement, isInverted, depthResult]);
+    updateMeshVertices();
+  }, [updateMeshVertices]);
 
   // Wireframe toggle
   useEffect(() => {
@@ -337,6 +590,244 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     }
   }, [isAutoRotating]);
 
+  // Mask overlay visibility toggle: only visible in brush or eraser mode
+  useEffect(() => {
+    if (maskMeshRef.current) {
+      maskMeshRef.current.visible = activeTool !== 'orbit' && showMaskOverlay;
+    }
+  }, [activeTool, showMaskOverlay]);
+
+  // OrbitControls configuration based on activeTool
+  useEffect(() => {
+    if (!controlsRef.current) return;
+    if (activeTool === 'orbit') {
+      controlsRef.current.enabled = true;
+      controlsRef.current.mouseButtons = {
+        LEFT: THREE.MOUSE.ROTATE,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      };
+    } else {
+      // When in Brush or Eraser mode:
+      // Left click is reserved for painting, Right click rotates camera, Scroll zooms
+      controlsRef.current.enabled = true;
+      controlsRef.current.mouseButtons = {
+        LEFT: null as any,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.ROTATE
+      };
+    }
+  }, [activeTool]);
+
+  /**
+   * Accurate UV raycasting from client screen position to mesh surface.
+   */
+  const getUVFromClientPos = useCallback((clientX: number, clientY: number) => {
+    const container = containerRef.current;
+    const camera = cameraRef.current;
+    const mesh = meshRef.current;
+    if (!container || !camera || !mesh) return null;
+
+    const rect = container.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) {
+      return null;
+    }
+
+    const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
+    const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
+
+    const raycaster = new THREE.Raycaster();
+    raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
+
+    // 1. Try direct raycast on the 3D displaced mesh
+    const intersects = raycaster.intersectObject(mesh, false);
+    if (intersects.length > 0 && intersects[0].uv) {
+      return { u: intersects[0].uv.x, v: intersects[0].uv.y };
+    }
+
+    // 2. Fallback: raycast onto the mesh geometry plane in local space
+    const normal = new THREE.Vector3(0, 0, 1).applyQuaternion(mesh.quaternion);
+    const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, mesh.position);
+    const targetPoint = new THREE.Vector3();
+    if (raycaster.ray.intersectPlane(plane, targetPoint)) {
+      mesh.worldToLocal(targetPoint);
+      const { width: pw, height: ph } = planeDimsRef.current;
+      const u = targetPoint.x / pw + 0.5;
+      const v = targetPoint.y / ph + 0.5;
+      if (u >= -0.05 && u <= 1.05 && v >= -0.05 && v <= 1.05) {
+        return {
+          u: Math.max(0, Math.min(1, u)),
+          v: Math.max(0, Math.min(1, v))
+        };
+      }
+    }
+
+    return null;
+  }, []);
+
+  /**
+   * Draw a circular feathered brush dab onto the mask canvas.
+   */
+  const drawDab = useCallback((
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    radius: number,
+    isEraser: boolean
+  ) => {
+    ctx.save();
+    if (isEraser) {
+      ctx.globalCompositeOperation = 'destination-out';
+      const grad = ctx.createRadialGradient(x, y, radius * 0.4, x, y, radius);
+      grad.addColorStop(0, 'rgba(0, 0, 0, 1)');
+      grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.globalCompositeOperation = 'source-over';
+      const grad = ctx.createRadialGradient(x, y, radius * 0.35, x, y, radius);
+      grad.addColorStop(0, 'rgba(239, 68, 68, 0.95)');
+      grad.addColorStop(1, 'rgba(239, 68, 68, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(x, y, radius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }, []);
+
+  /**
+   * Draw continuous stroke line between two points to prevent dotted gaps.
+   */
+  const drawLine = useCallback((
+    ctx: CanvasRenderingContext2D,
+    x0: number, y0: number,
+    x1: number, y1: number,
+    radius: number,
+    isEraser: boolean
+  ) => {
+    const dx = x1 - x0;
+    const dy = y1 - y0;
+    const dist = Math.hypot(dx, dy);
+    const step = Math.max(1, radius * 0.25);
+    const steps = Math.ceil(dist / step);
+
+    for (let i = 0; i <= steps; i++) {
+      const t = steps === 0 ? 0 : i / steps;
+      const x = x0 + dx * t;
+      const y = y0 + dy * t;
+      drawDab(ctx, x, y, radius, isEraser);
+    }
+  }, [drawDab]);
+
+  /**
+   * Pointer down handler: initiates brush or eraser stroke.
+   */
+  const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeTool === 'orbit' || e.button !== 0) return;
+
+    // Strict guard: NEVER paint if clicking on the toolbar, buttons, sliders, or UI overlays
+    const target = e.target as HTMLElement | null;
+    if (target?.closest?.('[data-toolbar="true"], button, input, select, textarea, [data-no-paint="true"]')) {
+      return;
+    }
+
+    const container = containerRef.current;
+    if (!container || !maskCanvasRef.current) return;
+
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+
+    const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    // Snapshot state before stroke starts for Undo
+    strokeStartSnapshotRef.current = ctx.getImageData(
+      0,
+      0,
+      maskCanvasRef.current.width,
+      maskCanvasRef.current.height
+    );
+
+    const uv = getUVFromClientPos(e.clientX, e.clientY);
+    if (!uv) return;
+
+    isPaintingRef.current = true;
+    lastUVRef.current = uv;
+
+    const rect = container.getBoundingClientRect();
+    const maskW = maskCanvasRef.current.width;
+    const maskH = maskCanvasRef.current.height;
+
+    // Calibrate mask radius from screen brush size
+    const uvRadius = (brushSize / Math.min(rect.width, rect.height)) * 1.6;
+    const maskRadius = Math.max(2, uvRadius * maskW);
+
+    const x = uv.u * maskW;
+    const y = (1 - uv.v) * maskH;
+
+    drawDab(ctx, x, y, maskRadius, activeTool === 'eraser');
+    updateMeshVertices();
+  };
+
+  /**
+   * Pointer move handler: paints along stroke path and updates circular brush cursor.
+   */
+  const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    // If pointer is over the toolbar or controls, do not paint and hide the brush indicator cursor
+    const target = e.target as HTMLElement | null;
+    const isOverUI = !!target?.closest?.('[data-toolbar="true"], button, input, select, textarea, [data-no-paint="true"]');
+
+    if (isOverUI) {
+      if (!isPaintingRef.current) {
+        setIsPointerInCanvas(false);
+      }
+      return;
+    }
+
+    const rect = container.getBoundingClientRect();
+    setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setIsPointerInCanvas(true);
+
+    if (!isPaintingRef.current || !lastUVRef.current || !maskCanvasRef.current) return;
+    const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return;
+
+    const uv = getUVFromClientPos(e.clientX, e.clientY);
+    if (!uv) return;
+
+    const maskW = maskCanvasRef.current.width;
+    const maskH = maskCanvasRef.current.height;
+    const uvRadius = (brushSize / Math.min(rect.width, rect.height)) * 1.6;
+    const maskRadius = Math.max(2, uvRadius * maskW);
+
+    const x0 = lastUVRef.current.u * maskW;
+    const y0 = (1 - lastUVRef.current.v) * maskH;
+    const x1 = uv.u * maskW;
+    const y1 = (1 - uv.v) * maskH;
+
+    drawLine(ctx, x0, y0, x1, y1, maskRadius, activeTool === 'eraser');
+    lastUVRef.current = uv;
+    updateMeshVertices();
+  };
+
+  /**
+   * Pointer up handler: finishes stroke and registers with undo stack.
+   */
+  const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0 && e.button !== -1) return;
+    if (isPaintingRef.current && strokeStartSnapshotRef.current) {
+      pushUndo(strokeStartSnapshotRef.current);
+      strokeStartSnapshotRef.current = null;
+    }
+    isPaintingRef.current = false;
+    lastUVRef.current = null;
+  };
+
   // Reset Camera View
   const handleResetView = useCallback(() => {
     if (!cameraRef.current || !controlsRef.current) return;
@@ -345,10 +836,22 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     controlsRef.current.reset();
   }, []);
 
+  /**
+   * Captures the 3D snapshot with the mask overlay hidden, ensuring a clean render.
+   */
+  const getCleanCroppedCanvas = useCallback(() => {
+    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return null;
+    const wasVisible = maskMeshRef.current?.visible;
+    if (maskMeshRef.current) maskMeshRef.current.visible = false;
+    const cropCanvas = getCropped3DCanvas(rendererRef.current, sceneRef.current, cameraRef.current);
+    if (maskMeshRef.current) maskMeshRef.current.visible = !!wasVisible;
+    return cropCanvas;
+  }, []);
+
   // Export as PNG file
   const handleExportPng = useCallback(() => {
-    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
-    const cropCanvas = getCropped3DCanvas(rendererRef.current, sceneRef.current, cameraRef.current);
+    const cropCanvas = getCleanCroppedCanvas();
+    if (!cropCanvas) return;
     const dataUrl = cropCanvas.toDataURL('image/png');
     const link = document.createElement('a');
     link.download = `depth-3d-model-${Date.now()}.png`;
@@ -356,12 +859,12 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
-  }, []);
+  }, [getCleanCroppedCanvas]);
 
   // Copy snapshot as PNG to clipboard
   const handleCopyAsPng = useCallback(async () => {
-    if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return;
-    const cropCanvas = getCropped3DCanvas(rendererRef.current, sceneRef.current, cameraRef.current);
+    const cropCanvas = getCleanCroppedCanvas();
+    if (!cropCanvas) return;
 
     try {
       cropCanvas.toBlob(async (blob) => {
@@ -384,15 +887,14 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       console.warn('toBlob failed, triggering download fallback:', e);
       handleExportPng();
     }
-  }, [handleExportPng]);
+  }, [getCleanCroppedCanvas, handleExportPng]);
 
   // Add 3D view as new layer in ImageWorkspace
   const handleAddToCanvas = useCallback(() => {
-    if (!rendererRef.current || !sceneRef.current || !cameraRef.current || !canvas) return;
+    const cropCanvas = getCleanCroppedCanvas();
+    if (!cropCanvas || !canvas) return;
 
-    const cropCanvas = getCropped3DCanvas(rendererRef.current, sceneRef.current, cameraRef.current);
     const dataUrl = cropCanvas.toDataURL('image/png');
-
     const img = new Image();
     img.onload = () => {
       const origVisualW = (sourceObj.width || 1) * (sourceObj.scaleX || 1);
@@ -414,39 +916,35 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       onClose();
     };
     img.src = dataUrl;
-  }, [canvas, sourceObj, updateLayers, onClose]);
+  }, [getCleanCroppedCanvas, canvas, sourceObj, updateLayers, onClose]);
 
-  // Replace active image with current 3D view snapshot (UNIFORM SCALE: no shrink, no distortion)
+  // Replace active image with current 3D view snapshot (UNIFORM SCALE)
   const handleReplaceImage = useCallback(() => {
-    if (!rendererRef.current || !sceneRef.current || !cameraRef.current || !canvas) return;
+    const cropCanvas = getCleanCroppedCanvas();
+    if (!cropCanvas || !canvas) return;
 
-    const cropCanvas = getCropped3DCanvas(rendererRef.current, sceneRef.current, cameraRef.current);
     const dataUrl = cropCanvas.toDataURL('image/png');
-
     const obj = sourceObj;
     const oldWidth = obj.width || 1;
     const oldHeight = obj.height || 1;
     const oldScaleX = obj.scaleX || 1;
     const oldScaleY = obj.scaleY || 1;
 
-    // Visual dimensions and center of the target image before replacement
     const oldVisualW = oldWidth * oldScaleX;
     const oldVisualH = oldHeight * oldScaleY;
-    const oldCenterX = (obj.left || 0) + (oldVisualW / 2);
-    const oldCenterY = (obj.top || 0) + (oldVisualH / 2);
+    const oldCenterX = (obj.left || 0) + oldVisualW / 2;
+    const oldCenterY = (obj.top || 0) + oldVisualH / 2;
 
     obj.setSrc(dataUrl, { crossOrigin: 'anonymous' } as any).then(() => {
       const newWidth = obj.width || 1;
       const newHeight = obj.height || 1;
-
-      // Fit uniformly within the original bounds — preserving natural aspect ratio
       const uniformScale = Math.min(oldVisualW / newWidth, oldVisualH / newHeight);
 
       obj.set({
         scaleX: uniformScale,
         scaleY: uniformScale,
         left: oldCenterX - (newWidth * uniformScale) / 2,
-        top: oldCenterY - (newHeight * uniformScale) / 2,
+        top: oldCenterY - (newHeight * uniformScale) / 2
       });
       obj.applyFilters();
       obj.setCoords();
@@ -455,17 +953,18 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       updateLayers();
       onClose();
     });
-  }, [canvas, sourceObj, updateLayers, onClose]);
+  }, [getCleanCroppedCanvas, canvas, sourceObj, updateLayers, onClose]);
 
   if (typeof document === 'undefined') return null;
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6"
+      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6 select-none"
       onClick={onClose}
     >
       <div
-        className="relative w-full sm:max-w-[1100px] h-full sm:h-[85vh] sm:max-h-[820px] sm:min-h-[480px] bg-[#0c0c14] rounded-none sm:rounded-2xl border-0 sm:border border-white/10 shadow-none sm:shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden"
+        data-isolate-modal="true"
+        className="relative w-full sm:max-w-[1150px] h-full sm:h-[88vh] sm:max-h-[850px] sm:min-h-[500px] bg-[#0c0c14] rounded-none sm:rounded-2xl border-0 sm:border border-white/10 shadow-none sm:shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden"
         onClick={e => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -478,11 +977,11 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
               <div className="flex items-center gap-2">
                 <h2 className="text-white font-semibold text-xs sm:text-sm tracking-wide">3D Depth Viewer</h2>
                 <span className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
-                  3D
+                  3D Mesh
                 </span>
               </div>
               <p className="text-white/40 text-[10px] sm:text-[11px] hidden md:block">
-                Drag left click to rotate · Right click to pan · Scroll wheel to zoom
+                Brush areas to flatten depth · Eraser to restore · Right-click rotates
               </p>
             </div>
           </div>
@@ -544,16 +1043,210 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
         </div>
 
         {/* 3D Canvas Area */}
-        <div className="flex-1 min-h-0 relative overflow-hidden bg-[#07070d]">
-          {/* Dedicated Three.js canvas mount container (no React children to prevent DOM mismatch) */}
+        <div
+          className="flex-1 min-h-0 relative overflow-hidden bg-[#07070d]"
+          onContextMenu={e => e.preventDefault()}
+        >
+          {/* Floating Brush & Navigation Toolbar */}
+          {/* Floating Brush & Navigation Toolbar */}
+          <div
+            data-toolbar="true"
+            className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-full bg-[#0d0d18]/85 backdrop-blur-xl border border-white/12 shadow-[0_12px_40px_rgba(0,0,0,0.7)] max-w-[95%] select-none pointer-events-auto cursor-default transition-all"
+            onPointerDown={e => e.stopPropagation()}
+            onPointerMove={e => e.stopPropagation()}
+            onPointerUp={e => e.stopPropagation()}
+            onPointerCancel={e => e.stopPropagation()}
+            onMouseDown={e => e.stopPropagation()}
+            onMouseMove={e => e.stopPropagation()}
+            onMouseUp={e => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
+            onPointerEnter={() => setIsPointerInCanvas(false)}
+            onPointerLeave={() => setIsPointerInCanvas(true)}
+          >
+            {/* Tool Mode Segmented Switch */}
+            <div className="flex items-center gap-0.5 bg-white/[0.06] p-0.5 rounded-full border border-white/[0.06]">
+              {/* Move Tool */}
+              <button
+                onClick={() => setActiveTool('orbit')}
+                className={`flex items-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                  activeTool === 'orbit'
+                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 font-semibold'
+                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+                title="Move Tool (V) - Drag left click to rotate, right click to pan"
+              >
+                <Move size={13} />
+                <span className="hidden sm:inline">Move</span>
+              </button>
+
+              {/* Depth Brush */}
+              <button
+                onClick={() => setActiveTool('brush')}
+                className={`flex items-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                  activeTool === 'brush'
+                    ? 'bg-red-500 text-white shadow-sm shadow-red-500/40 font-semibold'
+                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+                title="Depth Brush (B) - Paint over areas to flatten and disable 3D depth"
+              >
+                <Paintbrush size={13} />
+                <span className="hidden sm:inline">Brush</span>
+              </button>
+
+              {/* Eraser */}
+              <button
+                onClick={() => setActiveTool('eraser')}
+                className={`flex items-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                  activeTool === 'eraser'
+                    ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/40 font-semibold'
+                    : 'text-white/60 hover:text-white hover:bg-white/10'
+                }`}
+                title="Eraser (E) - Erase mask to restore 3D depth"
+              >
+                <Eraser size={13} />
+                <span className="hidden sm:inline">Eraser</span>
+              </button>
+            </div>
+
+            {/* Brush Size Adjustment (visible in Brush/Eraser mode) */}
+            {activeTool !== 'orbit' && (
+              <div className="flex items-center gap-1 sm:gap-1.5 h-7 sm:h-7.5 px-2 bg-white/[0.06] rounded-full border border-white/[0.06] animate-fadeIn">
+                <button
+                  onClick={() => setBrushSize(s => Math.max(5, s - 5))}
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all"
+                  title="Decrease Size ([)"
+                >
+                  <Minus size={10} />
+                </button>
+                <input
+                  type="range"
+                  min="5"
+                  max="120"
+                  step="1"
+                  value={brushSize}
+                  onChange={e => setBrushSize(parseInt(e.target.value, 10))}
+                  onPointerDown={e => e.stopPropagation()}
+                  onPointerMove={e => e.stopPropagation()}
+                  onPointerUp={e => e.stopPropagation()}
+                  onMouseDown={e => e.stopPropagation()}
+                  onMouseMove={e => e.stopPropagation()}
+                  onMouseUp={e => e.stopPropagation()}
+                  className="w-14 sm:w-20 h-1 accent-red-400 bg-white/20 rounded-full cursor-pointer"
+                />
+                <button
+                  onClick={() => setBrushSize(s => Math.min(120, s + 5))}
+                  className="w-5 h-5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all"
+                  title="Increase Size (])"
+                >
+                  <Plus size={10} />
+                </button>
+                <span className="text-white/80 font-mono text-[11px] w-7 text-right tabular-nums whitespace-nowrap">
+                  {brushSize}px
+                </span>
+              </div>
+            )}
+
+            <div className="w-px h-4 bg-white/15 mx-0.5" />
+
+            {/* Undo & Redo (STRICTLY LOCAL TO MODAL) */}
+            <div className="flex items-center gap-0.5">
+              <button
+                onClick={handleUndo}
+                disabled={!canUndo}
+                className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
+                  canUndo
+                    ? 'text-white/70 hover:text-white hover:bg-white/10 active:scale-95'
+                    : 'text-white/20 cursor-not-allowed'
+                }`}
+                title="Undo Stroke (Ctrl+Z)"
+              >
+                <Undo2 size={13} />
+              </button>
+
+              <button
+                onClick={handleRedo}
+                disabled={!canRedo}
+                className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
+                  canRedo
+                    ? 'text-white/70 hover:text-white hover:bg-white/10 active:scale-95'
+                    : 'text-white/20 cursor-not-allowed'
+                }`}
+                title="Redo Stroke (Ctrl+Y / Ctrl+Shift+Z)"
+              >
+                <Redo2 size={13} />
+              </button>
+            </div>
+
+            {/* Mask Overlay Visibility & Clear */}
+            <div className="flex items-center gap-0.5">
+              {activeTool !== 'orbit' && (
+                <button
+                  onClick={() => setShowMaskOverlay(v => !v)}
+                  className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
+                    showMaskOverlay
+                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
+                      : 'text-white/40 hover:text-white hover:bg-white/10'
+                  }`}
+                  title={showMaskOverlay ? 'Hide Red Mask Highlight' : 'Show Red Mask Highlight'}
+                >
+                  {showMaskOverlay ? <Eye size={13} /> : <EyeOff size={13} />}
+                </button>
+              )}
+
+              {hasMask && (
+                <button
+                  onClick={handleClearMask}
+                  className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center text-rose-300 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 transition-all active:scale-95"
+                  title="Clear Mask (Restore Full 3D Depth Everywhere)"
+                >
+                  <Trash2 size={13} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/* Three.js Canvas Mount */}
           <div
             ref={containerRef}
-            className="w-full h-full cursor-grab active:cursor-grabbing"
+            className={`w-full h-full ${
+              activeTool === 'orbit' ? 'cursor-grab active:cursor-grabbing' : 'cursor-none'
+            }`}
             style={{ touchAction: 'none' }}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+            onPointerEnter={() => setIsPointerInCanvas(true)}
+            onPointerLeave={() => {
+              if (!isPaintingRef.current) setIsPointerInCanvas(false);
+            }}
           />
 
+          {/* High-precision Brush Indicator Cursor */}
+          {activeTool !== 'orbit' && isPointerInCanvas && (
+            <div
+              className="pointer-events-none absolute rounded-full border shadow-[0_0_12px_rgba(0,0,0,0.6)] -translate-x-1/2 -translate-y-1/2 transition-[width,height] duration-75 z-20"
+              style={{
+                left: cursorPos.x,
+                top: cursorPos.y,
+                width: brushSize * 2,
+                height: brushSize * 2,
+                borderColor: activeTool === 'brush' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(56, 189, 248, 0.95)',
+                backgroundColor: activeTool === 'brush' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(56, 189, 248, 0.15)'
+              }}
+            >
+              {/* Center crosshair dot */}
+              <div
+                className="absolute top-1/2 left-1/2 w-1.5 h-1.5 -translate-x-1/2 -translate-y-1/2 rounded-full"
+                style={{
+                  backgroundColor: activeTool === 'brush' ? '#ef4444' : '#38bdf8'
+                }}
+              />
+            </div>
+          )}
+
           {!isLoaded && (
-            <div className="absolute inset-0 flex items-center justify-center bg-[#07070d] pointer-events-none">
+            <div className="absolute inset-0 flex items-center justify-center bg-[#07070d] pointer-events-none z-10">
               <div className="flex flex-col items-center gap-3">
                 <div className="w-9 h-9 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />
                 <span className="text-white/60 text-xs font-medium tracking-wide">Building 3D Mesh…</span>
@@ -561,26 +1254,46 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             </div>
           )}
 
-          {/* Quick interactive floating guide (clean Lucide icons instead of emojis) */}
-          <div className="absolute bottom-3 left-3 pointer-events-none hidden md:flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-black/75 backdrop-blur-md border border-white/10 text-[11px] text-white/80 shadow-lg">
-            <span className="flex items-center gap-1.5">
-              <Orbit size={13} className="text-indigo-400" />
-              <span>Rotate: Drag Left</span>
-            </span>
-            <span className="text-white/20">|</span>
-            <span className="flex items-center gap-1.5">
-              <Move size={13} className="text-cyan-400" />
-              <span>Pan: Drag Right</span>
-            </span>
-            <span className="text-white/20">|</span>
-            <span className="flex items-center gap-1.5">
-              <ZoomIn size={13} className="text-purple-400" />
-              <span>Zoom: Scroll</span>
-            </span>
+          {/* Quick interactive floating guide */}
+          <div className="absolute bottom-3 left-3 pointer-events-none hidden md:flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-black/75 backdrop-blur-md border border-white/10 text-[11px] text-white/80 shadow-lg z-10">
+            {activeTool === 'orbit' ? (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <Orbit size={13} className="text-indigo-400" />
+                  <span>Rotate: Drag Left</span>
+                </span>
+                <span className="text-white/20">|</span>
+                <span className="flex items-center gap-1.5">
+                  <Move size={13} className="text-cyan-400" />
+                  <span>Pan: Drag Right</span>
+                </span>
+                <span className="text-white/20">|</span>
+                <span className="flex items-center gap-1.5">
+                  <ZoomIn size={13} className="text-purple-400" />
+                  <span>Zoom: Scroll</span>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="flex items-center gap-1.5">
+                  <Paintbrush size={13} className="text-red-400" />
+                  <span>Left Drag: {activeTool === 'brush' ? 'Flatten Depth' : 'Restore Depth'}</span>
+                </span>
+                <span className="text-white/20">|</span>
+                <span className="flex items-center gap-1.5">
+                  <Orbit size={13} className="text-indigo-400" />
+                  <span>Right Drag: Rotate 3D</span>
+                </span>
+                <span className="text-white/20">|</span>
+                <span className="text-white/60 font-mono text-[10px]">
+                  [ ] Size · Ctrl+Z Undo
+                </span>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Bottom Controls Bar (always visible, fully responsive for mobile fullscreen) */}
+        {/* Bottom Controls Bar */}
         <div className="px-3 sm:px-5 py-2.5 sm:py-3.5 bg-[#090911] border-t border-white/[0.08] shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 select-none pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {/* Top Row on Mobile / Left on Desktop: Depth Slider & Reset */}
           <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
@@ -626,7 +1339,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
               title="Reset Camera Angle & Zoom"
             >
               <RotateCcw size={12} />
-              <span className="hidden sm:inline">Reset</span>
+              <span className="hidden sm:inline">Reset View</span>
             </button>
           </div>
 
