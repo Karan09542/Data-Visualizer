@@ -133,11 +133,14 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const strokeStartSnapshotRef = useRef<ImageData | null>(null);
   const isPaintingRef = useRef(false);
   const lastUVRef = useRef<{ u: number; v: number } | null>(null);
+  const lastPointerPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Tools & Display State
   const [activeTool, setActiveTool] = useState<'orbit' | 'brush' | 'eraser'>('orbit');
   const [brushSize, setBrushSize] = useState(32);
   const [showMaskOverlay, setShowMaskOverlay] = useState(true);
+  const [activeAxes, setActiveAxes] = useState({ x: true, y: true, z: false });
+
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [hasMask, setHasMask] = useState(false);
@@ -597,27 +600,65 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     }
   }, [activeTool, showMaskOverlay]);
 
-  // OrbitControls configuration based on activeTool
+  // OrbitControls configuration based on activeTool and activeAxes
   useEffect(() => {
     if (!controlsRef.current) return;
+    const controls = controlsRef.current;
+    
     if (activeTool === 'orbit') {
-      controlsRef.current.enabled = true;
-      controlsRef.current.mouseButtons = {
+      if (!activeAxes.x && !activeAxes.y) {
+        controls.enableRotate = false;
+      } else {
+        controls.enableRotate = true;
+        
+        if (activeAxes.x) {
+          controls.minPolarAngle = 0;
+          controls.maxPolarAngle = Math.PI;
+        } else {
+          const currentPolar = controls.getPolarAngle();
+          controls.minPolarAngle = currentPolar;
+          controls.maxPolarAngle = currentPolar;
+        }
+
+        if (activeAxes.y) {
+          controls.minAzimuthAngle = -Infinity;
+          controls.maxAzimuthAngle = Infinity;
+        } else {
+          const currentAzimuth = controls.getAzimuthalAngle();
+          controls.minAzimuthAngle = currentAzimuth;
+          controls.maxAzimuthAngle = currentAzimuth;
+        }
+      }
+
+      controls.mouseButtons = {
         LEFT: THREE.MOUSE.ROTATE,
         MIDDLE: THREE.MOUSE.DOLLY,
         RIGHT: THREE.MOUSE.PAN
       };
+      controls.touches = {
+        ONE: THREE.TOUCH.ROTATE,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      };
     } else {
       // When in Brush or Eraser mode:
-      // Left click is reserved for painting, Right click rotates camera, Scroll zooms
-      controlsRef.current.enabled = true;
-      controlsRef.current.mouseButtons = {
+      controls.enabled = true;
+      controls.enableRotate = true;
+      controls.minPolarAngle = 0;
+      controls.maxPolarAngle = Math.PI;
+      controls.minAzimuthAngle = -Infinity;
+      controls.maxAzimuthAngle = Infinity;
+      
+      controls.mouseButtons = {
         LEFT: null as any,
         MIDDLE: THREE.MOUSE.DOLLY,
         RIGHT: THREE.MOUSE.ROTATE
       };
+      controls.touches = {
+        ONE: null as any,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      };
     }
-  }, [activeTool]);
+  }, [activeTool, activeAxes]);
 
   /**
    * Accurate UV raycasting from client screen position to mesh surface.
@@ -734,10 +775,21 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       return;
     }
 
+    // Temporarily pause OrbitControls while stroke is active so the 3D model never moves or jitters
+    if (controlsRef.current) {
+      controlsRef.current.enabled = false;
+    }
+
     const container = containerRef.current;
     if (!container || !maskCanvasRef.current) return;
 
-    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    try {
+      (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    } catch (_) {}
+
+    const rect = container.getBoundingClientRect();
+    setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    setIsPointerInCanvas(true);
 
     const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
     if (!ctx) return;
@@ -756,7 +808,6 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     isPaintingRef.current = true;
     lastUVRef.current = uv;
 
-    const rect = container.getBoundingClientRect();
     const maskW = maskCanvasRef.current.width;
     const maskH = maskCanvasRef.current.height;
 
@@ -786,6 +837,24 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       if (!isPaintingRef.current) {
         setIsPointerInCanvas(false);
       }
+      if (activeTool === 'orbit') {
+        lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
+      }
+      return;
+    }
+
+    if (activeTool === 'orbit') {
+      if (activeAxes.z && e.buttons === 1 && meshRef.current && lastPointerPosRef.current) {
+        const deltaX = e.clientX - lastPointerPosRef.current.x;
+        // Invert deltaX so dragging right rolls clockwise
+        meshRef.current.rotation.z -= deltaX * 0.01;
+        if (maskMeshRef.current) maskMeshRef.current.rotation.z = meshRef.current.rotation.z;
+      }
+      lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
+      
+      const rect = container.getBoundingClientRect();
+      setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+      setIsPointerInCanvas(true);
       return;
     }
 
@@ -819,6 +888,22 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
    * Pointer up handler: finishes stroke and registers with undo stack.
    */
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    try {
+      if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
+        (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+      }
+    } catch (_) {}
+
+    // Restore OrbitControls based on active tool
+    if (controlsRef.current) {
+      controlsRef.current.enabled = true;
+    }
+
+    // On mobile touch: hide brush indicator circle when finger lifts up
+    if (e.pointerType === 'touch') {
+      setIsPointerInCanvas(false);
+    }
+
     if (e.button !== 0 && e.button !== -1) return;
     if (isPaintingRef.current && strokeStartSnapshotRef.current) {
       pushUndo(strokeStartSnapshotRef.current);
@@ -957,6 +1042,14 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
   if (typeof document === 'undefined') return null;
 
+  // Modern dynamic slider gradients
+  const brushPercent = Math.round(((brushSize - 5) / (120 - 5)) * 100);
+  const brushTrackColor = activeTool === 'eraser' ? '#38bdf8' : '#ef4444';
+  const brushTrackGradient = `linear-gradient(to right, ${brushTrackColor} 0%, ${brushTrackColor} ${brushPercent}%, rgba(255,255,255,0.12) ${brushPercent}%, rgba(255,255,255,0.12) 100%)`;
+
+  const depthPercent = Math.round(displacement * 100);
+  const depthTrackGradient = `linear-gradient(to right, #6366f1 0%, #818cf8 ${depthPercent}%, rgba(255,255,255,0.12) ${depthPercent}%, rgba(255,255,255,0.12) 100%)`;
+
   return createPortal(
     <div
       className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6 select-none"
@@ -968,19 +1061,19 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
         onClick={e => e.stopPropagation()}
       >
         {/* Top Header */}
-        <div className="flex items-center justify-between px-3.5 sm:px-5 py-2.5 sm:py-3.5 bg-gradient-to-r from-[#131320] to-[#0c0c14] border-b border-white/[0.08] shrink-0">
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
-              <Box size={16} className="text-white" />
+        <div className="flex items-center justify-between px-3 sm:px-5 py-2 sm:py-3 bg-gradient-to-r from-[#131320] to-[#0c0c14] border-b border-white/[0.08] shrink-0 gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-7.5 h-7.5 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/25 shrink-0">
+              <Box size={15} className="text-white" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="text-white font-semibold text-xs sm:text-sm tracking-wide">3D Depth Viewer</h2>
-                <span className="text-[9px] sm:text-[10px] px-1.5 sm:px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium">
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                <h2 className="text-white font-semibold text-xs sm:text-sm tracking-wide whitespace-nowrap truncate">3D Depth Viewer</h2>
+                <span className="hidden sm:inline-flex text-[10px] px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30 font-medium whitespace-nowrap">
                   3D Mesh
                 </span>
               </div>
-              <p className="text-white/40 text-[10px] sm:text-[11px] hidden md:block">
+              <p className="text-white/40 text-[10px] sm:text-[11px] hidden md:block truncate">
                 Brush areas to flatten depth · Eraser to restore · Right-click rotates
               </p>
             </div>
@@ -1048,10 +1141,9 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
           onContextMenu={e => e.preventDefault()}
         >
           {/* Floating Brush & Navigation Toolbar */}
-          {/* Floating Brush & Navigation Toolbar */}
           <div
             data-toolbar="true"
-            className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1 sm:gap-1.5 p-1 sm:p-1.5 rounded-full bg-[#0d0d18]/85 backdrop-blur-xl border border-white/12 shadow-[0_12px_40px_rgba(0,0,0,0.7)] max-w-[95%] select-none pointer-events-auto cursor-default transition-all"
+            className="absolute top-2 sm:top-4 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center max-w-[95vw] select-none pointer-events-auto cursor-default transition-all"
             onPointerDown={e => e.stopPropagation()}
             onPointerMove={e => e.stopPropagation()}
             onPointerUp={e => e.stopPropagation()}
@@ -1063,144 +1155,255 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             onPointerEnter={() => setIsPointerInCanvas(false)}
             onPointerLeave={() => setIsPointerInCanvas(true)}
           >
-            {/* Tool Mode Segmented Switch */}
-            <div className="flex items-center gap-0.5 bg-white/[0.06] p-0.5 rounded-full border border-white/[0.06]">
-              {/* Move Tool */}
-              <button
-                onClick={() => setActiveTool('orbit')}
-                className={`flex items-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                  activeTool === 'orbit'
-                    ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 font-semibold'
-                    : 'text-white/60 hover:text-white hover:bg-white/10'
-                }`}
-                title="Move Tool (V) - Drag left click to rotate, right click to pan"
-              >
-                <Move size={13} />
-                <span className="hidden sm:inline">Move</span>
-              </button>
+            {/* Unified Compact Glass Island */}
+            <div className="flex flex-col sm:flex-row items-center gap-1.5 p-1 sm:p-1.5 rounded-2xl sm:rounded-full bg-[#0b0b14]/92 backdrop-blur-2xl border border-white/15 shadow-[0_12px_40px_rgba(0,0,0,0.85)] w-auto transition-all">
+              {/* Row 1: Tools + History + Mask Actions */}
+              <div className="flex items-center gap-1 sm:gap-1.5">
+                {/* Tool Mode Segmented Switch */}
+                <div className="flex items-center gap-0.5 bg-white/[0.06] p-0.5 rounded-full border border-white/[0.06]">
+                  {/* Axis Controls for Orbit Tool */}
+                  {activeTool === 'orbit' && (
+                    <div className="flex items-center gap-0.5 mr-1 pr-1 border-r border-white/10">
+                      <button
+                        onClick={() => setActiveAxes(a => ({ ...a, x: !a.x }))}
+                        className={`flex items-center justify-center w-7 h-7 sm:h-7.5 rounded-full text-[11px] font-bold transition-all ${
+                          activeAxes.x ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'text-white/40 hover:text-white/80'
+                        }`}
+                        title="Toggle X Axis (Tilt)"
+                      >
+                        X
+                      </button>
+                      <button
+                        onClick={() => setActiveAxes(a => ({ ...a, y: !a.y }))}
+                        className={`flex items-center justify-center w-7 h-7 sm:h-7.5 rounded-full text-[11px] font-bold transition-all ${
+                          activeAxes.y ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-white/40 hover:text-white/80'
+                        }`}
+                        title="Toggle Y Axis (Pan)"
+                      >
+                        Y
+                      </button>
+                      <button
+                        onClick={() => setActiveAxes(a => ({ ...a, z: !a.z }))}
+                        className={`flex items-center justify-center w-7 h-7 sm:h-7.5 rounded-full text-[11px] font-bold transition-all ${
+                          activeAxes.z ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-white/40 hover:text-white/80'
+                        }`}
+                        title="Toggle Z Axis (Roll)"
+                      >
+                        Z
+                      </button>
+                    </div>
+                  )}
 
-              {/* Depth Brush */}
-              <button
-                onClick={() => setActiveTool('brush')}
-                className={`flex items-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                  activeTool === 'brush'
-                    ? 'bg-red-500 text-white shadow-sm shadow-red-500/40 font-semibold'
-                    : 'text-white/60 hover:text-white hover:bg-white/10'
-                }`}
-                title="Depth Brush (B) - Paint over areas to flatten and disable 3D depth"
-              >
-                <Paintbrush size={13} />
-                <span className="hidden sm:inline">Brush</span>
-              </button>
+                  {/* Move Tool */}
+                  <button
+                    onClick={() => setActiveTool('orbit')}
+                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                      activeTool === 'orbit'
+                        ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 font-semibold'
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                    }`}
+                    title="Move Tool (V) - Drag to rotate, 2 fingers to zoom/pan"
+                  >
+                    <Move size={13} />
+                    <span className="hidden sm:inline">Move</span>
+                  </button>
 
-              {/* Eraser */}
-              <button
-                onClick={() => setActiveTool('eraser')}
-                className={`flex items-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                  activeTool === 'eraser'
-                    ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/40 font-semibold'
-                    : 'text-white/60 hover:text-white hover:bg-white/10'
-                }`}
-                title="Eraser (E) - Erase mask to restore 3D depth"
-              >
-                <Eraser size={13} />
-                <span className="hidden sm:inline">Eraser</span>
-              </button>
-            </div>
+                  {/* Depth Brush */}
+                  <button
+                    onClick={() => setActiveTool('brush')}
+                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                      activeTool === 'brush'
+                        ? 'bg-red-500 text-white shadow-sm shadow-red-500/40 font-semibold'
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                    }`}
+                    title="Depth Brush (B) - Paint over areas to flatten 3D depth"
+                  >
+                    <Paintbrush size={13} />
+                    <span className="hidden sm:inline">Brush</span>
+                  </button>
 
-            {/* Brush Size Adjustment (visible in Brush/Eraser mode) */}
-            {activeTool !== 'orbit' && (
-              <div className="flex items-center gap-1 sm:gap-1.5 h-7 sm:h-7.5 px-2 bg-white/[0.06] rounded-full border border-white/[0.06] animate-fadeIn">
-                <button
-                  onClick={() => setBrushSize(s => Math.max(5, s - 5))}
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all"
-                  title="Decrease Size ([)"
-                >
-                  <Minus size={10} />
-                </button>
-                <input
-                  type="range"
-                  min="5"
-                  max="120"
-                  step="1"
-                  value={brushSize}
-                  onChange={e => setBrushSize(parseInt(e.target.value, 10))}
-                  onPointerDown={e => e.stopPropagation()}
-                  onPointerMove={e => e.stopPropagation()}
-                  onPointerUp={e => e.stopPropagation()}
-                  onMouseDown={e => e.stopPropagation()}
-                  onMouseMove={e => e.stopPropagation()}
-                  onMouseUp={e => e.stopPropagation()}
-                  className="w-14 sm:w-20 h-1 accent-red-400 bg-white/20 rounded-full cursor-pointer"
-                />
-                <button
-                  onClick={() => setBrushSize(s => Math.min(120, s + 5))}
-                  className="w-5 h-5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all"
-                  title="Increase Size (])"
-                >
-                  <Plus size={10} />
-                </button>
-                <span className="text-white/80 font-mono text-[11px] w-7 text-right tabular-nums whitespace-nowrap">
-                  {brushSize}px
-                </span>
+                  {/* Eraser */}
+                  <button
+                    onClick={() => setActiveTool('eraser')}
+                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                      activeTool === 'eraser'
+                        ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/40 font-semibold'
+                        : 'text-white/60 hover:text-white hover:bg-white/10'
+                    }`}
+                    title="Eraser (E) - Restore 3D depth"
+                  >
+                    <Eraser size={13} />
+                    <span className="hidden sm:inline">Eraser</span>
+                  </button>
+                </div>
+
+                {/* Inline Brush Size for Desktop (hidden on mobile, shown on sm+) */}
+                {activeTool !== 'orbit' && (
+                  <div className="hidden sm:flex items-center gap-1.5 h-7.5 px-2.5 bg-white/[0.06] rounded-full border border-white/[0.06] animate-fadeIn">
+                    <button
+                      onClick={() => setBrushSize(s => Math.max(5, s - 5))}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all"
+                      title="Decrease Size ([)"
+                    >
+                      <Minus size={10} />
+                    </button>
+                    <input
+                      type="range"
+                      min="5"
+                      max="120"
+                      step="1"
+                      value={brushSize}
+                      onChange={e => setBrushSize(parseInt(e.target.value, 10))}
+                      onPointerDown={e => e.stopPropagation()}
+                      onPointerMove={e => e.stopPropagation()}
+                      onPointerUp={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      onMouseMove={e => e.stopPropagation()}
+                      onMouseUp={e => e.stopPropagation()}
+                      style={{ background: brushTrackGradient }}
+                      className="w-20 md:w-24 h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-all
+                        [&::-webkit-slider-thumb]:appearance-none
+                        [&::-webkit-slider-thumb]:w-3.5
+                        [&::-webkit-slider-thumb]:h-3.5
+                        [&::-webkit-slider-thumb]:rounded-full
+                        [&::-webkit-slider-thumb]:bg-white
+                        [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(255,255,255,0.9)]
+                        [&::-webkit-slider-thumb]:border
+                        [&::-webkit-slider-thumb]:border-white/60
+                        [&::-webkit-slider-thumb]:transition-transform
+                        [&::-webkit-slider-thumb]:active:scale-125
+                        [&::-moz-range-thumb]:w-3.5
+                        [&::-moz-range-thumb]:h-3.5
+                        [&::-moz-range-thumb]:rounded-full
+                        [&::-moz-range-thumb]:bg-white
+                        [&::-moz-range-thumb]:border-0"
+                    />
+                    <button
+                      onClick={() => setBrushSize(s => Math.min(120, s + 5))}
+                      className="w-5 h-5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all"
+                      title="Increase Size (])"
+                    >
+                      <Plus size={10} />
+                    </button>
+                    <span className="px-1.5 py-0.5 rounded bg-white/[0.08] text-white/90 font-mono text-[10px] font-semibold tabular-nums shrink-0">
+                      {brushSize}px
+                    </span>
+                  </div>
+                )}
+
+                <div className="w-px h-4 bg-white/15 mx-0.5" />
+
+                {/* Undo & Redo (STRICTLY LOCAL TO MODAL) */}
+                <div className="flex items-center gap-0.5">
+                  <button
+                    onClick={handleUndo}
+                    disabled={!canUndo}
+                    className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
+                      canUndo
+                        ? 'text-white/75 hover:text-white hover:bg-white/10 active:scale-95'
+                        : 'text-white/20 cursor-not-allowed'
+                    }`}
+                    title="Undo Stroke (Ctrl+Z)"
+                  >
+                    <Undo2 size={13} />
+                  </button>
+
+                  <button
+                    onClick={handleRedo}
+                    disabled={!canRedo}
+                    className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
+                      canRedo
+                        ? 'text-white/75 hover:text-white hover:bg-white/10 active:scale-95'
+                        : 'text-white/20 cursor-not-allowed'
+                    }`}
+                    title="Redo Stroke (Ctrl+Y / Ctrl+Shift+Z)"
+                  >
+                    <Redo2 size={13} />
+                  </button>
+                </div>
+
+                {/* Mask Overlay Visibility & Clear */}
+                <div className="flex items-center gap-0.5">
+                  {activeTool !== 'orbit' && (
+                    <button
+                      onClick={() => setShowMaskOverlay(v => !v)}
+                      className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
+                        showMaskOverlay
+                          ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
+                          : 'text-white/40 hover:text-white hover:bg-white/10'
+                      }`}
+                      title={showMaskOverlay ? 'Hide Red Mask Highlight' : 'Show Red Mask Highlight'}
+                    >
+                      {showMaskOverlay ? <Eye size={13} /> : <EyeOff size={13} />}
+                    </button>
+                  )}
+
+                  {hasMask && (
+                    <button
+                      onClick={handleClearMask}
+                      className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center text-rose-300 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 transition-all active:scale-95"
+                      title="Clear Mask (Restore Full 3D Depth Everywhere)"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  )}
+                </div>
               </div>
-            )}
 
-            <div className="w-px h-4 bg-white/15 mx-0.5" />
-
-            {/* Undo & Redo (STRICTLY LOCAL TO MODAL) */}
-            <div className="flex items-center gap-0.5">
-              <button
-                onClick={handleUndo}
-                disabled={!canUndo}
-                className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
-                  canUndo
-                    ? 'text-white/70 hover:text-white hover:bg-white/10 active:scale-95'
-                    : 'text-white/20 cursor-not-allowed'
-                }`}
-                title="Undo Stroke (Ctrl+Z)"
-              >
-                <Undo2 size={13} />
-              </button>
-
-              <button
-                onClick={handleRedo}
-                disabled={!canRedo}
-                className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
-                  canRedo
-                    ? 'text-white/70 hover:text-white hover:bg-white/10 active:scale-95'
-                    : 'text-white/20 cursor-not-allowed'
-                }`}
-                title="Redo Stroke (Ctrl+Y / Ctrl+Shift+Z)"
-              >
-                <Redo2 size={13} />
-              </button>
-            </div>
-
-            {/* Mask Overlay Visibility & Clear */}
-            <div className="flex items-center gap-0.5">
+              {/* Row 2: Integrated Mobile Modern Slider (seamlessly inside the same card, no second floating pill!) */}
               {activeTool !== 'orbit' && (
-                <button
-                  onClick={() => setShowMaskOverlay(v => !v)}
-                  className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
-                    showMaskOverlay
-                      ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
-                      : 'text-white/40 hover:text-white hover:bg-white/10'
-                  }`}
-                  title={showMaskOverlay ? 'Hide Red Mask Highlight' : 'Show Red Mask Highlight'}
-                >
-                  {showMaskOverlay ? <Eye size={13} /> : <EyeOff size={13} />}
-                </button>
-              )}
-
-              {hasMask && (
-                <button
-                  onClick={handleClearMask}
-                  className="w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center text-rose-300 hover:text-white bg-rose-500/20 hover:bg-rose-500/30 border border-rose-500/30 transition-all active:scale-95"
-                  title="Clear Mask (Restore Full 3D Depth Everywhere)"
-                >
-                  <Trash2 size={13} />
-                </button>
+                <div className="sm:hidden flex items-center justify-between gap-2.5 w-full pt-1 px-1 border-t border-white/[0.08] animate-fadeIn">
+                  <button
+                    onClick={() => setBrushSize(s => Math.max(5, s - 5))}
+                    className="w-5.5 h-5.5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all shrink-0"
+                    title="Decrease Size"
+                  >
+                    <Minus size={10} />
+                  </button>
+                  <div className="flex-1 relative flex items-center min-w-0">
+                    <input
+                      type="range"
+                      min="5"
+                      max="120"
+                      step="1"
+                      value={brushSize}
+                      onChange={e => setBrushSize(parseInt(e.target.value, 10))}
+                      onPointerDown={e => e.stopPropagation()}
+                      onPointerMove={e => e.stopPropagation()}
+                      onPointerUp={e => e.stopPropagation()}
+                      onMouseDown={e => e.stopPropagation()}
+                      onMouseMove={e => e.stopPropagation()}
+                      onMouseUp={e => e.stopPropagation()}
+                      style={{ background: brushTrackGradient }}
+                      className="w-full h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-all
+                        [&::-webkit-slider-thumb]:appearance-none
+                        [&::-webkit-slider-thumb]:w-3.5
+                        [&::-webkit-slider-thumb]:h-3.5
+                        [&::-webkit-slider-thumb]:rounded-full
+                        [&::-webkit-slider-thumb]:bg-white
+                        [&::-webkit-slider-thumb]:shadow-[0_0_8px_rgba(255,255,255,0.9)]
+                        [&::-webkit-slider-thumb]:border
+                        [&::-webkit-slider-thumb]:border-white/60
+                        [&::-webkit-slider-thumb]:transition-transform
+                        [&::-webkit-slider-thumb]:active:scale-125
+                        [&::-moz-range-thumb]:w-3.5
+                        [&::-moz-range-thumb]:h-3.5
+                        [&::-moz-range-thumb]:rounded-full
+                        [&::-moz-range-thumb]:bg-white
+                        [&::-moz-range-thumb]:border-0"
+                    />
+                  </div>
+                  <button
+                    onClick={() => setBrushSize(s => Math.min(120, s + 5))}
+                    className="w-5.5 h-5.5 rounded-full flex items-center justify-center text-white/50 hover:text-white hover:bg-white/15 active:scale-95 transition-all shrink-0"
+                    title="Increase Size"
+                  >
+                    <Plus size={10} />
+                  </button>
+                  <span className="px-1.5 py-0.5 rounded bg-white/[0.08] text-white/90 font-mono text-[10px] font-semibold tabular-nums shrink-0">
+                    {brushSize}px
+                  </span>
+                </div>
               )}
             </div>
           </div>
@@ -1216,9 +1419,15 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
             onPointerCancel={handlePointerUp}
-            onPointerEnter={() => setIsPointerInCanvas(true)}
-            onPointerLeave={() => {
-              if (!isPaintingRef.current) setIsPointerInCanvas(false);
+            onPointerEnter={(e) => {
+              if (e.pointerType !== 'touch') {
+                setIsPointerInCanvas(true);
+              }
+            }}
+            onPointerLeave={(e) => {
+              if (!isPaintingRef.current || e.pointerType === 'touch') {
+                setIsPointerInCanvas(false);
+              }
             }}
           />
 
@@ -1305,7 +1514,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
               <div className="flex items-center gap-1 sm:gap-1.5 bg-white/5 px-2 py-1 rounded-xl border border-white/10 flex-1 sm:flex-initial">
                 <button
                   onClick={() => setDisplacement(d => Math.max(0, Math.round((d - 0.05) * 100) / 100))}
-                  className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95"
+                  className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95 shrink-0"
                   title="Decrease Depth"
                 >
                   <Minus size={11} />
@@ -1317,16 +1526,33 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   step="0.01"
                   value={displacement}
                   onChange={e => setDisplacement(parseFloat(e.target.value))}
-                  className="flex-1 sm:w-28 md:w-32 h-1.5 accent-indigo-500 bg-white/10 rounded-full cursor-pointer"
+                  style={{ background: depthTrackGradient }}
+                  className="flex-1 sm:w-28 md:w-32 h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-all
+                    [&::-webkit-slider-thumb]:appearance-none
+                    [&::-webkit-slider-thumb]:w-3.5
+                    [&::-webkit-slider-thumb]:h-3.5
+                    [&::-webkit-slider-thumb]:rounded-full
+                    [&::-webkit-slider-thumb]:bg-white
+                    [&::-webkit-slider-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.8)]
+                    [&::-webkit-slider-thumb]:border
+                    [&::-webkit-slider-thumb]:border-white/60
+                    [&::-webkit-slider-thumb]:transition-transform
+                    [&::-webkit-slider-thumb]:active:scale-125
+                    [&::-moz-range-thumb]:w-3.5
+                    [&::-moz-range-thumb]:h-3.5
+                    [&::-moz-range-thumb]:rounded-full
+                    [&::-moz-range-thumb]:bg-white
+                    [&::-moz-range-thumb]:border-0
+                    [&::-moz-range-thumb]:shadow-[0_0_10px_rgba(99,102,241,0.8)]"
                 />
                 <button
                   onClick={() => setDisplacement(d => Math.min(1, Math.round((d + 0.05) * 100) / 100))}
-                  className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95"
+                  className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95 shrink-0"
                   title="Increase Depth"
                 >
                   <Plus size={11} />
                 </button>
-                <span className="text-indigo-300 text-xs font-mono font-medium tabular-nums w-8 text-right">
+                <span className="px-1.5 py-0.5 rounded bg-white/[0.08] text-indigo-300 text-[11px] font-mono font-medium tabular-nums w-10 text-center shrink-0">
                   {Math.round(displacement * 100)}%
                 </span>
               </div>
