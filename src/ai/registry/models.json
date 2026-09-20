@@ -125,6 +125,25 @@
     "supports": []
   },
   {
+    "id": "depth_anything",
+    "version": "2.0.0",
+    "task": "depth-estimation",
+    "name": "Depth Anything V2",
+    "description": "High-quality monocular depth estimation",
+    "sources": [
+      {
+        "type": "huggingface",
+        "url": "https://huggingface.co/mlboydaisuke/Depth-Anything-3-LiteRT/resolve/main/da3_small_gpu_fp16.tflite?download=true"
+      }
+    ],
+    "supports": [
+      "depth-map",
+      "grayscale-depth-map",
+      "colored-depth-map",
+      "3d-depth-view"
+    ]
+  },
+  {
     "id": "midas_small",
     "version": "2.1.0",
     "task": "depth-estimation",

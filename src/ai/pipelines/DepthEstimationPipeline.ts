@@ -44,7 +44,7 @@ export class DepthEstimationPipeline implements TaskPipeline {
     notify('inference', 100);
 
     notify('post-processing', 0);
-    const result = this.postprocess(outputTensor, imageData, depthMode);
+    const result = this.postprocess(outputTensor, imageData, depthMode, modelId);
     notify('post-processing', 100);
 
     notify('encoding', 100);
@@ -87,7 +87,8 @@ export class DepthEstimationPipeline implements TaskPipeline {
   private postprocess(
     outputTensor: any,
     originalImage: ImageData,
-    depthMode: DepthMode
+    depthMode: DepthMode,
+    modelId: string
   ): DepthEstimationResult {
     const width = originalImage.width;
     const height = originalImage.height;
@@ -95,6 +96,14 @@ export class DepthEstimationPipeline implements TaskPipeline {
     const { width: outWidth, height: outHeight } = this.resolveOutputSize(tensorData.length);
     const pixelCount = outWidth * outHeight;
     const normalized = this.normalizeDepth(tensorData, pixelCount);
+
+    // Depth Anything outputs metric depth (smaller = closer).
+    // Our pipeline expects MiDaS convention (larger = closer).
+    if (modelId.includes('depth_anything')) {
+      for (let i = 0; i < pixelCount; i++) {
+        normalized[i] = 1.0 - normalized[i];
+      }
+    }
 
     // Generate the depth map image according to mode
     const outImageData = new ImageData(outWidth, outHeight);
