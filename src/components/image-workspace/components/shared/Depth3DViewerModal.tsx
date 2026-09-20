@@ -29,6 +29,7 @@ import {
 } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import * as fabric from 'fabric';
 import { DepthEstimationResult } from '../../../../ai/types';
 
@@ -120,6 +121,8 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const controlsRef = useRef<OrbitControls | null>(null);
   const meshRef = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshStandardMaterial> | null>(null);
   const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
+  const meshGroupRef = useRef<THREE.Group | null>(null);
+  const transformControlsRef = useRef<TransformControls | null>(null);
 
   // Depth Mask & Overlay Refs
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -139,7 +142,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const [activeTool, setActiveTool] = useState<'orbit' | 'brush' | 'eraser'>('orbit');
   const [brushSize, setBrushSize] = useState(32);
   const [showMaskOverlay, setShowMaskOverlay] = useState(true);
-  const [activeAxes, setActiveAxes] = useState({ x: true, y: true, z: false });
+  const [show3DGlobe, setShow3DGlobe] = useState(false);
 
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -425,6 +428,18 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     controls.autoRotateSpeed = 2.0;
     controlsRef.current = controls;
 
+    const transformControls = new TransformControls(camera, renderer.domElement);
+    transformControls.addEventListener('dragging-changed', function (event) {
+      if (controlsRef.current) {
+        controlsRef.current.enabled = !event.value;
+      }
+    });
+    transformControls.setMode('rotate');
+    transformControls.visible = false;
+    transformControls.enabled = false;
+    scene.add(transformControls);
+    transformControlsRef.current = transformControls;
+
     // Lighting setup
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
     scene.add(ambientLight);
@@ -492,8 +507,12 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     });
     materialRef.current = material;
 
+    const meshGroup = new THREE.Group();
+    scene.add(meshGroup);
+    meshGroupRef.current = meshGroup;
+
     const mesh = new THREE.Mesh(geometry, material);
-    scene.add(mesh);
+    meshGroup.add(mesh);
     meshRef.current = mesh;
 
     // Mask Canvas & Overlay Mesh for visual feedback of painted regions
@@ -520,7 +539,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     const maskMesh = new THREE.Mesh(geometry, maskMaterial);
     maskMesh.visible = activeTool !== 'orbit' && showMaskOverlayRef.current;
-    scene.add(maskMesh);
+    meshGroup.add(maskMesh);
     maskMeshRef.current = maskMesh;
 
     setIsLoaded(true);
@@ -558,16 +577,19 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       maskMaterial.dispose();
       texture.dispose();
       maskTexture.dispose();
+      transformControls.dispose();
       if (renderer.domElement && renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
       }
       meshRef.current = null;
       maskMeshRef.current = null;
+      meshGroupRef.current = null;
       materialRef.current = null;
       rendererRef.current = null;
       sceneRef.current = null;
       cameraRef.current = null;
       controlsRef.current = null;
+      transformControlsRef.current = null;
       maskCanvasRef.current = null;
       maskTextureRef.current = null;
     };
@@ -600,35 +622,42 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     }
   }, [activeTool, showMaskOverlay]);
 
-  // OrbitControls configuration based on activeTool and activeAxes
+  // TransformControls visibility
+  useEffect(() => {
+    if (transformControlsRef.current && meshGroupRef.current) {
+      if (show3DGlobe && activeTool === 'orbit') {
+        transformControlsRef.current.attach(meshGroupRef.current);
+        transformControlsRef.current.visible = true;
+        transformControlsRef.current.enabled = true;
+      } else {
+        transformControlsRef.current.detach();
+        transformControlsRef.current.visible = false;
+        transformControlsRef.current.enabled = false;
+      }
+    }
+  }, [show3DGlobe, activeTool]);
+
+  // OrbitControls configuration based on activeTool and show3DGlobe
   useEffect(() => {
     if (!controlsRef.current) return;
     const controls = controlsRef.current;
     
     if (activeTool === 'orbit') {
-      if (!activeAxes.x && !activeAxes.y) {
-        controls.enableRotate = false;
-      } else {
-        controls.enableRotate = true;
+      controls.enabled = true;
+      controls.enableRotate = true;
         
-        if (activeAxes.x) {
-          controls.minPolarAngle = 0;
-          controls.maxPolarAngle = Math.PI;
-        } else {
-          const currentPolar = controls.getPolarAngle();
-          controls.minPolarAngle = currentPolar;
-          controls.maxPolarAngle = currentPolar;
-        }
-
-        if (activeAxes.y) {
-          controls.minAzimuthAngle = -Infinity;
-          controls.maxAzimuthAngle = Infinity;
-        } else {
-          const currentAzimuth = controls.getAzimuthalAngle();
-          controls.minAzimuthAngle = currentAzimuth;
-          controls.maxAzimuthAngle = currentAzimuth;
-        }
+      if (!show3DGlobe) {
+        // Restrict OrbitControls to Y-axis rotation only
+        controls.minPolarAngle = Math.PI / 2;
+        controls.maxPolarAngle = Math.PI / 2;
+      } else {
+        // Allow full orbital rotation
+        controls.minPolarAngle = 0;
+        controls.maxPolarAngle = Math.PI;
       }
+
+      controls.minAzimuthAngle = -Infinity;
+      controls.maxAzimuthAngle = Infinity;
 
       controls.mouseButtons = {
         LEFT: THREE.MOUSE.ROTATE,
@@ -658,7 +687,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
         TWO: THREE.TOUCH.DOLLY_PAN
       };
     }
-  }, [activeTool, activeAxes]);
+  }, [activeTool, show3DGlobe]);
 
   /**
    * Accurate UV raycasting from client screen position to mesh surface.
@@ -844,14 +873,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     }
 
     if (activeTool === 'orbit') {
-      if (activeAxes.z && e.buttons === 1 && meshRef.current && lastPointerPosRef.current) {
-        const deltaX = e.clientX - lastPointerPosRef.current.x;
-        // Invert deltaX so dragging right rolls clockwise
-        meshRef.current.rotation.z -= deltaX * 0.01;
-        if (maskMeshRef.current) maskMeshRef.current.rotation.z = meshRef.current.rotation.z;
-      }
       lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
-      
       const rect = container.getBoundingClientRect();
       setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
       setIsPointerInCanvas(true);
@@ -1161,35 +1183,20 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
               <div className="flex items-center gap-1 sm:gap-1.5">
                 {/* Tool Mode Segmented Switch */}
                 <div className="flex items-center gap-0.5 bg-white/[0.06] p-0.5 rounded-full border border-white/[0.06]">
-                  {/* Axis Controls for Orbit Tool */}
+                  {/* 3D Globe Toggle for Orbit Tool */}
                   {activeTool === 'orbit' && (
-                    <div className="flex items-center gap-0.5 mr-1 pr-1 border-r border-white/10">
+                    <div className="flex items-center mr-1 pr-1 border-r border-white/10">
                       <button
-                        onClick={() => setActiveAxes(a => ({ ...a, x: !a.x }))}
-                        className={`flex items-center justify-center w-7 h-7 sm:h-7.5 rounded-full text-[11px] font-bold transition-all ${
-                          activeAxes.x ? 'bg-rose-500/20 text-rose-400 border border-rose-500/30' : 'text-white/40 hover:text-white/80'
+                        onClick={() => setShow3DGlobe(v => !v)}
+                        className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
+                          show3DGlobe
+                            ? 'bg-fuchsia-500 text-white shadow-sm shadow-fuchsia-500/40 font-semibold'
+                            : 'text-white/60 hover:text-white hover:bg-white/10'
                         }`}
-                        title="Toggle X Axis (Tilt)"
+                        title="Toggle 3D Rotation Gizmo"
                       >
-                        X
-                      </button>
-                      <button
-                        onClick={() => setActiveAxes(a => ({ ...a, y: !a.y }))}
-                        className={`flex items-center justify-center w-7 h-7 sm:h-7.5 rounded-full text-[11px] font-bold transition-all ${
-                          activeAxes.y ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30' : 'text-white/40 hover:text-white/80'
-                        }`}
-                        title="Toggle Y Axis (Pan)"
-                      >
-                        Y
-                      </button>
-                      <button
-                        onClick={() => setActiveAxes(a => ({ ...a, z: !a.z }))}
-                        className={`flex items-center justify-center w-7 h-7 sm:h-7.5 rounded-full text-[11px] font-bold transition-all ${
-                          activeAxes.z ? 'bg-blue-500/20 text-blue-400 border border-blue-500/30' : 'text-white/40 hover:text-white/80'
-                        }`}
-                        title="Toggle Z Axis (Roll)"
-                      >
-                        Z
+                        <Orbit size={13} />
+                        <span className="hidden sm:inline">3D Globe</span>
                       </button>
                     </div>
                   )}
