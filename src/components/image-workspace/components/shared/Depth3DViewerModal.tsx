@@ -25,7 +25,10 @@ import {
   Redo2,
   Trash2,
   Eye,
-  EyeOff
+  EyeOff,
+  Globe,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
@@ -123,12 +126,23 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const materialRef = useRef<THREE.MeshStandardMaterial | null>(null);
   const meshGroupRef = useRef<THREE.Group | null>(null);
   const transformControlsRef = useRef<TransformControls | null>(null);
+  const gizmoHelperRef = useRef<THREE.Object3D | null>(null);
+  const gizmoAnchorRef = useRef<THREE.Group | null>(null);
+  const isGizmoDraggingRef = useRef(false);
+  const pivotPointRef = useRef(new THREE.Vector3());
+  const startMeshPosRef = useRef(new THREE.Vector3());
+  const startMeshQuatRef = useRef(new THREE.Quaternion());
+  const startAnchorQuatRef = useRef(new THREE.Quaternion());
+  const deltaQuatRef = useRef(new THREE.Quaternion());
+  const offsetRef = useRef(new THREE.Vector3());
+  const isSpacePressedRef = useRef(false);
 
   // Depth Mask & Overlay Refs
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const maskTextureRef = useRef<THREE.CanvasTexture | null>(null);
   const maskMeshRef = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null>(null);
   const planeDimsRef = useRef<{ width: number; height: number }>({ width: 1.15, height: 1.15 });
+  const isTwoFingerTouchingRef = useRef(false);
 
   // Undo / Redo stacks (STRICTLY LOCAL TO MODAL)
   const undoStackRef = useRef<ImageData[]>([]);
@@ -139,10 +153,15 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const lastPointerPosRef = useRef<{ x: number; y: number } | null>(null);
 
   // Tools & Display State
-  const [activeTool, setActiveTool] = useState<'orbit' | 'brush' | 'eraser'>('orbit');
+  const [activeTool, setActiveTool] = useState<'orbit' | 'pan' | 'brush' | 'eraser'>('pan');
   const [brushSize, setBrushSize] = useState(32);
   const [showMaskOverlay, setShowMaskOverlay] = useState(true);
-  const [show3DGlobe, setShow3DGlobe] = useState(false);
+  const [showGizmo, setShowGizmo] = useState(false);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+
+  const toggleFullscreen = useCallback(() => {
+    setIsFullscreen(prev => !prev);
+  }, []);
 
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
@@ -161,6 +180,8 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   // Ref to hold current state for handlers
   const showMaskOverlayRef = useRef(showMaskOverlay);
   showMaskOverlayRef.current = showMaskOverlay;
+  const showGizmoRef = useRef(showGizmo);
+  showGizmoRef.current = showGizmo;
 
   /**
    * Updates mesh vertex Z values based on depthResult, displacement, inversion,
@@ -305,6 +326,28 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       const ctrlOrCmd = e.ctrlKey || e.metaKey;
       const key = e.key.toLowerCase();
 
+      if (e.key === ' ') {
+        if (!isSpacePressedRef.current && activeTool !== 'pan') {
+          isSpacePressedRef.current = true;
+          if (controlsRef.current) {
+            controlsRef.current.mouseButtons = {
+              LEFT: THREE.MOUSE.PAN,
+              MIDDLE: THREE.MOUSE.DOLLY,
+              RIGHT: THREE.MOUSE.ROTATE
+            };
+          }
+        }
+        return;
+      }
+
+      // Fullscreen
+      if (key === 'f' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleFullscreen();
+        return;
+      }
+
       // Undo: Ctrl+Z (without Shift)
       if (ctrlOrCmd && key === 'z' && !e.shiftKey) {
         e.preventDefault();
@@ -323,12 +366,16 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
         return;
       }
 
-      // Close modal on Escape
+      // Close modal on Escape, or exit fullscreen first if active
       if (e.key === 'Escape') {
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        onClose();
+        if (isFullscreen) {
+          toggleFullscreen();
+        } else {
+          onClose();
+        }
         return;
       }
 
@@ -346,7 +393,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
         return;
       }
 
-      // Tool switches: B for brush, E for eraser, V for orbit / navigate
+      // Tool switches: B for brush, E for eraser
       if (key === 'b' && !ctrlOrCmd) {
         e.preventDefault();
         e.stopPropagation();
@@ -359,10 +406,29 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
         setActiveTool('eraser');
         return;
       }
-      if (key === 'v' && !ctrlOrCmd) {
+      // O / V for orbit / gizmo
+      if ((key === 'o' || key === 'v') && !ctrlOrCmd) {
         e.preventDefault();
         e.stopPropagation();
-        setActiveTool('orbit');
+        setActiveTool('pan');
+        setShowGizmo(true);
+        return;
+      }
+      // M / H for move (pan)
+      if ((key === 'm' || key === 'h') && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        setActiveTool('pan');
+        return;
+      }
+      // G for globe toggle
+      if (key === 'g' && !ctrlOrCmd) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (activeTool === 'brush' || activeTool === 'eraser') {
+          setActiveTool('pan');
+        }
+        setShowGizmo(s => !s);
         return;
       }
       if (key === 'x' && !ctrlOrCmd) {
@@ -373,9 +439,20 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       }
     };
 
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.key === ' ') {
+        isSpacePressedRef.current = false;
+        setActiveTool(t => t); // force re-eval of effect
+      }
+    };
+
     window.addEventListener('keydown', handleKeyDown, { capture: true });
-    return () => window.removeEventListener('keydown', handleKeyDown, { capture: true });
-  }, [handleUndo, handleRedo, onClose]);
+    window.addEventListener('keyup', handleKeyUp, { capture: true });
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown, { capture: true });
+      window.removeEventListener('keyup', handleKeyUp, { capture: true });
+    };
+  }, [handleUndo, handleRedo, onClose, activeTool]);
 
   // Main Three.js setup
   useEffect(() => {
@@ -428,17 +505,230 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     controls.autoRotateSpeed = 2.0;
     controlsRef.current = controls;
 
+    // Dynamic anchor for TransformControls that follows view target so gizmo is never left behind
+    const gizmoAnchor = new THREE.Group();
+    scene.add(gizmoAnchor);
+    gizmoAnchorRef.current = gizmoAnchor;
+
+    // TransformControls for rotation gizmo
     const transformControls = new TransformControls(camera, renderer.domElement);
-    transformControls.addEventListener('dragging-changed', function (event) {
+    transformControls.setMode('rotate');
+    transformControls.space = 'local';
+    transformControls.size = 1.05;
+    transformControls.showX = true;
+    transformControls.showY = true;
+    transformControls.showZ = true;
+    transformControls.showE = true;
+    transformControls.setColors(0xef4444, 0x22c55e, 0x3b82f6, 0xf59e0b);
+
+    const gizmoHelper = transformControls.getHelper();
+    gizmoHelper.visible = false;
+    scene.add(gizmoHelper);
+    gizmoHelperRef.current = gizmoHelper;
+
+    transformControls.addEventListener('dragging-changed', (event: any) => {
+      const isDragging = !!event.value;
+      isGizmoDraggingRef.current = isDragging;
       if (controlsRef.current) {
-        controlsRef.current.enabled = !event.value;
+        controlsRef.current.enabled = !isDragging;
+      }
+      if (containerRef.current) {
+        containerRef.current.style.cursor = isDragging ? 'grabbing' : '';
+      }
+      if (isDragging && gizmoAnchorRef.current && meshGroupRef.current) {
+        pivotPointRef.current.copy(gizmoAnchorRef.current.position);
+        startMeshPosRef.current.copy(meshGroupRef.current.position);
+        startMeshQuatRef.current.copy(meshGroupRef.current.quaternion);
+        startAnchorQuatRef.current.copy(gizmoAnchorRef.current.quaternion);
       }
     });
-    transformControls.setMode('rotate');
-    transformControls.visible = false;
+
+    transformControls.addEventListener('mouseDown', () => {
+      isGizmoDraggingRef.current = true;
+      if (controlsRef.current) {
+        controlsRef.current.enabled = false;
+      }
+      if (gizmoAnchorRef.current && meshGroupRef.current) {
+        pivotPointRef.current.copy(gizmoAnchorRef.current.position);
+        startMeshPosRef.current.copy(meshGroupRef.current.position);
+        startMeshQuatRef.current.copy(meshGroupRef.current.quaternion);
+        startAnchorQuatRef.current.copy(gizmoAnchorRef.current.quaternion);
+      }
+    });
+
+    transformControls.addEventListener('change', () => {
+      if (isGizmoDraggingRef.current && gizmoAnchorRef.current && meshGroupRef.current) {
+        // Delta rotation from anchor start orientation
+        deltaQuatRef.current
+          .copy(gizmoAnchorRef.current.quaternion)
+          .multiply(startAnchorQuatRef.current.clone().invert());
+
+        // Rotate meshGroup quaternion
+        meshGroupRef.current.quaternion.copy(deltaQuatRef.current).multiply(startMeshQuatRef.current);
+
+        // Orbit meshGroup position around the current pivot point
+        offsetRef.current.copy(startMeshPosRef.current).sub(pivotPointRef.current);
+        offsetRef.current.applyQuaternion(deltaQuatRef.current);
+        meshGroupRef.current.position.copy(pivotPointRef.current).add(offsetRef.current);
+      }
+    });
+
+    transformControls.addEventListener('mouseUp', () => {
+      isGizmoDraggingRef.current = false;
+      if (controlsRef.current) {
+        controlsRef.current.enabled = true;
+      }
+    });
+
+    transformControls.addEventListener('axis-changed', (event: any) => {
+      if (containerRef.current && !isGizmoDraggingRef.current) {
+        containerRef.current.style.cursor = event.value ? 'pointer' : '';
+      }
+    });
+
     transformControls.enabled = false;
-    scene.add(transformControls);
     transformControlsRef.current = transformControls;
+
+    const handleCapturePointerDown = () => {
+      if (transformControlsRef.current?.axis && controlsRef.current) {
+        controlsRef.current.enabled = false;
+      }
+    };
+    container.addEventListener('pointerdown', handleCapturePointerDown, { capture: true });
+
+    // Two-finger touch gesture handling: in-plane rotation (outer circle), pinch-zoom, and pan
+    let isTwoFingerTouching = false;
+    let lastTouchAngle = 0;
+    let lastTouchDist = 0;
+    let lastTouchMid = { x: 0, y: 0 };
+
+    const handleTouchStart = (e: TouchEvent) => {
+      if (e.touches.length >= 2) {
+        isTwoFingerTouching = true;
+        isTwoFingerTouchingRef.current = true;
+
+        // Immediately cancel any active stroke and revert canvas snapshot to prevent accidental paint marks
+        if (isPaintingRef.current && strokeStartSnapshotRef.current && maskCanvasRef.current) {
+          const ctx = maskCanvasRef.current.getContext('2d');
+          if (ctx) {
+            ctx.putImageData(strokeStartSnapshotRef.current, 0, 0);
+            updateMeshVertices();
+          }
+        }
+        isPaintingRef.current = false;
+
+        const p0 = e.touches[0];
+        const p1 = e.touches[1];
+        lastTouchAngle = Math.atan2(p1.clientY - p0.clientY, p1.clientX - p0.clientX);
+        lastTouchDist = Math.hypot(p1.clientX - p0.clientX, p1.clientY - p0.clientY);
+        lastTouchMid = {
+          x: (p0.clientX + p1.clientX) / 2,
+          y: (p0.clientY + p1.clientY) / 2
+        };
+
+        if (controlsRef.current) {
+          controlsRef.current.enabled = false;
+        }
+        if (transformControlsRef.current && showGizmoRef.current) {
+          transformControlsRef.current.axis = 'E'; // Visual highlight on outer circle
+        }
+      }
+    };
+
+    const handleTouchMove = (e: TouchEvent) => {
+      if (isTwoFingerTouching && e.touches.length >= 2) {
+        e.preventDefault();
+        e.stopPropagation();
+
+        const p0 = e.touches[0];
+        const p1 = e.touches[1];
+        const currentAngle = Math.atan2(p1.clientY - p0.clientY, p1.clientX - p0.clientX);
+        const currentDist = Math.hypot(p1.clientX - p0.clientX, p1.clientY - p0.clientY);
+        const midX = (p0.clientX + p1.clientX) / 2;
+        const midY = (p0.clientY + p1.clientY) / 2;
+
+        let deltaAngle = currentAngle - lastTouchAngle;
+        while (deltaAngle > Math.PI) deltaAngle -= 2 * Math.PI;
+        while (deltaAngle < -Math.PI) deltaAngle += 2 * Math.PI;
+
+        const camera = cameraRef.current;
+        const meshGroup = meshGroupRef.current;
+        const controls = controlsRef.current;
+
+        if (camera && meshGroup && controls) {
+          // 1. In-plane rotation matching the outer circle (E) in the gizmo
+          if (Math.abs(deltaAngle) > 0.001) {
+            const camDir = camera.getWorldDirection(new THREE.Vector3()).normalize();
+            const stepQuat = new THREE.Quaternion().setFromAxisAngle(camDir, deltaAngle);
+
+            meshGroup.quaternion.premultiply(stepQuat);
+
+            // Orbit meshGroup position around the view target
+            const offset = meshGroup.position.clone().sub(controls.target);
+            offset.applyQuaternion(stepQuat);
+            meshGroup.position.copy(controls.target).add(offset);
+
+            if (gizmoAnchorRef.current) {
+              gizmoAnchorRef.current.quaternion.copy(meshGroup.quaternion);
+            }
+          }
+
+          // 2. Pinch zoom
+          if (lastTouchDist > 0 && currentDist > 0) {
+            const distRatio = currentDist / lastTouchDist;
+            if (Math.abs(distRatio - 1) > 0.005) {
+              const camOffset = camera.position.clone().sub(controls.target);
+              const curDist = camOffset.length();
+              const newDist = Math.max(controls.minDistance, Math.min(controls.maxDistance, curDist / distRatio));
+              camOffset.setLength(newDist);
+              camera.position.copy(controls.target).add(camOffset);
+            }
+          }
+
+          // 3. Two-finger translation (pan)
+          const deltaMidX = midX - lastTouchMid.x;
+          const deltaMidY = midY - lastTouchMid.y;
+          if (Math.abs(deltaMidX) > 0.5 || Math.abs(deltaMidY) > 0.5) {
+            const vRight = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 0);
+            const vUp = new THREE.Vector3().setFromMatrixColumn(camera.matrix, 1);
+            const targetDist = camera.position.distanceTo(controls.target) * Math.tan((camera.fov / 2) * (Math.PI / 180));
+            const panFactor = (2 * targetDist) / (container.clientHeight || 500);
+
+            const panVec = vRight.multiplyScalar(-deltaMidX * panFactor).add(vUp.multiplyScalar(deltaMidY * panFactor));
+            camera.position.add(panVec);
+            controls.target.add(panVec);
+          }
+        }
+
+        lastTouchAngle = currentAngle;
+        lastTouchDist = currentDist;
+        lastTouchMid = { x: midX, y: midY };
+      }
+    };
+
+    const handleTouchEnd = (e: TouchEvent) => {
+      if (e.touches.length < 2) {
+        if (isTwoFingerTouching) {
+          isTwoFingerTouching = false;
+          if (transformControlsRef.current) {
+            transformControlsRef.current.axis = null;
+          }
+          if (controlsRef.current) {
+            controlsRef.current.enabled = true;
+          }
+        }
+        if (e.touches.length === 0) {
+          setTimeout(() => {
+            isTwoFingerTouchingRef.current = false;
+          }, 150);
+        }
+      }
+    };
+
+    container.addEventListener('touchstart', handleTouchStart, { passive: false });
+    container.addEventListener('touchmove', handleTouchMove, { passive: false });
+    container.addEventListener('touchend', handleTouchEnd, { passive: false });
+    container.addEventListener('touchcancel', handleTouchEnd, { passive: false });
 
     // Lighting setup
     const ambientLight = new THREE.AmbientLight(0xffffff, 0.7);
@@ -538,7 +828,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     });
 
     const maskMesh = new THREE.Mesh(geometry, maskMaterial);
-    maskMesh.visible = activeTool !== 'orbit' && showMaskOverlayRef.current;
+    maskMesh.visible = (activeTool === 'brush' || activeTool === 'eraser') && showMaskOverlayRef.current;
     meshGroup.add(maskMesh);
     maskMeshRef.current = maskMesh;
 
@@ -549,6 +839,13 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     const animate = () => {
       rafId = requestAnimationFrame(animate);
       controls.update();
+
+      // Gizmo anchor dynamically follows camera target so it's always centered on the visible view
+      if (!isGizmoDraggingRef.current && gizmoAnchorRef.current && controlsRef.current && meshGroupRef.current) {
+        gizmoAnchorRef.current.position.copy(controlsRef.current.target);
+        gizmoAnchorRef.current.quaternion.copy(meshGroupRef.current.quaternion);
+      }
+
       renderer.render(scene, camera);
     };
     animate();
@@ -577,6 +874,19 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       maskMaterial.dispose();
       texture.dispose();
       maskTexture.dispose();
+      container.removeEventListener('pointerdown', handleCapturePointerDown, { capture: true });
+      container.removeEventListener('touchstart', handleTouchStart);
+      container.removeEventListener('touchmove', handleTouchMove);
+      container.removeEventListener('touchend', handleTouchEnd);
+      container.removeEventListener('touchcancel', handleTouchEnd);
+      if (gizmoHelperRef.current && sceneRef.current) {
+        sceneRef.current.remove(gizmoHelperRef.current);
+      }
+      if (gizmoAnchorRef.current && sceneRef.current) {
+        sceneRef.current.remove(gizmoAnchorRef.current);
+      }
+      gizmoHelperRef.current = null;
+      gizmoAnchorRef.current = null;
       transformControls.dispose();
       if (renderer.domElement && renderer.domElement.parentNode === container) {
         container.removeChild(renderer.domElement);
@@ -618,76 +928,65 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   // Mask overlay visibility toggle: only visible in brush or eraser mode
   useEffect(() => {
     if (maskMeshRef.current) {
-      maskMeshRef.current.visible = activeTool !== 'orbit' && showMaskOverlay;
+      maskMeshRef.current.visible = (activeTool === 'brush' || activeTool === 'eraser') && showMaskOverlay;
     }
   }, [activeTool, showMaskOverlay]);
 
-  // TransformControls visibility
+  // TransformControls visibility and attachment
   useEffect(() => {
-    if (transformControlsRef.current && meshGroupRef.current) {
-      if (show3DGlobe && activeTool === 'orbit') {
-        transformControlsRef.current.attach(meshGroupRef.current);
-        transformControlsRef.current.visible = true;
+    if (transformControlsRef.current && gizmoAnchorRef.current && gizmoHelperRef.current) {
+      if (showGizmo && (activeTool === 'pan' || activeTool === 'orbit')) {
+        if (controlsRef.current && meshGroupRef.current) {
+          gizmoAnchorRef.current.position.copy(controlsRef.current.target);
+          gizmoAnchorRef.current.quaternion.copy(meshGroupRef.current.quaternion);
+        }
+        transformControlsRef.current.attach(gizmoAnchorRef.current);
         transformControlsRef.current.enabled = true;
+        gizmoHelperRef.current.visible = true;
       } else {
         transformControlsRef.current.detach();
-        transformControlsRef.current.visible = false;
         transformControlsRef.current.enabled = false;
+        gizmoHelperRef.current.visible = false;
       }
     }
-  }, [show3DGlobe, activeTool]);
+  }, [showGizmo, activeTool]);
 
-  // OrbitControls configuration based on activeTool and show3DGlobe
+  // OrbitControls configuration: Screen-space Pan for navigation, Rotation ONLY via gizmo lines
   useEffect(() => {
     if (!controlsRef.current) return;
     const controls = controlsRef.current;
     
-    if (activeTool === 'orbit') {
-      controls.enabled = true;
-      controls.enableRotate = true;
-        
-      if (!show3DGlobe) {
-        // Restrict OrbitControls to Y-axis rotation only
-        controls.minPolarAngle = Math.PI / 2;
-        controls.maxPolarAngle = Math.PI / 2;
-      } else {
-        // Allow full orbital rotation
-        controls.minPolarAngle = 0;
-        controls.maxPolarAngle = Math.PI;
-      }
-
-      controls.minAzimuthAngle = -Infinity;
-      controls.maxAzimuthAngle = Infinity;
-
+    controls.enabled = true;
+    controls.enableRotate = false; // Strictly disabled: rotating ONLY happens via gizmo lines!
+    controls.enablePan = true;
+    controls.screenSpacePanning = true; // Natural screen-space navigation (top/bottom/left/right)
+    controls.panSpeed = 1.0;
+    controls.enableZoom = true;
+    controls.zoomSpeed = 1.0;
+    
+    if (activeTool === 'pan' || activeTool === 'orbit') {
       controls.mouseButtons = {
-        LEFT: THREE.MOUSE.ROTATE,
+        LEFT: THREE.MOUSE.PAN,
         MIDDLE: THREE.MOUSE.DOLLY,
         RIGHT: THREE.MOUSE.PAN
       };
       controls.touches = {
-        ONE: THREE.TOUCH.ROTATE,
+        ONE: THREE.TOUCH.PAN,
         TWO: THREE.TOUCH.DOLLY_PAN
       };
     } else {
       // When in Brush or Eraser mode:
-      controls.enabled = true;
-      controls.enableRotate = true;
-      controls.minPolarAngle = 0;
-      controls.maxPolarAngle = Math.PI;
-      controls.minAzimuthAngle = -Infinity;
-      controls.maxAzimuthAngle = Infinity;
-      
       controls.mouseButtons = {
         LEFT: null as any,
         MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.ROTATE
+        RIGHT: THREE.MOUSE.PAN
       };
       controls.touches = {
         ONE: null as any,
         TWO: THREE.TOUCH.DOLLY_PAN
       };
     }
-  }, [activeTool, show3DGlobe]);
+  }, [activeTool]);
 
   /**
    * Accurate UV raycasting from client screen position to mesh surface.
@@ -796,7 +1095,8 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
    * Pointer down handler: initiates brush or eraser stroke.
    */
   const handlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
-    if (activeTool === 'orbit' || e.button !== 0) return;
+    if (activeTool !== 'brush' && activeTool !== 'eraser') return;
+    if (e.button !== 0 || isTwoFingerTouchingRef.current) return;
 
     // Strict guard: NEVER paint if clicking on the toolbar, buttons, sliders, or UI overlays
     const target = e.target as HTMLElement | null;
@@ -855,6 +1155,8 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
    * Pointer move handler: paints along stroke path and updates circular brush cursor.
    */
   const handlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeTool !== 'brush' && activeTool !== 'eraser') return;
+
     const container = containerRef.current;
     if (!container) return;
 
@@ -866,17 +1168,6 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       if (!isPaintingRef.current) {
         setIsPointerInCanvas(false);
       }
-      if (activeTool === 'orbit') {
-        lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
-      }
-      return;
-    }
-
-    if (activeTool === 'orbit') {
-      lastPointerPosRef.current = { x: e.clientX, y: e.clientY };
-      const rect = container.getBoundingClientRect();
-      setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
-      setIsPointerInCanvas(true);
       return;
     }
 
@@ -910,6 +1201,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
    * Pointer up handler: finishes stroke and registers with undo stack.
    */
   const handlePointerUp = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (activeTool !== 'brush' && activeTool !== 'eraser') return;
     try {
       if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
@@ -941,6 +1233,14 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     cameraRef.current.position.set(0, 0, 1.6);
     controlsRef.current.target.set(0, 0, 0);
     controlsRef.current.reset();
+    if (meshGroupRef.current) {
+      meshGroupRef.current.quaternion.identity();
+      meshGroupRef.current.position.set(0, 0, 0);
+    }
+    if (gizmoAnchorRef.current) {
+      gizmoAnchorRef.current.position.set(0, 0, 0);
+      gizmoAnchorRef.current.quaternion.identity();
+    }
   }, []);
 
   /**
@@ -948,10 +1248,15 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
    */
   const getCleanCroppedCanvas = useCallback(() => {
     if (!rendererRef.current || !sceneRef.current || !cameraRef.current) return null;
-    const wasVisible = maskMeshRef.current?.visible;
+    const wasGizmoVisible = gizmoHelperRef.current?.visible;
+    if (gizmoHelperRef.current) gizmoHelperRef.current.visible = false;
+    const wasMaskVisible = maskMeshRef.current?.visible;
     if (maskMeshRef.current) maskMeshRef.current.visible = false;
+
     const cropCanvas = getCropped3DCanvas(rendererRef.current, sceneRef.current, cameraRef.current);
-    if (maskMeshRef.current) maskMeshRef.current.visible = !!wasVisible;
+
+    if (gizmoHelperRef.current) gizmoHelperRef.current.visible = !!wasGizmoVisible;
+    if (maskMeshRef.current) maskMeshRef.current.visible = !!wasMaskVisible;
     return cropCanvas;
   }, []);
 
@@ -1074,12 +1379,18 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
   return createPortal(
     <div
-      className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6 select-none"
-      onClick={onClose}
+      className={`fixed inset-0 z-[99999] flex items-center justify-center select-none transition-all duration-200 ${
+        isFullscreen ? 'p-0 m-0 w-full h-full bg-[#0c0c14]' : 'bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6'
+      }`}
+      onClick={isFullscreen ? undefined : onClose}
     >
       <div
         data-isolate-modal="true"
-        className="relative w-full sm:max-w-[1150px] h-full sm:h-[88vh] sm:max-h-[850px] sm:min-h-[500px] bg-[#0c0c14] rounded-none sm:rounded-2xl border-0 sm:border border-white/10 shadow-none sm:shadow-[0_25px_60px_rgba(0,0,0,0.8)] flex flex-col overflow-hidden"
+        className={`relative bg-[#0c0c14] flex flex-col overflow-hidden transition-all duration-200 ${
+          isFullscreen
+            ? 'w-full h-full max-w-none max-h-none rounded-none border-0 shadow-none'
+            : 'w-full sm:max-w-[1150px] h-full sm:h-[88vh] sm:max-h-[850px] sm:min-h-[500px] rounded-none sm:rounded-2xl border-0 sm:border border-white/10 shadow-none sm:shadow-[0_25px_60px_rgba(0,0,0,0.8)]'
+        }`}
         onClick={e => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -1146,6 +1457,19 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
             <div className="w-px h-5 bg-white/10 mx-0.5 sm:mx-1" />
 
+            {/* Fullscreen Button */}
+            <button
+              onClick={toggleFullscreen}
+              className={`hidden md:flex w-8 h-8 rounded-lg items-center justify-center transition-all border ${
+                isFullscreen
+                  ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/40 hover:bg-indigo-600/40 hover:text-white'
+                  : 'bg-white/5 hover:bg-white/10 text-white/50 hover:text-white border-white/5'
+              }`}
+              title={isFullscreen ? "Exit Fullscreen (F / Esc)" : "Fullscreen (F)"}
+            >
+              {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+            </button>
+
             {/* Close Button */}
             <button
               onClick={onClose}
@@ -1183,33 +1507,15 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
               <div className="flex items-center gap-1 sm:gap-1.5">
                 {/* Tool Mode Segmented Switch */}
                 <div className="flex items-center gap-0.5 bg-white/[0.06] p-0.5 rounded-full border border-white/[0.06]">
-                  {/* 3D Globe Toggle for Orbit Tool */}
-                  {activeTool === 'orbit' && (
-                    <div className="flex items-center mr-1 pr-1 border-r border-white/10">
-                      <button
-                        onClick={() => setShow3DGlobe(v => !v)}
-                        className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                          show3DGlobe
-                            ? 'bg-fuchsia-500 text-white shadow-sm shadow-fuchsia-500/40 font-semibold'
-                            : 'text-white/60 hover:text-white hover:bg-white/10'
-                        }`}
-                        title="Toggle 3D Rotation Gizmo"
-                      >
-                        <Orbit size={13} />
-                        <span className="hidden sm:inline">3D Globe</span>
-                      </button>
-                    </div>
-                  )}
-
                   {/* Move Tool */}
                   <button
-                    onClick={() => setActiveTool('orbit')}
+                    onClick={() => { setActiveTool('pan'); setShowGizmo(false); }}
                     className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                      activeTool === 'orbit'
+                      activeTool === 'pan' || activeTool === 'orbit'
                         ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 font-semibold'
                         : 'text-white/60 hover:text-white hover:bg-white/10'
                     }`}
-                    title="Move Tool (V) - Drag to rotate, 2 fingers to zoom/pan"
+                    title="Pan/Move Tool (M) - Drag to pan, scroll to zoom"
                   >
                     <Move size={13} />
                     <span className="hidden sm:inline">Move</span>
@@ -1217,7 +1523,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
                   {/* Depth Brush */}
                   <button
-                    onClick={() => setActiveTool('brush')}
+                    onClick={() => { setActiveTool('brush'); setShowGizmo(false); }}
                     className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
                       activeTool === 'brush'
                         ? 'bg-red-500 text-white shadow-sm shadow-red-500/40 font-semibold'
@@ -1231,7 +1537,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
                   {/* Eraser */}
                   <button
-                    onClick={() => setActiveTool('eraser')}
+                    onClick={() => { setActiveTool('eraser'); setShowGizmo(false); }}
                     className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
                       activeTool === 'eraser'
                         ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/40 font-semibold'
@@ -1245,7 +1551,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                 </div>
 
                 {/* Inline Brush Size for Desktop (hidden on mobile, shown on sm+) */}
-                {activeTool !== 'orbit' && (
+                {(activeTool === 'brush' || activeTool === 'eraser') && (
                   <div className="hidden sm:flex items-center gap-1.5 h-7.5 px-2.5 bg-white/[0.06] rounded-full border border-white/[0.06] animate-fadeIn">
                     <button
                       onClick={() => setBrushSize(s => Math.max(5, s - 5))}
@@ -1331,7 +1637,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
                 {/* Mask Overlay Visibility & Clear */}
                 <div className="flex items-center gap-0.5">
-                  {activeTool !== 'orbit' && (
+                  {(activeTool === 'brush' || activeTool === 'eraser') && (
                     <button
                       onClick={() => setShowMaskOverlay(v => !v)}
                       className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
@@ -1358,7 +1664,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
               </div>
 
               {/* Row 2: Integrated Mobile Modern Slider (seamlessly inside the same card, no second floating pill!) */}
-              {activeTool !== 'orbit' && (
+              {(activeTool === 'brush' || activeTool === 'eraser') && (
                 <div className="sm:hidden flex items-center justify-between gap-2.5 w-full pt-1 px-1 border-t border-white/[0.08] animate-fadeIn">
                   <button
                     onClick={() => setBrushSize(s => Math.max(5, s - 5))}
@@ -1419,7 +1725,9 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
           <div
             ref={containerRef}
             className={`w-full h-full ${
-              activeTool === 'orbit' ? 'cursor-grab active:cursor-grabbing' : 'cursor-none'
+              activeTool === 'brush' || activeTool === 'eraser'
+                ? 'cursor-none'
+                : 'cursor-grab active:cursor-grabbing'
             }`}
             style={{ touchAction: 'none' }}
             onPointerDown={handlePointerDown}
@@ -1439,7 +1747,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
           />
 
           {/* High-precision Brush Indicator Cursor */}
-          {activeTool !== 'orbit' && isPointerInCanvas && (
+          {(activeTool === 'brush' || activeTool === 'eraser') && isPointerInCanvas && (
             <div
               className="pointer-events-none absolute rounded-full border shadow-[0_0_12px_rgba(0,0,0,0.6)] -translate-x-1/2 -translate-y-1/2 transition-[width,height] duration-75 z-20"
               style={{
@@ -1472,21 +1780,21 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
           {/* Quick interactive floating guide */}
           <div className="absolute bottom-3 left-3 pointer-events-none hidden md:flex items-center gap-3 px-3.5 py-1.5 rounded-xl bg-black/75 backdrop-blur-md border border-white/10 text-[11px] text-white/80 shadow-lg z-10">
-            {activeTool === 'orbit' ? (
+            {activeTool === 'pan' || activeTool === 'orbit' ? (
               <>
                 <span className="flex items-center gap-1.5">
-                  <Orbit size={13} className="text-indigo-400" />
-                  <span>Rotate: Drag Left</span>
+                  <Move size={13} className="text-indigo-400" />
+                  <span>Pan: Drag (M)</span>
                 </span>
                 <span className="text-white/20">|</span>
                 <span className="flex items-center gap-1.5">
-                  <Move size={13} className="text-cyan-400" />
-                  <span>Pan: Drag Right</span>
+                  <Globe size={13} className="text-indigo-400" />
+                  <span>Rotate: {showGizmo ? 'Drag Gizmo Lines / 2-Finger Twist' : 'Enable Gizmo (G)'}</span>
                 </span>
                 <span className="text-white/20">|</span>
                 <span className="flex items-center gap-1.5">
                   <ZoomIn size={13} className="text-purple-400" />
-                  <span>Zoom: Scroll</span>
+                  <span>Zoom: Scroll / Pinch</span>
                 </span>
               </>
             ) : (
@@ -1496,32 +1804,49 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   <span>Left Drag: {activeTool === 'brush' ? 'Flatten Depth' : 'Restore Depth'}</span>
                 </span>
                 <span className="text-white/20">|</span>
-                <span className="flex items-center gap-1.5">
-                  <Orbit size={13} className="text-indigo-400" />
-                  <span>Right Drag: Rotate 3D</span>
-                </span>
-                <span className="text-white/20">|</span>
                 <span className="text-white/60 font-mono text-[10px]">
                   [ ] Size · Ctrl+Z Undo
                 </span>
               </>
             )}
           </div>
+
+          {/* Bottom Right Globe / Gizmo Widget */}
+          {isLoaded && (
+            <div className="absolute bottom-3 right-3 z-30 flex items-center gap-2">
+              <button
+                onClick={() => {
+                  if (activeTool === 'brush' || activeTool === 'eraser') {
+                    setActiveTool('pan');
+                  }
+                  setShowGizmo(s => !s);
+                }}
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 border ${
+                  showGizmo
+                    ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-[0_0_16px_rgba(99,102,241,0.5)] border-indigo-400/50 scale-105 ring-2 ring-indigo-400/30'
+                    : 'bg-[#12121e]/85 backdrop-blur-xl text-white/70 hover:text-white border-white/15 hover:border-white/30 hover:bg-[#1a1a2e]/90 shadow-md hover:shadow-black/60 active:scale-95'
+                }`}
+                title={showGizmo ? "Hide 3D Rotation Gizmo (G)" : "Show 3D Rotation Gizmo (G)"}
+              >
+                <Globe size={16} strokeWidth={1.85} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Bottom Controls Bar */}
-        <div className="px-3 sm:px-5 py-2.5 sm:py-3.5 bg-[#090911] border-t border-white/[0.08] shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5 sm:gap-3 select-none pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+        <div className="px-2.5 sm:px-5 py-2 sm:py-3.5 bg-[#090911] border-t border-white/[0.08] shrink-0 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3 select-none pb-[max(0.75rem,env(safe-area-inset-bottom))]">
           {/* Top Row on Mobile / Left on Desktop: Depth Slider & Reset */}
-          <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3">
-            <div className="flex items-center gap-1.5 sm:gap-2 flex-1 sm:flex-initial">
-              <span className="flex items-center gap-1.5 text-white/50 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap">
+          <div className="flex items-center justify-between sm:justify-start gap-2 sm:gap-3 w-full sm:w-auto min-w-0">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-1 min-w-0 sm:flex-initial">
+              <span className="flex items-center gap-1.5 text-white/50 text-[10px] sm:text-[11px] font-semibold uppercase tracking-wider whitespace-nowrap shrink-0">
                 <Sliders size={13} className="text-indigo-400" />
                 <span>Depth</span>
               </span>
-              <div className="flex items-center gap-1 sm:gap-1.5 bg-white/5 px-2 py-1 rounded-xl border border-white/10 flex-1 sm:flex-initial">
+              <div className="flex items-center gap-1 sm:gap-1.5 bg-white/5 px-1.5 sm:px-2 py-1 rounded-xl border border-white/10 flex-1 min-w-0 sm:flex-initial">
                 <button
                   onClick={() => setDisplacement(d => Math.max(0, Math.round((d - 0.05) * 100) / 100))}
-                  className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95 shrink-0"
+                  className="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95 shrink-0"
                   title="Decrease Depth"
                 >
                   <Minus size={11} />
@@ -1534,7 +1859,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   value={displacement}
                   onChange={e => setDisplacement(parseFloat(e.target.value))}
                   style={{ background: depthTrackGradient }}
-                  className="flex-1 sm:w-28 md:w-32 h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-all
+                  className="flex-1 min-w-0 w-full sm:w-28 md:w-32 h-1.5 rounded-full appearance-none cursor-pointer outline-none transition-all
                     [&::-webkit-slider-thumb]:appearance-none
                     [&::-webkit-slider-thumb]:w-3.5
                     [&::-webkit-slider-thumb]:h-3.5
@@ -1554,12 +1879,12 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                 />
                 <button
                   onClick={() => setDisplacement(d => Math.min(1, Math.round((d + 0.05) * 100) / 100))}
-                  className="w-6 h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95 shrink-0"
+                  className="w-5.5 h-5.5 sm:w-6 sm:h-6 rounded-lg flex items-center justify-center bg-white/5 hover:bg-white/15 text-white/60 hover:text-white transition-all active:scale-95 shrink-0"
                   title="Increase Depth"
                 >
                   <Plus size={11} />
                 </button>
-                <span className="px-1.5 py-0.5 rounded bg-white/[0.08] text-indigo-300 text-[11px] font-mono font-medium tabular-nums w-10 text-center shrink-0">
+                <span className="px-1 sm:px-1.5 py-0.5 rounded bg-white/[0.08] text-indigo-300 text-[10px] sm:text-[11px] font-mono font-medium tabular-nums min-w-[32px] sm:w-10 text-center shrink-0">
                   {Math.round(displacement * 100)}%
                 </span>
               </div>
@@ -1568,7 +1893,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             {/* Reset View Button */}
             <button
               onClick={handleResetView}
-              className="flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-xs font-medium transition-all border border-white/5 hover:border-white/15 shrink-0"
+              className="w-7 h-7 sm:w-auto sm:px-3 sm:py-1.5 rounded-xl flex items-center justify-center gap-1 sm:gap-1.5 bg-white/5 hover:bg-white/10 text-white/60 hover:text-white text-xs font-medium transition-all border border-white/5 hover:border-white/15 shrink-0"
               title="Reset Camera Angle & Zoom"
             >
               <RotateCcw size={12} />
