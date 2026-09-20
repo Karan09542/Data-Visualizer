@@ -87,23 +87,21 @@ interface TaskJobInfo {
   progress: number;
 }
 
-const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
+const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel, onClick, onCancel }: {
   task: AITask;
   jobInfo: TaskJobInfo | null;
+  /** Which model runs this task. Held by the panel, so every control for the task agrees on it. */
+  selectedModel?: string;
+  onSelectModel: (modelId: string) => void;
   onClick: (modelId?: string) => void;
   onCancel: () => void;
 }) => {
   const config = TASK_CONFIG[task];
   
   const models = modelRegistry.getForTask(task);
-  const [selectedModel, setSelectedModel] = useState(models.length > 0 ? models[0].id : undefined);
+  const selectedModel = chosenModel && models.some(m => m.id === chosenModel) ? chosenModel : models[0]?.id;
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
-  useEffect(() => {
-    if (models.length > 0 && (!selectedModel || !models.find(m => m.id === selectedModel))) {
-      setSelectedModel(models[0].id);
-    }
-  }, [models, selectedModel]);
 
   // Availability of the model this button would run. Hooks must run before the early return.
   const { isReady } = useModelDownload(selectedModel);
@@ -214,7 +212,7 @@ const AIToolButton = ({ task, jobInfo, onClick, onCancel }: {
                           <div 
                             key={m.id}
                             onClick={() => {
-                              setSelectedModel(m.id);
+                              onSelectModel(m.id);
                               setIsDropdownOpen(false);
                             }}
                             className={`px-3 py-2.5 cursor-pointer transition-colors border-b border-slate-100 dark:border-[#222] last:border-0 ${m.id === selectedModel ? 'bg-blue-500/10' : 'hover:bg-slate-100 dark:hover:bg-[#252525]'}`}
@@ -287,6 +285,21 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
   const tasks = ai?.getAvailableTasks?.() || [];
   
   const [segModel, setSegModel] = useState<string>('ormbg');
+
+  // The model chosen for each task. Kept here so a task's button and its extra buttons - the depth
+  // modes below - all run the same one.
+  const [selectedModels, setSelectedModels] = useState<Record<string, string>>({});
+  const modelFor = useCallback(
+    (task: string) => selectedModels[task] || modelRegistry.getForTask(task)[0]?.id,
+    [selectedModels]
+  );
+  const selectModel = useCallback(
+    (task: string, modelId: string) => setSelectedModels(prev => ({ ...prev, [task]: modelId })),
+    []
+  );
+  const depthModelId = modelFor('depth-estimation');
+  // The depth modes need the model on the device, the same as the button above them.
+  const { isReady: depthReady } = useModelDownload(depthModelId);
 
   // Depth 3D viewer state
   const [depth3DViewer, setDepth3DViewer] = useState<{
@@ -510,10 +523,12 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
               <AIToolButton 
                 task={task}
                 jobInfo={taskJobs[task] || null}
+                selectedModel={modelFor(task)}
+                onSelectModel={(modelId) => selectModel(task, modelId)}
                 onClick={(modelId) => handleTaskClick(task, modelId)} 
                 onCancel={() => handleCancel(task)}
               />
-              {task === 'depth-estimation' && (
+              {task === 'depth-estimation' && depthReady && (
                 <div className="flex flex-wrap gap-1.5 -mt-0.5 ml-12 mb-1 pr-2">
                   {([
                     { mode: 'portrait-blur' as DepthMode, label: 'Portrait Blur', icon: <Droplet size={11} className="text-blue-400" /> },
@@ -525,10 +540,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
                   ]).map(({ mode, label, icon }) => (
                     <button
                       key={mode}
-                      onClick={() => {
-                        const models = modelRegistry.getForTask('depth-estimation');
-                        handleDepthEstimation(mode, models[0]?.id);
-                      }}
+                      onClick={() => handleDepthEstimation(mode, depthModelId)}
                       disabled={!!taskJobs['depth-estimation'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['depth-estimation']?.state)}
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all
                         bg-white dark:bg-[#161616] border-slate-200 dark:border-[#2D2D2D] 
