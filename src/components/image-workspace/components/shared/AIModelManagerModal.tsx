@@ -4,7 +4,7 @@ import { X, Download, Trash2, HardDrive, CheckCircle2, Loader2, Upload, Cpu, Fil
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
 import { useModelDownload } from '../../../../ai/hooks/useModelDownload';
 import { ModelManifest } from '../../../../ai/types';
-import { formatFileSize } from '@/src/lib/formatFileSize';
+import { formatFileSize } from '../../../../lib/formatFileSize';
 import { opfsStorage } from '../../../../ai/manager/OPFSStorage';
 import { ModelConfig, NormalizationType } from '../../../../ai/config/ModelConfig';
 

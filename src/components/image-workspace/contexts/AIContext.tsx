@@ -15,7 +15,13 @@ interface AIContextType {
   cancelJob: (jobId: string) => void;
 }
 
-const AIContext = createContext<AIContextType | undefined>(undefined);
+const defaultContextValue: AIContextType = {
+  activeJobs: {},
+  executeAITask: async () => {},
+  cancelJob: () => {},
+};
+
+const AIContext = createContext<AIContextType>(defaultContextValue);
 
 export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
   const [activeJobs, setActiveJobs] = useState<Record<string, AIJobState>>({});
@@ -90,8 +96,5 @@ export const AIProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
 
 export const useAIContext = () => {
   const context = useContext(AIContext);
-  if (context === undefined) {
-    throw new Error('useAIContext must be used within an AIProvider');
-  }
-  return context;
+  return context || defaultContextValue;
 };
