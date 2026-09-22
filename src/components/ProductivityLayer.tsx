@@ -752,9 +752,8 @@ export default function ProductivityLayer() {
         return;
       }
 
-      // 2. Check File switcher / Quick explorer: Shift + ~ (tilde)
-      // Standard: e.key === "~" or backquote code with shift
-      const isFileHotkey = e.key === "~" || (e.code === "Backquote" && e.shiftKey);
+      // 2. Check File switcher / Quick explorer: Ctrl + ` (backtick)
+      const isFileHotkey = (e.key === "`" || e.code === "Backquote") && e.ctrlKey;
 
       if (isFileHotkey) {
         e.preventDefault();

@@ -12,7 +12,7 @@ export default function ShortcutsPopup() {
       title: 'General',
       icon: <Command size={14} />,
       items: [
-        { keys: ['Shift', '~'], desc: 'Quick search files' },
+        { keys: ['Ctrl', '`'], desc: 'Quick search files' },
         { keys: ['Alt', 'T'], desc: 'Todo Center' },
         { keys: ['Ctrl', 'Z / Y'], desc: 'Undo / Redo' },
         { keys: ['Double Tap'], desc: 'Undo (Touch)' },

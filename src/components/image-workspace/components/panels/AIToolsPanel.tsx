@@ -116,15 +116,7 @@ const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel
 
   // The model has to be on the device before the task can run. Surfacing it here means the
   // download is explicit and interruptible, rather than happening silently on first use.
-  if (!isReady && !isActive && models.length > 0) {
-    return (
-      <div className="relative rounded-xl z-10">
-        <ModelDownloadGate modelId={selectedModel} label={config.label} />
-      </div>
-    );
-  }
-
-  return (
+  const buttonContent = (
     <div className={`relative rounded-xl ${isDropdownOpen ? 'z-50' : 'z-10'}`}>
       <button
         onClick={isActive ? undefined : () => onClick(selectedModel)}
@@ -260,6 +252,18 @@ const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel
       </button>
     </div>
   );
+
+  if (!isReady && !isActive && models.length > 0) {
+    return (
+      <div className="relative rounded-xl z-10">
+        <ModelDownloadGate modelId={selectedModel} label={config.label}>
+          {buttonContent}
+        </ModelDownloadGate>
+      </div>
+    );
+  }
+
+  return buttonContent;
 };
 
 const globalTaskJobsStore = {

@@ -130,6 +130,12 @@ export function useModelDownload(modelId: string | undefined): ModelDownloadStat
     };
   }, [modelId]);
 
+  useEffect(() => {
+    const handleGlobalRefresh = () => setRefreshToken(t => t + 1);
+    window.addEventListener('ai-model-availability-changed', handleGlobalRefresh);
+    return () => window.removeEventListener('ai-model-availability-changed', handleGlobalRefresh);
+  }, []);
+
   const start = useCallback(async (): Promise<boolean> => {
     if (!manifest || !modelId) return false;
 
@@ -188,6 +194,7 @@ export function useModelDownload(modelId: string | undefined): ModelDownloadStat
       let totalSize = 0;
       for (const item of relatedManifests) totalSize += await getCachedSize(item);
       if (totalSize) setSizeBytes(totalSize);
+      window.dispatchEvent(new CustomEvent('ai-model-availability-changed'));
       return true;
     } catch (e: any) {
       // An abort is a user action, not a failure to report.
@@ -224,6 +231,7 @@ export function useModelDownload(modelId: string | undefined): ModelDownloadStat
     // A bundled model stays usable from /models/ even with its OPFS copy gone, so it stays
     // 'ready'. isCached is what actually changes, and the UI keys the delete control off that.
     setStatus(isBundledModel(manifest) ? 'ready' : 'missing');
+    window.dispatchEvent(new CustomEvent('ai-model-availability-changed'));
   }, [manifest]);
 
   return {
