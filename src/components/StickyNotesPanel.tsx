@@ -16,6 +16,7 @@ import { CSS } from '@dnd-kit/utilities';
 import { extractTextFromLexical } from '../utils/LexicalUtils';
 
 import StickyConfirmModal from './notes/StickyConfirmModal';
+import { ensureFontsLoaded } from '../utils/fontRegistry';
 
 interface Props {
   onClose: () => void;
@@ -23,6 +24,7 @@ interface Props {
   onDuplicate: (note: IStickyNote) => void;
   onAdd: () => void;
   onUpdate?: (note: IStickyNote) => void;
+  onFullScreenNoteChange?: (id: string | null) => void;
 }
 
 const CARD_CHECK_REGEX = /^(\s*[-*]\s+\[)([ xX])(\]\s*)(.*)$/;
@@ -203,12 +205,18 @@ function SortableNoteItem({ note, handleRestore, handleOpenFullScreen, toggleFav
 }
 
 
-export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd, onUpdate }: Props) {
+export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd, onUpdate, onFullScreenNoteChange }: Props) {
   const [search, setSearch] = useState('');
   const [filter, setFilter] = useState<'all' | 'favorites' | 'lists'>('all');
   const [sortBy, setSortBy] = useState<'manual' | 'updated' | 'created'>('manual');
   const [isSortDropdownOpen, setIsSortDropdownOpen] = useState(false);
   const [fullScreenNoteId, setFullScreenNoteId] = useState<string | null>(null);
+  const wasMinimizedMapRef = useRef<Map<string, boolean>>(new Map());
+
+  const updateFullScreenNoteId = useCallback((id: string | null) => {
+    setFullScreenNoteId(id);
+    onFullScreenNoteChange?.(id);
+  }, [onFullScreenNoteChange]);
   const [isListening, setIsListening] = useState(false);
   const [voiceLang, setVoiceLang] = useState('hi-IN');
   const [isLangDropdownOpen, setIsLangDropdownOpen] = useState(false);
@@ -282,6 +290,13 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
   const allNotes = useLiveQuery(() => db.stickyNotes.toArray()) || [];
   const fullScreenNote = useMemo(() => allNotes.find(n => n.id === fullScreenNoteId), [allNotes, fullScreenNoteId]);
 
+  // Preload all fonts used across notes for the manager grid
+  useEffect(() => {
+    if (allNotes.length > 0) {
+      ensureFontsLoaded(allNotes.map(n => n.fontFamily));
+    }
+  }, [allNotes]);
+
   const sensors = useSensors(
     useSensor(PointerSensor, {
       activationConstraint: {
@@ -354,18 +369,20 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
       confirmText: 'Delete Note',
       onConfirm: async () => {
         await db.stickyNotes.delete(id);
-        if (fullScreenNoteId === id) setFullScreenNoteId(null);
+        if (fullScreenNoteId === id) updateFullScreenNoteId(null);
       },
     });
   };
 
   const handleOpenFullScreen = (note: IStickyNote, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setFullScreenNoteId(note.id);
+    wasMinimizedMapRef.current.set(note.id, note.isMinimized);
+    updateFullScreenNoteId(note.id);
   };
 
   const handleRestore = async (note: IStickyNote, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
+    updateFullScreenNoteId(null);
     
     // Ensure the note is visible in the current viewport (crucial for mobile)
     let { x, y } = note;
@@ -456,7 +473,10 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
                 <span className="hidden sm:inline">New</span>
               </button>
               <button
-                onClick={onClose}
+                onClick={() => {
+                  updateFullScreenNoteId(null);
+                  onClose();
+                }}
                 className="flex h-9 w-9 items-center justify-center rounded-xl text-black/50 transition-colors hover:bg-black/6 hover:text-black dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
                 title="Close"
                 aria-label="Close"
@@ -645,7 +665,7 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
                     confirmText: `Delete All (${allNotes.length})`,
                     onConfirm: async () => {
                       await db.stickyNotes.clear();
-                      if (fullScreenNoteId) setFullScreenNoteId(null);
+                      if (fullScreenNoteId) updateFullScreenNoteId(null);
                     },
                   });
                 }}
@@ -730,14 +750,21 @@ export default function StickyNotesPanel({ onClose, onFocus, onDuplicate, onAdd,
                 note={{ ...fullScreenNote, isMaximized: true, isMinimized: false }}
                 onDelete={async (id) => {
                   await db.stickyNotes.delete(id);
-                  setFullScreenNoteId(null);
+                  updateFullScreenNoteId(null);
                 }}
                 onUpdate={async (updatedNote) => {
-                  if (!updatedNote.isMaximized || updatedNote.isMinimized) {
-                    setFullScreenNoteId(null);
+                  const wasMinimized = wasMinimizedMapRef.current.has(updatedNote.id)
+                    ? wasMinimizedMapRef.current.get(updatedNote.id)!
+                    : fullScreenNote.isMinimized;
+                  const shouldClose = !updatedNote.isMaximized || updatedNote.isMinimized;
+                  if (shouldClose) {
+                    updateFullScreenNoteId(null);
                   }
-                  await db.stickyNotes.put(updatedNote);
-                  if (onUpdate) onUpdate(updatedNote);
+                  const noteToPersist = shouldClose
+                    ? { ...updatedNote, isMaximized: false, isMinimized: wasMinimized }
+                    : { ...updatedNote, isMaximized: true, isMinimized: wasMinimized };
+                  await db.stickyNotes.put(noteToPersist);
+                  if (onUpdate) onUpdate(noteToPersist);
                 }}
                 onDuplicate={(noteToDup) => {
                   onDuplicate(noteToDup);

@@ -189,6 +189,67 @@ function HistoryStatePlugin({ onHistoryChange }: { onHistoryChange?: (state: His
   return null;
 }
 
+import { ensureFontsLoaded } from '../../../utils/fontRegistry';
+
+function ExternalContentSyncPlugin({ content }: { content: string }) {
+  const [editor] = useLexicalComposerContext();
+  const lastContentRef = React.useRef(content);
+
+  React.useEffect(() => {
+    if (content === lastContentRef.current) return;
+    lastContentRef.current = content;
+
+    const currentEditorState = JSON.stringify(editor.getEditorState().toJSON());
+    if (content === currentEditorState) return;
+
+    editor.update(() => {
+      try {
+        if (content && content.trim().startsWith('{') && content.includes('"root"')) {
+          const parsed = editor.parseEditorState(content);
+          editor.setEditorState(parsed);
+        } else {
+          const root = $getRoot();
+          root.clear();
+          if (content) {
+            const paragraph = $createParagraphNode();
+            paragraph.append($createTextNode(content));
+            root.append(paragraph);
+          }
+        }
+      } catch (err) {
+        console.error('Error synchronizing external content in Lexical:', err);
+      }
+    });
+  }, [content, editor]);
+
+  return null;
+}
+
+function FontLoaderPlugin({ content }: { content: string }) {
+  React.useEffect(() => {
+    if (!content) return;
+    try {
+      const matches = content.match(/"font-family":\s*"([^"]+)"/g);
+      if (matches) {
+        const families = matches
+          .map(m => {
+            const val = m.replace(/"font-family":\s*"/, '').replace(/"$/, '');
+            const first = val.split(',')[0]?.trim()?.replace(/^["']|["']$/g, '');
+            return first;
+          })
+          .filter(Boolean);
+        if (families.length > 0) {
+          ensureFontsLoaded(families);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [content]);
+
+  return null;
+}
+
 export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, style, editorRef, onHistoryChange }: LexicalEditorProps) {
   
   const initialConfig = useMemo(() => {
@@ -274,6 +335,8 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           
           <AutoSavePlugin onSave={onSave} onChange={onChange} debounceMs={500} />
+          <ExternalContentSyncPlugin content={initialContent} />
+          <FontLoaderPlugin content={initialContent} />
           <ImagePlugin />
           <AudioPlugin />
           <MediaModalsPlugin />

@@ -8,6 +8,7 @@ import { useStore } from '../store/useStore';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { getMinNoteWidth } from '../utils/NoteUtils';
+import { ensureFontsLoaded } from '../utils/fontRegistry';
 
 import StickyConfirmModal from './notes/StickyConfirmModal';
 
@@ -35,9 +36,17 @@ export default function StickyNotesManager() {
   const notesRef = useRef(notes);
   notesRef.current = notes;
   const [showPanel, setShowPanel] = useState(false);
+  const [panelFullScreenNoteId, setPanelFullScreenNoteId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const selectedNoteIdRef = useRef(selectedNoteId);
   selectedNoteIdRef.current = selectedNoteId;
+
+  // Preload all fonts used in sticky notes from IndexedDB
+  useEffect(() => {
+    if (notes.length > 0) {
+      ensureFontsLoaded(notes.map(n => n.fontFamily));
+    }
+  }, [notes]);
   const [showColors, setShowColors] = useState(false);
   const [dockPos, setDockPos] = useState({ x: window.innerWidth - 70, y: window.innerHeight / 2 - 100 });
   const [isDragging, setIsDragging] = useState(false);
@@ -62,7 +71,9 @@ export default function StickyNotesManager() {
     setDockPos({ x: initialX, y: initialY });
   }, []);
 
-  const activeNotes = useMemo(() => notes.filter(n => !n.isMinimized), [notes]);
+  const activeNotes = useMemo(() => {
+    return notes.filter(n => !n.isMinimized && (!showPanel || n.id !== panelFullScreenNoteId));
+  }, [notes, showPanel, panelFullScreenNoteId]);
   const selectedNote = notes.find(n => n.id === selectedNoteId);
 
   // Handle clicking outside to deselect
@@ -455,14 +466,19 @@ export default function StickyNotesManager() {
       <AnimatePresence>
         {showPanel && (
           <StickyNotesPanel
-            onClose={() => setShowPanel(false)}
+            onClose={() => {
+              setPanelFullScreenNoteId(null);
+              setShowPanel(false);
+            }}
             onFocus={(n) => {
               handleFocus(n.id);
+              setPanelFullScreenNoteId(null);
               setShowPanel(false);
             }}
             onDuplicate={handleDuplicate}
             onAdd={handleAddManagerNote}
             onUpdate={handleUpdate}
+            onFullScreenNoteChange={setPanelFullScreenNoteId}
           />
         )}
       </AnimatePresence>

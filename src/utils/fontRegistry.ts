@@ -75,15 +75,26 @@ export const FONTS: FontNode[] = [
 ];
 
 export const loadGoogleFont = (fontName: string) => {
-  if (typeof document === 'undefined') return;
-  const linkId = `font-${fontName.replace(/\s+/g, '-')}`;
+  if (typeof document === 'undefined' || !fontName) return;
+  const trimmed = fontName.trim().replace(/^["']|["']$/g, '');
+  const fontNode = FONTS.find(
+    f => f.fontFamily.toLowerCase() === trimmed.toLowerCase() || f.googleFontName.toLowerCase() === trimmed.toLowerCase()
+  );
+  const actualGoogleName = fontNode ? fontNode.googleFontName : trimmed;
+  const linkId = `font-${actualGoogleName.replace(/\s+/g, '-')}`;
   if (document.getElementById(linkId)) return;
   
   const link = document.createElement('link');
   link.id = linkId;
-  link.href = `https://fonts.googleapis.com/css?family=${fontName.replace(/\s+/g, '+')}:300,400,400i,500,600,700,700i&display=swap`;
+  link.href = `https://fonts.googleapis.com/css2?family=${actualGoogleName.replace(/\s+/g, '+')}&display=swap`;
   link.rel = 'stylesheet';
   document.head.appendChild(link);
+};
+
+export const ensureFontsLoaded = (fontNames: (string | undefined | null)[]) => {
+  if (typeof document === 'undefined') return;
+  const unique = Array.from(new Set(fontNames.filter((f): f is string => Boolean(f && f.trim()))));
+  unique.forEach(f => loadGoogleFont(f));
 };
 
 /** Weights worth asking Google Fonts about; it simply omits the ones a family lacks. */

@@ -79,6 +79,9 @@ const useMinNoteWidth = () => {
 };
 
 function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
+  const latestNoteRef = useRef(note);
+  latestNoteRef.current = note;
+
   const [content, setContent] = useState(note.content);
   const latestContentRef = useRef(note.content);
   const justSavedRef = useRef(false);
@@ -90,6 +93,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       }
     } else {
       setContent(note.content);
+      latestContentRef.current = note.content;
     }
   }, [note.content, content]);
 
@@ -131,8 +135,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
   const checklistIconSize = Math.max(14, Math.min(22, Math.round(clampedFontSize * 1.05)));
 
   useEffect(() => {
-    const font = FONTS.find(f => f.fontFamily === activeFontFamily);
-    if (font) loadGoogleFont(font.googleFontName);
+    loadGoogleFont(activeFontFamily);
   }, [activeFontFamily]);
 
   useEffect(() => {
@@ -141,12 +144,12 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
 
 
 
-  const handleSave = (newContent: string) => {
+  const handleSave = useCallback((newContent: string) => {
     setContent(newContent);
     latestContentRef.current = newContent;
     justSavedRef.current = true;
-    onUpdate({ ...note, content: newContent, updatedAt: Date.now() });
-  };
+    onUpdate({ ...latestNoteRef.current, content: newContent, updatedAt: Date.now() });
+  }, [onUpdate]);
 
   const handleInstantChange = (newContent: string) => {
     latestContentRef.current = newContent;
@@ -163,31 +166,31 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
   const redo = useCallback(() => editorRef.current?.dispatchCommand(REDO_COMMAND, undefined), []);
 
   const toggleMinimize = () => {
-    onUpdate({ ...note, content: latestContentRef.current, isMinimized: !note.isMinimized, updatedAt: Date.now() });
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, isMinimized: !note.isMinimized, updatedAt: Date.now() });
   };
 
   const toggleMaximize = () => {
-    onUpdate({ ...note, content: latestContentRef.current, isMaximized: !note.isMaximized, updatedAt: Date.now() });
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, isMaximized: !note.isMaximized, updatedAt: Date.now() });
   };
 
   const changeColor = (color: string) => {
-    onUpdate({ ...note, content: latestContentRef.current, color, updatedAt: Date.now() });
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, color, updatedAt: Date.now() });
     setShowColors(false);
     setShowMoreActions(false);
   };
 
   const changeFontFamily = useCallback((fontFamily: string) => {
-    const font = FONTS.find(f => f.fontFamily === fontFamily);
-    if (font) loadGoogleFont(font.googleFontName);
+    loadGoogleFont(fontFamily);
     setPreviewFontFamily(null);
-    onUpdate({ ...note, content: latestContentRef.current, fontFamily, updatedAt: Date.now() });
-  }, [note, onUpdate]);
+    latestNoteRef.current = { ...latestNoteRef.current, fontFamily };
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, fontFamily, updatedAt: Date.now() });
+  }, [onUpdate]);
 
 
   const changeFontSize = useCallback((delta: number) => {
     const fontSize = Math.min(MAX_FONT_SIZE, Math.max(MIN_FONT_SIZE, clampedFontSize + delta));
-    onUpdate({ ...note, content: latestContentRef.current, fontSize, updatedAt: Date.now() });
-  }, [clampedFontSize, note, onUpdate]);
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, fontSize, updatedAt: Date.now() });
+  }, [clampedFontSize, onUpdate]);
 
   const handleDragEnd = (_: any, info: any) => {
     if (note.isMaximized) return;
@@ -195,7 +198,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
     if (resizeRef.current) return;
     const newX = note.x + info.offset.x;
     const newY = note.y + info.offset.y;
-    onUpdate({ ...note, content: latestContentRef.current, x: newX, y: newY, updatedAt: Date.now() });
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, x: newX, y: newY, updatedAt: Date.now() });
   };
 
   // Resizing used to write to the database on every pointer move, and each write re-ran the
@@ -261,8 +264,8 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
     resizeRef.current = null;
     // liveSize is kept until the saved note catches up, otherwise the note springs back to its
     // old size for the frames between releasing the pointer and the database write arriving.
-    onUpdate({ ...note, content: latestContentRef.current, width: state.width, height: state.height, updatedAt: Date.now() });
-  }, [note, onUpdate]);
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, width: state.width, height: state.height, updatedAt: Date.now() });
+  }, [onUpdate]);
 
   useEffect(() => {
     if (!liveSize || resizeRef.current) return;
@@ -441,10 +444,10 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
         latestContentRef.current = '';
         setClearKey(prev => prev + 1);
         justSavedRef.current = true;
-        onUpdate({ ...note, content: '', updatedAt: Date.now() });
+        onUpdate({ ...latestNoteRef.current, content: '', updatedAt: Date.now() });
       },
     });
-  }, [note, onUpdate]);
+  }, [onUpdate]);
 
 
   const handleActionPointerDown = useCallback((e: React.PointerEvent<HTMLElement>) => {
