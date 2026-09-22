@@ -1,7 +1,193 @@
 import * as d3 from 'd3';
 import { TreeNode } from '../utils/transformer';
 
-export const computeLayout = (treeData: TreeNode | null, collapsedNodes: Set<string>, layoutMode: string, nodeShape: string = 'default', nodeSpread: number = 1.0, nodeSize: number = 1.0) => {
+const applyLayoutModeToHierarchy = (
+    subRoot: d3.HierarchyNode<TreeNode>,
+    mode: string,
+    basew: number,
+    baseh: number,
+    nodeSpread: number,
+    nodeSize: number,
+    collapsedNodes: Set<string>,
+    isSubtree: boolean = false
+) => {
+    if (mode === 'horizontal') {
+        const tree = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 80) * nodeSpread]); // y step, x step
+        tree(subRoot);
+        subRoot.each(d => {
+            const temp = d.x;
+            d.x = d.y;
+            d.y = temp;
+        });
+    } else if (mode === 'vertical') {
+        const tree = d3.tree<TreeNode>().nodeSize([(basew + 20) * nodeSpread, (baseh + 80) * nodeSpread]); // x step, y step
+        tree(subRoot);
+    } else if (mode === 'compact') {
+        const tree = d3.tree<TreeNode>().nodeSize([(baseh * 0.45) * nodeSpread, (basew * 0.75) * nodeSpread]);
+        tree(subRoot);
+        subRoot.each(d => {
+            const temp = d.x;
+            d.x = d.y;
+            d.y = temp;
+        });
+    } else if (mode === 'radial') {
+        const tree = d3.tree<TreeNode>().nodeSize([0.18 * Math.max(0.5, 1.5 - nodeSpread * 0.2), Math.max(basew, baseh) * 1.3 * nodeSpread]); // angle, radius
+        tree(subRoot);
+        subRoot.each(d => {
+            const angle = d.x;
+            const radius = d.y;
+            d.x = radius * Math.cos(angle - Math.PI / 2);
+            d.y = radius * Math.sin(angle - Math.PI / 2);
+        });
+    } else if (mode === 'force') {
+        const nodesList = subRoot.descendants() as any[];
+        nodesList.forEach((n, idx) => {
+            n.x = Math.cos(idx) * 100;
+            n.y = Math.sin(idx) * 100;
+        });
+
+        const linksList = subRoot.links().map(l => ({
+            source: l.source.data.id,
+            target: l.target.data.id
+        }));
+
+        const simulation = d3.forceSimulation(nodesList)
+            .force("link", d3.forceLink(linksList).id((d: any) => d.data.id).distance(240 * nodeSpread).strength(1.2))
+            .force("charge", d3.forceManyBody().strength(-400 * nodeSpread))
+            .force("collide", d3.forceCollide().radius(140 * nodeSize))
+            .force("centerX", d3.forceX(0).strength(0.08))
+            .force("centerY", d3.forceY(0).strength(0.08));
+
+        // Sync run simulation ticks to find state equilibrium
+        for (let i = 0; i < 120; i++) {
+            simulation.tick();
+        }
+    } else if (mode === 'mindmap') {
+        const rootChildren = subRoot.children || [];
+        if (rootChildren.length === 0) {
+            subRoot.x = 0;
+            subRoot.y = 0;
+        } else {
+            const leftNodes: d3.HierarchyNode<TreeNode>[] = [];
+            const rightNodes: d3.HierarchyNode<TreeNode>[] = [];
+            rootChildren.forEach((child, idx) => {
+                if (idx % 2 === 0) {
+                    leftNodes.push(child);
+                } else {
+                    rightNodes.push(child);
+                }
+            });
+
+            subRoot.x = 0;
+            subRoot.y = 0;
+
+            if (rightNodes.length > 0) {
+                const rightData = {
+                    id: 'dummy-right',
+                    name: 'dummy',
+                    type: 'dummy',
+                    path: 'dummy',
+                    children: rightNodes.map(c => c.data) as any
+                };
+                const dummyRight = d3.hierarchy<TreeNode>(rightData, d => collapsedNodes.has(d.id) ? null : d.children);
+                const treeRight = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 100) * nodeSpread]);
+                treeRight(dummyRight);
+
+                dummyRight.descendants().forEach((dummyNode) => {
+                    const originalNode = subRoot.descendants().find(n => n.data.id === dummyNode.data.id);
+                    if (originalNode && originalNode !== subRoot) {
+                        originalNode.x = dummyNode.y;
+                        originalNode.y = dummyNode.x;
+                    }
+                });
+            }
+
+            if (leftNodes.length > 0) {
+                const leftData = {
+                    id: 'dummy-left',
+                    name: 'dummy',
+                    type: 'dummy',
+                    path: 'dummy',
+                    children: leftNodes.map(c => c.data) as any
+                };
+                const dummyLeft = d3.hierarchy<TreeNode>(leftData, d => collapsedNodes.has(d.id) ? null : d.children);
+                const treeLeft = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 100) * nodeSpread]);
+                treeLeft(dummyLeft);
+
+                dummyLeft.descendants().forEach((dummyNode) => {
+                    const originalNode = subRoot.descendants().find(n => n.data.id === dummyNode.data.id);
+                    if (originalNode && originalNode !== subRoot) {
+                        originalNode.x = -dummyNode.y;
+                        originalNode.y = dummyNode.x;
+                    }
+                });
+            }
+        }
+    } else if (mode === 'grid') {
+        const list = subRoot.descendants();
+        if (isSubtree) {
+            subRoot.x = 0;
+            subRoot.y = 0;
+            const childrenList = list.slice(1);
+            if (childrenList.length > 0) {
+                const cols = Math.ceil(Math.sqrt(childrenList.length));
+                childrenList.forEach((node, idx) => {
+                    const r = Math.floor(idx / cols);
+                    const c = idx % cols;
+                    node.x = (c + 1) * (basew + 80) * nodeSpread;
+                    node.y = (r - Math.floor(cols / 2)) * (baseh + 60) * nodeSpread;
+                });
+            }
+        } else {
+            const cols = Math.ceil(Math.sqrt(list.length));
+            list.forEach((node, idx) => {
+                const r = Math.floor(idx / cols);
+                const c = idx % cols;
+                node.x = c * (basew + 100) * nodeSpread;
+                node.y = r * (baseh + 80) * nodeSpread;
+            });
+        }
+    } else if (mode === 'molecule') {
+        const bondLength = 200 * nodeSpread;
+        const placeNode = (node: d3.HierarchyNode<TreeNode>, currentAngle: number, cx: number, cy: number, depth: number) => {
+            node.x = cx;
+            node.y = cy;
+            const children = node.children || [];
+            if (children.length > 0) {
+                const angleStep = Math.PI / 3;
+                let startAngle = currentAngle - (angleStep * (children.length - 1)) / 2;
+                if (depth === 0 && children.length > 1) {
+                    startAngle = 0;
+                    const step = (Math.PI * 2) / children.length;
+                    children.forEach((child, i) => {
+                        placeNode(child, i * step, cx + Math.cos(i * step) * bondLength, cy + Math.sin(i * step) * bondLength, depth + 1);
+                    });
+                    return;
+                }
+                children.forEach((child, i) => {
+                    const childAngle = startAngle + i * angleStep;
+                    const l = bondLength + (i % 2 === 0 ? 0 : 30 * nodeSpread);
+                    placeNode(child, childAngle, cx + Math.cos(childAngle) * l, cy + Math.sin(childAngle) * l, depth + 1);
+                });
+            }
+        };
+        placeNode(subRoot, 0, 0, 0, 0);
+    } else {
+        // Fallback to prevent NaN if mode is unknown
+        const tree = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 80) * nodeSpread]);
+        tree(subRoot);
+    }
+};
+
+export const computeLayout = (
+    treeData: TreeNode | null,
+    collapsedNodes: Set<string>,
+    layoutMode: string,
+    nodeShape: string = 'default',
+    nodeSpread: number = 1.0,
+    nodeSize: number = 1.0,
+    nodeLayoutOverrides: Record<string, string> = {}
+) => {
     if (!treeData) return { nodes: [], links: [] };
 
     const root = d3.hierarchy(treeData, d => collapsedNodes.has(d.id) ? null : d.children);
@@ -30,156 +216,32 @@ export const computeLayout = (treeData: TreeNode | null, collapsedNodes: Set<str
         baseh = 100 * nodeSize;
     }
 
-    if (layoutMode === 'horizontal') {
-        const tree = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 80) * nodeSpread]); // y step, x step
-        tree(root);
-        root.each(d => {
-            const temp = d.x;
-            d.x = d.y;
-            d.y = temp;
-        });
-    } else if (layoutMode === 'vertical') {
-        const tree = d3.tree<TreeNode>().nodeSize([(basew + 20) * nodeSpread, (baseh + 80) * nodeSpread]); // x step, y step
-        tree(root);
-    } else if (layoutMode === 'compact') {
-        const tree = d3.tree<TreeNode>().nodeSize([(baseh * 0.45) * nodeSpread, (basew * 0.75) * nodeSpread]);
-        tree(root);
-        root.each(d => {
-            const temp = d.x;
-            d.x = d.y;
-            d.y = temp;
-        });
-    } else if (layoutMode === 'radial') {
-        const tree = d3.tree<TreeNode>().nodeSize([0.18 * Math.max(0.5, 1.5 - nodeSpread * 0.2), Math.max(basew, baseh) * 1.3 * nodeSpread]); // angle, radius
-        tree(root);
-        root.each(d => {
-            const angle = d.x;
-            const radius = d.y;
-            d.x = radius * Math.cos(angle - Math.PI / 2);
-            d.y = radius * Math.sin(angle - Math.PI / 2);
-        });
-    } else if (layoutMode === 'force') {
-        const nodesList = root.descendants() as any[];
-        nodesList.forEach((n, idx) => {
-            n.x = Math.cos(idx) * 100;
-            n.y = Math.sin(idx) * 100;
-        });
+    // 1. Initial base layout on the root hierarchy
+    const baseMode = nodeLayoutOverrides[root.data.id] || layoutMode;
+    applyLayoutModeToHierarchy(root, baseMode, basew, baseh, nodeSpread, nodeSize, collapsedNodes, false);
 
-        const linksList = root.links().map(l => ({
-            source: l.source.data.id,
-            target: l.target.data.id
-        }));
+    // 2. Apply any subtree layout overrides, sorted by depth (shallowest first)
+    if (nodeLayoutOverrides && Object.keys(nodeLayoutOverrides).length > 0) {
+        const allDescendants = root.descendants();
+        const nodesWithOverride = allDescendants
+            .filter(n => n !== root && nodeLayoutOverrides[n.data.id])
+            .sort((a, b) => a.depth - b.depth);
 
-        const simulation = d3.forceSimulation(nodesList)
-            .force("link", d3.forceLink(linksList).id((d: any) => d.data.id).distance(240 * nodeSpread).strength(1.2))
-            .force("charge", d3.forceManyBody().strength(-400 * nodeSpread))
-            .force("collide", d3.forceCollide().radius(140 * nodeSize))
-            .force("centerX", d3.forceX(0).strength(0.08))
-            .force("centerY", d3.forceY(0).strength(0.08));
-
-        // Sync run simulation ticks to find state equilibrium
-        for (let i = 0; i < 120; i++) {
-            simulation.tick();
-        }
-    } else if (layoutMode === 'mindmap') {
-        const rootChildren = root.children || [];
-        if (rootChildren.length === 0) {
-            root.x = 0;
-            root.y = 0;
-        } else {
-            const leftNodes: d3.HierarchyNode<TreeNode>[] = [];
-            const rightNodes: d3.HierarchyNode<TreeNode>[] = [];
-            rootChildren.forEach((child, idx) => {
-                if (idx % 2 === 0) {
-                    leftNodes.push(child);
-                } else {
-                    rightNodes.push(child);
-                }
-            });
-
-            root.x = 0;
-            root.y = 0;
-
-            if (rightNodes.length > 0) {
-                const rightData = {
-                    id: 'dummy-right',
-                    name: 'dummy',
-                    type: 'dummy',
-                    path: 'dummy',
-                    children: rightNodes.map(c => c.data) as any
-                };
-                const dummyRight = d3.hierarchy<TreeNode>(rightData, d => collapsedNodes.has(d.id) ? null : d.children);
-                const treeRight = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 100) * nodeSpread]);
-                treeRight(dummyRight);
-
-                dummyRight.descendants().forEach((dummyNode) => {
-                    const originalNode = root.descendants().find(n => n.data.id === dummyNode.data.id);
-                    if (originalNode && originalNode !== root) {
-                        originalNode.x = dummyNode.y;
-                        originalNode.y = dummyNode.x;
-                    }
-                });
-            }
-
-            if (leftNodes.length > 0) {
-                const leftData = {
-                    id: 'dummy-left',
-                    name: 'dummy',
-                    type: 'dummy',
-                    path: 'dummy',
-                    children: leftNodes.map(c => c.data) as any
-                };
-                const dummyLeft = d3.hierarchy<TreeNode>(leftData, d => collapsedNodes.has(d.id) ? null : d.children);
-                const treeLeft = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 100) * nodeSpread]);
-                treeLeft(dummyLeft);
-
-                dummyLeft.descendants().forEach((dummyNode) => {
-                    const originalNode = root.descendants().find(n => n.data.id === dummyNode.data.id);
-                    if (originalNode && originalNode !== root) {
-                        originalNode.x = -dummyNode.y;
-                        originalNode.y = dummyNode.x;
-                    }
+        for (const subNode of nodesWithOverride) {
+            // Only apply if node has visible children
+            if (subNode.children && subNode.children.length > 0) {
+                const subMode = nodeLayoutOverrides[subNode.data.id];
+                const targetX = subNode.x;
+                const targetY = subNode.y;
+                applyLayoutModeToHierarchy(subNode, subMode, basew, baseh, nodeSpread, nodeSize, collapsedNodes, true);
+                const offsetX = targetX - (subNode.x || 0);
+                const offsetY = targetY - (subNode.y || 0);
+                subNode.descendants().forEach(d => {
+                    d.x = (d.x || 0) + offsetX;
+                    d.y = (d.y || 0) + offsetY;
                 });
             }
         }
-    } else if (layoutMode === 'grid') {
-        const list = root.descendants();
-        const cols = Math.ceil(Math.sqrt(list.length));
-        list.forEach((node, idx) => {
-            const r = Math.floor(idx / cols);
-            const c = idx % cols;
-            node.x = c * (basew + 100) * nodeSpread;
-            node.y = r * (baseh + 80) * nodeSpread;
-        });
-    } else if (layoutMode === 'molecule') {
-        const bondLength = 200 * nodeSpread;
-        const placeNode = (node: d3.HierarchyNode<TreeNode>, currentAngle: number, cx: number, cy: number, depth: number) => {
-            node.x = cx;
-            node.y = cy;
-            const children = node.children || [];
-            if (children.length > 0) {
-                const angleStep = Math.PI / 3;
-                let startAngle = currentAngle - (angleStep * (children.length - 1)) / 2;
-                if (depth === 0 && children.length > 1) {
-                    startAngle = 0;
-                    const step = (Math.PI * 2) / children.length;
-                    children.forEach((child, i) => {
-                        placeNode(child, i * step, cx + Math.cos(i * step) * bondLength, cy + Math.sin(i * step) * bondLength, depth + 1);
-                    });
-                    return;
-                }
-                children.forEach((child, i) => {
-                    const childAngle = startAngle + i * angleStep;
-                    const l = bondLength + (i % 2 === 0 ? 0 : 30 * nodeSpread);
-                    placeNode(child, childAngle, cx + Math.cos(childAngle) * l, cy + Math.sin(childAngle) * l, depth + 1);
-                });
-            }
-        };
-        placeNode(root, 0, 0, 0, 0);
-    } else {
-        // Fallback to prevent NaN if layoutMode is unknown
-        const tree = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 80) * nodeSpread]);
-        tree(root);
     }
 
     // Ensure no NaN coordinates exist

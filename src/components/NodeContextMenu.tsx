@@ -5,7 +5,9 @@ import {
   Copy, Edit2, Trash2, Eye, Network, TableProperties, Database, FileText, Info, Type,
   Plus, ChevronRight, Braces, Brackets, Hash, ToggleLeft, CircleSlash,
   Globe, FileCode, Code, Terminal, ListTodo, Sigma, Search, Share2, Image as ImageIcon,
+  ArrowDown, ArrowRight, CircleDot, Waypoints, Shrink, Brain, LayoutGrid, Atom, Check, RotateCcw,
 } from "lucide-react";
+import { type LayoutMode } from "../constants/visualizer";
 import { getDynamicActions } from "../utils/contextActions";
 import { isProbableCsv, parseCsv, generateSchemaFromData } from "../utils/dataFormats";
 import { safeStringify } from "../utils/safeStringify";
@@ -13,6 +15,17 @@ import { mediaCache } from "./SmartMediaRenderer";
 import { getMediaType } from "./NodeRenderer";
 
 /** Empty values a user can insert straight from the menu */
+const NODE_LAYOUT_OPTIONS: { value: LayoutMode; label: string; description: string; icon: React.ComponentType<{ size?: number; className?: string }> }[] = [
+  { value: "horizontal", label: "Horizontal", description: "Left-to-right tree", icon: ArrowRight },
+  { value: "vertical", label: "Vertical", description: "Top-down tree", icon: ArrowDown },
+  { value: "radial", label: "Radial", description: "Rings around node", icon: CircleDot },
+  { value: "compact", label: "Compact", description: "Dense tree", icon: Shrink },
+  { value: "grid", label: "Grid", description: "Rows and columns", icon: LayoutGrid },
+  { value: "mindmap", label: "Mind map", description: "Bilateral branches", icon: Brain },
+  { value: "molecule", label: "Molecule", description: "Atom clusters", icon: Atom },
+  { value: "force", label: "Force", description: "Physics network", icon: Waypoints },
+];
+
 const EMPTY_CHILD_TYPES = [
   { type: "object", label: "Object", hint: "{}", icon: Braces },
   { type: "array", label: "Array", hint: "[]", icon: Brackets },
@@ -111,7 +124,12 @@ export function NodeContextMenu({
   const knownDataUrls = useStore((s) => s.knownDataUrls);
   const expandNode = useStore((s) => s.expandNode);
   const setSelectedNodeId = useStore((s) => s.setSelectedNodeId);
+  const layoutMode = useStore((s) => s.layoutMode);
+  const nodeLayoutOverrides = useStore((s) => s.nodeLayoutOverrides);
+  const setNodeLayout = useStore((s) => s.setNodeLayout);
+  const removeNodeLayout = useStore((s) => s.removeNodeLayout);
   const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isLayoutOpen, setIsLayoutOpen] = useState(false);
   const [addMode, setAddMode] = useState<"child" | "sibling">("child");
 
   // Two places a new node can go: inside this node (objects/arrays) or next to it (its parent)
@@ -140,6 +158,7 @@ export function NodeContextMenu({
   // Start collapsed each time the menu opens, defaulting to "child" when the node can hold children
   useLayoutEffect(() => {
     setIsAddOpen(false);
+    setIsLayoutOpen(false);
     setAddMode(isContainerNode ? "child" : "sibling");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [contextMenu?.node?.path, contextMenu?.x, contextMenu?.y]);
@@ -189,7 +208,7 @@ export function NodeContextMenu({
     menu.style.left = `${left}px`;
     menu.style.top = `${top}px`;
     // Re-measured when the add section opens, or switches between child and sibling
-  }, [contextMenu, isAddOpen, addMode]);
+  }, [contextMenu, isAddOpen, addMode, isLayoutOpen]);
 
   if (!contextMenu) return null;
 
@@ -795,6 +814,82 @@ export function NodeContextMenu({
                 <Edit2 size={16} className="text-blue-400" />
                 Edit Content
               </button>
+
+              {/* Children Layout Section */}
+              {(() => {
+                const nodeId = menuNode?.id || menuNode?.path;
+                const hasLayoutOverride = !!(nodeId && nodeLayoutOverrides?.[nodeId]);
+                const currentNodeLayout = (nodeId && nodeLayoutOverrides?.[nodeId]) || layoutMode;
+
+                return (
+                  <div className="my-1 border-y border-slate-200 dark:border-slate-700/50">
+                    <button
+                      className="w-full text-left px-3 py-2 text-sm font-medium rounded-lg my-0.5 text-indigo-600 dark:text-indigo-400 hover:bg-slate-100/80 dark:hover:bg-white/10 transition-colors flex items-center gap-3"
+                      aria-expanded={isLayoutOpen}
+                      onClick={() => setIsLayoutOpen((open) => !open)}
+                    >
+                      <LayoutGrid size={16} />
+                      <span>Layout</span>
+                      <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500 ml-auto mr-1 truncate max-w-[70px]">
+                        {hasLayoutOverride ? `${currentNodeLayout}*` : currentNodeLayout}
+                      </span>
+                      <ChevronRight
+                        size={14}
+                        className={`text-slate-400 transition-transform ${isLayoutOpen ? "rotate-90" : ""}`}
+                      />
+                    </button>
+
+                    {isLayoutOpen && (
+                      <div className="px-2 pb-2 pt-1">
+                        <div className="mb-1.5 flex items-center justify-between px-1">
+                          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            Children Layout
+                          </span>
+                          {hasLayoutOverride && (
+                            <button
+                              onClick={() => {
+                                if (nodeId) removeNodeLayout(nodeId);
+                                setContextMenu(null);
+                              }}
+                              className="text-[10px] text-amber-500 hover:text-amber-600 dark:text-amber-400 flex items-center gap-1 hover:underline"
+                              title={`Reset to global toolbar layout (${layoutMode})`}
+                            >
+                              <RotateCcw size={10} />
+                              Reset
+                            </button>
+                          )}
+                        </div>
+                        <div className="grid grid-cols-2 gap-1">
+                          {NODE_LAYOUT_OPTIONS.map(({ value, label, description, icon: Icon }) => {
+                            const isSelected = currentNodeLayout === value;
+                            return (
+                              <button
+                                key={value}
+                                className={`flex items-center gap-2 rounded-md border px-2 py-1.5 text-left text-xs font-medium transition-all ${
+                                  isSelected
+                                    ? "border-indigo-500/60 bg-indigo-50 text-indigo-700 shadow-sm dark:border-indigo-400/60 dark:bg-indigo-950/60 dark:text-indigo-300"
+                                    : "border-slate-200 text-slate-600 hover:border-slate-300 hover:bg-slate-100/80 dark:border-slate-700/60 dark:text-slate-300 dark:hover:bg-slate-800/60 dark:hover:text-white"
+                                }`}
+                                title={description}
+                                onClick={() => {
+                                  if (nodeId) {
+                                    setNodeLayout(nodeId, value);
+                                  }
+                                  setContextMenu(null);
+                                }}
+                              >
+                                <Icon size={14} className={isSelected ? "text-indigo-600 dark:text-indigo-400 flex-shrink-0" : "text-slate-400 flex-shrink-0"} />
+                                <span className="truncate flex-1">{label}</span>
+                                {isSelected && <Check size={12} className="text-indigo-600 dark:text-indigo-400 flex-shrink-0" />}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {canAdd && (
                 <div className="my-1 border-y border-slate-200 dark:border-slate-700/50">

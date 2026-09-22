@@ -120,6 +120,7 @@ export const defaultSettings = {
   isDirty: false,
   lastSavedCode: null as string | null,
   stickyNotesEnabled: false,
+  nodeLayoutOverrides: {} as Record<string, LayoutMode>,
 };
 
 export type ApiNodeDiagnosticError = {
@@ -385,6 +386,10 @@ export interface StoreState {
   undo: () => void;
   redo: () => void;
   setLayoutMode: (mode: LayoutMode) => void;
+  nodeLayoutOverrides: Record<string, LayoutMode>;
+  setNodeLayout: (nodeId: string, layout: LayoutMode) => void;
+  removeNodeLayout: (nodeId: string) => void;
+  clearNodeLayoutOverrides: () => void;
   setNodeTheme: (theme: NodeTheme) => void;
   setEdgeStyle: (style: EdgeStyle) => void;
   setNodeShape: (shape: NodeShape) => void;
@@ -1150,7 +1155,7 @@ export const useStore = create<StoreState>()(
           get().setCode(nextState.code, true);
         },
         setLayoutMode: (mode: LayoutMode) =>
-          set({ layoutMode: mode, dragOverrides: {} }),
+          set({ layoutMode: mode, dragOverrides: {}, nodeLayoutOverrides: {} }),
         setNodeTheme: (theme: NodeTheme) => set({ nodeTheme: theme }),
         setEdgeStyle: (style: EdgeStyle) => set({ edgeStyle: style }),
         setNodeShape: (shape: NodeShape) =>
@@ -1471,6 +1476,44 @@ export const useStore = create<StoreState>()(
           set({ dragOverrides: {} });
           import('./dexieSync').then(m => m.clearPositionsInDexie());
         },
+        setNodeLayout: (nodeId: string, layout: LayoutMode) => {
+          set((state) => {
+            const newOverrides = { ...state.dragOverrides };
+            Object.keys(newOverrides).forEach((key) => {
+              if (key === nodeId || key.startsWith(nodeId + ".") || key.startsWith(nodeId + "[")) {
+                delete newOverrides[key];
+              }
+            });
+            return {
+              nodeLayoutOverrides: {
+                ...state.nodeLayoutOverrides,
+                [nodeId]: layout,
+              },
+              dragOverrides: newOverrides,
+            };
+          });
+          import('./dexieSync').then(m => m.persistPositionsToDexie());
+        },
+        removeNodeLayout: (nodeId: string) => {
+          set((state) => {
+            const nextOverrides = { ...state.nodeLayoutOverrides };
+            delete nextOverrides[nodeId];
+            const newOverrides = { ...state.dragOverrides };
+            Object.keys(newOverrides).forEach((key) => {
+              if (key === nodeId || key.startsWith(nodeId + ".") || key.startsWith(nodeId + "[")) {
+                delete newOverrides[key];
+              }
+            });
+            return {
+              nodeLayoutOverrides: nextOverrides,
+              dragOverrides: newOverrides,
+            };
+          });
+          import('./dexieSync').then(m => m.persistPositionsToDexie());
+        },
+        clearNodeLayoutOverrides: () => {
+          set({ nodeLayoutOverrides: {} });
+        },
         bringNodeToFront: (id: string) => {
           set((state) => {
             const newActiveNodes = state.activeNodes.filter((nodeId) => nodeId !== id);
@@ -1517,12 +1560,12 @@ export const useStore = create<StoreState>()(
           const { code: currentCode, setCode } = get();
           // Use setCode to ensure all derived search states are cleared
           setCode("", false);
-          set({ dragOverrides: {}, selectedNodeId: null, collapsedNodes: new Set() });
+          set({ dragOverrides: {}, nodeLayoutOverrides: {}, selectedNodeId: null, collapsedNodes: new Set() });
           import('./dexieSync').then(m => m.clearPositionsInDexie());
         },
 
         resetAllSettings: () => {
-          set({ ...defaultSettings, dragOverrides: {}, collapsedNodes: new Set() });
+          set({ ...defaultSettings, dragOverrides: {}, nodeLayoutOverrides: {}, collapsedNodes: new Set() });
           import('./dexieSync').then(m => m.clearPositionsInDexie());
         },
       };

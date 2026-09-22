@@ -915,6 +915,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               onChange={(val) => {
                 setLayoutMode(val as any);
                 useStore.getState().clearDragOverrides();
+                useStore.getState().clearNodeLayoutOverrides();
               }}
               options={LAYOUT_OPTIONS}
               className="border-r border-slate-200 dark:border-slate-800/80 pr-3 lg:pr-5 flex-shrink-0"
@@ -1325,6 +1326,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   onChange={(val) => {
                     setLayoutMode(val as any);
                     useStore.getState().clearDragOverrides();
+                    useStore.getState().clearNodeLayoutOverrides();
                   }}
                   options={LAYOUT_OPTIONS}
                 />

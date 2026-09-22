@@ -60,6 +60,7 @@ export default function GraphVisualizer() {
   const inlineApiEditor = useStore((s) => s.inlineApiEditor);
   const setInlineApiEditor = useStore((s) => s.setInlineApiEditor);
   const autoOrganizeTrigger = useStore((s) => s.autoOrganizeTrigger);
+  const nodeLayoutOverrides = useStore((s) => s.nodeLayoutOverrides);
 
   const collapsedNodes = useDeferredValue(rawCollapsedNodes);
   const searchMatches = useDeferredValue(rawSearchMatches);
@@ -77,8 +78,9 @@ export default function GraphVisualizer() {
       nodeShape,
       nodeSpread,
       nodeSize,
+      nodeLayoutOverrides,
     );
-  }, [treeData, collapsedNodes, layoutMode, nodeShape, nodeSpread, nodeSize, autoOrganizeTrigger]);
+  }, [treeData, collapsedNodes, layoutMode, nodeShape, nodeSpread, nodeSize, nodeLayoutOverrides, autoOrganizeTrigger]);
 
   // Sync computed positions to permanent store (dragOverrides/dexie)
   useEffect(() => {
@@ -1375,7 +1377,8 @@ export default function GraphVisualizer() {
                   const link = el.data;
                   const isMatchPath = !!searchQuery && (searchMatches.has(link.target.data.id) || searchAncestors.has(link.target.data.id));
                   const isDimmedPath = !!searchQuery && !isMatchPath;
-                  const d = getEdgePath(link.source as any, link.target as any, edgeStyle, layoutMode);
+                  const effectiveLinkLayout = (nodeLayoutOverrides && nodeLayoutOverrides[link.source.data.id]) || layoutMode;
+                  const d = getEdgePath(link.source as any, link.target as any, edgeStyle, effectiveLinkLayout);
                   return (
                     <EdgeRenderer
                       key={`link-${link.source.data.id}-${link.target.data.id}`}
@@ -1387,18 +1390,19 @@ export default function GraphVisualizer() {
                       isSelected={el.isSelectedPath}
                       source={link.source as any}
                       target={link.target as any}
-                      layoutMode={layoutMode}
+                      layoutMode={effectiveLinkLayout}
                       targetData={link.target.data}
                     />
                   );
                 } else {
                   const node = el.data;
                   const isSelected = selectedNodeId === node.data.id;
+                  const effectiveNodeLayout = (nodeLayoutOverrides && nodeLayoutOverrides[node.data.id]) || layoutMode;
                   return (
                     <NodeRenderer
                       key={`node-${node.data.id}`}
                       node={node}
-                      layoutMode={layoutMode}
+                      layoutMode={effectiveNodeLayout}
                       isSelectedPath={el.isSelectedPath}
                       isSelected={isSelected}
                       isIsolatedMode={isolatedNodeId !== null}
