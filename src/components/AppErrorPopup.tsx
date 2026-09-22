@@ -1,5 +1,6 @@
 import React, { useState } from "react";
-import { AlertTriangle, Copy, Check, RotateCcw, Bug, Terminal, ChevronDown, ChevronRight, RefreshCw } from "lucide-react";
+import { createPortal } from "react-dom";
+import { AlertTriangle, Copy, Check, RotateCcw, Bug, Terminal, ChevronDown, ChevronRight, RefreshCw, Layers } from "lucide-react";
 
 export interface AppErrorPopupProps {
   error: Error | any;
@@ -77,7 +78,7 @@ export const AppErrorPopup: React.FC<AppErrorPopupProps> = ({
     const ok = await copyToClipboard(report);
     if (ok) {
       setCopiedFull(true);
-      setTimeout(() => setCopiedFull(false), 2200);
+      setTimeout(() => setCopiedFull(false), 2000);
     }
   };
 
@@ -89,20 +90,28 @@ export const AppErrorPopup: React.FC<AppErrorPopupProps> = ({
     }
   };
 
-  return (
-    <div className="fixed inset-0 z-[99999] bg-[#0a0e17]/90 backdrop-blur-md flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
-      <div className="w-full max-w-xl bg-[#111827] border border-red-500/30 rounded-2xl shadow-2xl shadow-red-500/10 overflow-hidden flex flex-col max-h-[90vh]">
+  const modalContent = (
+    <div className="fixed inset-0 z-[99999] bg-slate-900/60 dark:bg-black/75 backdrop-blur-sm flex items-center justify-center p-4 font-sans animate-in fade-in duration-200">
+      <div 
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="app-error-title"
+        className="w-full max-w-xl bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] transition-all animate-in zoom-in-95 duration-150"
+      >
+        {/* Subtle Top Error Accent Bar */}
+        <div className="h-1 w-full bg-gradient-to-r from-rose-500 via-red-500 to-amber-500" />
+
         {/* Header */}
-        <div className="px-5 py-4 bg-red-500/10 border-b border-red-500/20 flex items-center justify-between gap-3">
+        <div className="px-5 py-3.5 bg-slate-50/80 dark:bg-[#0d1117]/80 border-b border-slate-200 dark:border-slate-800/80 flex items-center justify-between gap-3">
           <div className="flex items-center gap-3 min-w-0">
-            <div className="w-10 h-10 rounded-xl bg-red-500/20 border border-red-500/30 flex items-center justify-center shrink-0 text-red-400">
-              <AlertTriangle size={20} />
+            <div className="w-9 h-9 rounded-xl bg-rose-500/10 dark:bg-rose-500/15 border border-rose-500/20 flex items-center justify-center shrink-0 text-rose-600 dark:text-rose-400">
+              <AlertTriangle size={18} />
             </div>
             <div className="min-w-0">
-              <h2 className="text-sm font-bold text-red-300 flex items-center gap-2">
+              <h2 id="app-error-title" className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
                 Application Error
               </h2>
-              <p className="text-[11px] text-red-400/80 truncate">
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
                 An unexpected error occurred in the component hierarchy
               </p>
             </div>
@@ -112,12 +121,12 @@ export const AppErrorPopup: React.FC<AppErrorPopupProps> = ({
             type="button"
             onClick={handleCopyFull}
             title="Copy full diagnostics error report"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${copiedFull
-              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
-              : "bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium border transition-all cursor-pointer shrink-0 ${copiedFull
+              ? "bg-emerald-50 dark:bg-emerald-500/15 border-emerald-300 dark:border-emerald-500/30 text-emerald-700 dark:text-emerald-400"
+              : "bg-white dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-700 border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 shadow-sm"
               }`}
           >
-            {copiedFull ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
+            {copiedFull ? <Check size={13} className="text-emerald-600 dark:text-emerald-400" /> : <Copy size={13} />}
             <span>{copiedFull ? "Copied Report" : "Copy Report"}</span>
           </button>
         </div>
@@ -125,21 +134,21 @@ export const AppErrorPopup: React.FC<AppErrorPopupProps> = ({
         {/* Content Body */}
         <div className="px-5 py-4 space-y-3.5 overflow-y-auto custom-scrollbar flex-1">
           {/* Error Message Box */}
-          <div className="relative group bg-[#0d1117] border border-red-500/20 rounded-xl p-3.5 shadow-inner">
-            <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/5">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-red-400/80 flex items-center gap-1.5">
-                <Bug size={11} /> Error Message
+          <div className="relative group bg-rose-50/50 dark:bg-[#0d1117] border border-rose-200/80 dark:border-rose-500/20 rounded-xl p-3.5 shadow-sm">
+            <div className="flex items-center justify-between pb-2 mb-2 border-b border-rose-200/50 dark:border-white/5">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <Bug size={12} /> Error Message
               </span>
               <button
                 type="button"
                 onClick={handleCopyMessage}
                 title="Copy error message text"
-                className="flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 transition-colors px-1.5 py-0.5 rounded hover:bg-white/5 cursor-pointer"
+                className="flex items-center gap-1 text-[11px] text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors px-1.5 py-0.5 rounded hover:bg-rose-100/50 dark:hover:bg-white/5 cursor-pointer"
               >
                 {copiedMessage ? (
                   <>
-                    <Check size={11} className="text-emerald-400" />
-                    <span className="text-emerald-400 font-medium">Copied</span>
+                    <Check size={11} className="text-emerald-600 dark:text-emerald-400" />
+                    <span className="text-emerald-600 dark:text-emerald-400 font-medium">Copied</span>
                   </>
                 ) : (
                   <>
@@ -149,28 +158,33 @@ export const AppErrorPopup: React.FC<AppErrorPopupProps> = ({
                 )}
               </button>
             </div>
-            <p className="text-xs font-mono text-red-300 leading-relaxed break-words whitespace-pre-wrap selection:bg-red-900/50">
+            <p className="text-xs font-mono text-rose-900 dark:text-rose-300 leading-relaxed break-words whitespace-pre-wrap selection:bg-rose-200 dark:selection:bg-rose-950">
               {errorMessage}
             </p>
           </div>
 
           {/* Stack Trace Collapsible */}
           {stackTrace && (
-            <div className="border border-white/10 rounded-xl bg-[#0d1117]/60 overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50/50 dark:bg-[#0d1117]/50">
               <button
                 type="button"
                 onClick={() => setIsStackOpen(!isStackOpen)}
-                className="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-[11px] font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                className="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
-                <span className="flex items-center gap-1.5">
-                  <Terminal size={12} className="text-slate-400" />
+                <span className="flex items-center gap-2">
+                  <Terminal size={13} className="text-slate-400 dark:text-slate-500" />
                   <span>Stack Trace</span>
                 </span>
-                {isStackOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                <div className="flex items-center gap-2 text-slate-400 dark:text-slate-500">
+                  <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-200/60 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                    {stackTrace.split("\n").length} lines
+                  </span>
+                  {isStackOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                </div>
               </button>
               {isStackOpen && (
-                <div className="px-3.5 pb-3 pt-1 border-t border-white/5 max-h-[160px] overflow-y-auto custom-scrollbar">
-                  <pre className="text-[10px] font-mono text-slate-400 leading-relaxed whitespace-pre-wrap break-words selection:bg-slate-700">
+                <div className="p-3 bg-[#0d1117] border-t border-slate-200 dark:border-white/5 max-h-[170px] overflow-y-auto custom-scrollbar">
+                  <pre className="text-[11px] font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words selection:bg-slate-700">
                     {stackTrace}
                   </pre>
                 </div>
@@ -180,21 +194,21 @@ export const AppErrorPopup: React.FC<AppErrorPopupProps> = ({
 
           {/* Component Stack Collapsible */}
           {componentStack && (
-            <div className="border border-white/10 rounded-xl bg-[#0d1117]/60 overflow-hidden">
+            <div className="border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50/50 dark:bg-[#0d1117]/50">
               <button
                 type="button"
                 onClick={() => setIsCompStackOpen(!isCompStackOpen)}
-                className="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-[11px] font-semibold text-slate-300 hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+                className="w-full px-3.5 py-2.5 flex items-center justify-between text-left text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100/80 dark:hover:bg-white/5 transition-colors cursor-pointer"
               >
-                <span className="flex items-center gap-1.5">
-                  <Bug size={12} className="text-slate-400" />
+                <span className="flex items-center gap-2">
+                  <Layers size={13} className="text-slate-400 dark:text-slate-500" />
                   <span>Component Stack</span>
                 </span>
                 {isCompStackOpen ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
               </button>
               {isCompStackOpen && (
-                <div className="px-3.5 pb-3 pt-1 border-t border-white/5 max-h-[140px] overflow-y-auto custom-scrollbar">
-                  <pre className="text-[10px] font-mono text-slate-400 leading-relaxed whitespace-pre-wrap break-words selection:bg-slate-700">
+                <div className="p-3 bg-[#0d1117] border-t border-slate-200 dark:border-white/5 max-h-[150px] overflow-y-auto custom-scrollbar">
+                  <pre className="text-[11px] font-mono text-slate-300 leading-relaxed whitespace-pre-wrap break-words selection:bg-slate-700">
                     {componentStack}
                   </pre>
                 </div>
@@ -204,51 +218,38 @@ export const AppErrorPopup: React.FC<AppErrorPopupProps> = ({
         </div>
 
         {/* Action Buttons Footer */}
-        <div className="px-5 py-3.5 border-t border-white/10 bg-slate-900/40 flex items-center justify-end gap-2.5">
-          {onReset && (
+        <div className="px-5 py-3 border-t border-slate-200 dark:border-slate-800/80 bg-slate-50/80 dark:bg-[#0d1117]/80 flex items-center justify-between gap-2.5">
+          <span className="text-[11px] text-slate-500 dark:text-slate-400 truncate hidden sm:inline">
+            You can copy the report to inspect or reload.
+          </span>
+
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            {onReset && (
+              <button
+                type="button"
+                onClick={onReset}
+                className="flex-1 sm:flex-initial px-3.5 py-2 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 text-xs font-semibold rounded-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                <RefreshCw size={13} />
+                <span>Try Recover</span>
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={onReset}
-              className="px-4 py-2 bg-white/5 hover:bg-white/10 border border-white/10 text-slate-300 hover:text-white text-xs font-semibold rounded-xl transition-all active:scale-95 cursor-pointer flex items-center gap-1.5"
+              onClick={onReload}
+              className="flex-1 sm:flex-initial px-4 py-2 bg-rose-600 hover:bg-rose-700 active:bg-rose-800 text-white text-xs font-semibold rounded-xl transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-1.5 shadow-md shadow-rose-600/20"
             >
-              <RefreshCw size={13} />
-              <span>Try Recover</span>
+              <RotateCcw size={13} />
+              <span>Reload App</span>
             </button>
-          )}
-
-          <button
-            type="button"
-            onClick={handleCopyFull}
-            className={`px-4 py-2 border text-xs font-semibold rounded-xl transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 ${copiedFull
-              ? "bg-emerald-500/20 border-emerald-500/40 text-emerald-300"
-              : "bg-white/5 hover:bg-white/10 border-white/10 text-slate-300 hover:text-white"
-              }`}
-          >
-            {copiedFull ? (
-              <>
-                <Check size={13} className="text-emerald-400" />
-                <span>Copied Error Details!</span>
-              </>
-            ) : (
-              <>
-                <Copy size={13} />
-                <span>Copy Error Details</span>
-              </>
-            )}
-          </button>
-
-          <button
-            type="button"
-            onClick={onReload}
-            className="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-200 hover:text-white text-xs font-bold rounded-xl transition-all active:scale-95 cursor-pointer flex items-center gap-1.5 shadow-sm shadow-red-500/20"
-          >
-            <RotateCcw size={13} />
-            <span>Reload App</span>
-          </button>
+          </div>
         </div>
       </div>
     </div>
   );
+
+  return typeof document !== "undefined" ? createPortal(modalContent, document.body) : modalContent;
 };
 
 export interface GlobalErrorBoundaryProps {
