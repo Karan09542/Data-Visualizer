@@ -41,27 +41,63 @@ const applyLayoutModeToHierarchy = (
         });
     } else if (mode === 'force') {
         const nodesList = subRoot.descendants() as any[];
-        nodesList.forEach((n, idx) => {
-            n.x = Math.cos(idx) * 100;
-            n.y = Math.sin(idx) * 100;
-        });
-
         const linksList = subRoot.links().map(l => ({
             source: l.source.data.id,
             target: l.target.data.id
         }));
 
-        const simulation = d3.forceSimulation(nodesList)
-            .force("link", d3.forceLink(linksList).id((d: any) => d.data.id).distance(240 * nodeSpread).strength(1.2))
-            .force("charge", d3.forceManyBody().strength(-400 * nodeSpread))
-            .force("collide", d3.forceCollide().radius(140 * nodeSize))
-            .force("centerX", d3.forceX(0).strength(0.08))
-            .force("centerY", d3.forceY(0).strength(0.08));
+        // Initial organic positioning around the center based on depth & angle
+        const count = nodesList.length;
+        const baseDist = (basew + 120) * nodeSpread;
+        nodesList.forEach((n, idx) => {
+            if (n === subRoot) {
+                n.x = 0;
+                n.y = 0;
+                n.fx = 0;
+                n.fy = 0;
+            } else {
+                const angle = (idx / Math.max(1, count - 1)) * 2 * Math.PI;
+                const dist = (n.depth || 1) * baseDist * 0.9;
+                n.x = Math.cos(angle) * dist;
+                n.y = Math.sin(angle) * dist;
+                delete n.fx;
+                delete n.fy;
+            }
+        });
 
-        // Sync run simulation ticks to find state equilibrium
-        for (let i = 0; i < 120; i++) {
+        const collisionRadius = (Math.hypot(basew, baseh) / 2 + 35) * Math.max(0.8, nodeSize);
+        const linkDistance = (basew + 130) * nodeSpread;
+
+        const simulation = d3.forceSimulation(nodesList)
+            .force("link", d3.forceLink(linksList)
+                .id((d: any) => d.data.id)
+                .distance(linkDistance)
+                .strength(0.85)
+            )
+            .force("charge", d3.forceManyBody()
+                .strength(-1800 * nodeSpread)
+                .distanceMin(80)
+                .distanceMax(3500)
+            )
+            .force("collide", d3.forceCollide()
+                .radius(collisionRadius)
+                .strength(1.0)
+                .iterations(3)
+            )
+            .force("centerX", d3.forceX(0).strength(0.04))
+            .force("centerY", d3.forceY(0).strength(0.04))
+            .alphaDecay(0.02);
+
+        // Run simulation ticks to reach true physics equilibrium
+        for (let i = 0; i < 280; i++) {
             simulation.tick();
         }
+
+        // Release pinned center so coordinates are normal numbers
+        delete (subRoot as any).fx;
+        delete (subRoot as any).fy;
+        subRoot.x = 0;
+        subRoot.y = 0;
     } else if (mode === 'mindmap') {
         const rootChildren = subRoot.children || [];
         if (rootChildren.length === 0) {
@@ -148,30 +184,84 @@ const applyLayoutModeToHierarchy = (
             });
         }
     } else if (mode === 'molecule') {
-        const bondLength = 200 * nodeSpread;
-        const placeNode = (node: d3.HierarchyNode<TreeNode>, currentAngle: number, cx: number, cy: number, depth: number) => {
+        const bondLength = (basew + 120) * nodeSpread;
+
+        // Recursive molecular placement with authentic chemical bond geometry
+        const placeMolecularAtom = (
+            node: d3.HierarchyNode<TreeNode>,
+            incomingAngle: number,
+            cx: number,
+            cy: number,
+            depth: number
+        ) => {
             node.x = cx;
             node.y = cy;
             const children = node.children || [];
-            if (children.length > 0) {
-                const angleStep = Math.PI / 3;
-                let startAngle = currentAngle - (angleStep * (children.length - 1)) / 2;
-                if (depth === 0 && children.length > 1) {
-                    startAngle = 0;
-                    const step = (Math.PI * 2) / children.length;
-                    children.forEach((child, i) => {
-                        placeNode(child, i * step, cx + Math.cos(i * step) * bondLength, cy + Math.sin(i * step) * bondLength, depth + 1);
-                    });
-                    return;
+            if (children.length === 0) return;
+
+            const count = children.length;
+
+            if (depth === 0) {
+                // Central hub atom: Canonical molecular coordination geometries
+                const baseAngles: number[] = [];
+                if (count === 1) {
+                    baseAngles.push(0);
+                } else if (count === 2) {
+                    baseAngles.push(-Math.PI / 3, Math.PI / 3); // Bent 120 deg
+                } else if (count === 3) {
+                    baseAngles.push(0, (2 * Math.PI) / 3, (4 * Math.PI) / 3); // Trigonal planar 120 deg
+                } else if (count === 4) {
+                    baseAngles.push(-Math.PI / 4, Math.PI / 4, (3 * Math.PI) / 4, -(3 * Math.PI) / 4); // Tetrahedral projection
+                } else if (count === 6) {
+                    for (let i = 0; i < 6; i++) baseAngles.push((i * Math.PI) / 3); // Hexagonal benzene ring
+                } else {
+                    const step = (2 * Math.PI) / count;
+                    for (let i = 0; i < count; i++) baseAngles.push(i * step);
                 }
+
                 children.forEach((child, i) => {
-                    const childAngle = startAngle + i * angleStep;
-                    const l = bondLength + (i % 2 === 0 ? 0 : 30 * nodeSpread);
-                    placeNode(child, childAngle, cx + Math.cos(childAngle) * l, cy + Math.sin(childAngle) * l, depth + 1);
+                    const angle = baseAngles[i];
+                    // Natural bond length with subtle chemical staggering
+                    const l = bondLength * (i % 2 === 0 ? 1.0 : 1.15);
+                    placeMolecularAtom(child, angle, cx + Math.cos(angle) * l, cy + Math.sin(angle) * l, depth + 1);
+                });
+            } else {
+                // Sub-atom: Bonds fan forward away from the incoming bond
+                const maxCone = Math.min(Math.PI * 0.8, count * (Math.PI / 4));
+                const angleStep = count > 1 ? maxCone / (count - 1) : 0;
+                const startAngle = count > 1 ? incomingAngle - maxCone / 2 : incomingAngle;
+
+                children.forEach((child, i) => {
+                    const angle = count === 1 ? incomingAngle : startAngle + i * angleStep;
+                    const l = bondLength * (0.95 + (i % 2 === 0 ? 0.12 : -0.04));
+                    placeMolecularAtom(child, angle, cx + Math.cos(angle) * l, cy + Math.sin(angle) * l, depth + 1);
                 });
             }
         };
-        placeNode(subRoot, 0, 0, 0, 0);
+
+        placeMolecularAtom(subRoot, 0, 0, 0, 0);
+
+        // Anti-overlap relaxation pass for molecule nodes
+        const moleculeNodes = subRoot.descendants();
+        const minDistance = (Math.hypot(basew, baseh) / 2 + 30) * Math.max(0.8, nodeSize);
+        for (let iter = 0; iter < 12; iter++) {
+            for (let i = 0; i < moleculeNodes.length; i++) {
+                for (let j = i + 1; j < moleculeNodes.length; j++) {
+                    const a = moleculeNodes[i];
+                    const b = moleculeNodes[j];
+                    const dx = (b.x || 0) - (a.x || 0);
+                    const dy = (b.y || 0) - (a.y || 0);
+                    const dist = Math.hypot(dx, dy) || 1;
+                    if (dist < minDistance) {
+                        const overlap = (minDistance - dist) / 2;
+                        const nx = (dx / dist) * overlap;
+                        const ny = (dy / dist) * overlap;
+                        if (a !== subRoot) { a.x = (a.x || 0) - nx; a.y = (a.y || 0) - ny; }
+                        if (b !== subRoot) { b.x = (b.x || 0) + nx; b.y = (b.y || 0) + ny; }
+                    }
+                }
+            }
+        }
     } else {
         // Fallback to prevent NaN if mode is unknown
         const tree = d3.tree<TreeNode>().nodeSize([(baseh + 40) * nodeSpread, (basew + 80) * nodeSpread]);
@@ -449,7 +539,18 @@ export const getEdgePath = (source: { x: number, y: number }, target: { x: numbe
         }
     }
 
-    // 10. DEFAULT CURVED / BEZIER / ANIMATED
+    // 10. DEFAULT CURVED / DIRECT CONNECTIONS
+    // For force, molecule, and radial: clean direct/spline connections (never horizontal S-curves)
+    if (layoutMode === 'force' || layoutMode === 'molecule' || layoutMode === 'radial') {
+        if (edgeStyle === 'straight' || edgeStyle === 'double' || edgeStyle === 'thin' || layoutMode === 'molecule') {
+            return `M ${x1},${y1} L ${x2},${y2}`;
+        }
+        // Smooth gentle direct curve
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        return `M ${x1},${y1} Q ${mx},${my} ${x2},${y2}`;
+    }
+
     if (layoutMode === 'vertical' || ['compact', 'grid'].includes(layoutMode)) {
         return `M ${x1},${y1} C ${x1},${(y1 + y2) / 2} ${x2},${(y1 + y2) / 2} ${x2},${y2}`;
     }
