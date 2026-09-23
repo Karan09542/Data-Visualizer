@@ -103,6 +103,23 @@ const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
 
 
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isDropdownOpen) return;
+    const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+        setIsDropdownOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    document.addEventListener('touchstart', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+      document.removeEventListener('touchstart', handleClickOutside);
+    };
+  }, [isDropdownOpen]);
+
   // Availability of the model this button would run. Hooks must run before the early return.
   const { isReady } = useModelDownload(selectedModel);
 
@@ -117,7 +134,7 @@ const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel
   // The model has to be on the device before the task can run. Surfacing it here means the
   // download is explicit and interruptible, rather than happening silently on first use.
   const buttonContent = (
-    <div className={`relative rounded-xl ${isDropdownOpen ? 'z-50' : 'z-10'}`}>
+    <div className={`relative rounded-xl ${isDropdownOpen ? 'z-[60]' : 'z-0'}`}>
       <button
         onClick={isActive ? undefined : () => onClick(selectedModel)}
         className={`w-full p-3 border rounded-xl text-left transition duration-150 group flex items-center gap-3 relative z-[1] ${
@@ -178,9 +195,9 @@ const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel
             
             {models.length > 1 && !isActive && (
               <div 
+                ref={dropdownRef}
                 className="relative ml-auto"
                 onClick={e => e.stopPropagation()}
-                onMouseLeave={() => setIsDropdownOpen(false)}
               >
                 <div 
                   onClick={() => setIsDropdownOpen(!isDropdownOpen)}
@@ -203,7 +220,8 @@ const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel
                         {models.map(m => (
                           <div 
                             key={m.id}
-                            onClick={() => {
+                            onClick={(e) => {
+                              e.stopPropagation();
                               onSelectModel(m.id);
                               setIsDropdownOpen(false);
                             }}
@@ -255,7 +273,7 @@ const AIToolButton = ({ task, jobInfo, selectedModel: chosenModel, onSelectModel
 
   if (!isReady && !isActive && models.length > 0) {
     return (
-      <div className="relative rounded-xl z-10">
+      <div className={`relative rounded-xl ${isDropdownOpen ? 'z-[60]' : 'z-0'}`}>
         <ModelDownloadGate modelId={selectedModel} label={config.label}>
           {buttonContent}
         </ModelDownloadGate>
