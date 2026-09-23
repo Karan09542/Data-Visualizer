@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useLayoutEffect, useCallback, useMemo, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { Plus, Trash2, Trash, CopyPlus, Power, List, GripHorizontal } from 'lucide-react';
+import { Plus, Trash2, Trash, CopyPlus, Power, List, GripHorizontal, RotateCcw } from 'lucide-react';
 import { db, StickyNote as IStickyNote } from '../lib/db';
 import StickyNote from './StickyNote';
 import StickyNotesPanel from './StickyNotesPanel';
@@ -9,10 +9,27 @@ import { useLiveQuery } from 'dexie-react-hooks';
 import { v4 as uuidv4 } from 'uuid';
 import { getMinNoteWidth } from '../utils/NoteUtils';
 import { ensureFontsLoaded } from '../utils/fontRegistry';
+import { extractTextFromLexical } from '../utils/LexicalUtils';
 
 import StickyConfirmModal from './notes/StickyConfirmModal';
 
-const COLORS = ['#fef08a', '#bbf7d0', '#bfdbfe', '#fecaca', '#e9d5ff', '#fed7aa', '#fbcfe8'];
+const RECENT_OPENED_KEY = 'sticky_notes_recent_opened';
+const RECENT_CLOSED_KEY = 'sticky_notes_recent_closed';
+
+const getStoredIds = (key: string): string[] => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+};
+
+const saveStoredIds = (key: string, ids: string[]) => {
+  try {
+    localStorage.setItem(key, JSON.stringify(ids.slice(0, 30)));
+  } catch {}
+};
 
 /** Same surface language as the notes, so the dock reads as part of the same tool */
 const DOCK_SURFACE =
@@ -47,7 +64,31 @@ export default function StickyNotesManager() {
       ensureFontsLoaded(notes.map(n => n.fontFamily));
     }
   }, [notes]);
-  const [showColors, setShowColors] = useState(false);
+  const [recentOpenedIds, setRecentOpenedIds] = useState<string[]>(() => getStoredIds(RECENT_OPENED_KEY));
+  const [recentClosedIds, setRecentClosedIds] = useState<string[]>(() => getStoredIds(RECENT_CLOSED_KEY));
+
+  const recordOpened = useCallback((id: string) => {
+    setRecentOpenedIds(prev => {
+      const next = [id, ...prev.filter(item => item !== id)].slice(0, 30);
+      saveStoredIds(RECENT_OPENED_KEY, next);
+      return next;
+    });
+    setRecentClosedIds(prev => {
+      if (!prev.includes(id)) return prev;
+      const next = prev.filter(item => item !== id);
+      saveStoredIds(RECENT_CLOSED_KEY, next);
+      return next;
+    });
+  }, []);
+
+  const recordClosed = useCallback((id: string) => {
+    setRecentClosedIds(prev => {
+      const next = [id, ...prev.filter(item => item !== id)].slice(0, 30);
+      saveStoredIds(RECENT_CLOSED_KEY, next);
+      return next;
+    });
+  }, []);
+
   const [dockPos, setDockPos] = useState({ x: window.innerWidth - 70, y: window.innerHeight / 2 - 100 });
   const [isDragging, setIsDragging] = useState(false);
   const [manualPos, setManualPos] = useState<{ x: number, y: number } | null>(null);
@@ -82,7 +123,6 @@ export default function StickyNotesManager() {
       const target = e.target as HTMLElement;
       if (!target.closest('.sticky-note-element') && !target.closest('.sticky-note-toolbar')) {
         setSelectedNoteId(null);
-        setShowColors(false);
       }
     };
     window.addEventListener('pointerdown', handleGlobalPointerDown);
@@ -171,6 +211,7 @@ export default function StickyNotesManager() {
     };
     await db.stickyNotes.add(newNote);
     setSelectedNoteId(newNote.id);
+    recordOpened(newNote.id);
   };
 
   const handleAddManagerNote = async () => {
@@ -194,18 +235,34 @@ export default function StickyNotesManager() {
       updatedAt: Date.now(),
     };
     await db.stickyNotes.add(newNote);
+    recordClosed(newNote.id);
   };
 
   const handleUpdate = useCallback(async (note: IStickyNote) => {
+    const prev = notesRef.current.find(n => n.id === note.id);
+    if (prev && !prev.isMinimized && note.isMinimized) {
+      recordClosed(note.id);
+    } else if (prev && prev.isMinimized && !note.isMinimized) {
+      recordOpened(note.id);
+    }
     await db.stickyNotes.put(note);
-  }, []);
+  }, [recordClosed, recordOpened]);
 
   const performDirectDelete = useCallback(async (id: string) => {
     await db.stickyNotes.delete(id);
     if (selectedNoteIdRef.current === id) {
       setSelectedNoteId(null);
-      setShowColors(false);
     }
+    setRecentOpenedIds(prev => {
+      const next = prev.filter(item => item !== id);
+      saveStoredIds(RECENT_OPENED_KEY, next);
+      return next;
+    });
+    setRecentClosedIds(prev => {
+      const next = prev.filter(item => item !== id);
+      saveStoredIds(RECENT_CLOSED_KEY, next);
+      return next;
+    });
   }, []);
 
   const handleDockDeleteNote = async (id: string) => {
@@ -228,7 +285,10 @@ export default function StickyNotesManager() {
       onConfirm: async () => {
         await db.stickyNotes.clear();
         setSelectedNoteId(null);
-        setShowColors(false);
+        setRecentOpenedIds([]);
+        setRecentClosedIds([]);
+        saveStoredIds(RECENT_OPENED_KEY, []);
+        saveStoredIds(RECENT_CLOSED_KEY, []);
       },
     });
   };
@@ -251,10 +311,12 @@ export default function StickyNotesManager() {
     };
     await db.stickyNotes.add(duplicated);
     setSelectedNoteId(duplicated.id);
-  }, []);
+    recordOpened(duplicated.id);
+  }, [recordOpened]);
 
   // Runs on every pointer down inside a note, so it must not write unless the order changes
   const handleFocus = useCallback(async (id: string) => {
+    recordOpened(id);
     const notes = notesRef.current;
     setSelectedNoteId(current => (current === id ? current : id));
 
@@ -265,12 +327,95 @@ export default function StickyNotesManager() {
     if (note.zIndex === maxZ) return;
 
     await db.stickyNotes.update(id, { zIndex: maxZ + 1 });
-  }, []);
+  }, [recordOpened]);
 
-  const changeColor = async (color: string) => {
-    if (selectedNote) {
-      await handleUpdate({ ...selectedNote, color, updatedAt: Date.now() });
-      setShowColors(false);
+  // Find which note should be reopened/focused
+  const recentTarget = useMemo(() => {
+    if (notes.length === 0) return null;
+
+    // 1. Look for a closed (minimized) note in recently closed history
+    for (const id of recentClosedIds) {
+      const match = notes.find(n => n.id === id);
+      if (match && match.isMinimized) return match;
+    }
+
+    // 2. Look for a closed (minimized) note in recently opened history
+    for (const id of recentOpenedIds) {
+      const match = notes.find(n => n.id === id);
+      if (match && match.isMinimized) return match;
+    }
+
+    // 3. Fallback: most recently updated closed note
+    const minimizedNotes = notes.filter(n => n.isMinimized);
+    if (minimizedNotes.length > 0) {
+      return [...minimizedNotes].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    }
+
+    // 4. If all notes are open, pick the most recent opened note to focus
+    for (const id of recentOpenedIds) {
+      const match = notes.find(n => n.id === id);
+      if (match) return match;
+    }
+
+    return [...notes].sort((a, b) => b.updatedAt - a.updatedAt)[0];
+  }, [notes, recentClosedIds, recentOpenedIds]);
+
+  const hasClosedNotes = useMemo(() => notes.some(n => n.isMinimized), [notes]);
+
+  const recentNoteTooltip = useMemo(() => {
+    if (!recentTarget) return 'No sticky notes to reopen';
+    const text = extractTextFromLexical(recentTarget.content).trim();
+    let snippet = 'Empty note';
+    if (text) {
+      const firstLine = text.split('\n')[0].replace(/^[-*]\s+(\[[ xX]\]\s*)?/, '').trim();
+      snippet = firstLine ? (firstLine.length > 25 ? `${firstLine.slice(0, 25)}…` : firstLine) : 'Empty note';
+    }
+
+    if (recentTarget.isMinimized) {
+      return `Reopen recent note: "${snippet}"`;
+    }
+    return `Focus recent note: "${snippet}"`;
+  }, [recentTarget]);
+
+  const handleReopenRecentNote = async () => {
+    if (!recentTarget) return;
+
+    if (showPanel) {
+      setShowPanel(false);
+      setPanelFullScreenNoteId(null);
+    }
+
+    if (recentTarget.isMinimized) {
+      // Ensure the note is visible in the current viewport
+      let { x, y } = recentTarget;
+      const padding = 20;
+      const noteWidth = Math.max(recentTarget.width || getMinNoteWidth(), 200);
+      const noteHeight = Math.max(recentTarget.height || 280, 180);
+
+      if (x + 100 > window.innerWidth) {
+        x = Math.max(padding, window.innerWidth - noteWidth - padding);
+      }
+      if (y + 100 > window.innerHeight) {
+        y = Math.max(padding, window.innerHeight - noteHeight - padding);
+      }
+      x = Math.max(padding, x);
+      y = Math.max(padding, y);
+
+      const maxZ = Math.max(...notes.map(n => n.zIndex || 20000), 20000);
+
+      await db.stickyNotes.update(recentTarget.id, {
+        isMinimized: false,
+        isMaximized: false,
+        zIndex: maxZ + 1,
+        x,
+        y,
+        updatedAt: Date.now(),
+      });
+
+      setSelectedNoteId(recentTarget.id);
+      recordOpened(recentTarget.id);
+    } else {
+      await handleFocus(recentTarget.id);
     }
   };
 
@@ -336,6 +481,27 @@ export default function StickyNotesManager() {
           <Plus size={18} className="transition-transform duration-300 group-hover:rotate-90" />
         </button>
 
+        {/* Reopen recent note that was opened last time or recently closed */}
+        <button
+          onClick={handleReopenRecentNote}
+          disabled={!recentTarget}
+          className={`relative ${DOCK_BUTTON} ${
+            !recentTarget
+              ? 'opacity-35 cursor-not-allowed hover:bg-transparent dark:hover:bg-transparent hover:text-black/60 dark:hover:text-white/60'
+              : 'hover:text-black dark:hover:text-white'
+          }`}
+          title={recentNoteTooltip}
+          aria-label={recentNoteTooltip}
+        >
+          <RotateCcw size={16} className="transition-transform duration-200 hover:-rotate-45" />
+          {hasClosedNotes && (
+            <span
+              className="absolute top-1 right-1 h-2 w-2 rounded-full bg-amber-500 ring-2 ring-white dark:ring-[#1c1c1f]"
+              title="Closed note available to reopen"
+            />
+          )}
+        </button>
+
         {/* All notes, with how many there are */}
         <button
           onClick={() => setShowPanel(true)}
@@ -370,46 +536,6 @@ export default function StickyNotesManager() {
               >
                 <CopyPlus size={16} />
               </button>
-
-              <div className="relative">
-                <button
-                  onClick={() => setShowColors(!showColors)}
-                  className={showColors ? DOCK_BUTTON_ACTIVE : DOCK_BUTTON}
-                  title="Note colour"
-                  aria-label="Note colour"
-                >
-                  <span
-                    className="h-4 w-4 rounded-full ring-1 ring-inset ring-black/15 dark:ring-white/25"
-                    style={{ backgroundColor: selectedNote.color }}
-                  />
-                </button>
-
-                <AnimatePresence>
-                  {showColors && (
-                    <motion.div
-                      initial={{ opacity: 0, x: 8, scale: 0.95 }}
-                      animate={{ opacity: 1, x: 0, scale: 1 }}
-                      exit={{ opacity: 0, x: 8, scale: 0.95 }}
-                      transition={{ duration: 0.14, ease: 'easeOut' }}
-                      className={`absolute right-[115%] top-0 flex cursor-default flex-col gap-1.5 rounded-2xl p-2 ${DOCK_SURFACE}`}
-                      onPointerDown={(e) => e.stopPropagation()}
-                    >
-                      {COLORS.map(c => (
-                        <button
-                          key={c}
-                          onClick={() => changeColor(c)}
-                          title="Change colour"
-                          className={`h-6 w-6 rounded-full transition-transform hover:scale-110 active:scale-95 ${selectedNote.color === c
-                            ? 'ring-2 ring-black/30 dark:ring-white/60 ring-offset-2 ring-offset-white dark:ring-offset-[#1c1c1f]'
-                            : 'ring-1 ring-inset ring-black/10 dark:ring-white/20'
-                            }`}
-                          style={{ backgroundColor: c }}
-                        />
-                      ))}
-                    </motion.div>
-                  )}
-                </AnimatePresence>
-              </div>
 
               <button
                 onClick={() => handleDockDeleteNote(selectedNote.id)}
@@ -478,7 +604,10 @@ export default function StickyNotesManager() {
             onDuplicate={handleDuplicate}
             onAdd={handleAddManagerNote}
             onUpdate={handleUpdate}
-            onFullScreenNoteChange={setPanelFullScreenNoteId}
+            onFullScreenNoteChange={(id) => {
+              setPanelFullScreenNoteId(id);
+              if (id) recordOpened(id);
+            }}
           />
         )}
       </AnimatePresence>

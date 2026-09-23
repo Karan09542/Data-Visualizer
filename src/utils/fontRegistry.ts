@@ -97,6 +97,31 @@ export const ensureFontsLoaded = (fontNames: (string | undefined | null)[]) => {
   unique.forEach(f => loadGoogleFont(f));
 };
 
+export const extractFontsFromContent = (content: string): string[] => {
+  if (!content) return [];
+  const families: string[] = [];
+  try {
+    const regex = /font-family:\s*(\\?["']?)([^,"';\\]+)(\\?["']?)/gi;
+    let match: RegExpExecArray | null;
+    while ((match = regex.exec(content)) !== null) {
+      const familyName = match[2]?.trim()?.replace(/^["'\\]+|["'\\]+$/g, '');
+      if (familyName && !families.includes(familyName)) {
+        families.push(familyName);
+      }
+    }
+  } catch {
+    // ignore
+  }
+  return families;
+};
+
+export const loadFontsFromContent = (content: string) => {
+  const families = extractFontsFromContent(content);
+  if (families.length > 0) {
+    ensureFontsLoaded(families);
+  }
+};
+
 /** Weights worth asking Google Fonts about; it simply omits the ones a family lacks. */
 const WEIGHT_CANDIDATES = [100, 200, 300, 400, 500, 600, 700, 800, 900];
 

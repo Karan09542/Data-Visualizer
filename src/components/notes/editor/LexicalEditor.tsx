@@ -36,7 +36,7 @@ import CodeHighlightPlugin from './plugins/CodeHighlightPlugin';
 import CursorToolbarPlugin from './plugins/CursorToolbarPlugin';
 import SlashCommandPlugin from './plugins/SlashCommandPlugin';
 import BlockHandlePlugin from './plugins/BlockHandlePlugin';
-import { $getRoot, $createParagraphNode, $createTextNode } from 'lexical';
+import { $getRoot, $createParagraphNode, $createTextNode, $isTextNode } from 'lexical';
 
 // Custom CodeNode subclass that overrides importDOM to return null.
 // This prevents text/HTML pasted from IDEs (like VS Code) containing <pre> or <code>
@@ -189,7 +189,7 @@ function HistoryStatePlugin({ onHistoryChange }: { onHistoryChange?: (state: His
   return null;
 }
 
-import { ensureFontsLoaded } from '../../../utils/fontRegistry';
+import { ensureFontsLoaded, loadFontsFromContent } from '../../../utils/fontRegistry';
 
 function ExternalContentSyncPlugin({ content }: { content: string }) {
   const [editor] = useLexicalComposerContext();
@@ -226,26 +226,53 @@ function ExternalContentSyncPlugin({ content }: { content: string }) {
 }
 
 function FontLoaderPlugin({ content }: { content: string }) {
+  const [editor] = useLexicalComposerContext();
+
+  // 1. Immediately load all fonts referenced in the content string on reload
   React.useEffect(() => {
-    if (!content) return;
-    try {
-      const matches = content.match(/"font-family":\s*"([^"]+)"/g);
-      if (matches) {
-        const families = matches
-          .map(m => {
-            const val = m.replace(/"font-family":\s*"/, '').replace(/"$/, '');
-            const first = val.split(',')[0]?.trim()?.replace(/^["']|["']$/g, '');
-            return first;
-          })
-          .filter(Boolean);
+    if (content) {
+      loadFontsFromContent(content);
+    }
+  }, [content]);
+
+  // 2. Also inspect the actual Lexical EditorState text nodes on mount and on editor updates
+  React.useEffect(() => {
+    const scanEditorFonts = () => {
+      editor.getEditorState().read(() => {
+        const root = $getRoot();
+        const families: string[] = [];
+        const checkNode = (node: any) => {
+          if ($isTextNode(node)) {
+            const style = node.getStyle();
+            if (style && style.includes('font-family')) {
+              const match = style.match(/font-family:\s*(\\?["']?)([^,"';\\]+)(\\?["']?)/i);
+              if (match && match[2]) {
+                const fam = match[2].trim().replace(/^["'\\]+|["'\\]+$/g, '');
+                if (fam && !families.includes(fam)) {
+                  families.push(fam);
+                }
+              }
+            }
+          }
+          if (node.getChildren) {
+            for (const child of node.getChildren()) {
+              checkNode(child);
+            }
+          }
+        };
+        checkNode(root);
         if (families.length > 0) {
           ensureFontsLoaded(families);
         }
-      }
-    } catch {
-      // ignore
-    }
-  }, [content]);
+      });
+    };
+
+    scanEditorFonts();
+
+    return editor.registerUpdateListener(() => {
+      scanEditorFonts();
+    });
+  }, [editor]);
 
   return null;
 }

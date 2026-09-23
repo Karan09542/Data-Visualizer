@@ -54,7 +54,7 @@ const normalizeToRgba = (color: string): string => {
    return trimmed;
 };
 
-export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) => {
+export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef, onApply, onHover, onClear, presets }: any) => {
    const popoverRef = useRef<HTMLDivElement>(null);
    const [coords, setCoords] = useState({ top: 0, left: 0 });
    const [isPositioned, setIsPositioned] = useState(false);
@@ -65,54 +65,79 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) 
 
    useEffect(() => {
       setIsEyeDropperSupported('EyeDropper' in window);
+
+      // Dismiss any native virtual keyboard when color picker opens
+      if (typeof document !== 'undefined') {
+         if (document.activeElement instanceof HTMLElement) {
+            document.activeElement.blur();
+         }
+         const editables = document.querySelectorAll<HTMLElement>('[contenteditable="true"]');
+         editables.forEach(el => el.blur());
+      }
+      if (typeof navigator !== 'undefined' && 'virtualKeyboard' in navigator) {
+         try {
+            (navigator as any).virtualKeyboard?.hide?.();
+         } catch { /* ignore */ }
+      }
    }, []);
 
    useEffect(() => {
-      const handleOutsideClick = (e: MouseEvent) => {
+      const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
          if (popoverRef.current && !popoverRef.current.contains(e.target as Node) && anchorRef.current && !anchorRef.current.contains(e.target as Node)) {
             onClose();
          }
       };
-      // Use capture phase to ensure we catch the click before other elements might stop propagation
-      document.addEventListener("mousedown", handleOutsideClick, true);
-      return () => document.removeEventListener("mousedown", handleOutsideClick, true);
+      // Use capture phase on pointerdown to ensure it catches clicks and touch events outside
+      document.addEventListener("pointerdown", handleOutsideClick, true);
+      return () => document.removeEventListener("pointerdown", handleOutsideClick, true);
    }, [onClose, anchorRef]);
 
    React.useLayoutEffect(() => {
       if (!anchorRef.current || !popoverRef.current) return;
 
-      const anchorRect = anchorRef.current.getBoundingClientRect();
-      const popoverRect = popoverRef.current.getBoundingClientRect();
+      const updatePosition = () => {
+         if (!anchorRef.current || !popoverRef.current) return;
+         const anchorRect = anchorRef.current.getBoundingClientRect();
+         const popoverRect = popoverRef.current.getBoundingClientRect();
 
-      const viewportWidth = window.innerWidth;
-      const viewportHeight = window.innerHeight;
+         const viewportWidth = window.innerWidth;
+         const viewportHeight = window.innerHeight;
 
-      // Default positioning: below the trigger
-      let top = anchorRect.bottom + window.scrollY + 8;
-      let left = anchorRect.left + window.scrollX;
+         // Fixed coordinates relative to viewport
+         let top = anchorRect.bottom + 8;
+         let left = anchorRect.left;
 
-      // Adjust vertical position if it overflows the bottom
-      if (anchorRect.bottom + popoverRect.height + 8 > viewportHeight) {
-         // Place it above if there is space
-         if (anchorRect.top - popoverRect.height - 8 > 0) {
-            top = anchorRect.top + window.scrollY - popoverRect.height - 8;
-         } else {
-            // Otherwise, constrain it inside viewport
-            top = Math.max(8 + window.scrollY, viewportHeight - popoverRect.height - 8 + window.scrollY);
+         // Adjust vertical position if it overflows the bottom
+         if (anchorRect.bottom + popoverRect.height + 8 > viewportHeight) {
+            // Place it above if there is space
+            if (anchorRect.top - popoverRect.height - 8 > 0) {
+               top = anchorRect.top - popoverRect.height - 8;
+            } else {
+               // Otherwise, constrain it inside viewport
+               top = Math.max(8, viewportHeight - popoverRect.height - 8);
+            }
          }
-      }
 
-      // Adjust horizontal position if it overflows the right side
-      if (anchorRect.left + popoverRect.width > viewportWidth) {
-         left = viewportWidth - popoverRect.width - 12 + window.scrollX;
-      }
+         // Adjust horizontal position if it overflows the right side
+         if (left + popoverRect.width > viewportWidth - 8) {
+            left = Math.max(8, viewportWidth - popoverRect.width - 8);
+         }
 
-      // Ensure it doesn't clip off the left or top edges
-      if (left < window.scrollX) left = window.scrollX + 8;
-      if (top < window.scrollY) top = window.scrollY + 8;
+         // Ensure it doesn't clip off the left or top edges
+         if (left < 8) left = 8;
+         if (top < 8) top = 8;
 
-      setCoords({ top, left });
-      setIsPositioned(true);
+         setCoords({ top, left });
+         setIsPositioned(true);
+      };
+
+      updatePosition();
+      window.addEventListener("resize", updatePosition);
+      window.addEventListener("scroll", updatePosition, true);
+      return () => {
+         window.removeEventListener("resize", updatePosition);
+         window.removeEventListener("scroll", updatePosition, true);
+      };
    }, [anchorRef]);
 
    const hexToRgba = (hex: string, alpha = 1) => {
@@ -160,16 +185,31 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) 
 
    if (!anchorRef.current) return null;
 
+   const activePresets = presets || [
+      '#000000', '#4A4A4A', '#9B9B9B', '#FFFFFF', '#FF3B30', '#FF9500', 
+      '#FFCC00', '#4CD964', '#5AC8FA', '#007AFF', '#5856D6', '#FF2D55'
+   ];
+
    return createPortal(
       <div 
          ref={popoverRef} 
-         className="absolute p-3 bg-white dark:bg-[#1C1C1C] border border-slate-200 dark:border-[#333] rounded-xl shadow-2xl flex flex-col gap-3 transition-opacity duration-100 z-[999999]"
+         className="fixed p-3 bg-white dark:bg-[#1C1C1C] border border-slate-200 dark:border-[#333] rounded-xl shadow-2xl flex flex-col gap-2.5 transition-opacity duration-100 z-[999999]"
          style={{ 
             top: coords.top, 
             left: coords.left, 
             opacity: isPositioned ? 1 : 0,
             visibility: isPositioned ? 'visible' : 'hidden'
          }}
+         onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+         }}
+         onPointerDown={(e) => e.stopPropagation()}
+         onPointerUp={(e) => e.stopPropagation()}
+         onTouchStart={(e) => e.stopPropagation()}
+         onTouchEnd={(e) => e.stopPropagation()}
+         onMouseUp={(e) => e.stopPropagation()}
+         onClick={(e) => e.stopPropagation()}
       >
          <RgbaStringColorPicker color={normalizedColor} onChange={onChange} />
          <div className="flex items-center gap-2 mt-0.5">
@@ -178,7 +218,15 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) 
                <input 
                   type="text" 
                   value={color} 
+                  autoComplete="off"
+                  autoCorrect="off"
+                  spellCheck={false}
                   onChange={(e) => onChange(e.target.value)} 
+                  onKeyDown={(e) => {
+                     if (e.key === 'Enter' && onApply) {
+                        onApply(color);
+                     }
+                  }}
                   className="bg-slate-100 dark:bg-[#121212] border border-slate-200 dark:border-[#333] rounded-md px-2.5 py-1.5 text-[11px] text-slate-800 dark:text-slate-300 font-mono w-full focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 transition-all" 
                />
             </div>
@@ -186,7 +234,7 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) 
                <button 
                   type="button"
                   onClick={handleEyeDropper}
-                  className="w-7 h-7 bg-slate-100 dark:bg-[#2A2A2A] hover:bg-slate-200 dark:hover:bg-[#3A3A3A] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-md border border-slate-200 dark:border-[#333] hover:border-slate-300 dark:hover:border-[#444] transition-all active:scale-95 shrink-0 flex items-center justify-center shadow-sm"
+                  className="w-7 h-7 bg-slate-100 dark:bg-[#2A2A2A] hover:bg-slate-200 dark:hover:bg-[#3A3A3A] text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white rounded-md border border-slate-200 dark:border-[#333] hover:border-slate-300 dark:hover:border-[#444] transition-all active:scale-95 shrink-0 flex items-center justify-center shadow-sm cursor-pointer"
                   title="Pick color from screen"
                >
                   <Pipette size={14} />
@@ -194,21 +242,48 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef }: any) 
             )}
          </div>
          
-         <div className="grid grid-cols-6 gap-1.5 mt-1">
-            {[
-               '#000000', '#4A4A4A', '#9B9B9B', '#FFFFFF', '#FF3B30', '#FF9500', 
-               '#FFCC00', '#4CD964', '#5AC8FA', '#007AFF', '#5856D6', '#FF2D55'
-            ].map(c => (
+         <div className="grid grid-cols-6 gap-1.5 mt-0.5">
+            {activePresets.map((c: string) => (
                <button
                   key={c}
                   type="button"
-                  onClick={() => onChange(c)}
-                  className="w-[22px] h-[22px] rounded-[4px] shadow-sm border border-slate-200 dark:border-white/10 active:scale-95 transition-transform mx-auto"
+                  onMouseEnter={() => onHover?.(c)}
+                  onMouseLeave={() => onHover?.(null)}
+                  onClick={() => {
+                     onChange(c);
+                     if (onApply) {
+                        onApply(c);
+                     }
+                  }}
+                  className="w-[22px] h-[22px] rounded-[4px] shadow-sm border border-slate-200 dark:border-white/10 active:scale-95 transition-transform mx-auto cursor-pointer hover:scale-110"
                   style={{ backgroundColor: c }}
                   title={c}
                />
             ))}
          </div>
+
+         {(onApply || onClear) && (
+            <div className="flex items-center gap-2 mt-1">
+               {onClear && (
+                  <button
+                     type="button"
+                     onClick={() => onClear()}
+                     className="flex-1 py-1.5 px-2 bg-slate-100 dark:bg-[#2A2A2A] hover:bg-slate-200 dark:hover:bg-[#3A3A3A] active:scale-[0.98] text-slate-700 dark:text-slate-300 text-[11px] font-medium rounded-lg border border-slate-200 dark:border-[#333] transition-all cursor-pointer"
+                  >
+                     None
+                  </button>
+               )}
+               {onApply && (
+                  <button
+                     type="button"
+                     onClick={() => onApply(color || normalizedColor)}
+                     className="flex-1 py-1.5 px-3 bg-blue-600 hover:bg-blue-700 active:scale-[0.98] text-white text-[11px] font-semibold rounded-lg shadow-sm transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                  >
+                     Apply
+                  </button>
+               )}
+            </div>
+         )}
       </div>,
       document.body
    );

@@ -17,9 +17,23 @@ interface FontPickerProps {
   triggerTextClass?: string;
   /** Lets the host keep itself open while the font list is showing */
   onOpenChange?: (open: boolean) => void;
+  /** When true, disables and omits the search input so mobile keyboard never opens */
+  disableSearch?: boolean;
 }
 
-export function FontPicker({ value, onChange, className = "", triggerClassName = "", selectedText = "", onHover, triggerSurfaceClass = "bg-[#181818] border-[#3A3A3A] rounded", menuSurfaceClass = "bg-[#1E1E1E] border-[#3A3A3A]", triggerTextClass = "text-white", onOpenChange }: FontPickerProps) {
+export function FontPicker({
+  value,
+  onChange,
+  className = "",
+  triggerClassName = "",
+  selectedText = "",
+  onHover,
+  triggerSurfaceClass = "bg-[#181818] border-[#3A3A3A] rounded",
+  menuSurfaceClass = "bg-[#1E1E1E] border-[#3A3A3A]",
+  triggerTextClass = "text-white",
+  onOpenChange,
+  disableSearch = false,
+}: FontPickerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<'all' | 'hindi' | 'english'>('all');
@@ -56,6 +70,12 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
    * top corner and then jumps. The layout effect below refines this once the real size is known.
    */
   const openMenu = () => {
+    if (typeof document !== 'undefined') {
+      const activeEl = document.activeElement as HTMLElement | null;
+      if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+        activeEl.blur();
+      }
+    }
     const trigger = pickerRef.current;
     if (trigger) {
       const rect = trigger.getBoundingClientRect();
@@ -194,7 +214,7 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
   const recentFontsList = useMemo(() => recents.map(id => FONTS.find(f => f.id === id)).filter(Boolean) as FontNode[], [recents]);
 
   useEffect(() => {
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: MouseEvent | PointerEvent) => {
       const target = e.target as Node;
       const insideTrigger = pickerRef.current?.contains(target);
       const insideMenu = menuRef.current?.contains(target);
@@ -202,12 +222,19 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
         setIsOpen(false);
       }
     };
-    if (isOpen) document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    if (isOpen) document.addEventListener("pointerdown", handleClickOutside, true);
+    return () => document.removeEventListener("pointerdown", handleClickOutside, true);
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) {
+    if (isOpen) {
+      if (typeof document !== 'undefined') {
+        const activeEl = document.activeElement as HTMLElement | null;
+        if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+          activeEl.blur();
+        }
+      }
+    } else {
       setHoveredFont(null);
       setFocusedIndex(-1);
       onHover?.(null);
@@ -264,7 +291,27 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
       <button
         type="button"
         className={`w-full flex items-center justify-between text-xs border px-3 py-2 hover:border-[#4A4A4A] transition-colors focus:border-blue-500 focus:outline-none truncate ${triggerTextClass} ${triggerSurfaceClass} ${triggerClassName}`}
-        onClick={() => (isOpen ? setIsOpen(false) : openMenu())}
+        onMouseDown={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+        onPointerDown={(e) => {
+          e.stopPropagation();
+        }}
+        onTouchStart={(e) => {
+          e.stopPropagation();
+        }}
+        onTouchEnd={(e) => {
+          e.stopPropagation();
+        }}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (isOpen) {
+            setIsOpen(false);
+          } else {
+            openMenu();
+          }
+        }}
         style={{ fontFamily: value }}
       >
         <span className="truncate flex-1 text-left">{value || "Select Font"}</span>
@@ -282,36 +329,85 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
             visibility: menuPos ? 'visible' : 'hidden',
             zIndex: 100001,
           }}
-          className={`w-72 max-w-[calc(100vw-1rem)] border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 ${menuSurfaceClass}`}
+          className={`w-72 max-w-[calc(100vw-1rem)] border rounded-xl shadow-2xl flex flex-col overflow-hidden animate-in fade-in zoom-in-95 duration-150 select-none ${menuSurfaceClass}`}
           onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onTouchEnd={(e) => e.stopPropagation()}
+          onMouseDown={(e) => {
+            const target = e.target as HTMLElement | null;
+            if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA')) {
+              e.stopPropagation();
+              return;
+            }
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onMouseUp={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
         >
 
           {/* Search Header */}
-          <div className="p-3 border-b border-[#2C2C2C] space-y-2">
-            <div className="relative">
-              <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8A8A]" />
-              <input
-                autoFocus
-                type="text"
-                placeholder="Search fonts, categories..."
-                className="w-full bg-[#121212] border border-[#2C2C2C] rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-[#6A6A6A] focus:border-blue-500 focus:outline-none transition-colors"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
-            </div>
+          {!disableSearch ? (
+            <div className="p-3 border-b border-[#2C2C2C] space-y-2">
+              <div className="relative">
+                <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-[#8A8A8A] pointer-events-none" />
+                <input
+                  type="text"
+                  autoFocus={false}
+                  placeholder="Search fonts, categories..."
+                  className="w-full bg-[#121212] border border-[#2C2C2C] rounded-lg pl-9 pr-3 py-2 text-xs text-white placeholder-[#6A6A6A] focus:border-blue-500 focus:outline-none transition-colors select-text cursor-text"
+                  value={search}
+                  onChange={(e) => setSearch(e.target.value)}
+                  onPointerDown={(e) => e.stopPropagation()}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  onMouseDown={(e) => e.stopPropagation()}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                />
+              </div>
 
-            <div className="flex bg-[#121212] p-1 rounded-lg border border-[#2C2C2C]">
-              {(['all', 'hindi', 'english'] as const).map(f => (
-                <button
-                  key={f}
-                  onClick={() => setFilter(f)}
-                  className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-md transition-colors ${filter === f ? 'bg-blue-600/20 text-blue-400' : 'text-[#6A6A6A] hover:bg-[#222]'}`}
-                >
-                  {f}
-                </button>
-              ))}
+              <div className="flex bg-[#121212] p-1 rounded-lg border border-[#2C2C2C]">
+                {(['all', 'hindi', 'english'] as const).map(f => (
+                  <button
+                    key={f}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFilter(f);
+                    }}
+                    className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-md transition-colors ${filter === f ? 'bg-blue-600/20 text-blue-400' : 'text-[#6A6A6A] hover:bg-[#222]'}`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="p-2 border-b border-[#2C2C2C]">
+              <div className="flex bg-[#121212] p-1 rounded-lg border border-[#2C2C2C]">
+                {(['all', 'hindi', 'english'] as const).map(f => (
+                  <button
+                    key={f}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setFilter(f);
+                    }}
+                    className={`flex-1 text-[10px] font-bold uppercase tracking-wider py-1.5 rounded-md transition-colors ${filter === f ? 'bg-blue-600/20 text-blue-400' : 'text-[#6A6A6A] hover:bg-[#222]'}`}
+                  >
+                    {f}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* List Area */}
           <div className="max-h-[360px] overflow-y-auto no-scrollbar py-2">
@@ -395,6 +491,20 @@ export function FontPicker({ value, onChange, className = "", triggerClassName =
 
 const FontItem = React.memo(({ font, selected, isFocused, selectedText, onSelect, onToggleFav, isFav, onMouseEnter, onMouseLeave }: { font: FontNode, selected: boolean, isFocused: boolean, selectedText: string, onSelect: (f: FontNode) => void, onToggleFav: (e: React.MouseEvent, id: string) => void, isFav: boolean, onMouseEnter: (f: FontNode) => void, onMouseLeave: () => void }) => {
   const isObserverRef = useRef<HTMLDivElement>(null);
+  const holdTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const touchStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const isPreviewingRef = useRef(false);
+
+  const cancelHold = () => {
+    if (holdTimerRef.current) {
+      clearTimeout(holdTimerRef.current);
+      holdTimerRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => cancelHold();
+  }, []);
 
   useEffect(() => {
     const observer = new IntersectionObserver((entries) => {
@@ -410,16 +520,83 @@ const FontItem = React.memo(({ font, selected, isFocused, selectedText, onSelect
     return () => observer.disconnect();
   }, [font.googleFontName]);
 
+  const handleTouchStart = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    if (typeof document !== 'undefined') {
+      (document.activeElement as HTMLElement)?.blur?.();
+    }
+    const t = e.touches[0];
+    touchStartPosRef.current = { x: t.clientX, y: t.clientY };
+    isPreviewingRef.current = false;
+    cancelHold();
+
+    // After 90ms of holding without scrolling, trigger font live preview in the note
+    holdTimerRef.current = setTimeout(() => {
+      isPreviewingRef.current = true;
+      loadGoogleFont(font.googleFontName);
+      onMouseEnter(font);
+    }, 90);
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!touchStartPosRef.current) return;
+    const t = e.touches[0];
+    const dx = Math.abs(t.clientX - touchStartPosRef.current.x);
+    const dy = Math.abs(t.clientY - touchStartPosRef.current.y);
+    if (dx > 8 || dy > 8) {
+      cancelHold();
+      if (isPreviewingRef.current) {
+        isPreviewingRef.current = false;
+        onMouseLeave();
+      }
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    cancelHold();
+  };
+
+  const handleTouchCancel = (e: React.TouchEvent) => {
+    e.stopPropagation();
+    cancelHold();
+    if (isPreviewingRef.current) {
+      isPreviewingRef.current = false;
+      onMouseLeave();
+    }
+  };
+
   return (
     <div
       ref={isObserverRef}
-      className={`px-3 py-2 flex flex-col gap-1 cursor-pointer transition-colors group ${selected ? 'bg-blue-600/10' : (isFocused ? 'bg-[#3A3A3A]' : 'hover:bg-[#252525]')}`}
-      onClick={() => onSelect(font)}
-      onMouseEnter={() => onMouseEnter(font)}
-      onMouseLeave={onMouseLeave}
-      onTouchStart={() => onMouseEnter(font)}
-      onTouchEnd={onMouseLeave}
-      onTouchCancel={onMouseLeave}
+      className={`px-3 py-2 flex flex-col gap-1 cursor-pointer transition-colors group select-none [-webkit-touch-callout:none] [-webkit-user-select:none] ${selected ? 'bg-blue-600/10' : (isFocused ? 'bg-[#3A3A3A]' : 'hover:bg-[#252525]')}`}
+      onContextMenu={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onMouseDown={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchCancel}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        cancelHold();
+        onSelect(font);
+      }}
+      onPointerEnter={(e) => {
+        if (e.pointerType !== 'mouse') return;
+        onMouseEnter(font);
+      }}
+      onPointerLeave={(e) => {
+        if (e.pointerType !== 'mouse') return;
+        onMouseLeave();
+      }}
     >
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
@@ -432,7 +609,15 @@ const FontItem = React.memo(({ font, selected, isFocused, selectedText, onSelect
           )}
         </div>
         <button
-          onClick={(e) => onToggleFav(e, font.id)}
+          type="button"
+          onMouseDown={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggleFav(e, font.id);
+          }}
           className={`opacity-100 md:opacity-0 group-hover:opacity-100 transition-opacity p-1 ${isFav ? 'opacity-100 text-yellow-500' : 'text-[#4A4A4A] hover:text-yellow-400'}`}
         >
           <Star size={14} fill={isFav ? "currentColor" : "none"} />
@@ -442,7 +627,7 @@ const FontItem = React.memo(({ font, selected, isFocused, selectedText, onSelect
         className="text-white text-base truncate opacity-80 mt-0.5"
         style={{ fontFamily: `"${font.fontFamily}", sans-serif` }}
       >
-        {selectedText || font.previewText || (font.supportsHindi ? "Aa राम" : "The quick brown fox")}
+        {selectedText || font.previewText || (font.supportsHindi ? "Aa राम" : "The quick brown...")}
       </div>
     </div>
   );

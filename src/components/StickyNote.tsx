@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Maximize2, Minimize2, Trash2, GripVertical, Clipboard, CopyPlus, Check, Eraser, Type, Minus, Plus, MoreHorizontal, Undo2, Redo2, ImageDown, Hash, Code2 } from 'lucide-react';
+import { X, Maximize2, Minimize2, Trash2, GripVertical, Clipboard, CopyPlus, Check, Eraser, Type, Minus, Plus, MoreHorizontal, Undo2, Redo2, ImageDown, Hash, Code2, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
 import type { StickyNote as IStickyNote } from '../lib/db';
-import { FONTS, loadGoogleFont } from '../utils/fontRegistry';
+import { FONTS, loadGoogleFont, loadFontsFromContent } from '../utils/fontRegistry';
 import { getMinNoteWidth } from '../utils/NoteUtils';
 import LexicalEditor from './notes/editor/LexicalEditor';
 import type { HistoryState } from './notes/editor/LexicalEditor';
-import { UNDO_COMMAND, REDO_COMMAND, $getRoot, LexicalEditor as ILexicalEditor } from 'lexical';
+import { UNDO_COMMAND, REDO_COMMAND, $getRoot, $getSelection, $isRangeSelection, $createParagraphNode, $isRootNode, LexicalNode, LexicalEditor as ILexicalEditor } from 'lexical';
 
 
 
@@ -53,9 +53,9 @@ const POPOVER_SURFACE =
 const POPOVER_LABEL =
   'px-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-black/40 dark:text-white/40';
 const TOOL_BUTTON =
-  'flex h-8 w-8 items-center justify-center rounded-lg text-black/55 dark:text-white/55 transition-colors hover:bg-black/6 dark:hover:bg-white/10 hover:text-black/85 dark:hover:text-white/90 disabled:pointer-events-none disabled:opacity-30';
+  'flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg text-black/55 dark:text-white/55 transition-colors hover:bg-black/6 dark:hover:bg-white/10 hover:text-black/85 dark:hover:text-white/90 disabled:pointer-events-none disabled:opacity-30';
 const TOOL_BUTTON_ACTIVE =
-  'flex h-8 w-8 items-center justify-center rounded-lg bg-black/8 dark:bg-white/16 text-black/85 dark:text-white transition-colors';
+  'flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg bg-black/8 dark:bg-white/16 text-black/85 dark:text-white transition-colors';
 const MENU_ITEM =
   'flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium text-black/75 dark:text-white/75 transition-colors hover:bg-black/6 dark:hover:bg-white/10 hover:text-black dark:hover:text-white disabled:pointer-events-none disabled:opacity-35';
 
@@ -136,10 +136,61 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
 
   useEffect(() => {
     loadGoogleFont(activeFontFamily);
-  }, [activeFontFamily]);
+    if (content) {
+      loadFontsFromContent(content);
+    }
+  }, [activeFontFamily, content]);
 
   useEffect(() => {
     if (!showTypography) setPreviewFontFamily(null);
+  }, [showTypography]);
+
+  const moreActionsRef = useRef<HTMLDivElement>(null);
+  const moreActionsBtnRef = useRef<HTMLButtonElement>(null);
+  const typographyRef = useRef<HTMLDivElement>(null);
+  const typographyBtnRef = useRef<HTMLButtonElement>(null);
+
+  useEffect(() => {
+    if (!showMoreActions) return;
+    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (
+        moreActionsRef.current &&
+        !moreActionsRef.current.contains(target) &&
+        moreActionsBtnRef.current &&
+        !moreActionsBtnRef.current.contains(target)
+      ) {
+        setShowMoreActions(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleOutsideClick, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick, true);
+    };
+  }, [showMoreActions]);
+
+  useEffect(() => {
+    if (!showTypography) return;
+    const handleOutsideClick = (e: MouseEvent | PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      const fontPickerPortal = document.querySelector('.font-picker-portal');
+      if (fontPickerPortal && fontPickerPortal.contains(target)) return;
+
+      if (
+        typographyRef.current &&
+        !typographyRef.current.contains(target) &&
+        typographyBtnRef.current &&
+        !typographyBtnRef.current.contains(target)
+      ) {
+        setShowTypography(false);
+      }
+    };
+    document.addEventListener('pointerdown', handleOutsideClick, true);
+    return () => {
+      document.removeEventListener('pointerdown', handleOutsideClick, true);
+    };
   }, [showTypography]);
 
 
@@ -164,6 +215,52 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
 
   const undo = useCallback(() => editorRef.current?.dispatchCommand(UNDO_COMMAND, undefined), []);
   const redo = useCallback(() => editorRef.current?.dispatchCommand(REDO_COMMAND, undefined), []);
+
+  const addLine = useCallback((where: 'before' | 'after') => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.update(() => {
+      const selection = $getSelection();
+      let targetBlock: LexicalNode | null = null;
+      if ($isRangeSelection(selection)) {
+        const anchorNode = selection.anchor.getNode();
+        let current: LexicalNode | null = anchorNode;
+        while (current) {
+          const parent: LexicalNode | null = current.getParent();
+          if (parent === null) break;
+          if ($isRootNode(parent)) {
+            targetBlock = current;
+            break;
+          }
+          current = parent;
+        }
+      }
+
+      const root = $getRoot();
+      const paragraph = $createParagraphNode();
+
+      if (targetBlock && targetBlock.getParent()) {
+        if (where === 'before') {
+          targetBlock.insertBefore(paragraph);
+        } else {
+          targetBlock.insertAfter(paragraph);
+        }
+      } else {
+        if (where === 'before') {
+          const firstChild = root.getFirstChild();
+          if (firstChild) {
+            firstChild.insertBefore(paragraph);
+          } else {
+            root.append(paragraph);
+          }
+        } else {
+          root.append(paragraph);
+        }
+      }
+      paragraph.select();
+    });
+    editor.focus();
+  }, []);
 
   const toggleMinimize = () => {
     onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, isMinimized: !note.isMinimized, updatedAt: Date.now() });
@@ -430,7 +527,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
     isOpen: false,
     title: '',
     message: '',
-    onConfirm: () => {},
+    onConfirm: () => { },
   });
 
   const handleClearContent = useCallback(() => {
@@ -494,11 +591,11 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       />
 
       {/* Header / Drag Handle */}
-      <div className={`note-export-hide relative h-12 flex items-center justify-between gap-2 pl-2.5 pr-2.5 cursor-grab active:cursor-grabbing shrink-0 ${isMax ? 'cursor-default' : ''}`}>
+      <div className={`note-export-hide relative h-12 flex items-center justify-between gap-1.5 sm:gap-2 pl-2 sm:pl-2.5 pr-2 sm:pr-2.5 cursor-grab active:cursor-grabbing shrink-0 ${isMax ? 'cursor-default' : ''}`}>
         <div className="flex items-center gap-1 min-w-0">
           {!isMax && (
             <span
-              className="flex h-8 w-5 items-center justify-center text-black/20 dark:text-white/20 transition-colors group-hover:text-black/35 dark:group-hover:text-white/35"
+              className="hidden sm:flex h-8 w-5 items-center justify-center text-black/20 dark:text-white/20 transition-colors group-hover:text-black/35 dark:group-hover:text-white/35"
               title="Drag note"
             >
               <GripVertical size={15} />
@@ -512,7 +609,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               setShowTypography(false);
               setShowMoreActions(false);
             }}
-            className="flex h-8 w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/6 dark:hover:bg-white/10"
+            className="flex h-7 w-7 sm:h-8 sm:w-8 items-center justify-center rounded-lg transition-colors hover:bg-black/6 dark:hover:bg-white/10"
             title="Change colour"
           >
             <span
@@ -524,6 +621,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
 
         <div className="flex items-center gap-0.5 shrink-0 opacity-100 sm:opacity-60 sm:group-hover:opacity-100 transition-opacity">
           <button
+            ref={typographyBtnRef}
             type="button"
             onPointerDown={handleActionPointerDown}
             onClick={() => {
@@ -534,31 +632,63 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
             className={showTypography ? TOOL_BUTTON_ACTIVE : TOOL_BUTTON}
             title="Text style"
           >
-            <Type size={16} />
+            <Type size={15} />
           </button>
 
           <button
             type="button"
-            onPointerDown={handleActionPointerDown}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={undo}
             disabled={!history.canUndo}
-            className={`hidden sm:flex ${TOOL_BUTTON}`}
+            className={TOOL_BUTTON}
             title={history.canUndo ? 'Undo' : 'Nothing to undo'}
           >
-            <Undo2 size={16} />
+            <Undo2 size={15} />
           </button>
           <button
             type="button"
-            onPointerDown={handleActionPointerDown}
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
             onClick={redo}
             disabled={!history.canRedo}
-            className={`hidden sm:flex ${TOOL_BUTTON}`}
+            className={TOOL_BUTTON}
             title={history.canRedo ? 'Redo' : 'Nothing to redo'}
           >
-            <Redo2 size={16} />
+            <Redo2 size={15} />
           </button>
 
           <button
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={() => addLine('before')}
+            className={TOOL_BUTTON}
+            title="Add line above"
+          >
+            <ArrowUpToLine size={15} />
+          </button>
+          <button
+            type="button"
+            onPointerDown={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onClick={() => addLine('after')}
+            className={TOOL_BUTTON}
+            title="Add line below"
+          >
+            <ArrowDownToLine size={15} />
+          </button>
+
+          <button
+            ref={moreActionsBtnRef}
             type="button"
             onPointerDown={handleActionPointerDown}
             onClick={() => {
@@ -567,12 +697,12 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               setShowTypography(false);
             }}
             className={showMoreActions ? TOOL_BUTTON_ACTIVE : TOOL_BUTTON}
-            title="More"
+            title="More actions"
           >
-            <MoreHorizontal size={16} />
+            <MoreHorizontal size={15} />
           </button>
 
-          <span className="mx-1 h-5 w-px bg-black/10 dark:bg-white/10" />
+          <span className="mx-0.5 sm:mx-1 h-4 sm:h-5 w-px bg-black/10 dark:bg-white/10" />
 
           <button
             type="button"
@@ -590,7 +720,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
             className={TOOL_BUTTON}
             title="Close to list"
           >
-            <X size={16} />
+            <X size={15} />
           </button>
         </div>
       </div>
@@ -599,6 +729,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       <AnimatePresence>
         {showMoreActions && (
           <motion.div
+            ref={moreActionsRef}
             initial={{ opacity: 0, scale: 0.97, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: -6 }}
@@ -634,33 +765,6 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               <CopyPlus size={15} className="shrink-0 opacity-60" />
               <span>Duplicate note</span>
             </button>
-
-            <div className="sm:hidden">
-              <button
-                type="button"
-                disabled={!history.canUndo}
-                onClick={() => {
-                  undo();
-                  setShowMoreActions(false);
-                }}
-                className={MENU_ITEM}
-              >
-                <Undo2 size={15} className="shrink-0 opacity-60" />
-                <span>Undo</span>
-              </button>
-              <button
-                type="button"
-                disabled={!history.canRedo}
-                onClick={() => {
-                  redo();
-                  setShowMoreActions(false);
-                }}
-                className={MENU_ITEM}
-              >
-                <Redo2 size={15} className="shrink-0 opacity-60" />
-                <span>Redo</span>
-              </button>
-            </div>
 
             <div className="my-1 h-px bg-black/7 dark:bg-white/10" />
 
@@ -700,6 +804,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       <AnimatePresence>
         {showTypography && (
           <motion.div
+            ref={typographyRef}
             initial={{ opacity: 0, scale: 0.97, y: -6 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.97, y: -6 }}
