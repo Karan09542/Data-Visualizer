@@ -14,7 +14,6 @@ import {
   Box,
   FlipHorizontal,
   Download,
-  Orbit,
   Move,
   ZoomIn,
   Sliders,
@@ -955,7 +954,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   useEffect(() => {
     if (!controlsRef.current) return;
     const controls = controlsRef.current;
-    
+
     controls.enabled = true;
     controls.enableRotate = false; // Strictly disabled: rotating ONLY happens via gizmo lines!
     controls.enablePan = true;
@@ -963,7 +962,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     controls.panSpeed = 1.0;
     controls.enableZoom = true;
     controls.zoomSpeed = 1.0;
-    
+
     if (activeTool === 'pan' || activeTool === 'orbit') {
       controls.mouseButtons = {
         LEFT: THREE.MOUSE.PAN,
@@ -1114,7 +1113,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     try {
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
-    } catch (_) {}
+    } catch (_) { }
 
     const rect = container.getBoundingClientRect();
     setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
@@ -1206,7 +1205,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       if ((e.target as HTMLElement).hasPointerCapture?.(e.pointerId)) {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Restore OrbitControls based on active tool
     if (controlsRef.current) {
@@ -1379,18 +1378,16 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[99999] flex items-center justify-center select-none transition-all duration-200 ${
-        isFullscreen ? 'p-0 m-0 w-full h-full bg-[#0c0c14]' : 'bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6'
-      }`}
+      className={`fixed inset-0 z-[99999] flex items-center justify-center select-none transition-all duration-200 ${isFullscreen ? 'p-0 m-0 w-full h-full bg-[#0c0c14]' : 'bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6'
+        }`}
       onClick={isFullscreen ? undefined : onClose}
     >
       <div
         data-isolate-modal="true"
-        className={`relative bg-[#0c0c14] flex flex-col overflow-hidden transition-all duration-200 ${
-          isFullscreen
+        className={`relative bg-[#0c0c14] flex flex-col overflow-hidden transition-all duration-200 ${isFullscreen
             ? 'w-full h-full max-w-none max-h-none rounded-none border-0 shadow-none'
             : 'w-full sm:max-w-[1150px] h-full sm:h-[88vh] sm:max-h-[850px] sm:min-h-[500px] rounded-none sm:rounded-2xl border-0 sm:border border-white/10 shadow-none sm:shadow-[0_25px_60px_rgba(0,0,0,0.8)]'
-        }`}
+          }`}
         onClick={e => e.stopPropagation()}
       >
         {/* Top Header */}
@@ -1416,11 +1413,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             {/* Auto-rotate Toggle */}
             <button
               onClick={() => setIsAutoRotating(v => !v)}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                isAutoRotating
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${isAutoRotating
                   ? 'bg-indigo-500/25 text-indigo-300 border border-indigo-500/40'
                   : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/5'
-              }`}
+                }`}
               title="Toggle Auto Rotation"
             >
               {isAutoRotating ? <Pause size={13} /> : <Play size={13} />}
@@ -1430,11 +1426,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             {/* Wireframe Toggle */}
             <button
               onClick={() => setIsWireframe(v => !v)}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                isWireframe
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${isWireframe
                   ? 'bg-purple-500/25 text-purple-300 border border-purple-500/40'
                   : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/5'
-              }`}
+                }`}
               title="Toggle 3D Wireframe Mesh"
             >
               <Layers size={13} />
@@ -1444,11 +1439,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             {/* Invert Depth */}
             <button
               onClick={() => setIsInverted(v => !v)}
-              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${
-                isInverted
+              className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-lg text-xs font-medium transition-all ${isInverted
                   ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40'
                   : 'bg-white/5 hover:bg-white/10 text-white/60 hover:text-white border border-white/5'
-              }`}
+                }`}
               title="Invert Depth Map"
             >
               <FlipHorizontal size={13} />
@@ -1460,11 +1454,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             {/* Fullscreen Button */}
             <button
               onClick={toggleFullscreen}
-              className={`hidden md:flex w-8 h-8 rounded-lg items-center justify-center transition-all border ${
-                isFullscreen
+              className={`hidden md:flex w-8 h-8 rounded-lg items-center justify-center transition-all border ${isFullscreen
                   ? 'bg-indigo-600/30 text-indigo-300 border-indigo-500/40 hover:bg-indigo-600/40 hover:text-white'
                   : 'bg-white/5 hover:bg-white/10 text-white/50 hover:text-white border-white/5'
-              }`}
+                }`}
               title={isFullscreen ? "Exit Fullscreen (F / Esc)" : "Fullscreen (F)"}
             >
               {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
@@ -1510,11 +1503,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   {/* Move Tool */}
                   <button
                     onClick={() => { setActiveTool('pan'); setShowGizmo(false); }}
-                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                      activeTool === 'pan' || activeTool === 'orbit'
+                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${activeTool === 'pan' || activeTool === 'orbit'
                         ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/40 font-semibold'
                         : 'text-white/60 hover:text-white hover:bg-white/10'
-                    }`}
+                      }`}
                     title="Pan/Move Tool (M) - Drag to pan, scroll to zoom"
                   >
                     <Move size={13} />
@@ -1524,11 +1516,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   {/* Depth Brush */}
                   <button
                     onClick={() => { setActiveTool('brush'); setShowGizmo(false); }}
-                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                      activeTool === 'brush'
+                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${activeTool === 'brush'
                         ? 'bg-red-500 text-white shadow-sm shadow-red-500/40 font-semibold'
                         : 'text-white/60 hover:text-white hover:bg-white/10'
-                    }`}
+                      }`}
                     title="Depth Brush (B) - Paint over areas to flatten 3D depth"
                   >
                     <Paintbrush size={13} />
@@ -1538,11 +1529,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   {/* Eraser */}
                   <button
                     onClick={() => { setActiveTool('eraser'); setShowGizmo(false); }}
-                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${
-                      activeTool === 'eraser'
+                    className={`flex items-center justify-center gap-1.5 h-7 sm:h-7.5 px-2.5 sm:px-3 rounded-full text-xs font-medium transition-all whitespace-nowrap ${activeTool === 'eraser'
                         ? 'bg-sky-500 text-white shadow-sm shadow-sky-500/40 font-semibold'
                         : 'text-white/60 hover:text-white hover:bg-white/10'
-                    }`}
+                      }`}
                     title="Eraser (E) - Restore 3D depth"
                   >
                     <Eraser size={13} />
@@ -1611,11 +1601,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   <button
                     onClick={handleUndo}
                     disabled={!canUndo}
-                    className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
-                      canUndo
+                    className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${canUndo
                         ? 'text-white/75 hover:text-white hover:bg-white/10 active:scale-95'
                         : 'text-white/20 cursor-not-allowed'
-                    }`}
+                      }`}
                     title="Undo Stroke (Ctrl+Z)"
                   >
                     <Undo2 size={13} />
@@ -1624,11 +1613,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   <button
                     onClick={handleRedo}
                     disabled={!canRedo}
-                    className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
-                      canRedo
+                    className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${canRedo
                         ? 'text-white/75 hover:text-white hover:bg-white/10 active:scale-95'
                         : 'text-white/20 cursor-not-allowed'
-                    }`}
+                      }`}
                     title="Redo Stroke (Ctrl+Y / Ctrl+Shift+Z)"
                   >
                     <Redo2 size={13} />
@@ -1640,11 +1628,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   {(activeTool === 'brush' || activeTool === 'eraser') && (
                     <button
                       onClick={() => setShowMaskOverlay(v => !v)}
-                      className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${
-                        showMaskOverlay
+                      className={`w-7 h-7 sm:w-7.5 sm:h-7.5 rounded-full flex items-center justify-center transition-all ${showMaskOverlay
                           ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30 shadow-sm shadow-amber-500/10'
                           : 'text-white/40 hover:text-white hover:bg-white/10'
-                      }`}
+                        }`}
                       title={showMaskOverlay ? 'Hide Red Mask Highlight' : 'Show Red Mask Highlight'}
                     >
                       {showMaskOverlay ? <Eye size={13} /> : <EyeOff size={13} />}
@@ -1724,11 +1711,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
           {/* Three.js Canvas Mount */}
           <div
             ref={containerRef}
-            className={`w-full h-full ${
-              activeTool === 'brush' || activeTool === 'eraser'
+            className={`w-full h-full ${activeTool === 'brush' || activeTool === 'eraser'
                 ? 'cursor-none'
                 : 'cursor-grab active:cursor-grabbing'
-            }`}
+              }`}
             style={{ touchAction: 'none' }}
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
@@ -1821,11 +1807,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
                   }
                   setShowGizmo(s => !s);
                 }}
-                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 border ${
-                  showGizmo
+                className={`w-9 h-9 rounded-xl flex items-center justify-center transition-all duration-200 border ${showGizmo
                     ? 'bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-[0_0_16px_rgba(99,102,241,0.5)] border-indigo-400/50 scale-105 ring-2 ring-indigo-400/30'
                     : 'bg-[#12121e]/85 backdrop-blur-xl text-white/70 hover:text-white border-white/15 hover:border-white/30 hover:bg-[#1a1a2e]/90 shadow-md hover:shadow-black/60 active:scale-95'
-                }`}
+                  }`}
                 title={showGizmo ? "Hide 3D Rotation Gizmo (G)" : "Show 3D Rotation Gizmo (G)"}
               >
                 <Globe size={16} strokeWidth={1.85} />
@@ -1906,11 +1891,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
             {/* Copy as PNG */}
             <button
               onClick={handleCopyAsPng}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all border whitespace-nowrap ${
-                copied
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all border whitespace-nowrap ${copied
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
                   : 'bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border-white/10 hover:border-white/20'
-              }`}
+                }`}
               title="Copy 3D snapshot to clipboard as PNG"
             >
               {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}

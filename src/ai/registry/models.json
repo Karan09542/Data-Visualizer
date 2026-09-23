@@ -125,43 +125,54 @@
     "supports": []
   },
   {
-    "id": "depth_anything",
+    "id": "depth_anything_v2",
+    "name": "Depth Anything V2 (Balanced)",
+    "description": "The recommended one: DINOv2 with a full depth decoder at 686x518, compact weights.",
+    "size": 27733680,
+    "sources": [
+      {
+        "type": "huggingface",
+        "url": "https://huggingface.co/litert-community/depth-anything-v2-small/resolve/main/tflite/depth_anything_v2_small_wi8_afp32.tflite?download=true"
+      }
+    ],
     "version": "2.0.0",
     "task": "depth-estimation",
-    "name": "Depth Anything V2",
-    "description": "High-quality monocular depth estimation",
-    "sources": [
-      {
-        "type": "huggingface",
-        "url": "https://huggingface.co/mlboydaisuke/Depth-Anything-3-LiteRT/resolve/main/da3_small_gpu_fp16.tflite?download=true"
-      }
-    ],
     "supports": [
       "depth-map",
       "grayscale-depth-map",
       "colored-depth-map",
       "3d-depth-view"
-    ]
+    ],
+    "depth": {
+      "fit": "stretch",
+      "polarity": "inverse",
+      "normalization": "imagenet"
+    }
   },
   {
-    "id": "midas_small",
-    "version": "2.1.0",
-    "task": "depth-estimation",
-    "name": "MiDaS Small Depth Map",
-    "description": "Monocular depth estimation — grayscale map, colored map, or interactive 3D viewer",
-    "size": 33512530,
+    "id": "depth_anything_v2_fp32",
+    "name": "Depth Anything V2 (Best quality)",
+    "description": "Same model at full precision - the most accurate, and the largest download.",
+    "size": 99530468,
     "sources": [
       {
         "type": "huggingface",
-        "url": "https://huggingface.co/mlboydaisuke/midas-small-litert/resolve/main/midas_small_256_fp16.tflite?download=true"
+        "url": "https://huggingface.co/litert-community/depth-anything-v2-small/resolve/main/tflite/depth_anything_v2_small.tflite?download=true"
       }
     ],
+    "version": "2.0.0",
+    "task": "depth-estimation",
     "supports": [
       "depth-map",
       "grayscale-depth-map",
       "colored-depth-map",
       "3d-depth-view"
-    ]
+    ],
+    "depth": {
+      "fit": "stretch",
+      "polarity": "inverse",
+      "normalization": "imagenet"
+    }
   },
   {
     "id": "style_predict",

@@ -86,6 +86,54 @@ class OPFSStorage {
     }
   }
 
+  /**
+   * Every model file in storage, whether or not it is still offered.
+   *
+   * Everything else here is keyed by a manifest, so a model dropped from the registry keeps its
+   * download forever with nothing able to name it. This is how those are found.
+   */
+  async listCached(): Promise<{ id: string; version: string; size: number }[]> {
+    if (!this.isSupported) return [];
+    const found: { id: string; version: string; size: number }[] = [];
+    try {
+      const root = await this.getRoot();
+      const modelsDir = await root.getDirectoryHandle('models', { create: false });
+      for await (const [id, modelDir] of (modelsDir as any).entries()) {
+        if (modelDir.kind !== 'directory') continue;
+        for await (const [version, versionDir] of modelDir.entries()) {
+          if (versionDir.kind !== 'directory') continue;
+          try {
+            const file = await (await versionDir.getFileHandle(MODEL_FILE, { create: false })).getFile();
+            found.push({ id, version, size: file.size });
+          } catch {
+            // No model file under this version: nothing cached here.
+          }
+        }
+      }
+    } catch {
+      // Nothing has been downloaded yet.
+    }
+    return found;
+  }
+
+  /** Removes one cached version by name, for models the registry no longer knows about. */
+  async deleteCached(id: string, version: string): Promise<boolean> {
+    if (!this.isSupported) return false;
+    try {
+      const root = await this.getRoot();
+      const modelsDir = await root.getDirectoryHandle('models', { create: false });
+      const modelDir = await modelsDir.getDirectoryHandle(id, { create: false });
+      await modelDir.removeEntry(version, { recursive: true });
+      // A model directory with no versions left is just clutter.
+      let empty = true;
+      for await (const _ of (modelDir as any).keys()) { empty = false; break; }
+      if (empty) await modelsDir.removeEntry(id, { recursive: true });
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   async getModelSize(manifest: ModelManifest): Promise<number | null> {
     if (!this.isSupported) return null;
     try {

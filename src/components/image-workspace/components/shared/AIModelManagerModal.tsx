@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Download, Trash2, HardDrive, CheckCircle2, Loader2, Upload, Cpu, FileBox, Settings, Save, AlertCircle, RotateCcw } from 'lucide-react';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
@@ -283,6 +283,56 @@ const ModelItem = ({ manifest, onCustomDelete, onEdit }: { manifest: ModelManife
   );
 };
 
+/**
+ * Downloads left behind by models the app no longer offers.
+ *
+ * Deleting a model is keyed by its manifest, so one dropped from the registry keeps its file with
+ * no row to remove it. This finds those and hands back the space.
+ */
+const StaleDownloads: React.FC<{ models: any[] }> = ({ models }) => {
+  const [stale, setStale] = useState<{ id: string; version: string; size: number }[]>([]);
+  const [clearing, setClearing] = useState(false);
+
+  const scan = useCallback(async () => {
+    const cached = await opfsStorage.listCached();
+    const known = new Set(modelRegistry.getAll().map((m: any) => `${m.id}@${m.version}`));
+    setStale(cached.filter((c) => !known.has(`${c.id}@${c.version}`)));
+  }, []);
+
+  useEffect(() => { scan(); }, [scan, models]);
+
+  if (stale.length === 0) return null;
+  const total = stale.reduce((sum, s) => sum + s.size, 0);
+
+  return (
+    <div className="flex items-center gap-3 p-3 rounded-xl border border-amber-300 dark:border-amber-500/30 bg-amber-50 dark:bg-amber-500/10">
+      <HardDrive size={18} className="text-amber-600 dark:text-amber-400 shrink-0" />
+      <div className="min-w-0 flex-1">
+        <div className="text-[12px] font-bold text-slate-900 dark:text-white">Unused downloads</div>
+        <div className="text-[11px] text-slate-600 dark:text-amber-200/70 truncate">
+          {stale.length} file{stale.length === 1 ? '' : 's'} · {formatFileSize(total, 'B')} · {stale.map((s) => s.id).join(', ')}
+        </div>
+      </div>
+      <button
+        type="button"
+        disabled={clearing}
+        onClick={async () => {
+          setClearing(true);
+          try {
+            for (const item of stale) await opfsStorage.deleteCached(item.id, item.version);
+            await scan();
+          } finally {
+            setClearing(false);
+          }
+        }}
+        className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-white text-[11px] font-bold transition-colors disabled:opacity-50 active:scale-95 shrink-0 cursor-pointer"
+      >
+        {clearing ? 'Freeing…' : 'Free up space'}
+      </button>
+    </div>
+  );
+};
+
 export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClose }) => {
   const [models, setModels] = useState(() => modelRegistry.getVisible());
   const [uploadFile, setUploadFile] = useState<File | null>(null);
@@ -468,6 +518,7 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
           />
         ) : (
           <div className="p-4 overflow-y-auto space-y-2.5 flex-1 bg-white dark:bg-[#0A0A0A] custom-scrollbar">
+            <StaleDownloads models={models} />
             {models.map(manifest => (
               <ModelItem key={`${manifest.id}-${manifest.version}`} manifest={manifest} onCustomDelete={refreshModels} onEdit={handleEdit} />
             ))}

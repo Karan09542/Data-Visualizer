@@ -21,6 +21,23 @@ export interface ModelSource {
   url: string;
 }
 
+/**
+ * What a depth model needs said about it, because these differ per checkpoint and getting any of
+ * them wrong turns a good model into a bad-looking one.
+ */
+export interface DepthModelConfig {
+  /**
+   * How the picture is fitted to the model's input. `stretch` squashes it to the input's exact
+   * size, which is what most exports expect; `contain` keeps its proportions and pads the rest;
+   * `auto` squashes unless the two shapes are far enough apart for that to distort the scene.
+   */
+  fit?: 'stretch' | 'contain' | 'auto';
+  /** Whether a larger number means nearer (inverse depth, MiDaS-style) or further (metric). */
+  polarity?: 'inverse' | 'metric';
+  /** How pixels are scaled before the network sees them. */
+  normalization?: 'imagenet' | 'zero_to_one';
+}
+
 export interface ModelManifest {
   id: string;
   version: string;
@@ -33,6 +50,8 @@ export interface ModelManifest {
   dependencies?: string[]; // Other registered model ids required by this model/pipeline.
   internal?: boolean; // Hide implementation-only model shards from user-facing pickers.
   customConfig?: ModelConfig;
+  /** Depth models only: how to feed this one and how to read what it returns. */
+  depth?: DepthModelConfig;
 }
 
 export type AIProgressState = 

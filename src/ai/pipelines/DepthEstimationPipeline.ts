@@ -3,6 +3,17 @@ import { aiSessionManager } from '../runtime/AISessionManager';
 import { imageToImageData } from '../utils';
 import { AIProgressState, DepthEstimationResult } from '../types';
 import { LiteRTRuntime } from '../runtime/LiteRTRuntime';
+import { modelRegistry } from '../registry/ModelRegistry';
+import { DepthModelConfig } from '../types';
+
+/** Where the picture itself sits inside the model's input, once it has been fitted to it. */
+interface ContentRect { x: number; y: number; width: number; height: number }
+
+interface FittedInput {
+  width: number;
+  height: number;
+  content: ContentRect;
+}
 
 type DepthMode = 'grayscale' | 'colored' | '3d' | 'portrait-blur' | 'relighting' | 'fog';
 
@@ -18,8 +29,10 @@ export class DepthEstimationPipeline implements TaskPipeline {
 
     if (options?.signal?.aborted) throw new Error('AbortError');
 
-    const modelId = options?.modelId || 'midas_small';
+    const modelId = options?.modelId || 'depth_anything_v2';
     const depthMode: DepthMode = (options?.metadata?.depthMode as DepthMode) || 'colored';
+    // Each checkpoint has its own input shape, scaling and sense of which way depth runs.
+    const config: DepthModelConfig = modelRegistry.get(modelId)?.depth ?? {};
 
     this.runtime = await aiSessionManager.getRuntime(modelId, options?.preferredBackend, notify, options?.signal);
 
@@ -32,7 +45,7 @@ export class DepthEstimationPipeline implements TaskPipeline {
       if (details && details.length > 0) inputShape = details[0].shape as number[];
     } catch (e) {}
 
-    const inputResult = this.preprocess(imageData, inputShape);
+    const inputResult = this.preprocess(imageData, inputShape, config);
     notify('preparing-image', 100);
 
     if (options?.signal?.aborted) throw new Error('AbortError');
@@ -44,7 +57,7 @@ export class DepthEstimationPipeline implements TaskPipeline {
     notify('inference', 100);
 
     notify('post-processing', 0);
-    const result = this.postprocess(outputTensor, imageData, depthMode, modelId);
+    const result = this.postprocess(outputTensor, imageData, depthMode, config, inputResult.input);
     notify('post-processing', 100);
 
     notify('encoding', 100);
@@ -54,15 +67,22 @@ export class DepthEstimationPipeline implements TaskPipeline {
     };
   }
 
-  private preprocess(imageData: ImageData, inputShape?: number[]): { data: Float32Array; shape: number[] } {
+  private preprocess(
+    imageData: ImageData,
+    inputShape: number[] | undefined,
+    config: DepthModelConfig
+  ): { data: Float32Array; shape: number[]; input: FittedInput } {
     const { width: targetWidth, height: targetHeight, layout, shape } = this.resolveInputShape(inputShape);
 
-    const resizedData = this.resizeImageData(imageData, targetWidth, targetHeight);
+    const fitted = this.fitImage(imageData, targetWidth, targetHeight, this.resolveFit(imageData, targetWidth, targetHeight, config));
+    const resizedData = fitted.pixels;
     const float32Data = new Float32Array(targetWidth * targetHeight * 3);
 
-    // MiDaS expects ImageNet-normalized RGB
-    const mean = [0.485, 0.456, 0.406];
-    const std = [0.229, 0.224, 0.225];
+    // Both MiDaS and the Depth Anything exports take ImageNet-normalized RGB; a checkpoint that
+    // wants plain [0,1] says so in its manifest.
+    const imagenet = (config.normalization ?? 'imagenet') === 'imagenet';
+    const mean = imagenet ? [0.485, 0.456, 0.406] : [0, 0, 0];
+    const std = imagenet ? [0.229, 0.224, 0.225] : [1, 1, 1];
     const planeSize = targetWidth * targetHeight;
 
     for (let i = 0; i < planeSize; i++) {
@@ -81,25 +101,122 @@ export class DepthEstimationPipeline implements TaskPipeline {
       }
     }
 
-    return { data: float32Data, shape };
+    return {
+      data: float32Data,
+      shape,
+      input: { width: targetWidth, height: targetHeight, content: fitted.content },
+    };
+  }
+
+  /**
+   * Squash the picture to the model's input, or keep its proportions and pad.
+   *
+   * Squashing is what most exports expect and it gives the picture the whole frame. It only hurts
+   * when the two shapes are far apart - a 16:9 photo squeezed into a 9:16 input is stretched to
+   * about three times its height, and the depth that comes back is of that distorted scene.
+   * Measured over several photos, padding wins clearly in that case and loses slightly in milder
+   * ones, so `auto` pads only past the point where the distortion is severe.
+   */
+  private resolveFit(
+    imageData: ImageData,
+    targetWidth: number,
+    targetHeight: number,
+    config: DepthModelConfig
+  ): 'stretch' | 'contain' {
+    const requested = config.fit ?? 'stretch';
+    if (requested !== 'auto') return requested;
+    const imageAspect = imageData.width / Math.max(1, imageData.height);
+    const inputAspect = targetWidth / Math.max(1, targetHeight);
+    const mismatch = Math.max(imageAspect / inputAspect, inputAspect / imageAspect);
+    return mismatch > 2 ? 'contain' : 'stretch';
+  }
+
+  /**
+   * Puts the picture into the model's input rectangle.
+   *
+   * `stretch` fills it, which is what a model exported that way expects. `contain` keeps the
+   * picture's proportions and fills the rest by repeating the edge pixels - a model with a fixed
+   * portrait input would otherwise see a landscape photo squeezed to a third of its width, and
+   * predict depth for that distorted scene. The area the picture actually occupies is returned so
+   * the padding can be cut off the result.
+   */
+  private fitImage(
+    imageData: ImageData,
+    targetWidth: number,
+    targetHeight: number,
+    fit: 'stretch' | 'contain'
+  ): { pixels: ImageData; content: ContentRect } {
+    const source = document.createElement('canvas');
+    source.width = imageData.width;
+    source.height = imageData.height;
+    source.getContext('2d')!.putImageData(imageData, 0, 0);
+
+    const out = document.createElement('canvas');
+    out.width = targetWidth;
+    out.height = targetHeight;
+    const ctx = out.getContext('2d', { willReadFrequently: true })!;
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    if (fit === 'stretch') {
+      ctx.drawImage(source, 0, 0, targetWidth, targetHeight);
+      return {
+        pixels: ctx.getImageData(0, 0, targetWidth, targetHeight),
+        content: { x: 0, y: 0, width: targetWidth, height: targetHeight },
+      };
+    }
+
+    const scale = Math.min(targetWidth / imageData.width, targetHeight / imageData.height);
+    const w = Math.max(1, Math.round(imageData.width * scale));
+    const h = Math.max(1, Math.round(imageData.height * scale));
+    const x = Math.floor((targetWidth - w) / 2);
+    const y = Math.floor((targetHeight - h) / 2);
+    ctx.drawImage(source, x, y, w, h);
+
+    // Repeat the outermost row and column outwards. Black bars would read as a wall at the edge
+    // of the scene and pull the whole prediction towards it.
+    if (x > 0) {
+      ctx.drawImage(out, x, y, 1, h, 0, y, x, h);
+      ctx.drawImage(out, x + w - 1, y, 1, h, x + w, y, targetWidth - x - w, h);
+    }
+    if (y > 0) {
+      ctx.drawImage(out, x, y, w, 1, x, 0, w, y);
+      ctx.drawImage(out, x, y + h - 1, w, 1, x, y + h, w, targetHeight - y - h);
+    }
+    if (x > 0 && y > 0) {
+      ctx.drawImage(out, x, y, 1, 1, 0, 0, x, y);
+      ctx.drawImage(out, x + w - 1, y, 1, 1, x + w, 0, targetWidth - x - w, y);
+      ctx.drawImage(out, x, y + h - 1, 1, 1, 0, y + h, x, targetHeight - y - h);
+      ctx.drawImage(out, x + w - 1, y + h - 1, 1, 1, x + w, y + h, targetWidth - x - w, targetHeight - y - h);
+    }
+
+    return {
+      pixels: ctx.getImageData(0, 0, targetWidth, targetHeight),
+      content: { x, y, width: w, height: h },
+    };
   }
 
   private postprocess(
     outputTensor: any,
     originalImage: ImageData,
     depthMode: DepthMode,
-    modelId: string
+    config: DepthModelConfig,
+    input: FittedInput
   ): DepthEstimationResult {
     const width = originalImage.width;
     const height = originalImage.height;
     const tensorData = outputTensor as Float32Array | Uint8Array | Int32Array;
-    const { width: outWidth, height: outHeight } = this.resolveOutputSize(tensorData.length);
-    const pixelCount = outWidth * outHeight;
-    const normalized = this.normalizeDepth(tensorData, pixelCount);
+    const full = this.resolveOutputSize(tensorData.length);
 
-    // Depth Anything outputs metric depth (smaller = closer).
-    // Our pipeline expects MiDaS convention (larger = closer).
-    if (modelId.includes('depth_anything')) {
+    // Cut away whatever padding was added to fit the picture, before anything is measured: the
+    // repeated edge pixels are not part of the scene and would skew the depth range.
+    const { values, width: outWidth, height: outHeight } = this.cropToContent(tensorData, full, input);
+    const pixelCount = outWidth * outHeight;
+    const normalized = this.normalizeDepth(values, pixelCount);
+
+    // Everything downstream reads larger as nearer, the MiDaS convention. A model that returns
+    // metric depth means the opposite, so it is flipped once, here.
+    if ((config.polarity ?? 'inverse') === 'metric') {
       for (let i = 0; i < pixelCount; i++) {
         normalized[i] = 1.0 - normalized[i];
       }
@@ -297,6 +414,33 @@ export class DepthEstimationPipeline implements TaskPipeline {
       Math.round(lo[2] + f * (hi[2] - lo[2])),
       Math.round(lo[3] + f * (hi[3] - lo[3])),
     ];
+  }
+
+  /** The part of the model's output that covers the picture, with any padding dropped. */
+  private cropToContent(
+    data: Float32Array | Uint8Array | Int32Array,
+    full: { width: number; height: number },
+    input: FittedInput
+  ): { values: Float32Array; width: number; height: number } {
+    const scaleX = full.width / Math.max(1, input.width);
+    const scaleY = full.height / Math.max(1, input.height);
+    const x = Math.max(0, Math.round(input.content.x * scaleX));
+    const y = Math.max(0, Math.round(input.content.y * scaleY));
+    const width = Math.max(1, Math.min(full.width - x, Math.round(input.content.width * scaleX)));
+    const height = Math.max(1, Math.min(full.height - y, Math.round(input.content.height * scaleY)));
+
+    if (x === 0 && y === 0 && width === full.width && height === full.height) {
+      return { values: Float32Array.from(data as any), width: full.width, height: full.height };
+    }
+
+    const values = new Float32Array(width * height);
+    for (let row = 0; row < height; row++) {
+      const from = (y + row) * full.width + x;
+      for (let col = 0; col < width; col++) {
+        values[row * width + col] = Number(data[from + col]);
+      }
+    }
+    return { values, width, height };
   }
 
   private resizeDepthMap(
