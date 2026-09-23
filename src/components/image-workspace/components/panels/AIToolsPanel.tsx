@@ -302,6 +302,8 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
     []
   );
   const depthModelId = modelFor('depth-estimation');
+  // How strong the depth looks are. Portrait blur, studio light and fog each read this.
+  const [depthStrength, setDepthStrength] = useState(1);
   // The depth modes need the model on the device, the same as the button above them.
   const { isReady: depthReady } = useModelDownload(depthModelId);
 
@@ -364,7 +366,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
 
   }, [trackJob]);
 
-  const handleDepthEstimation = useCallback((depthMode: DepthMode, modelId?: string) => {
+  const handleDepthEstimation = useCallback((depthMode: DepthMode, modelId?: string, strength = 1) => {
     if (!activeObj || (!(activeObj as any).isType?.('image') && activeObj.type !== 'image')) {
       alert("Please select an image to apply AI features.");
       return;
@@ -374,7 +376,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
       return;
     }
 
-    const cmd = new DepthEstimationCommand(activeObj as fabric.Image, modelId, depthMode);
+    const cmd = new DepthEstimationCommand(activeObj as fabric.Image, modelId, depthMode, strength);
 
     if (depthMode === '3d') {
       cmd.on3DViewReady = (depthResult, originalImage, sourceObj, fabricCanvas, updateLayers) => {
@@ -533,7 +535,24 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
                 onCancel={() => handleCancel(task)}
               />
               {task === 'depth-estimation' && depthReady && (
-                <div className="flex flex-wrap gap-1.5 -mt-0.5 ml-12 mb-1 pr-2">
+                <div className="flex flex-wrap items-center gap-1.5 -mt-0.5 ml-12 mb-1 pr-2">
+                  {/* Strength applies to the looks below that have one; the maps ignore it. */}
+                  <div className="flex items-center gap-1 mr-1">
+                    <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">Look</span>
+                    {([['Soft', 0.6], ['Normal', 1], ['Strong', 1.7]] as const).map(([label, value]) => (
+                      <button
+                        key={label}
+                        type="button"
+                        onClick={() => setDepthStrength(value)}
+                        aria-pressed={depthStrength === value}
+                        className={`px-2 py-1 rounded-lg text-[10px] font-semibold border transition-all active:scale-95 cursor-pointer ${depthStrength === value
+                          ? 'bg-cyan-500/15 border-cyan-500/40 text-cyan-600 dark:text-cyan-300'
+                          : 'bg-white dark:bg-[#161616] border-slate-200 dark:border-[#2D2D2D] text-slate-500 dark:text-white/50 hover:text-slate-800 dark:hover:text-white/80'}`}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
                   {([
                     { mode: 'portrait-blur' as DepthMode, label: 'Portrait Blur', icon: <Droplet size={11} className="text-blue-400" /> },
                     { mode: 'relighting' as DepthMode, label: 'Studio Light', icon: <Sun size={11} className="text-amber-400" /> },
@@ -544,7 +563,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
                   ]).map(({ mode, label, icon }) => (
                     <button
                       key={mode}
-                      onClick={() => handleDepthEstimation(mode, depthModelId)}
+                      onClick={() => handleDepthEstimation(mode, depthModelId, depthStrength)}
                       disabled={!!taskJobs['depth-estimation'] && !['completed', 'failed', 'cancelled'].includes(taskJobs['depth-estimation']?.state)}
                       className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-semibold border transition-all
                         bg-white dark:bg-[#161616] border-slate-200 dark:border-[#2D2D2D] 

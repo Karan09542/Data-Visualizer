@@ -15,6 +15,8 @@ export class DepthEstimationCommand implements Command {
   private task: AITask = 'depth-estimation';
   private modelId?: string;
   private depthMode: DepthMode;
+  /** How strong the look is, for the effects that have one. */
+  private strength: number;
   public lastJobId: string | null = null;
 
   // Store the depth result for the 3D viewer
@@ -30,10 +32,11 @@ export class DepthEstimationCommand implements Command {
     updateLayers: () => void
   ) => void;
 
-  constructor(obj: fabric.Image, modelId?: string, depthMode: DepthMode = 'colored') {
+  constructor(obj: fabric.Image, modelId?: string, depthMode: DepthMode = 'colored', strength: number = 1) {
     this.obj = obj;
     this.modelId = modelId;
     this.depthMode = depthMode;
+    this.strength = strength;
     this.beforeSrc = obj.getSrc();
     this.lastJobId = generateId();
   }
@@ -127,7 +130,7 @@ export class DepthEstimationCommand implements Command {
 
     const { jobId, promise } = ai.execute(this.task, imageData, {
       modelId: this.modelId,
-      metadata: { depthMode: this.depthMode }
+      metadata: { depthMode: this.depthMode, effectStrength: this.strength }
     } as any, 5);
 
     const unsubProgress = aiEventBus.subscribe(jobId, (event) => {
