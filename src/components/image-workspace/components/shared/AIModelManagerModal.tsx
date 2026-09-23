@@ -34,48 +34,94 @@ const ModelConfigEditor = ({
       <h3 className="text-slate-900 dark:text-white font-bold text-base">{title}</h3>
       
       {/* Tiling Toggle */}
-      <div className="flex items-center justify-between p-4 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-xl hover:border-slate-300 dark:hover:border-[#3D3D3D] transition-colors cursor-pointer" onClick={() => onChange({...config, requiresTiling: !config.requiresTiling})}>
-        <div>
-          <div className="text-sm font-semibold text-slate-800 dark:text-white">Requires fixed-size Tiling</div>
-          <div className="text-[12px] text-slate-500 dark:text-[#8A8A8A] mt-0.5">Split large images into smaller chunks for processing</div>
-        </div>
-        <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center ${config.requiresTiling ? 'bg-blue-600' : 'bg-[#333]'}`}>
-          <div className={`w-4 h-4 bg-white rounded-full absolute transition-transform ${config.requiresTiling ? 'translate-x-6' : 'translate-x-1'}`} />
-        </div>
-      </div>
+      {(() => {
+        const currentTileSize = config.tileSize || { inputWidth: 128, inputHeight: 128, outputScaleFactor: 1, overlap: 0 };
+        return (
+          <>
+            <div 
+              className="flex items-center justify-between p-4 bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#2D2D2D] rounded-xl hover:border-slate-300 dark:hover:border-[#3D3D3D] transition-colors cursor-pointer" 
+              onClick={() => onChange({
+                ...config, 
+                requiresTiling: !config.requiresTiling,
+                tileSize: currentTileSize
+              })}
+            >
+              <div>
+                <div className="text-sm font-semibold text-slate-800 dark:text-white">Requires fixed-size Tiling</div>
+                <div className="text-[12px] text-slate-500 dark:text-[#8A8A8A] mt-0.5">Split large images into smaller chunks for processing</div>
+              </div>
+              <div className={`w-11 h-6 rounded-full transition-colors relative flex items-center ${config.requiresTiling ? 'bg-blue-600' : 'bg-[#333]'}`}>
+                <div className={`w-4 h-4 bg-white rounded-full absolute transition-transform ${config.requiresTiling ? 'translate-x-6' : 'translate-x-1'}`} />
+              </div>
+            </div>
 
-      {config.requiresTiling && (
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-           <div className="flex flex-col gap-1.5">
-             <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Width</label>
-             <div className="relative">
-               <input type="number" value={config.tileSize?.inputWidth || 0} onChange={e => onChange({...config, tileSize: {...config.tileSize!, inputWidth: +e.target.value}})} className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-7 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" />
-               <span className="absolute right-3 top-2.5 text-xs text-[#555]">px</span>
-             </div>
-           </div>
-           <div className="flex flex-col gap-1.5">
-             <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Height</label>
-             <div className="relative">
-               <input type="number" value={config.tileSize?.inputHeight || 0} onChange={e => onChange({...config, tileSize: {...config.tileSize!, inputHeight: +e.target.value}})} className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-7 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" />
-               <span className="absolute right-3 top-2.5 text-xs text-[#555]">px</span>
-             </div>
-           </div>
-           <div className="flex flex-col gap-1.5">
-             <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Scale</label>
-             <div className="relative">
-               <input type="number" value={config.tileSize?.outputScaleFactor || 1} onChange={e => onChange({...config, tileSize: {...config.tileSize!, outputScaleFactor: +e.target.value}})} className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-6 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" />
-               <span className="absolute right-3 top-2.5 text-xs text-[#555]">x</span>
-             </div>
-           </div>
-           <div className="flex flex-col gap-1.5">
-             <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Overlap</label>
-             <div className="relative">
-               <input type="number" value={config.tileSize?.overlap || 0} onChange={e => onChange({...config, tileSize: {...config.tileSize!, overlap: +e.target.value}})} className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-7 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" />
-               <span className="absolute right-3 top-2.5 text-xs text-[#555]">px</span>
-             </div>
-           </div>
-        </div>
-      )}
+            {config.requiresTiling && (
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                 <div className="flex flex-col gap-1.5">
+                   <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Width</label>
+                   <div className="relative">
+                     <input 
+                       type="number" 
+                       value={config.tileSize?.inputWidth || 0} 
+                       onChange={e => onChange({
+                         ...config, 
+                         tileSize: { ...currentTileSize, inputWidth: +e.target.value }
+                       })} 
+                       className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-7 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" 
+                     />
+                     <span className="absolute right-3 top-2.5 text-xs text-[#555]">px</span>
+                   </div>
+                 </div>
+                 <div className="flex flex-col gap-1.5">
+                   <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Height</label>
+                   <div className="relative">
+                     <input 
+                       type="number" 
+                       value={config.tileSize?.inputHeight || 0} 
+                       onChange={e => onChange({
+                         ...config, 
+                         tileSize: { ...currentTileSize, inputHeight: +e.target.value }
+                       })} 
+                       className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-7 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" 
+                     />
+                     <span className="absolute right-3 top-2.5 text-xs text-[#555]">px</span>
+                   </div>
+                 </div>
+                 <div className="flex flex-col gap-1.5">
+                   <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Scale</label>
+                   <div className="relative">
+                     <input 
+                       type="number" 
+                       value={config.tileSize?.outputScaleFactor || 1} 
+                       onChange={e => onChange({
+                         ...config, 
+                         tileSize: { ...currentTileSize, outputScaleFactor: +e.target.value }
+                       })} 
+                       className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-6 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" 
+                     />
+                     <span className="absolute right-3 top-2.5 text-xs text-[#555]">x</span>
+                   </div>
+                 </div>
+                 <div className="flex flex-col gap-1.5">
+                   <label className="text-[11px] font-bold text-slate-500 dark:text-[#8A8A8A] uppercase tracking-wider">Overlap</label>
+                   <div className="relative">
+                     <input 
+                       type="number" 
+                       value={config.tileSize?.overlap || 0} 
+                       onChange={e => onChange({
+                         ...config, 
+                         tileSize: { ...currentTileSize, overlap: +e.target.value }
+                       })} 
+                       className="w-full bg-white dark:bg-[#1A1A1A] border border-slate-200 dark:border-[#333] rounded-lg pl-3 pr-7 py-2 text-slate-800 dark:text-white text-sm focus:outline-none focus:border-blue-500 transition-colors" 
+                     />
+                     <span className="absolute right-3 top-2.5 text-xs text-[#555]">px</span>
+                   </div>
+                 </div>
+              </div>
+            )}
+          </>
+        );
+      })()}
 
       {/* Normalization Cards */}
       <div className="space-y-3">
@@ -242,7 +288,7 @@ const ModelItem = ({ manifest, onCustomDelete, onEdit }: { manifest: ModelManife
               : 'text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-500/10 border-emerald-200 dark:border-emerald-500/20'}`}>
               <CheckCircle2 size={14} /> {isLocalBundle ? 'Built-in' : 'Installed'}
             </div>
-            {isCustom && onEdit && manifest.customConfig && (
+            {isCustom && onEdit && (
               <button
                 onClick={(e) => { e.stopPropagation(); onEdit(manifest); }}
                 className="p-1.5 text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-blue-500/10 rounded-lg transition-all border border-transparent hover:border-slate-200 dark:hover:border-blue-500/20"
@@ -370,16 +416,27 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
 
   const handleTypeSelect = (type: 'esrgan' | 'mirnet') => {
     setUploadType(type);
+    const modelName = uploadFile ? uploadFile.name.replace('.tflite', '') : 'Custom Model';
     if (type === 'esrgan') {
-      setModelConfig(prev => ({
-        ...prev,
-        preprocessing: { ...prev.preprocessing, normalization: 'raw_255' },
-        postprocessing: { ...prev.postprocessing, outputNormalized: false, channelOrder: 'RGB' }
-      }));
-      setShowConfig(true);
+      setModelConfig({
+        id: 'custom',
+        name: modelName,
+        requiresTiling: true,
+        tileSize: { inputWidth: 128, inputHeight: 128, outputScaleFactor: 4, overlap: 16 },
+        preprocessing: { normalization: 'raw_255', channels: 3 },
+        postprocessing: { outputNormalized: false, channelOrder: 'RGB' }
+      });
     } else {
-      handleUpload(type, undefined);
+      setModelConfig({
+        id: 'custom',
+        name: modelName,
+        requiresTiling: false,
+        tileSize: { inputWidth: 400, inputHeight: 400, outputScaleFactor: 1, overlap: 0 },
+        preprocessing: { normalization: 'zero_to_one', channels: 3 },
+        postprocessing: { outputNormalized: true, channelOrder: 'RGB' }
+      });
     }
+    setShowConfig(true);
   };
 
   const handleUpload = async (type: 'esrgan' | 'mirnet', config?: ModelConfig) => {
@@ -397,7 +454,7 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
         name: modelName,
         description: 'Custom user uploaded model',
         sources: [{ type: 'custom' as any, url: uploadFile.name }],
-        supports: type === 'esrgan' ? ['upscale'] : ['enhance'],
+        supports: type === 'esrgan' ? ['upscale'] : ['enhance-low-light', 'enhance'],
         customConfig: config ? { ...config, id: customId, name: modelName } : undefined
       };
       await opfsStorage.saveModel(manifest, buffer);
@@ -416,12 +473,28 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
   };
 
   const handleEdit = (manifest: ModelManifest) => {
-    if (manifest.customConfig) {
-      setModelConfig({...manifest.customConfig});
-      setEditingModel(manifest);
-      setShowConfig(true);
-      setUploadType(null);
-    }
+    const isLowLight = manifest.task === 'low-light' || manifest.id.includes('mirnet');
+    const fallbackConfig: ModelConfig = {
+      id: manifest.id,
+      name: manifest.name,
+      requiresTiling: !isLowLight,
+      tileSize: isLowLight
+        ? { inputWidth: 400, inputHeight: 400, outputScaleFactor: 1, overlap: 0 }
+        : { inputWidth: 128, inputHeight: 128, outputScaleFactor: 4, overlap: 16 },
+      preprocessing: {
+        normalization: isLowLight ? 'zero_to_one' : 'raw_255',
+        channels: 3
+      },
+      postprocessing: {
+        outputNormalized: isLowLight,
+        channelOrder: 'RGB'
+      }
+    };
+
+    setModelConfig(manifest.customConfig ? { ...manifest.customConfig } : fallbackConfig);
+    setEditingModel(manifest);
+    setShowConfig(true);
+    setUploadType(null);
   };
 
   const handleSaveEdit = () => {
@@ -505,15 +578,15 @@ export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClos
           </div>
         )}
 
-        {/* Config Form for ESRGAN */}
+        {/* Config Form for ESRGAN & MIRNet */}
         {showConfig ? (
           <ModelConfigEditor 
             config={modelConfig} 
             onChange={setModelConfig} 
-            onSave={() => editingModel ? handleSaveEdit() : handleUpload('esrgan', modelConfig)}
+            onSave={() => editingModel ? handleSaveEdit() : handleUpload(uploadType || 'esrgan', modelConfig)}
             onCancel={() => { setShowConfig(false); setUploadType(null); setEditingModel(null); }}
             isSaving={isUploading}
-            title={editingModel ? `Edit Configuration: ${editingModel.name}` : "Model Configuration"}
+            title={editingModel ? `Edit Configuration: ${editingModel.name}` : `Model Configuration (${uploadType === 'mirnet' ? 'MIRNet / Low Light' : 'ESRGAN / Upscale'})`}
             saveLabel={editingModel ? "Save Changes" : "Confirm & Upload"}
           />
         ) : (
