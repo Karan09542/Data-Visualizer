@@ -322,8 +322,12 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
   const depthModelId = modelFor('depth-estimation');
   // How strong the depth looks are. Portrait blur, studio light and fog each read this.
   const [depthStrength, setDepthStrength] = useState(1);
+  // How much of the reference picture's style to take. Anything near 1 paints over the subject,
+  // so the balanced middle is the default, as in Magenta's own example.
+  const [styleStrength, setStyleStrength] = useState(0.5);
   // The depth modes need the model on the device, the same as the button above them.
   const { isReady: depthReady } = useModelDownload(depthModelId);
+  const { isReady: styleReady } = useModelDownload(modelFor('style-transfer'));
 
   // Depth 3D viewer state
   const [depth3DViewer, setDepth3DViewer] = useState<{
@@ -408,7 +412,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
     executeCommand(cmd);
   }, [activeObj, taskJobs, trackJob, executeCommand]);
 
-  const handleTaskClick = (task: AITask, modelId?: string) => {
+  const handleTaskClick = (task: AITask, modelId?: string, strength = styleStrength) => {
     if (!activeObj || (!(activeObj as any).isType?.('image') && activeObj.type !== 'image')) {
       alert("Please select an image to apply AI features.");
       return;
@@ -442,7 +446,7 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
         tempCtx.drawImage(img, 0, 0);
         const styleImageData = tempCtx.getImageData(0, 0, img.width, img.height);
         
-        const cmd = new StyleTransferCommand(activeObj as fabric.Image, styleImageData, modelId);
+        const cmd = new StyleTransferCommand(activeObj as fabric.Image, styleImageData, modelId, strength);
         if (cmd.lastJobId) {
           trackJob(cmd.lastJobId, task);
         }
@@ -552,6 +556,25 @@ export const AIToolsPanel: React.FC<AIToolsPanelProps> = ({ selectionType, execu
                 onClick={(modelId) => handleTaskClick(task, modelId)} 
                 onCancel={() => handleCancel(task)}
               />
+              {task === 'style-transfer' && styleReady && (
+                <div className="flex flex-wrap items-center gap-1.5 -mt-0.5 ml-12 mb-1 pr-2">
+                  <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-white/40">Style</span>
+                  {([['Subtle', 0.3], ['Balanced', 0.5], ['Bold', 0.75]] as const).map(([label, value]) => (
+                    <button
+                      key={label}
+                      type="button"
+                      onClick={() => setStyleStrength(value)}
+                      aria-pressed={styleStrength === value}
+                      title={value >= 0.75 ? 'Most of the style, least of the photo' : value <= 0.3 ? 'A tint of the style over the photo' : 'Painted, and still recognisable'}
+                      className={`px-2 py-1 rounded-lg text-[10px] font-semibold border transition-all active:scale-95 cursor-pointer ${styleStrength === value
+                        ? 'bg-purple-500/15 border-purple-500/40 text-purple-600 dark:text-purple-300'
+                        : 'bg-white dark:bg-[#161616] border-slate-200 dark:border-[#2D2D2D] text-slate-500 dark:text-white/50 hover:text-slate-800 dark:hover:text-white/80'}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
+              )}
               {task === 'depth-estimation' && depthReady && (
                 <div className="flex flex-wrap items-center gap-1.5 -mt-0.5 ml-12 mb-1 pr-2">
                   {/* Strength applies to the looks below that have one; the maps ignore it. */}

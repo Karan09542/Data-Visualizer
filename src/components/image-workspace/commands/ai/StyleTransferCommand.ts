@@ -5,10 +5,13 @@ import { aiEventBus } from "../../../../ai/events/AIEventBus";
 
 export class StyleTransferCommand extends AICommand {
   private styleImage: ImageBitmap | ImageData;
+  /** How much of the style to take, 0 to 1; the rest keeps the picture as it was. */
+  private strength: number;
 
-  constructor(obj: fabric.Image, styleImage: ImageBitmap | ImageData, modelId?: string) {
+  constructor(obj: fabric.Image, styleImage: ImageBitmap | ImageData, modelId?: string, strength: number = 0.5) {
     super('Style Transfer', obj, 'style-transfer', modelId);
     this.styleImage = styleImage;
+    this.strength = strength;
   }
 
   async execute(canvas: fabric.Canvas, updateLayers: () => void) {
@@ -48,7 +51,7 @@ export class StyleTransferCommand extends AICommand {
     // Call ai.execute with style image in options.metadata
     const { jobId, promise } = ai.execute(this.task, imageData, { 
       modelId: this.modelId,
-      metadata: { styleImage: this.styleImage }
+      metadata: { styleImage: this.styleImage, styleStrength: this.strength }
     } as any, 5);
     
     const unsubProgress = aiEventBus.subscribe(jobId, (event) => {
