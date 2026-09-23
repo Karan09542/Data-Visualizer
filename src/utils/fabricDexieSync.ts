@@ -105,6 +105,8 @@ export const saveToDexie = async (documentId: string, artboards: any[], canvas: 
       'locked', 
       'selectable', 
       'evented', 
+      'hidden',
+      'visible',
       'isFrameGroup', 
       'frameType',
       'isCollageBlock',
@@ -206,9 +208,18 @@ export const loadFromDexie = async (documentId: string, canvas: fabric.Canvas): 
           enlObj.id = record.id;
           enlObj.artboardId = record.artboardId;
           
-          // Force selectability based on lock state to recover from mid-pan refreshes
-          enlObj.selectable = !record.data.locked;
-          enlObj.evented = !record.data.locked;
+          const isHidden = record.data.hidden === true || record.data.visible === false;
+          if (isHidden) {
+             (enlObj as any).hidden = true;
+             enlObj.visible = false;
+             enlObj.selectable = false;
+             enlObj.evented = false;
+          } else {
+             // Force selectability based on lock state to recover from mid-pan refreshes
+             enlObj.selectable = !record.data.locked;
+             enlObj.evented = !record.data.locked;
+             enlObj.visible = true;
+          }
           
           if (record.data.customName) enlObj.customName = record.data.customName;
           if (record.data.layerId) enlObj.layerId = record.data.layerId;

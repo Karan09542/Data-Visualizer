@@ -16,6 +16,8 @@ interface LayersContextType {
   setLayerSelection: (objects: fabric.Object[]) => void;
   moveLayerUp: (id: string) => void;
   moveLayerDown: (id: string) => void;
+  toggleLayerVisibility: (id: string) => void;
+  setLayersVisibility?: (ids: string[], visible: boolean) => void;
 }
 
 const LayersContext = createContext<LayersContextType | null>(null);

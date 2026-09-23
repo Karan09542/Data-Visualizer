@@ -1,6 +1,7 @@
 import { useState, useCallback } from 'react';
 import * as fabric from 'fabric';
 import { LayerReorderCommand } from '../commands/layer/LayerReorderCommand';
+import { LayerVisibilityCommand } from '../commands/layer/LayerVisibilityCommand';
 
 export const useLayersPanel = (
   fabricRef: React.RefObject<fabric.Canvas | null>,
@@ -112,6 +113,22 @@ export const useLayersPanel = (
     }
   }, [fabricRef, getLayersOrder, executeCommand]);
 
+  const toggleLayerVisibility = useCallback((id: string) => {
+    if (!fabricRef.current) return;
+    const canvas = fabricRef.current;
+    const obj = canvas.getObjects().find((o: any) => o.id === id) as any;
+    if (!obj) return;
+
+    const isCurrentlyVisible = obj.visible !== false && !obj.hidden;
+    const nextVisible = !isCurrentlyVisible;
+
+    const cmd = new LayerVisibilityCommand(
+      nextVisible ? 'Show Layer' : 'Hide Layer',
+      [{ id, prevVisible: isCurrentlyVisible, nextVisible }]
+    );
+    executeCommand(cmd);
+  }, [fabricRef, executeCommand]);
+
   return {
     layers,
     setLayers,
@@ -122,6 +139,7 @@ export const useLayersPanel = (
     handleLayerOrder,
     selectLayer,
     moveLayerUp,
-    moveLayerDown
+    moveLayerDown,
+    toggleLayerVisibility
   };
 };

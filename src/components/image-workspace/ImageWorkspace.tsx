@@ -54,7 +54,7 @@ import {
    Layers, MousePointer2, Brush, Eraser, Circle, Minus, Edit2, Image as ImageIcon,
    SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, BringToFront, SendToBack, ArrowUp, ArrowDown, AlignLeft, AlignCenter, AlignRight,
    Sparkles, ChevronDown, Plus, Activity, Check, Grid, Expand, MoreHorizontal, Hand, Droplets, Image as LucideImage, Images, Keyboard, Clipboard, Library, Link,
-   Zap, ChevronLeft, ChevronRight, Scan, Palette
+   Zap, ChevronLeft, ChevronRight, Scan, Palette, Eye, EyeOff
 } from "lucide-react";
 import JSZip from "jszip";
 // @ts-ignore
@@ -110,6 +110,7 @@ import { StyleChangeCommand } from "./commands/object/StyleChangeCommand";
 
 
 import { LayerReorderCommand } from "./commands/layer/LayerReorderCommand";
+import { LayerVisibilityCommand } from "./commands/layer/LayerVisibilityCommand";
 
 
 import { FilterChangeCommand } from "./commands/filter/FilterChangeCommand";
@@ -465,7 +466,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       const canvas = fabricRef.current;
       if (!canvas) return;
       const obj = canvas.getObjects().find((o: any) => o.id === id);
-      if (!obj) return;
+      if (!obj || obj.visible === false || (obj as any).hidden) return;
 
       const active = canvas.getActiveObject();
       let next: fabric.Object[];
@@ -500,9 +501,9 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
       if (!canvas) return;
 
       const onCanvas = new Set(canvas.getObjects());
-      // Hidden layers (another artboard on mobile) and locked helpers cannot join a selection;
+      // Hidden layers (another artboard on mobile or user-hidden) and locked helpers cannot join a selection;
       // selecting them would move things the user cannot see.
-      const next = objects.filter(o => onCanvas.has(o) && o.selectable !== false && o.visible !== false);
+      const next = objects.filter(o => onCanvas.has(o) && o.selectable !== false && o.visible !== false && !(o as any).hidden);
 
       // discardActiveObject fires selection:cleared, which drops the key object; keep it if it is
       // still part of what is being selected.
@@ -2601,6 +2602,40 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          executeCommand(cmd);
       }
    };
+
+   const toggleLayerVisibility = useCallback((id: string) => {
+      if (!fabricRef.current) return;
+      const canvas = fabricRef.current;
+      const obj = canvas.getObjects().find((o: any) => o.id === id) as any;
+      if (!obj) return;
+
+      const isCurrentlyVisible = obj.visible !== false && !obj.hidden;
+      const nextVisible = !isCurrentlyVisible;
+
+      const cmd = new LayerVisibilityCommand(
+         nextVisible ? 'Show Layer' : 'Hide Layer',
+         [{ id, prevVisible: isCurrentlyVisible, nextVisible }]
+      );
+      executeCommand(cmd);
+   }, [executeCommand]);
+
+   const setLayersVisibility = useCallback((ids: string[], nextVisible: boolean) => {
+      if (!fabricRef.current || ids.length === 0) return;
+      const canvas = fabricRef.current;
+      const targets = ids.map(id => {
+         const obj = canvas.getObjects().find((o: any) => o.id === id) as any;
+         if (!obj) return null;
+         const isCurrentlyVisible = obj.visible !== false && !obj.hidden;
+         return { id, prevVisible: isCurrentlyVisible, nextVisible };
+      }).filter(Boolean) as { id: string; prevVisible: boolean; nextVisible: boolean }[];
+
+      if (targets.length === 0) return;
+      const cmd = new LayerVisibilityCommand(
+         nextVisible ? 'Show Layers' : 'Hide Layers',
+         targets
+      );
+      executeCommand(cmd);
+   }, [executeCommand]);
 
 
    const performUndo = useCallback(() => {
@@ -5239,6 +5274,26 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          const isSendToBack = ctrlOrCmd && e.key === '[' && e.shiftKey;
          const isLayerAction = isBringForward || isBringToFront || isSendBackward || isSendToBack;
 
+         const isToggleHide = ctrlOrCmd && e.shiftKey && e.key.toLowerCase() === 'h';
+         if (isToggleHide && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA" && !(document.activeElement as any)?.isContentEditable) {
+            e.preventDefault();
+            const canvas = fabricRef.current;
+            if (canvas) {
+               const activeObjects = canvas.getActiveObjects();
+               if (activeObjects.length > 0) {
+                  const anyHidden = activeObjects.some((t: any) => t.hidden === true || t.visible === false);
+                  const nextVisible = anyHidden;
+                  const items = activeObjects.map((t: any) => ({
+                     id: (t as any).id,
+                     prevVisible: t.visible !== false && !(t as any).hidden,
+                     nextVisible
+                  }));
+                  executeCommand(new LayerVisibilityCommand(nextVisible ? 'Show Layers' : 'Hide Layers', items));
+               }
+            }
+            return;
+         }
+
          if (e.key.toLowerCase() === 'c' && !ctrlOrCmd && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "TEXTAREA") {
             if (!isCropping) {
                const activeObj = fabricRef.current?.getActiveObject();
@@ -7187,7 +7242,8 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
             const objArtboardId = (obj as any).artboardId;
             if (!objArtboardId) return; // skip if no artboard
 
-            const shouldBeVisible = isMobile ? objArtboardId === activeArtboardId : true;
+            const isUserHidden = (obj as any).hidden === true;
+            const shouldBeVisible = isUserHidden ? false : (isMobile ? objArtboardId === activeArtboardId : true);
             if (obj.visible !== shouldBeVisible) {
                obj.visible = shouldBeVisible;
                madeChanges = true;
@@ -7324,7 +7380,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                  nudgeStep, setNudgeStep, nudgeStepLarge, setNudgeStepLarge,
                                  openObjectContextMenu, chromeHidden, onToggleChrome
                               }}>
-                                 <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, toggleLayerSelection, setLayerSelection, moveLayerUp, moveLayerDown }}>
+                                 <LayersProvider value={{ layers, setLayers, selectedLayerId, setSelectedLayerId, updateLayersList, getLayersOrder, handleLayerOrder, selectLayer, toggleLayerSelection, setLayerSelection, moveLayerUp, moveLayerDown, toggleLayerVisibility, setLayersVisibility }}>
                                     <div
                                        className="w-full h-full flex flex-col bg-slate-100 dark:bg-[#121212] text-slate-800 dark:text-[#E0E0E0] select-none"
                                        ref={containerRef}
@@ -8314,6 +8370,33 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                          }} />
                                                       )}
                                                       <ContextMenuItem icon={Trash2} label="Delete" shortcut="Del" danger onClick={() => { deleteActiveObject(); closeContextMenu(); }} />
+                                                      {(() => {
+                                                         const targets = (activeContextMenu.targets && activeContextMenu.targets.length > 0)
+                                                            ? activeContextMenu.targets
+                                                            : (activeContextMenu.obj ? [activeContextMenu.obj] : []);
+                                                         if (targets.length === 0) return null;
+                                                         const anyHidden = targets.some((t: any) => t.hidden === true || t.visible === false);
+                                                         const label = targets.length > 1
+                                                            ? (anyHidden ? "Show Layers" : "Hide Layers")
+                                                            : (anyHidden ? "Show Layer" : "Hide Layer");
+                                                         return (
+                                                            <ContextMenuItem
+                                                               icon={anyHidden ? Eye : EyeOff}
+                                                               label={label}
+                                                               shortcut="Ctrl+Shift+H"
+                                                               onClick={() => {
+                                                                  const nextVisible = anyHidden;
+                                                                  const items = targets.map((t: any) => ({
+                                                                     id: t.id,
+                                                                     prevVisible: t.visible !== false && !(t as any).hidden,
+                                                                     nextVisible
+                                                                  }));
+                                                                  executeCommand(new LayerVisibilityCommand(nextVisible ? 'Show Layers' : 'Hide Layers', items));
+                                                                  closeContextMenu();
+                                                               }}
+                                                            />
+                                                         );
+                                                      })()}
                                                       <div className="h-px bg-slate-100 dark:bg-[#252525] my-1" />
 
                                                       {(() => {

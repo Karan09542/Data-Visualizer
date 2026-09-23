@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { LayoutGrid, MoreHorizontal, Check, Anchor, X, Minus } from 'lucide-react';
+import { LayoutGrid, MoreHorizontal, Check, Anchor, X, Minus, Eye, EyeOff } from 'lucide-react';
 import { useLayers } from '../../contexts/LayersContext';
 import { useSelection } from '../../contexts/SelectionContext';
 import { useWorkspaceUI } from '../../contexts/WorkspaceUIContext';
@@ -20,7 +20,7 @@ const getPxForSize = (s: ThumbSize) => {
 };
 
 export const LayersTab: React.FC = () => {
-   const { layers, selectedLayerId, selectLayer, toggleLayerSelection, setLayerSelection } = useLayers();
+   const { layers, selectedLayerId, selectLayer, toggleLayerSelection, setLayerSelection, toggleLayerVisibility, setLayersVisibility } = useLayers();
    const { activeObjs, parentAlignmentObj, setParentAlignmentObj } = useSelection();
    const { artboards, openObjectContextMenu } = useWorkspaceUI();
    const [thumbSize, setThumbSize] = useState<ThumbSize>('standard');
@@ -133,6 +133,20 @@ export const LayersTab: React.FC = () => {
                      ? <>Parent: <span className="text-white font-semibold capitalize">{(parentAlignmentObj as any).customName || parentAlignmentObj.type}</span></>
                      : 'Tap the anchor on a row to set the parent'}
                </span>
+               <button
+                  type="button"
+                  onClick={() => {
+                     const ids = activeObjs.map((o: any) => (o as any).id).filter(Boolean);
+                     if (setLayersVisibility && ids.length > 0) {
+                        const anyHidden = activeObjs.some((o: any) => (o as any).hidden || o.visible === false);
+                        setLayersVisibility(ids, anyHidden);
+                     }
+                  }}
+                  title={activeObjs.some((o: any) => (o as any).hidden || o.visible === false) ? "Show selected layers" : "Hide selected layers"}
+                  className="w-7 h-7 shrink-0 flex items-center justify-center rounded-md border border-[#3A3A3A] text-[#A0A0A0] hover:text-white hover:border-blue-500/60 active:bg-blue-600/20 transition-colors"
+               >
+                  {activeObjs.some((o: any) => (o as any).hidden || o.visible === false) ? <Eye size={13} /> : <EyeOff size={13} />}
+               </button>
                {parentAlignmentObj && (
                   <button
                      type="button"
@@ -151,17 +165,22 @@ export const LayersTab: React.FC = () => {
                const inSelection = activeObjs.includes(layer);
                const isParent = parentAlignmentObj === layer;
                const isSelected = inSelection || selectedLayerId === (layer as any).id;
+               const isHidden = (layer as any).hidden || layer.visible === false;
                const sizePx = getPxForSize(thumbSize);
 
                return (
                   <div
                      key={(layer as any).id || idx}
-                     onClick={() => selectLayer((layer as any).id)}
+                     onClick={() => !isHidden && selectLayer((layer as any).id)}
                      onContextMenu={(e) => {
                         e.preventDefault();
                         openMenuFor(layer, e.clientX, e.clientY);
                      }}
-                     className={`flex items-center group px-2 py-1.5 rounded-md cursor-pointer transition-colors ${isSelected ? 'bg-blue-600/20 text-blue-100 border border-blue-500/30' : 'hover:bg-[#2C2C2C] text-[#C0C0C0] border border-transparent'}`}
+                     className={`flex items-center group px-2 py-1.5 rounded-md cursor-pointer transition-colors ${
+                        isSelected
+                           ? 'bg-blue-600/20 text-blue-100 border border-blue-500/30'
+                           : 'hover:bg-[#2C2C2C] text-[#C0C0C0] border border-transparent'
+                     } ${isHidden ? 'opacity-50 hover:opacity-75 bg-[#1b1b1b]/40' : ''}`}
                   >
                      {/* Tap target for building a multi-selection without a keyboard */}
                      <button
@@ -201,9 +220,16 @@ export const LayersTab: React.FC = () => {
                      </div>
 
                      <div className="flex flex-col flex-1 min-w-0 justify-center">
-                        <span className="text-xs truncate capitalize font-medium">
-                           {(layer as any).customName || layer.type} {(layer as any).text ? `"${(layer as any).text.substring(0, 10)}..."` : ''}
-                        </span>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                           <span className={`text-xs truncate capitalize font-medium ${isHidden ? 'text-slate-500 line-through' : ''}`}>
+                              {(layer as any).customName || layer.type} {(layer as any).text ? `"${(layer as any).text.substring(0, 10)}..."` : ''}
+                           </span>
+                           {isHidden && (
+                              <span className="text-[9px] px-1 py-0.2 rounded bg-amber-500/10 text-amber-400/90 border border-amber-500/20 shrink-0 font-normal leading-tight">
+                                 Hidden
+                              </span>
+                           )}
+                        </div>
                         <span className="text-[9px] text-slate-500 truncate">
                            {(() => {
                               const b = artboards.find(a => a.id === (layer as any).artboardId);
@@ -212,9 +238,26 @@ export const LayersTab: React.FC = () => {
                         </span>
                      </div>
 
-                     <div className="flex gap-1 shrink-0 ml-2 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                     <div className="flex items-center gap-1 shrink-0 ml-2">
                         <button
-                           className="p-1.5 hover:bg-[#3A3A3A] hover:text-white rounded text-[#8A8A8A]"
+                           type="button"
+                           className={`p-1.5 hover:bg-[#3A3A3A] rounded transition-colors ${
+                              isHidden
+                                 ? 'opacity-100 text-amber-400/90 hover:text-amber-300 hover:bg-amber-400/10'
+                                 : 'opacity-100 md:opacity-0 md:group-hover:opacity-100 text-slate-400 hover:text-white'
+                           }`}
+                           onClick={(e) => {
+                              e.stopPropagation();
+                              toggleLayerVisibility((layer as any).id);
+                           }}
+                           title={isHidden ? "Unhide layer (click to show on canvas)" : "Hide layer (click to hide on canvas)"}
+                        >
+                           {isHidden ? <EyeOff size={14} /> : <Eye size={14} />}
+                        </button>
+
+                        <button
+                           type="button"
+                           className="p-1.5 hover:bg-[#3A3A3A] hover:text-white rounded text-[#8A8A8A] opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity"
                            onClick={(e) => {
                               e.stopPropagation();
                               // Anchored to the button, so the menu lands beside the row it belongs to
