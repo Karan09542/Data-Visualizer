@@ -158,8 +158,31 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const [showGizmo, setShowGizmo] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
+  const isTransitioningRef = useRef(false);
+  const transitionTimeoutRef = useRef<number | null>(null);
+
   const toggleFullscreen = useCallback(() => {
+    isTransitioningRef.current = true;
+    if (transitionTimeoutRef.current !== null) {
+      window.clearTimeout(transitionTimeoutRef.current);
+    }
+
     setIsFullscreen(prev => !prev);
+
+    // Give 320ms for the smooth 300ms CSS transition to settle, then commit single native resolution buffer
+    transitionTimeoutRef.current = window.setTimeout(() => {
+      isTransitioningRef.current = false;
+      transitionTimeoutRef.current = null;
+      if (containerRef.current && rendererRef.current && cameraRef.current) {
+        const w = Math.round(containerRef.current.clientWidth);
+        const h = Math.round(containerRef.current.clientHeight);
+        if (w > 0 && h > 0) {
+          cameraRef.current.aspect = w / h;
+          cameraRef.current.updateProjectionMatrix();
+          rendererRef.current.setSize(w, h, false);
+        }
+      }
+    }, 320);
   }, []);
 
   const [canUndo, setCanUndo] = useState(false);
@@ -181,6 +204,8 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   showMaskOverlayRef.current = showMaskOverlay;
   const showGizmoRef = useRef(showGizmo);
   showGizmoRef.current = showGizmo;
+  const isFullscreenRef = useRef(isFullscreen);
+  isFullscreenRef.current = isFullscreen;
 
   /**
    * Updates mesh vertex Z values based on depthResult, displacement, inversion,
@@ -370,7 +395,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
         e.preventDefault();
         e.stopPropagation();
         e.stopImmediatePropagation();
-        if (isFullscreen) {
+        if (isFullscreenRef.current) {
           toggleFullscreen();
         } else {
           onClose();
@@ -839,6 +864,19 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       rafId = requestAnimationFrame(animate);
       controls.update();
 
+      // Keep camera aspect ratio continuously in sync with container dimensions without WebGL buffer reallocations
+      if (containerRef.current && cameraRef.current) {
+        const cw = containerRef.current.clientWidth;
+        const ch = containerRef.current.clientHeight;
+        if (cw > 0 && ch > 0) {
+          const curAspect = cw / ch;
+          if (Math.abs(cameraRef.current.aspect - curAspect) > 0.0005) {
+            cameraRef.current.aspect = curAspect;
+            cameraRef.current.updateProjectionMatrix();
+          }
+        }
+      }
+
       // Gizmo anchor dynamically follows camera target so it's always centered on the visible view
       if (!isGizmoDraggingRef.current && gizmoAnchorRef.current && controlsRef.current && meshGroupRef.current) {
         gizmoAnchorRef.current.position.copy(controlsRef.current.target);
@@ -849,15 +887,32 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     };
     animate();
 
-    // ResizeObserver for reliable dimension tracking
+    // Optimized ResizeObserver with RAF debouncing and transition awareness
+    let resizeRafId: number | null = null;
+    let lastWidth = 0;
+    let lastHeight = 0;
+
     const resizeObserver = new ResizeObserver((entries) => {
+      // Do not reallocate WebGL buffers while the modal is actively playing its smooth transition
+      if (isTransitioningRef.current) return;
+
       for (const entry of entries) {
-        const w = entry.contentRect.width;
-        const h = entry.contentRect.height;
-        if (w > 0 && h > 0) {
-          camera.aspect = w / h;
-          camera.updateProjectionMatrix();
-          renderer.setSize(w, h);
+        const w = Math.round(entry.contentRect.width);
+        const h = Math.round(entry.contentRect.height);
+        if (w > 0 && h > 0 && (w !== lastWidth || h !== lastHeight)) {
+          lastWidth = w;
+          lastHeight = h;
+          if (resizeRafId !== null) {
+            cancelAnimationFrame(resizeRafId);
+          }
+          resizeRafId = requestAnimationFrame(() => {
+            resizeRafId = null;
+            if (isTransitioningRef.current) return;
+            if (!cameraRef.current || !rendererRef.current) return;
+            cameraRef.current.aspect = w / h;
+            cameraRef.current.updateProjectionMatrix();
+            rendererRef.current.setSize(w, h, false);
+          });
         }
       }
     });
@@ -865,6 +920,12 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     return () => {
       cancelAnimationFrame(rafId);
+      if (resizeRafId !== null) {
+        cancelAnimationFrame(resizeRafId);
+      }
+      if (transitionTimeoutRef.current !== null) {
+        window.clearTimeout(transitionTimeoutRef.current);
+      }
       resizeObserver.disconnect();
       controls.dispose();
       renderer.dispose();
@@ -1378,15 +1439,15 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
   return createPortal(
     <div
-      className={`fixed inset-0 z-[99999] flex items-center justify-center select-none transition-all duration-200 ${isFullscreen ? 'p-0 m-0 w-full h-full bg-[#0c0c14]' : 'bg-black/90 backdrop-blur-md p-0 sm:p-4 md:p-6'
+      className={`fixed inset-0 z-[99999] flex items-center justify-center select-none backdrop-blur-md transition-all duration-300 ease-out ${isFullscreen ? 'p-0 bg-[#0c0c14]' : 'p-0 sm:p-4 md:p-6 bg-black/85'
         }`}
       onClick={isFullscreen ? undefined : onClose}
     >
       <div
         data-isolate-modal="true"
-        className={`relative bg-[#0c0c14] flex flex-col overflow-hidden transition-all duration-200 ${isFullscreen
-            ? 'w-full h-full max-w-none max-h-none rounded-none border-0 shadow-none'
-            : 'w-full sm:max-w-[1150px] h-full sm:h-[88vh] sm:max-h-[850px] sm:min-h-[500px] rounded-none sm:rounded-2xl border-0 sm:border border-white/10 shadow-none sm:shadow-[0_25px_60px_rgba(0,0,0,0.8)]'
+        className={`relative bg-[#0c0c14] flex flex-col overflow-hidden transition-all duration-300 ease-out ${isFullscreen
+            ? 'w-full h-full max-w-[100vw] max-h-[100vh] min-h-0 rounded-none border border-transparent shadow-none'
+            : 'w-full sm:max-w-[1150px] h-full sm:h-[88vh] sm:max-h-[850px] sm:min-h-[500px] rounded-none sm:rounded-2xl border border-white/10 shadow-none sm:shadow-[0_25px_60px_rgba(0,0,0,0.8)]'
           }`}
         onClick={e => e.stopPropagation()}
       >
