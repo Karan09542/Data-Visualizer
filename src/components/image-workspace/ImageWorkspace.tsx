@@ -29,6 +29,7 @@ const LayersTab = lazyWithRetry(() => import('./components/panels/LayersTab').th
 const AIToolsPanel = lazyWithRetry(() => import('./components/panels/AIToolsPanel').then(m => ({ default: m.AIToolsPanel })), 'AI Tools');
 const FilterStudioTab = lazyWithRetry(() => import('./components/panels/FilterStudioTab').then(m => ({ default: m.FilterStudioTab })), 'Filter Studio');
 const BlurStudioTab = lazyWithRetry(() => import('./components/panels/BlurStudioTab').then(m => ({ default: m.BlurStudioTab })), 'Blur Studio');
+const PathStudioTab = lazyWithRetry(() => import('./components/panels/PathStudioTab').then(m => ({ default: m.PathStudioTab })), 'Path Studio');
 const QuickActionsTab = lazyWithRetry(() => import('./components/panels/QuickActionsTab').then(m => ({ default: m.QuickActionsTab })), 'Quick Actions');
 const ExportStudio = lazyWithRetry(() => import('../export/ExportStudio').then(m => ({ default: m.ExportStudio })), 'Export Studio');
 const AssetGallery = lazyWithRetry(() => import('../image-import/gallery/AssetGallery').then(m => ({ default: m.AssetGallery })), 'Asset Gallery');
@@ -54,7 +55,8 @@ import {
    Layers, MousePointer2, Brush, Eraser, Circle, Minus, Edit2, Image as ImageIcon,
    SquareDashed, X, Crop, History, Settings, Trash2, Copy, Move, BringToFront, SendToBack, ArrowUp, ArrowDown, AlignLeft, AlignCenter, AlignRight,
    Sparkles, ChevronDown, Plus, Activity, Check, Grid, Expand, MoreHorizontal, Hand, Droplets, Image as LucideImage, Images, Keyboard, Clipboard, Library, Link,
-   Zap, ChevronLeft, ChevronRight, Scan, Palette, Eye, EyeOff
+   Zap, ChevronLeft, ChevronRight, Scan, Palette, Eye, EyeOff,
+   Spline
 } from "lucide-react";
 import JSZip from "jszip";
 // @ts-ignore
@@ -145,6 +147,7 @@ import { CropShape, traceCropShape } from '../../utils/cropShapes';
 import { buildShapeMaskCommand } from './services/image/shapeMask';
 import { CropShapePicker } from './components/shared/CropShapePicker';
 import { useBlurStudio } from './hooks/useBlurStudio';
+import { usePathStudio } from './hooks/usePathStudio';
 import { ai } from '../../ai';
 import {
    generateArtboardPixelBuffer as renderArtboardToBuffer,
@@ -736,7 +739,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
    const [selectedLayerId, setSelectedLayerId] = useState<string | null>(null);
 
    // UI Panels
-   const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "blur-studio" | "export" | "artboards" | "quick" | "selection" | "ai">("properties");
+   const [activeTab, setActiveTab] = useState<"properties" | "layers" | "history" | "filters" | "blur-studio" | "path-studio" | "export" | "artboards" | "quick" | "selection" | "ai">("properties");
 
    useEffect(() => {
       if (activeTab === 'export') {
@@ -1334,6 +1337,15 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
          } as any);
       }
    });
+
+   // Path Studio lays shapes, emoji, pictures or text along the path drawn with the selection tools.
+   const pathStudio = usePathStudio(
+      fabricRef.current,
+      activeTab,
+      executeCommand,
+      imageSelection.selection,
+      activeArtboardIdRef.current,
+   );
 
    // Blur Studio previews and applies inside the current selection, when there is one.
    const setBlurSelection = blurStudio.setSelectionShape;
@@ -8018,6 +8030,7 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                       <TabBtn tab="filters" active={activeTab} set={setActiveTab} label="Filters" icon={Sparkles} />
                                                       <TabBtn tab="blur-studio" active={activeTab} set={setActiveTab} label="Blur Studio" icon={Droplets} />
                                                       <TabBtn tab="selection" active={activeTab} set={setActiveTab} label="Select" icon={SquareDashed} />
+                                                      <TabBtn tab="path-studio" active={activeTab} set={setActiveTab} label="Path" icon={Spline} />
                                                       <TabBtn tab="layers" active={activeTab} set={setActiveTab} label="Layers" icon={Layers} />
                                                       <TabBtn tab="history" active={activeTab} set={setActiveTab} label="History" icon={History} />
                                                       <TabBtn tab="export" active={activeTab} set={setActiveTab} label="Export" icon={Download} />
@@ -8072,6 +8085,16 @@ export default function ImageWorkspace({ path, chromeHidden, onToggleChrome }: I
                                                       {activeTab === 'filters' && <FilterStudioTab />}
 
                                                       {/* BLUR STUDIO PANEL */}
+                                                      {activeTab === 'path-studio' && (
+                                                         <PathStudioTab
+                                                            studio={pathStudio}
+                                                            onDrawPath={() => {
+                                                               setActiveTab('selection');
+                                                               imageSelection.setActiveSelectionTool('sel-pen');
+                                                            }}
+                                                         />
+                                                      )}
+
                                                       {activeTab === 'blur-studio' && (
                                                          <BlurStudioTab studio={blurStudio} />
                                                       )}
