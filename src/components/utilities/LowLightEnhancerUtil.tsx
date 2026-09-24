@@ -639,17 +639,17 @@ export function LowLightEnhancerUtil() {
   return (
     <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-50 dark:bg-[#0c0f16] text-slate-900 dark:text-slate-100">
       {/* ── Top Header Bar ── */}
-      <header className="px-3 sm:px-5 py-2.5 sm:py-3 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-[#161b22]/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-2.5 shrink-0 z-10">
-        <div className="flex items-center gap-2.5 min-w-0">
-          <div className="p-2 rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
-            <Moon size={18} />
+      <header className="px-2.5 sm:px-5 py-1.5 sm:py-3 border-b border-slate-200 dark:border-slate-800 bg-white/80 dark:bg-[#161b22]/80 backdrop-blur-md flex flex-nowrap items-center justify-between gap-1.5 sm:gap-2.5 shrink-0 z-10">
+        <div className="flex items-center gap-2 sm:gap-2.5 min-w-0 flex-1">
+          <div className="p-1.5 sm:p-2 rounded-lg sm:rounded-xl bg-amber-500/10 text-amber-500 border border-amber-500/20 shrink-0">
+            <Moon className="w-4 h-4 sm:w-[18px] sm:h-[18px]" />
           </div>
           <div className="min-w-0">
             <div className="flex items-center gap-1.5 sm:gap-2">
-              <h2 className="text-xs sm:text-sm font-bold text-slate-900 dark:text-white truncate">
+              <h2 className="text-[13px] sm:text-sm font-bold text-slate-900 dark:text-white truncate">
                 Low Light Enhance
               </h2>
-              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 shrink-0 flex items-center gap-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25 shrink-0 hidden sm:flex items-center gap-1">
                 <Sparkles size={9} /> Zero-DCE AI
               </span>
             </div>
@@ -660,7 +660,7 @@ export function LowLightEnhancerUtil() {
         </div>
 
         {sourceImage && (
-          <div className="flex items-center gap-1.5 sm:gap-2 ml-auto">
+          <div className="flex items-center gap-1 sm:gap-2 ml-auto shrink-0">
             {/* View Mode Controls (Desktop) */}
             <div className="hidden sm:flex items-center rounded-xl p-0.5 border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-[#12161f]">
               <button
@@ -722,19 +722,19 @@ export function LowLightEnhancerUtil() {
             <button
               type="button"
               onClick={copyToClipboard}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-xs border ${copyFeedback
+              className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 rounded-lg sm:rounded-xl text-xs font-bold transition-all shadow-xs border ${copyFeedback
                   ? "bg-emerald-500 text-white border-emerald-500"
                   : "bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-700 hover:border-amber-500"
                 }`}
               title="Copy enhanced image as PNG to clipboard"
             >
               {copyFeedback ? <Check size={14} /> : <Copy size={14} />}
-              <span>{copyFeedback ? "Copied PNG!" : "Copy PNG"}</span>
+              <span className="hidden sm:inline">{copyFeedback ? "Copied PNG!" : "Copy PNG"}</span>
             </button>
 
             {/* Export Format Selector & Download Button with CustomSelect */}
             <div className="flex items-center gap-1.5">
-              <div className="w-[85px] sm:w-[95px]">
+              <div className="w-[78px] sm:w-[95px]">
                 <CustomSelect
                   value={exportFormat}
                   onChange={(v) => setExportFormat(v as ExportFormat)}
@@ -746,7 +746,7 @@ export function LowLightEnhancerUtil() {
               <button
                 type="button"
                 onClick={downloadImage}
-                className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all shadow-xs shrink-0"
+                className="bg-amber-600 hover:bg-amber-500 active:scale-95 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all shadow-xs shrink-0"
                 title={`Download enhanced image (${exportFormat.toUpperCase()})`}
               >
                 <Download size={14} />
@@ -762,7 +762,7 @@ export function LowLightEnhancerUtil() {
                 setFinalCanvas(null);
                 aiEnhancedCanvasRef.current = null;
               }}
-              className="p-1.5 rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
+              className="p-1 sm:p-1.5 rounded-lg sm:rounded-xl text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-colors"
               title="Open different photo"
             >
               <RotateCcw size={15} />
