@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
+  X,
   Palette,
   Sparkles,
   Copy,
@@ -248,6 +249,8 @@ export function StyleTransferUtil() {
   const [progressStatus, setProgressStatus] = useState("Ready");
   const [progressPercent, setProgressPercent] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  /** The job now running, so a download the user did not want can be stopped. */
+  const activeJobRef = useRef<string | null>(null);
 
   // The painted layer, in state: a ref would not tell React to re-compose when a paint lands,
   // which is why a finished painting used to sit unseen behind the preview it was meant to replace.
@@ -587,6 +590,8 @@ export function StyleTransferUtil() {
           5
         );
 
+        activeJobRef.current = jobId;
+
         const unsub = ai.subscribe(jobId, (ev: AIProgressEvent & { jobId: string }) => {
           if (ev.state === "downloading") {
             setProgressStatus(`Downloading Style Model (${ev.progress || 0}%)...`);
@@ -607,6 +612,8 @@ export function StyleTransferUtil() {
         try {
           result = await promise;
         } catch (execErr: any) {
+          // Stopping on purpose is not a failure, and must not leave a painting behind.
+          if (execErr?.message === "AbortError") return;
           console.warn("[StyleTransfer] Neural inference fallback to algorithmic filter:", execErr);
         } finally {
           unsub();
@@ -634,6 +641,7 @@ export function StyleTransferUtil() {
         setProgressPercent(100);
         setProgressStatus("Finished Painting");
       } catch (err: any) {
+        if (err?.message === "AbortError") return;
         console.error("[StyleTransfer] Execution error:", err);
         if (isStale()) return;
         // Fall back to the painterly filter, and say so rather than passing it off as the model.
@@ -644,11 +652,23 @@ export function StyleTransferUtil() {
           setErrorMsg(err.message || "Could not paint this image.");
         }
       } finally {
+        activeJobRef.current = null;
         if (!isStale()) setIsProcessingAI(false);
       }
     },
     [generateArtisticFallback]
   );
+
+  /** Stops the run, and with it the model download it may still be in the middle of. */
+  const cancelAiRun = useCallback(() => {
+    const jobId = activeJobRef.current;
+    runTokenRef.current++;
+    activeJobRef.current = null;
+    if (jobId) ai.cancel(jobId);
+    setIsProcessingAI(false);
+    setProgressPercent(0);
+    setProgressStatus("Ready");
+  }, []);
 
   // ═════════════════════════════════════════════════════════════
   // Real-Time Final Canvas Assembly & Adjustment Sliders
@@ -1110,6 +1130,14 @@ export function StyleTransferUtil() {
                       style={{ width: `${progressPercent}%` }}
                     />
                   </div>
+                  <button
+                    type="button"
+                    onClick={cancelAiRun}
+                    className="mt-3.5 flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-white/5 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-600 dark:hover:text-rose-300 border border-slate-200 dark:border-white/10 transition-colors active:scale-95"
+                  >
+                    <X size={13} /> Cancel
+                  </button>
+                  <p className="text-[10px] text-slate-400 mt-2">Stops the download too. What is already saved is kept.</p>
                 </div>
               </div>
             )}

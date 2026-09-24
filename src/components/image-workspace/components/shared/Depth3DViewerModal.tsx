@@ -35,6 +35,9 @@ import { TransformControls } from 'three/examples/jsm/controls/TransformControls
 import * as fabric from 'fabric';
 import { DepthEstimationResult } from '../../../../ai/types';
 
+/** How much memory the local brush history may hold, in bytes. */
+const UNDO_BUDGET_BYTES = 24 * 1024 * 1024;
+
 interface Depth3DViewerModalProps {
   depthResult: DepthEstimationResult;
   originalImage: ImageData;
@@ -138,6 +141,18 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
   // Depth Mask & Overlay Refs
   const maskCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  /**
+   * The mask's pixels, kept between strokes.
+   *
+   * Reading them back from the canvas costs a megabyte-sized copy, and the mesh used to ask for
+   * one on every pointer move. It is re-read when the mask has actually changed, at most once a
+   * frame.
+   */
+  const maskDataRef = useRef<ImageData | null>(null);
+  const maskDirtyRef = useRef(true);
+  const meshUpdateQueuedRef = useRef(false);
+  // One raycaster for the life of the modal rather than one per pointer move.
+  const raycasterRef = useRef(new THREE.Raycaster());
   const maskTextureRef = useRef<THREE.CanvasTexture | null>(null);
   const maskMeshRef = useRef<THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null>(null);
   const planeDimsRef = useRef<{ width: number; height: number }>({ width: 1.15, height: 1.15 });
@@ -188,7 +203,10 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const [canUndo, setCanUndo] = useState(false);
   const [canRedo, setCanRedo] = useState(false);
   const [hasMask, setHasMask] = useState(false);
-  const [cursorPos, setCursorPos] = useState<{ x: number; y: number }>({ x: -100, y: -100 });
+  // The ring under the cursor is moved by writing to its style, not through state: a pointer
+  // move should not re-render a modal this size, and at 60 moves a second it showed.
+  const cursorRef = useRef<HTMLDivElement | null>(null);
+  const cursorPosRef = useRef({ x: -100, y: -100 });
   const [isPointerInCanvas, setIsPointerInCanvas] = useState(false);
 
   // 3D Parameters State
@@ -200,12 +218,33 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   const [copied, setCopied] = useState(false);
 
   // Ref to hold current state for handlers
+  const placeCursor = useCallback((x: number, y: number) => {
+    cursorPosRef.current = { x, y };
+    if (cursorRef.current) {
+      cursorRef.current.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+    }
+  }, []);
+
   const showMaskOverlayRef = useRef(showMaskOverlay);
   showMaskOverlayRef.current = showMaskOverlay;
+  const activeToolRef = useRef(activeTool);
+  activeToolRef.current = activeTool;
   const showGizmoRef = useRef(showGizmo);
   showGizmoRef.current = showGizmo;
   const isFullscreenRef = useRef(isFullscreen);
   isFullscreenRef.current = isFullscreen;
+
+  /** The mask's pixels, re-read from the canvas only after something has painted on it. */
+  const readMaskPixels = useCallback((): Uint8ClampedArray | null => {
+    const canvas = maskCanvasRef.current;
+    if (!canvas) return null;
+    if (!maskDirtyRef.current && maskDataRef.current) return maskDataRef.current.data;
+    const ctx = canvas.getContext('2d', { willReadFrequently: true });
+    if (!ctx) return null;
+    maskDataRef.current = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    maskDirtyRef.current = false;
+    return maskDataRef.current.data;
+  }, []);
 
   /**
    * Updates mesh vertex Z values based on depthResult, displacement, inversion,
@@ -220,8 +259,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     const maskW = maskCanvasRef.current.width;
     const maskH = maskCanvasRef.current.height;
-    const maskCtx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
-    const maskData = maskCtx ? maskCtx.getImageData(0, 0, maskW, maskH).data : null;
+    const maskData = readMaskPixels();
 
     const depthW = depthResult.width;
     const depthH = depthResult.height;
@@ -254,29 +292,42 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     if (maskTextureRef.current) {
       maskTextureRef.current.needsUpdate = true;
     }
-  }, [depthResult, isInverted, displacement]);
+  }, [depthResult, isInverted, displacement, readMaskPixels]);
+
+  /**
+   * Runs the mesh update on the next frame, and only once however many strokes land before it.
+   */
+  const scheduleMeshUpdate = useCallback(() => {
+    if (meshUpdateQueuedRef.current) return;
+    meshUpdateQueuedRef.current = true;
+    requestAnimationFrame(() => {
+      meshUpdateQueuedRef.current = false;
+      updateMeshVertices();
+    });
+  }, [updateMeshVertices]);
 
   /**
    * Helper to check if mask has any painted pixels.
    */
   const checkMaskPixels = useCallback(() => {
-    if (!maskCanvasRef.current) return false;
-    const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
-    if (!ctx) return false;
-    const imgData = ctx.getImageData(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
-    const data = imgData.data;
+    const data = readMaskPixels();
+    if (!data) return false;
     for (let i = 3; i < data.length; i += 4) {
       if (data[i] > 10) return true;
     }
     return false;
-  }, []);
+  }, [readMaskPixels]);
 
   /**
    * Pushes a mask snapshot onto the local undo stack.
    */
   const pushUndo = useCallback((snapshot: ImageData) => {
     undoStackRef.current.push(snapshot);
-    if (undoStackRef.current.length > 30) {
+    // Each snapshot is a full copy of the mask - a megabyte and a half at a typical depth size -
+    // so the history is bounded by what it costs, not only by how many steps it holds.
+    const perSnapshot = snapshot.data.length;
+    const maxSnapshots = Math.max(6, Math.min(30, Math.floor(UNDO_BUDGET_BYTES / Math.max(1, perSnapshot))));
+    while (undoStackRef.current.length > maxSnapshots) {
       undoStackRef.current.shift();
     }
     redoStackRef.current = [];
@@ -298,6 +349,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     const previousSnapshot = undoStackRef.current.pop()!;
     ctx.putImageData(previousSnapshot, 0, 0);
+    maskDirtyRef.current = true;
 
     updateMeshVertices();
     setCanUndo(undoStackRef.current.length > 0);
@@ -318,6 +370,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     const nextSnapshot = redoStackRef.current.pop()!;
     ctx.putImageData(nextSnapshot, 0, 0);
+    maskDirtyRef.current = true;
 
     updateMeshVertices();
     setCanUndo(true);
@@ -338,11 +391,58 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     redoStackRef.current = [];
 
     ctx.clearRect(0, 0, maskCanvasRef.current.width, maskCanvasRef.current.height);
+    maskDirtyRef.current = true;
     updateMeshVertices();
     setCanUndo(true);
     setCanRedo(false);
     setHasMask(false);
   }, [updateMeshVertices]);
+
+  /**
+   * Points the mouse and touch buttons at what the current tool expects.
+   *
+   * Holding space borrows the left button for panning; releasing it has to hand the button back,
+   * which a no-op state update could not do - the brush kept panning the view instead of painting.
+   */
+  const applyControlMode = useCallback((tool: typeof activeTool, spaceHeld: boolean) => {
+    const controls = controlsRef.current;
+    if (!controls) return;
+
+    controls.enabled = true;
+    controls.enableRotate = false; // Strictly disabled: rotating ONLY happens via gizmo lines!
+    controls.enablePan = true;
+    controls.screenSpacePanning = true; // Natural screen-space navigation (top/bottom/left/right)
+    controls.panSpeed = 1.0;
+    controls.enableZoom = true;
+    controls.zoomSpeed = 1.0;
+
+    if (spaceHeld || tool === 'pan' || tool === 'orbit') {
+      controls.mouseButtons = {
+        LEFT: THREE.MOUSE.PAN,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      };
+      controls.touches = {
+        ONE: THREE.TOUCH.PAN,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      };
+    } else {
+      // When in Brush or Eraser mode:
+      controls.mouseButtons = {
+        LEFT: null as any,
+        MIDDLE: THREE.MOUSE.DOLLY,
+        RIGHT: THREE.MOUSE.PAN
+      };
+      controls.touches = {
+        ONE: null as any,
+        TWO: THREE.TOUCH.DOLLY_PAN
+      };
+    }
+  }, []);
+
+  useEffect(() => {
+    applyControlMode(activeTool, isSpacePressedRef.current);
+  }, [activeTool, applyControlMode]);
 
   // Keyboard events: strictly isolated to modal (never leaks to ImageWorkspace or global undo/redo)
   useEffect(() => {
@@ -351,15 +451,9 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       const key = e.key.toLowerCase();
 
       if (e.key === ' ') {
-        if (!isSpacePressedRef.current && activeTool !== 'pan') {
+        if (!isSpacePressedRef.current) {
           isSpacePressedRef.current = true;
-          if (controlsRef.current) {
-            controlsRef.current.mouseButtons = {
-              LEFT: THREE.MOUSE.PAN,
-              MIDDLE: THREE.MOUSE.DOLLY,
-              RIGHT: THREE.MOUSE.ROTATE
-            };
-          }
+          applyControlMode(activeTool, true);
         }
         return;
       }
@@ -466,7 +560,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     const handleKeyUp = (e: KeyboardEvent) => {
       if (e.key === ' ') {
         isSpacePressedRef.current = false;
-        setActiveTool(t => t); // force re-eval of effect
+        applyControlMode(activeTool, false);
       }
     };
 
@@ -476,7 +570,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       window.removeEventListener('keydown', handleKeyDown, { capture: true });
       window.removeEventListener('keyup', handleKeyUp, { capture: true });
     };
-  }, [handleUndo, handleRedo, onClose, activeTool]);
+  }, [handleUndo, handleRedo, onClose, activeTool, applyControlMode, toggleFullscreen]);
 
   // Main Three.js setup
   useEffect(() => {
@@ -636,6 +730,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
           const ctx = maskCanvasRef.current.getContext('2d');
           if (ctx) {
             ctx.putImageData(strokeStartSnapshotRef.current, 0, 0);
+            maskDirtyRef.current = true;
             updateMeshVertices();
           }
         }
@@ -852,7 +947,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     });
 
     const maskMesh = new THREE.Mesh(geometry, maskMaterial);
-    maskMesh.visible = (activeTool === 'brush' || activeTool === 'eraser') && showMaskOverlayRef.current;
+    maskMesh.visible = (activeToolRef.current === 'brush' || activeToolRef.current === 'eraser') && showMaskOverlayRef.current;
     meshGroup.add(maskMesh);
     maskMeshRef.current = maskMesh;
 
@@ -929,6 +1024,9 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
       resizeObserver.disconnect();
       controls.dispose();
       renderer.dispose();
+      // dispose() frees the resources but leaves the context alive; a browser only allows a
+      // handful of them, and this modal can be opened again and again in one session.
+      try { renderer.forceContextLoss(); } catch { /* already gone */ }
       geometry.dispose();
       material.dispose();
       maskMaterial.dispose();
@@ -1011,42 +1109,6 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     }
   }, [showGizmo, activeTool]);
 
-  // OrbitControls configuration: Screen-space Pan for navigation, Rotation ONLY via gizmo lines
-  useEffect(() => {
-    if (!controlsRef.current) return;
-    const controls = controlsRef.current;
-
-    controls.enabled = true;
-    controls.enableRotate = false; // Strictly disabled: rotating ONLY happens via gizmo lines!
-    controls.enablePan = true;
-    controls.screenSpacePanning = true; // Natural screen-space navigation (top/bottom/left/right)
-    controls.panSpeed = 1.0;
-    controls.enableZoom = true;
-    controls.zoomSpeed = 1.0;
-
-    if (activeTool === 'pan' || activeTool === 'orbit') {
-      controls.mouseButtons = {
-        LEFT: THREE.MOUSE.PAN,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.PAN
-      };
-      controls.touches = {
-        ONE: THREE.TOUCH.PAN,
-        TWO: THREE.TOUCH.DOLLY_PAN
-      };
-    } else {
-      // When in Brush or Eraser mode:
-      controls.mouseButtons = {
-        LEFT: null as any,
-        MIDDLE: THREE.MOUSE.DOLLY,
-        RIGHT: THREE.MOUSE.PAN
-      };
-      controls.touches = {
-        ONE: null as any,
-        TWO: THREE.TOUCH.DOLLY_PAN
-      };
-    }
-  }, [activeTool]);
 
   /**
    * Accurate UV raycasting from client screen position to mesh surface.
@@ -1065,7 +1127,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     const ndcX = ((clientX - rect.left) / rect.width) * 2 - 1;
     const ndcY = -((clientY - rect.top) / rect.height) * 2 + 1;
 
-    const raycaster = new THREE.Raycaster();
+    const raycaster = raycasterRef.current;
     raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
 
     // 1. Try direct raycast on the 3D displaced mesh
@@ -1092,6 +1154,45 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     }
 
     return null;
+  }, []);
+
+  /**
+   * The brush radius in mask pixels, for a brush drawn `screenRadius` pixels wide on screen.
+   *
+   * The old fixed ratio ignored the camera: the ring under the cursor and the paint it left were
+   * only ever the same size at one particular zoom, and zooming in made the brush paint far more
+   * than it showed. Measuring how many pixels the model itself spans right now keeps the two
+   * together at any distance.
+   */
+  const maskRadiusForScreen = useCallback((screenRadius: number): number => {
+    const container = containerRef.current;
+    const camera = cameraRef.current;
+    const mesh = meshRef.current;
+    const maskCanvas = maskCanvasRef.current;
+    if (!container || !camera || !mesh || !maskCanvas) return Math.max(2, screenRadius);
+
+    const rect = container.getBoundingClientRect();
+    const { width: planeW, height: planeH } = planeDimsRef.current;
+
+    const toScreen = (local: THREE.Vector3) => {
+      const p = local.clone().applyMatrix4(mesh.matrixWorld).project(camera);
+      return new THREE.Vector2((p.x * rect.width) / 2, (-p.y * rect.height) / 2);
+    };
+
+    const centre = toScreen(new THREE.Vector3(0, 0, 0));
+    const acrossU = toScreen(new THREE.Vector3(planeW, 0, 0)).sub(centre).length();
+    const acrossV = toScreen(new THREE.Vector3(0, planeH, 0)).sub(centre).length();
+
+    // How many mask pixels one screen pixel covers, along each axis of the picture.
+    const perPixelU = acrossU > 1 ? maskCanvas.width / acrossU : 0;
+    const perPixelV = acrossV > 1 ? maskCanvas.height / acrossV : 0;
+    const perPixel = (perPixelU + perPixelV) / (Number(perPixelU > 0) + Number(perPixelV > 0) || 1);
+
+    if (!perPixel || !isFinite(perPixel)) {
+      // Nothing measurable on screen (edge-on, or not laid out yet): keep the old approximation.
+      return Math.max(2, (screenRadius / Math.min(rect.width, rect.height)) * 1.6 * maskCanvas.width);
+    }
+    return Math.max(2, screenRadius * perPixel);
   }, []);
 
   /**
@@ -1177,7 +1278,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     } catch (_) { }
 
     const rect = container.getBoundingClientRect();
-    setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    placeCursor(e.clientX - rect.left, e.clientY - rect.top);
     setIsPointerInCanvas(true);
 
     const ctx = maskCanvasRef.current.getContext('2d', { willReadFrequently: true });
@@ -1199,16 +1300,14 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     const maskW = maskCanvasRef.current.width;
     const maskH = maskCanvasRef.current.height;
-
-    // Calibrate mask radius from screen brush size
-    const uvRadius = (brushSize / Math.min(rect.width, rect.height)) * 1.6;
-    const maskRadius = Math.max(2, uvRadius * maskW);
+    const maskRadius = maskRadiusForScreen(brushSize);
 
     const x = uv.u * maskW;
     const y = (1 - uv.v) * maskH;
 
     drawDab(ctx, x, y, maskRadius, activeTool === 'eraser');
-    updateMeshVertices();
+    maskDirtyRef.current = true;
+    scheduleMeshUpdate();
   };
 
   /**
@@ -1232,7 +1331,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
     }
 
     const rect = container.getBoundingClientRect();
-    setCursorPos({ x: e.clientX - rect.left, y: e.clientY - rect.top });
+    placeCursor(e.clientX - rect.left, e.clientY - rect.top);
     setIsPointerInCanvas(true);
 
     if (!isPaintingRef.current || !lastUVRef.current || !maskCanvasRef.current) return;
@@ -1244,8 +1343,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     const maskW = maskCanvasRef.current.width;
     const maskH = maskCanvasRef.current.height;
-    const uvRadius = (brushSize / Math.min(rect.width, rect.height)) * 1.6;
-    const maskRadius = Math.max(2, uvRadius * maskW);
+    const maskRadius = maskRadiusForScreen(brushSize);
 
     const x0 = lastUVRef.current.u * maskW;
     const y0 = (1 - lastUVRef.current.v) * maskH;
@@ -1254,7 +1352,8 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
 
     drawLine(ctx, x0, y0, x1, y1, maskRadius, activeTool === 'eraser');
     lastUVRef.current = uv;
-    updateMeshVertices();
+    maskDirtyRef.current = true;
+    scheduleMeshUpdate();
   };
 
   /**
@@ -1796,10 +1895,15 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
           {/* High-precision Brush Indicator Cursor */}
           {(activeTool === 'brush' || activeTool === 'eraser') && isPointerInCanvas && (
             <div
-              className="pointer-events-none absolute rounded-full border shadow-[0_0_12px_rgba(0,0,0,0.6)] -translate-x-1/2 -translate-y-1/2 transition-[width,height] duration-75 z-20"
+              ref={(el) => {
+                cursorRef.current = el;
+                if (el) {
+                  const { x, y } = cursorPosRef.current;
+                  el.style.transform = `translate3d(${x}px, ${y}px, 0) translate(-50%, -50%)`;
+                }
+              }}
+              className="pointer-events-none absolute top-0 left-0 rounded-full border shadow-[0_0_12px_rgba(0,0,0,0.6)] transition-[width,height] duration-75 z-20"
               style={{
-                left: cursorPos.x,
-                top: cursorPos.y,
                 width: brushSize * 2,
                 height: brushSize * 2,
                 borderColor: activeTool === 'brush' ? 'rgba(239, 68, 68, 0.95)' : 'rgba(56, 189, 248, 0.95)',
@@ -1948,44 +2052,46 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
           </div>
 
           {/* Bottom Row on Mobile / Right on Desktop: Action Buttons */}
-          <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 sm:py-0">
+          <div className="flex items-center gap-1 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 sm:py-0">
             {/* Copy as PNG */}
             <button
               onClick={handleCopyAsPng}
-              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all border whitespace-nowrap ${copied
+              className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-xl text-xs font-medium transition-all border whitespace-nowrap ${copied
                   ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40 shadow-lg shadow-emerald-500/10'
                   : 'bg-white/5 hover:bg-white/10 text-white/80 hover:text-white border-white/10 hover:border-white/20'
                 }`}
               title="Copy 3D snapshot to clipboard as PNG"
             >
               {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}
-              <span>{copied ? 'Copied!' : 'Copy PNG'}</span>
+              <span className="hidden min-[380px]:inline">
+                {copied ? 'Copied!' : 'Copy'}<span className="hidden sm:inline"> PNG</span>
+              </span>
             </button>
 
             {/* Export PNG (Download) */}
             <button
               onClick={handleExportPng}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white text-xs font-medium transition-all border border-white/10 hover:border-white/20 whitespace-nowrap"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-xl bg-white/5 hover:bg-white/10 text-white/80 hover:text-white text-xs font-medium transition-all border border-white/10 hover:border-white/20 whitespace-nowrap"
               title="Download 3D snapshot as PNG file"
             >
               <Download size={13} />
-              <span>Export</span>
+              <span className="hidden min-[380px]:inline">Export</span>
             </button>
 
             {/* Add as New Layer */}
             <button
               onClick={handleAddToCanvas}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500/20 to-blue-500/20 hover:from-indigo-500/30 hover:to-blue-500/30 text-indigo-200 hover:text-white text-xs font-medium transition-all border border-indigo-500/30 hover:border-indigo-500/50 shadow-sm whitespace-nowrap"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-indigo-500/20 to-blue-500/20 hover:from-indigo-500/30 hover:to-blue-500/30 text-indigo-200 hover:text-white text-xs font-medium transition-all border border-indigo-500/30 hover:border-indigo-500/50 shadow-sm whitespace-nowrap"
               title="Add current 3D view as new layer to workspace"
             >
               <ImagePlus size={13} />
-              <span>Add Layer</span>
+              <span>Add<span className="hidden sm:inline"> Layer</span></span>
             </button>
 
             {/* Replace Image */}
             <button
               onClick={handleReplaceImage}
-              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 text-purple-200 hover:text-white text-xs font-medium transition-all border border-purple-500/30 hover:border-purple-500/50 shadow-sm whitespace-nowrap"
+              className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-2 sm:px-3.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-500/20 to-pink-500/20 hover:from-purple-500/30 hover:to-pink-500/30 text-purple-200 hover:text-white text-xs font-medium transition-all border border-purple-500/30 hover:border-purple-500/50 shadow-sm whitespace-nowrap"
               title="Replace selected image with current 3D view"
             >
               <Replace size={13} />

@@ -110,6 +110,9 @@ export function StickerMakerUtil() {
   const modelAbortRef = useRef<AbortController | null>(null);
   /** Live stage of the running job, so 'Processing...' can say what it is doing. */
   const [aiStage, setAiStage] = useState<{ state: string; progress: number } | null>(null);
+  /** The job now running, so a download the user did not want can be stopped. */
+  const activeJobRef = useRef<string | null>(null);
+  const cancelledRef = useRef(false);
 
   // Erase tool. The engine holds the pristine cut-out as its source and keeps
   // every stroke as data, so undo is a replay rather than a stack of bitmaps.
@@ -769,6 +772,7 @@ export function StickerMakerUtil() {
     }
 
     setIsProcessing(true);
+    cancelledRef.current = false;
     try {
       let cropX = 0;
       let cropY = 0;
@@ -865,6 +869,7 @@ export function StickerMakerUtil() {
       // pixels the model wrongly removed (the job may transfer or reuse imageData).
       const restoreSource = new ImageData(new Uint8ClampedArray(imageData.data), cropW, cropH);
       const { jobId, promise } = ai.execute('background-removal', imageData, { modelId }, 1);
+      activeJobRef.current = jobId;
       // A first run on an uncached model spends most of its time downloading;
       // without this the button just says "Processing..." for minutes.
       const unsubscribe = ai.subscribe(jobId, (event) => {
@@ -874,10 +879,15 @@ export function StickerMakerUtil() {
       let result;
       try {
         result = await promise;
+      } catch (err: any) {
+        // Stopping on purpose is not a failure.
+        if (err?.message === 'AbortError' || cancelledRef.current) return;
+        throw err;
       } finally {
         unsubscribe();
         setAiStage(null);
       }
+      if (cancelledRef.current) return;
 
       if (result && result.output instanceof ImageData) {
         const finalOutput = result.output;
@@ -904,12 +914,24 @@ export function StickerMakerUtil() {
         // A successful run means the weights are cached now.
         setModelReady((prev) => ({ ...prev, [modelId]: true }));
       }
-    } catch (err) {
+    } catch (err: any) {
+      if (err?.message === 'AbortError' || cancelledRef.current) return;
       console.error(err);
       alert('Error processing image. Please make sure the model is downloaded.');
     } finally {
+      activeJobRef.current = null;
       setIsProcessing(false);
     }
+  };
+
+  /** Stops the run, and with it the model download it may still be in the middle of. */
+  const cancelProcessing = () => {
+    const jobId = activeJobRef.current;
+    cancelledRef.current = true;
+    activeJobRef.current = null;
+    if (jobId) ai.cancel(jobId);
+    setAiStage(null);
+    setIsProcessing(false);
   };
 
   // Ask storage which of the background-removal models are already cached.
@@ -1836,10 +1858,11 @@ export function StickerMakerUtil() {
                 </div>
               </div>
 
+              <div className="flex items-center gap-1.5">
               <button
                 onClick={processImage}
                 disabled={isProcessing || (selectionTool !== 'full' && selectionTool !== 'pan' && (!selection || (selection.type === 'pen' && selection.points.length < 3)))}
-                className="w-full py-2 px-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
+                className="flex-1 py-2 px-3 bg-gradient-to-r from-purple-600 via-indigo-600 to-purple-600 hover:from-purple-500 hover:to-indigo-500 text-white rounded-lg text-xs font-semibold shadow-md shadow-purple-500/20 transition-all flex items-center justify-center gap-1.5 active:scale-[0.99] disabled:opacity-50 disabled:cursor-not-allowed disabled:shadow-none"
               >
                 {isProcessing ? (
                   <Loader2 className="animate-spin" size={15} />
@@ -1866,6 +1889,16 @@ export function StickerMakerUtil() {
                           : 'Generate Sticker'}
                 </span>
               </button>
+              {isProcessing && (
+                <button
+                  onClick={cancelProcessing}
+                  title="Stop, and stop the model download with it"
+                  className="py-2 px-3 rounded-lg text-xs font-semibold border border-slate-200 dark:border-white/10 bg-slate-100 dark:bg-white/5 text-slate-600 dark:text-slate-300 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-600 dark:hover:text-rose-300 transition-colors active:scale-95 shrink-0"
+                >
+                  Cancel
+                </button>
+              )}
+              </div>
             </div>
 
             {maskImageData && (

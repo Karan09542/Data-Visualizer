@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
+  X,
   Sparkles,
   Copy,
   Download,
@@ -64,6 +65,11 @@ export function ImageUpscalerUtil() {
   // ── Processing ──
   const [isProcessing, setIsProcessing] = useState(false);
   const [progressState, setProgressState] = useState("Ready");
+  /** The job now running, so a download the user did not want can be stopped. */
+  const activeJobRef = useRef<string | null>(null);
+  const cancelledRef = useRef(false);
+  /** Set when a run is stopped, so the automatic first run does not simply start it again. */
+  const [wasCancelled, setWasCancelled] = useState(false);
   const [progressPercent, setProgressPercent] = useState(0);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
@@ -220,6 +226,8 @@ export function ImageUpscalerUtil() {
   const processAIUpscale = useCallback(
     async (img: HTMLImageElement) => {
       setIsProcessing(true); setErrorMsg(null);
+      cancelledRef.current = false;
+      setWasCancelled(false);
       setProgressState("Initializing AI..."); setProgressPercent(10);
       try {
         const tc = document.createElement("canvas");
@@ -228,6 +236,7 @@ export function ImageUpscalerUtil() {
         const inputData = tc.getContext("2d")!.getImageData(0, 0, tc.width, tc.height);
 
         const { jobId, promise } = ai.execute("upscale", inputData, { modelId: "realesrgan_x4" }, 5);
+        activeJobRef.current = jobId;
 
         const unsub = ai.subscribe(jobId, (ev: AIProgressEvent & { jobId: string }) => {
           if (ev.state === "downloading") { setProgressState(`Downloading AI model (${ev.progress || 0}%)...`); setProgressPercent(Math.round((ev.progress || 0) * 0.4)); }
@@ -236,8 +245,17 @@ export function ImageUpscalerUtil() {
           else if (ev.state === "inference") { setProgressState(`AI super-resolution (${ev.progress || 0}%)...`); setProgressPercent(55 + Math.round((ev.progress || 0) * 0.4)); }
         });
 
-        const result = await promise;
-        unsub();
+        let result: any;
+        try {
+          result = await promise;
+        } catch (err: any) {
+          // Stopping on purpose is not a failure.
+          if (err?.message === "AbortError" || cancelledRef.current) return;
+          throw err;
+        } finally {
+          unsub();
+        }
+        if (cancelledRef.current) return;
 
         if (result?.output) {
           const out = result.output;
@@ -270,7 +288,7 @@ export function ImageUpscalerUtil() {
         console.error("[ImageUpscalerUtil] AI upscale failed:", err);
         setErrorMsg(`Upscale failed: ${err?.message || "Unknown error"}. Please try again or use a smaller image.`);
         setProgressState("Failed"); setProgressPercent(0);
-      } finally { setIsProcessing(false); }
+      } finally { activeJobRef.current = null; setIsProcessing(false); }
     }, [scaleFactor]
   );
 
@@ -282,10 +300,21 @@ export function ImageUpscalerUtil() {
     processAIUpscale(sourceImage);
   }, [sourceImage, processAIUpscale]);
 
-  // Auto-run on first load
+  /** Stops the run, and with it the model download it may still be in the middle of. */
+  const cancelUpscale = useCallback(() => {
+    const jobId = activeJobRef.current;
+    cancelledRef.current = true;
+    activeJobRef.current = null;
+    if (jobId) ai.cancel(jobId);
+    setWasCancelled(true);
+    setIsProcessing(false);
+    setProgressState("Cancelled"); setProgressPercent(0);
+  }, []);
+
+  // Auto-run on first load - but never again after the user has stopped one.
   useEffect(() => {
-    if (sourceImage && !upscaledCanvas && !isProcessing) triggerUpscale();
-  }, [sourceImage, upscaledCanvas, isProcessing, triggerUpscale]);
+    if (sourceImage && !upscaledCanvas && !isProcessing && !wasCancelled) triggerUpscale();
+  }, [sourceImage, upscaledCanvas, isProcessing, wasCancelled, triggerUpscale]);
 
   // ═════════════════════════════════════════════════════════════
   //  EXPORT: COPY & DOWNLOAD
@@ -526,6 +555,14 @@ export function ImageUpscalerUtil() {
                   <div className="bg-gradient-to-r from-indigo-500 to-purple-500 h-full transition-all duration-300" style={{ width: `${progressPercent}%` }} />
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={cancelUpscale}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold text-white/80 bg-white/10 hover:bg-rose-500/20 hover:text-rose-200 border border-white/10 transition-colors active:scale-95"
+              >
+                <X size={13} /> Cancel
+              </button>
+              <p className="text-[10px] text-white/40">Stops the download too. What is already saved is kept.</p>
             </div>
           )}
 
