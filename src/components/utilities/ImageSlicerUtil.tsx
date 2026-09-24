@@ -6,6 +6,7 @@ import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
 import CustomSelect from "../CustomSelect";
 import MediaCarousel from "../MediaCarousel";
 import { useClipboardImages } from "./useQuickUtilsPaste";
+import { FileDropzoneUpload } from "./FileDropzoneUpload";
 
 interface SlicePreview {
   index: number;
@@ -274,7 +275,7 @@ export const ImageSlicerUtil: React.FC = () => {
     [imageUrl],
   );
 
-  useClipboardImages((images) => loadImage(images[0]));
+  useClipboardImages((images) => loadImage(images[0]), { enabled: imageEl !== null });
 
   const clearImage = useCallback(() => {
     if (imageUrl) URL.revokeObjectURL(imageUrl);
@@ -556,41 +557,22 @@ export const ImageSlicerUtil: React.FC = () => {
 
       {!imageEl ? (
         /* ── Upload screen (with header) ── */
-        <div className="flex-1 flex flex-col items-center justify-center p-6">
-          <div className="text-center mb-6">
+        <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+          <div className="text-center mb-5">
             <div className="w-14 h-14 bg-gradient-to-br from-orange-100 to-amber-100 dark:from-orange-900/30 dark:to-amber-900/20 text-orange-600 dark:text-orange-400 rounded-2xl flex items-center justify-center mx-auto mb-3 shadow-sm border border-orange-200/60 dark:border-orange-800/40">
               <Scissors size={28} />
             </div>
             <h2 className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-1">Image Slicer</h2>
             <p className="text-sm text-slate-500 dark:text-slate-400">Slice images by fixed size or interactive grid points</p>
           </div>
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-              setIsDragOver(true);
-            }}
-            onDragLeave={(e) => {
-              e.stopPropagation();
-              setIsDragOver(false);
-            }}
-            onDrop={onDrop}
-            className={`w-full max-w-md h-44 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-all group ${
-              isDragOver
-                ? "border-orange-500 bg-orange-50 dark:bg-orange-900/10 scale-[1.01]"
-                : "border-slate-300 dark:border-slate-700 hover:border-orange-400 dark:hover:border-orange-500 bg-slate-50/50 dark:bg-[#161b22]/50"
-            }`}
-          >
-            <Upload
-              size={28}
-              className={`mb-2 transition-colors ${isDragOver ? "text-orange-500" : "text-slate-400 group-hover:text-orange-500"}`}
-            />
-            <span className="text-slate-600 dark:text-slate-300 font-medium text-sm">
-              {isDragOver ? "Drop image here" : "Click or drag to upload"}
-            </span>
-            <span className="text-slate-400 text-xs mt-1">PNG, JPG, WEBP, and more · or paste with Ctrl+V</span>
-          </div>
+          <FileDropzoneUpload
+            onFileSelected={loadImage}
+            accept="image/*"
+            title="Drop Image to Slice"
+            subtitle="Supports PNG, JPG, WEBP, AVIF, BMP • or tap to browse"
+            accentColor="orange"
+            className="max-w-md"
+          />
         </div>
       ) : (
         /* ── Image loaded: compact toolbar + full canvas ── */

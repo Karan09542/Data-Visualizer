@@ -16,6 +16,7 @@ import { aiEngine } from '../../../../ai/manager/AIEngine';
 import { modelRegistry } from '../../../../ai/registry/ModelRegistry';
 import { aiInferenceCache } from '../../../../ai/manager/AIInferenceCache';
 import { PassportBackgroundPicker, PassportBackground } from './PassportBackgroundPicker';
+import { FileDropzoneUpload } from '../../../utilities/FileDropzoneUpload';
 import {
   DndContext,
   closestCenter,
@@ -60,9 +61,9 @@ function SortablePhotoItem({ id, item, idx, isDark, setPhotoQueue }: { id: strin
 
   return (
     <div ref={setNodeRef} style={style} className={`flex items-center gap-3 p-2 border rounded-xl transition-all ${isDark ? 'bg-[#161616] border-[#2B2B2B]' : 'bg-slate-50 border-slate-200'} ${isDragging ? 'shadow-lg opacity-80' : ''}`}>
-      <button 
-        {...attributes} 
-        {...listeners} 
+      <button
+        {...attributes}
+        {...listeners}
         className="cursor-grab active:cursor-grabbing touch-none p-1 text-slate-400 hover:text-slate-600 transition-colors"
       >
         <GripVertical size={16} />
@@ -88,7 +89,7 @@ function SortablePhotoItem({ id, item, idx, isDark, setPhotoQueue }: { id: strin
           className={`w-14 border rounded-lg px-1.5 py-1.5 text-xs font-mono text-center outline-none focus:border-blue-500 transition-colors ${isDark ? 'bg-[#202020] border-[#333] text-white' : 'bg-white border-slate-300 text-slate-900'}`}
           title="Print Quantity"
         />
-        <button 
+        <button
           onClick={() => setPhotoQueue((prev: PhotoQueueItem[]) => prev.filter(p => p.id !== item.id))}
           onPointerDown={(e) => e.stopPropagation()}
           className="text-slate-400 hover:text-rose-500 p-1.5 rounded-lg hover:bg-rose-500/10 transition-colors"
@@ -378,7 +379,6 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   const [drawCropMarks, setDrawCropMarks] = useState(true);
 
   const [orientation, setOrientation] = useState<'portrait' | 'landscape'>('portrait');
-  const [imageObj, setImageObj] = useState<HTMLImageElement | null>(null);
 
   // Auto-Adjust AI State
   const [autoAdjust, setAutoAdjust] = useState(initialAutoAdjust);
@@ -841,13 +841,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       let imageData: ImageData;
       let detectionResult: any;
       let bgResult: any;
-      
+
       console.log("[processPhotoWithAI] Start processing:", dataUrl.substring(0, 50), "hideOverlay:", hideOverlay);
-      
+
       const cache = aiResultsCache.current[dataUrl];
       const isSameFaceModel = cache?.faceModel === autoAdjustFaceModel;
       const isSameBgModel = cache?.bgModel === autoAdjustBgModel;
-      
+
       if (cache && isSameFaceModel && isSameBgModel) {
         // Fast path: Reuse previously extracted image data and AI outputs
         imageData = cache.imageData;
@@ -891,7 +891,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           bgResult = bgRes.output;
           aiInferenceCache.set(bgCacheKey, autoAdjustBgModel, imageHash, bgResult);
         }
-        
+
         aiResultsCache.current[dataUrl] = {
           imageData,
           detectionResult,
@@ -900,7 +900,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           bgModel: autoAdjustBgModel
         };
       }
-      
+
       let finalSourceImageData = imageData;
       if (bgResult instanceof ImageData) {
         finalSourceImageData = bgResult;
@@ -909,13 +909,13 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       setProcessingStatus('Applying Passport Layout...');
       const workerInstance = aiEngine.effectPool.getAvailableWorker();
       if (!workerInstance) throw new Error('No available workers');
-      
+
       aiEngine.effectPool.setWorkerBusy(workerInstance.id, true);
 
       const transferables: Transferable[] = [];
       const imageBitmap = await createImageBitmap(finalSourceImageData);
       transferables.push(imageBitmap);
-      
+
       const safeOptions: any = {};
       console.log("[processPhotoWithAI] Applying bg:", autoAdjustBg.type, autoAdjustBg.color);
       if (autoAdjustBg.type === 'color') safeOptions.backgroundColor = autoAdjustBg.color;
@@ -977,9 +977,9 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
       alert("Queue is empty. Please upload a photo first.");
       return;
     }
-    
-    const targets = applyTargetMode === 'all' 
-      ? photoQueue 
+
+    const targets = applyTargetMode === 'all'
+      ? photoQueue
       : photoQueue.filter(p => applyTargetIds.includes(p.id));
 
     if (targets.length === 0) {
@@ -1027,50 +1027,48 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
   // Instant Auto-Apply when settings change if AI is already applied
   useEffect(() => {
     if (autoAdjust && hasAppliedAI && photoQueue.length > 0) {
-      const targets = applyTargetMode === 'all' 
-        ? photoQueue 
+      const targets = applyTargetMode === 'all'
+        ? photoQueue
         : photoQueue.filter(p => applyTargetIds.includes(p.id));
-        
+
       if (targets.length === 0) return;
 
       console.log("[Auto-Apply] Dependencies changed. Targets:", targets.length);
 
       const isInstant = targets.every(t => {
-         const src = t.originalSrc || t.src;
-         const cache = aiResultsCache.current[src];
-         return cache && cache.faceModel === autoAdjustFaceModel && cache.bgModel === autoAdjustBgModel;
+        const src = t.originalSrc || t.src;
+        const cache = aiResultsCache.current[src];
+        return cache && cache.faceModel === autoAdjustFaceModel && cache.bgModel === autoAdjustBgModel;
       });
       console.log("[Auto-Apply] isInstant:", isInstant);
-      
+
       if (isInstant) {
-         Promise.all(targets.map(async t => {
-           const src = t.originalSrc || t.src;
-           const res = await processPhotoWithAI(src, true);
-           return { id: t.id, src: res, originalSrc: src };
-         })).then(results => {
-           setPhotoQueue(prev => {
-             const next = [...prev];
-             results.forEach(res => {
-               if (res.src) {
-                 const idx = next.findIndex(p => p.id === res.id);
-                 if (idx !== -1) next[idx] = { ...next[idx], src: res.src, originalSrc: res.originalSrc };
-               }
-             });
-             console.log("[Auto-Apply] Updated queue with new bg results", next.length);
-             return next;
-           });
-         });
+        Promise.all(targets.map(async t => {
+          const src = t.originalSrc || t.src;
+          const res = await processPhotoWithAI(src, true);
+          return { id: t.id, src: res, originalSrc: src };
+        })).then(results => {
+          setPhotoQueue(prev => {
+            const next = [...prev];
+            results.forEach(res => {
+              if (res.src) {
+                const idx = next.findIndex(p => p.id === res.id);
+                if (idx !== -1) next[idx] = { ...next[idx], src: res.src, originalSrc: res.originalSrc };
+              }
+            });
+            console.log("[Auto-Apply] Updated queue with new bg results", next.length);
+            return next;
+          });
+        });
       } else {
-         console.log("[Auto-Apply] Running handleApplyAIToCurrent");
-         handleApplyAIToCurrent();
+        console.log("[Auto-Apply] Running handleApplyAIToCurrent");
+        handleApplyAIToCurrent();
       }
     }
   }, [autoAdjustFaceModel, autoAdjustBgModel, autoAdjustBg]);
 
-  // Handle file upload from device
-  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  // Handle adding photo file from device or dropzone
+  const handlePhotoFileSelected = useCallback(async (file: File) => {
     if (!file.type.startsWith('image/')) return;
     const reader = new FileReader();
     reader.onload = async () => {
@@ -1078,7 +1076,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         let newSrc = reader.result;
         let original = newSrc;
         setHasAppliedAI(false);
-        
+
         if (autoAdjust) {
           const aiResult = await processPhotoWithAI(newSrc);
           if (aiResult) {
@@ -1091,13 +1089,20 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           setCellOverrides(prev => ({ ...prev, [overrideTargetCell]: newSrc }));
           setOverrideTargetCell(null);
         } else {
-          setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, originalSrc: original, quantity: 1 }]);
+          setPhotoQueue(prev => [...prev, { id: Date.now().toString(), src: newSrc, originalSrc: original, quantity: prev.length === 0 ? 8 : 1 }]);
         }
       }
     };
     reader.readAsDataURL(file);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   }, [overrideTargetCell, autoAdjust, autoAdjustFaceModel, autoAdjustBgModel, autoAdjustBg]);
+
+  // Handle file upload from device
+  const handleFileUpload = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    handlePhotoFileSelected(file);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }, [handlePhotoFileSelected]);
 
   // Prevent background scrolling
   useEffect(() => {
@@ -1130,8 +1135,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
 
     // Active rendered photo count limited by user setting
     const queueTotal = photoQueue.reduce((acc, item) => acc + item.quantity, 0);
-    const maxOverrideIndex = Object.keys(cellOverrides).length > 0 
-      ? Math.max(...Object.keys(cellOverrides).map(Number)) 
+    const maxOverrideIndex = Object.keys(cellOverrides).length > 0
+      ? Math.max(...Object.keys(cellOverrides).map(Number))
       : -1;
     const activePhotoCount = Math.min(maxCapacity, Math.max(queueTotal, maxOverrideIndex + 1));
 
@@ -1508,8 +1513,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               onClick={() => setIsCameraOpen(true)}
               title="Snap new photo with camera"
               className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${isDark
-                  ? 'text-indigo-400 hover:bg-[#252525]'
-                  : 'text-indigo-700 hover:bg-indigo-50'
+                ? 'text-indigo-400 hover:bg-[#252525]'
+                : 'text-indigo-700 hover:bg-indigo-50'
                 }`}
             >
               <Camera size={15} className="shrink-0" />
@@ -1525,8 +1530,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               onClick={() => fileInputRef.current?.click()}
               title="Upload photo from device"
               className={`flex items-center gap-1 sm:gap-1.5 px-2 sm:px-3 py-1.5 sm:py-2 text-xs font-semibold transition-all active:scale-[0.97] ${isDark
-                  ? 'text-emerald-400 hover:bg-[#252525]'
-                  : 'text-emerald-700 hover:bg-emerald-50'
+                ? 'text-emerald-400 hover:bg-[#252525]'
+                : 'text-emerald-700 hover:bg-emerald-50'
                 }`}
             >
               <Upload size={15} className="shrink-0" />
@@ -1539,8 +1544,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             onClick={() => setAppTheme(isDark ? 'light' : 'dark')}
             title={`Switch to ${isDark ? 'Light' : 'Dark'} Mode`}
             className={`p-1.5 sm:p-2 rounded-xl border transition-all shrink-0 ${isDark
-                ? 'bg-[#1C1C1C] border-[#333] text-amber-400 hover:bg-[#252525]'
-                : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
+              ? 'bg-[#1C1C1C] border-[#333] text-amber-400 hover:bg-[#252525]'
+              : 'bg-slate-100 border-slate-200 text-slate-700 hover:bg-slate-200'
               }`}
           >
             {isDark ? <Sun size={16} /> : <Moon size={16} />}
@@ -1553,8 +1558,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             <button
               onClick={() => setIsExportDropdownOpen(!isExportDropdownOpen)}
               className={`flex items-center gap-1 sm:gap-1.5 p-1.5 sm:px-3.5 sm:py-2 rounded-xl text-xs sm:text-sm font-medium transition-all active:scale-95 border ${isDark
-                  ? 'bg-[#1C1C1C] hover:bg-[#282828] border-[#333] text-white'
-                  : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-sm'
+                ? 'bg-[#1C1C1C] hover:bg-[#282828] border-[#333] text-white'
+                : 'bg-white hover:bg-slate-100 border-slate-300 text-slate-800 shadow-sm'
                 }`}
             >
               <Download size={15} className="text-blue-500 shrink-0" />
@@ -1581,8 +1586,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                     key={item.id}
                     onClick={() => handleExportImage(item.id)}
                     className={`w-full flex items-center justify-between p-2.5 rounded-xl text-left transition-all ${exportFormat === item.id
-                        ? 'bg-blue-500/10 text-blue-500 font-bold'
-                        : isDark ? 'hover:bg-[#252525] text-slate-300' : 'hover:bg-slate-100 text-slate-700'
+                      ? 'bg-blue-500/10 text-blue-500 font-bold'
+                      : isDark ? 'hover:bg-[#252525] text-slate-300' : 'hover:bg-slate-100 text-slate-700'
                       }`}
                   >
                     <div>
@@ -1615,8 +1620,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           <button
             onClick={onClose}
             className={`p-1.5 sm:p-2 rounded-xl transition-all shrink-0 border ${isDark
-                ? 'bg-[#1C1C1C] border-[#333] text-slate-300 hover:text-white hover:bg-[#2A2A2A]'
-                : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
+              ? 'bg-[#1C1C1C] border-[#333] text-slate-300 hover:text-white hover:bg-[#2A2A2A]'
+              : 'bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-200'
               }`}
             title="Close Passport Studio"
           >
@@ -1716,8 +1721,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
           {/* Photos Fit & Count Capacity Banner */}
           <div className={`p-4 border-b ${isDark ? 'border-[#222] bg-[#141414]' : 'border-slate-200 bg-slate-50'}`}>
             <div className={`p-3.5 rounded-2xl border flex items-center justify-between transition-all ${layout.maxCapacity > 0
-                ? isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
-                : isDark ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-rose-50 border-rose-200 text-rose-800'
+              ? isDark ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-emerald-50 border-emerald-200 text-emerald-800'
+              : isDark ? 'bg-rose-500/10 border-rose-500/20 text-rose-400' : 'bg-rose-50 border-rose-200 text-rose-800'
               }`}>
               <div className="flex items-center gap-3">
                 <div className={`p-2.5 rounded-xl ${layout.maxCapacity > 0 ? 'bg-emerald-500/20' : 'bg-rose-500/20'}`}>
@@ -1779,17 +1784,17 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   }`}>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Face Detection Model</label>
-                    <CustomSelect 
-                      value={autoAdjustFaceModel} 
-                      onChange={setAutoAdjustFaceModel} 
+                    <CustomSelect
+                      value={autoAdjustFaceModel}
+                      onChange={setAutoAdjustFaceModel}
                       options={faceModels.map(m => ({ value: m.id, label: m.name }))}
                     />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Background Removal</label>
-                    <CustomSelect 
-                      value={autoAdjustBgModel} 
-                      onChange={setAutoAdjustBgModel} 
+                    <CustomSelect
+                      value={autoAdjustBgModel}
+                      onChange={setAutoAdjustBgModel}
                       options={bgModels.map(m => ({ value: m.id, label: m.name }))}
                     />
                   </div>
@@ -1797,17 +1802,17 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Passport Background</label>
                     <PassportBackgroundPicker value={autoAdjustBg} onChange={setAutoAdjustBg} />
                   </div>
-                  
+
                   <div className="space-y-1.5 mt-4 pt-3 border-t border-slate-200 dark:border-[#333]">
                     <label className="text-[10px] font-bold text-slate-500 uppercase">Apply Target</label>
                     <div className="flex gap-5 mb-2 mt-1">
                       <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer group">
                         <div className="relative flex items-center justify-center">
-                          <input 
-                            type="radio" 
-                            name="applyMode" 
+                          <input
+                            type="radio"
+                            name="applyMode"
                             className="peer appearance-none w-4 h-4 border-2 border-slate-300 dark:border-[#444] rounded-full checked:border-blue-500 checked:bg-blue-500 transition-colors cursor-pointer"
-                            checked={applyTargetMode === 'all'} 
+                            checked={applyTargetMode === 'all'}
                             onChange={() => {
                               if (applyTargetMode !== 'all') {
                                 setApplyTargetMode('all');
@@ -1832,11 +1837,11 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       </label>
                       <label className="flex items-center gap-2 text-[11px] font-semibold text-slate-700 dark:text-slate-300 cursor-pointer group">
                         <div className="relative flex items-center justify-center">
-                          <input 
-                            type="radio" 
-                            name="applyMode" 
+                          <input
+                            type="radio"
+                            name="applyMode"
                             className="peer appearance-none w-4 h-4 border-2 border-slate-300 dark:border-[#444] rounded-full checked:border-blue-500 checked:bg-blue-500 transition-colors cursor-pointer"
-                            checked={applyTargetMode === 'specific'} 
+                            checked={applyTargetMode === 'specific'}
                             onChange={() => {
                               setApplyTargetMode('specific');
                               if (applyTargetIds.length === 0) {
@@ -1852,7 +1857,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                     {applyTargetMode === 'specific' && photoQueue.length > 0 && (
                       <div className="grid grid-cols-4 gap-1.5 mt-2">
                         {photoQueue.map(photo => (
-                          <div 
+                          <div
                             key={photo.id}
                             className={`relative rounded border overflow-hidden cursor-pointer ${applyTargetIds.includes(photo.id) ? 'border-blue-500 ring-1 ring-blue-500' : 'border-slate-300 dark:border-[#444] opacity-60'}`}
                             onClick={() => {
@@ -1878,16 +1883,16 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                           >
                             <img src={photo.originalSrc || photo.src} className="w-full h-10 object-cover" />
                             {applyTargetIds.includes(photo.id) && (
-                               <div className="absolute top-0.5 right-0.5 bg-blue-500 text-white rounded-full p-0.5 shadow">
-                                 <Check size={10} strokeWidth={4} />
-                               </div>
+                              <div className="absolute top-0.5 right-0.5 bg-blue-500 text-white rounded-full p-0.5 shadow">
+                                <Check size={10} strokeWidth={4} />
+                              </div>
                             )}
                           </div>
                         ))}
                       </div>
                     )}
                   </div>
-                  
+
                   {/* AI failures used to be swallowed, which on mobile looked like the feature
                       doing nothing at all. Surface it next to the button that triggers it. */}
                   {aiError && (
@@ -1975,10 +1980,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       type="button"
                       onClick={() => handleSelectDocPreset(preset.id as any)}
                       className={`p-2.5 rounded-xl border text-left transition-all relative flex flex-col justify-between ${isSelected
-                          ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/50'
-                          : isDark
-                            ? 'border-[#262626] bg-[#161616] hover:bg-[#1F1F1F] text-slate-300'
-                            : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
+                        ? 'border-blue-500 bg-blue-500/10 ring-1 ring-blue-500/50'
+                        : isDark
+                          ? 'border-[#262626] bg-[#161616] hover:bg-[#1F1F1F] text-slate-300'
+                          : 'border-slate-200 bg-slate-50 hover:bg-slate-100 text-slate-700'
                         }`}
                     >
                       <div className="flex items-center justify-between w-full">
@@ -2016,8 +2021,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                           type="button"
                           onClick={() => handlePhotoUnitChange(u)}
                           className={`px-2 py-0.5 rounded-md uppercase transition-all ${photoUnit === u
-                              ? 'bg-blue-600 text-white shadow-sm'
-                              : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                            ? 'bg-blue-600 text-white shadow-sm'
+                            : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                             }`}
                         >
                           {u}
@@ -2042,8 +2047,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       onClick={togglePhotoLock}
                       title={lockPhotoRatio ? 'Unlock Aspect Ratio' : 'Lock Aspect Ratio'}
                       className={`p-2 mt-4 rounded-xl border transition-all ${lockPhotoRatio
-                          ? 'bg-blue-500/20 border-blue-500/40 text-blue-500'
-                          : isDark ? 'bg-[#202020] border-[#333] text-slate-400' : 'bg-white border-slate-300 text-slate-500'
+                        ? 'bg-blue-500/20 border-blue-500/40 text-blue-500'
+                        : isDark ? 'bg-[#202020] border-[#333] text-slate-400' : 'bg-white border-slate-300 text-slate-500'
                         }`}
                     >
                       {lockPhotoRatio ? <Lock size={14} /> : <Unlock size={14} />}
@@ -2117,10 +2122,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                             setPhotoQueue([{ ...photoQueue[0], quantity: item.val }]);
                           }}
                           className={`px-3 py-1.5 rounded-xl border text-xs font-medium transition-all ${isActive
-                              ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
-                              : isDark
-                                ? 'bg-[#161616] border-[#262626] text-slate-300 hover:bg-[#202020]'
-                                : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
+                            ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
+                            : isDark
+                              ? 'bg-[#161616] border-[#262626] text-slate-300 hover:bg-[#202020]'
+                              : 'bg-slate-50 border-slate-200 text-slate-700 hover:bg-slate-100'
                             }`}
                         >
                           {item.label}
@@ -2150,27 +2155,35 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
               ) : (
                 <div className="space-y-2 max-h-48 overflow-y-auto custom-scrollbar pr-1">
                   {photoQueue.length === 0 && (
-                    <div className="text-center py-4 text-xs text-slate-400 font-medium">
-                      Queue is empty. Add a photo to start.
+                    <div className="py-2">
+                      <FileDropzoneUpload
+                        onFileSelected={handlePhotoFileSelected}
+                        accept="image/*"
+                        title="Queue is empty"
+                        subtitle="Drop photo, paste from clipboard or snap camera"
+                        accentColor="blue"
+                        enableCamera={true}
+                        className="w-full text-xs"
+                      />
                     </div>
                   )}
-                  <DndContext 
+                  <DndContext
                     sensors={sensors}
                     collisionDetection={closestCenter}
                     onDragEnd={handleDragEnd}
                   >
-                    <SortableContext 
+                    <SortableContext
                       items={photoQueue.map(p => p.id)}
                       strategy={verticalListSortingStrategy}
                     >
                       {photoQueue.map((item, idx) => (
-                        <SortablePhotoItem 
-                          key={item.id} 
-                          id={item.id} 
-                          item={item} 
-                          idx={idx} 
-                          isDark={isDark} 
-                          setPhotoQueue={setPhotoQueue} 
+                        <SortablePhotoItem
+                          key={item.id}
+                          id={item.id}
+                          item={item}
+                          idx={idx}
+                          isDark={isDark}
+                          setPhotoQueue={setPhotoQueue}
                         />
                       ))}
                     </SortableContext>
@@ -2245,10 +2258,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       type="button"
                       onClick={() => setPhotoScale(preset.val)}
                       className={`flex-1 py-1 rounded-lg border text-[10px] font-semibold transition-all ${photoScale === preset.val
-                          ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
-                          : isDark
-                            ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                        ? 'bg-blue-600 border-blue-600 text-white font-bold shadow-sm'
+                        : isDark
+                          ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
                         }`}
                     >
                       {preset.label}
@@ -2270,10 +2283,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                         type="button"
                         onClick={() => setImageFit(mode.id)}
                         className={`py-1.5 rounded-lg border text-center transition-all ${imageFit === mode.id
-                            ? 'bg-violet-600 border-violet-600 text-white font-bold shadow-sm'
-                            : isDark
-                              ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
-                              : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                          ? 'bg-violet-600 border-violet-600 text-white font-bold shadow-sm'
+                          : isDark
+                            ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
+                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
                           }`}
                       >
                         <div className="text-[11px] font-semibold">{mode.label}</div>
@@ -2308,10 +2321,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                             onClick={() => setImagePosition(pos)}
                             title={pos}
                             className={`w-5 h-5 rounded-[4px] border transition-all active:scale-90 ${imagePosition === pos
-                                ? 'bg-violet-500 border-violet-500 shadow-md shadow-violet-500/30 scale-110'
-                                : isDark
-                                  ? 'bg-[#252525] border-[#333] hover:bg-[#333] hover:border-violet-500/50'
-                                  : 'bg-slate-100 border-slate-300 hover:bg-violet-100 hover:border-violet-400'
+                              ? 'bg-violet-500 border-violet-500 shadow-md shadow-violet-500/30 scale-110'
+                              : isDark
+                                ? 'bg-[#252525] border-[#333] hover:bg-[#333] hover:border-violet-500/50'
+                                : 'bg-slate-100 border-slate-300 hover:bg-violet-100 hover:border-violet-400'
                               }`}
                           >
                             {imagePosition === pos && (
@@ -2339,8 +2352,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                               type="button"
                               onClick={() => setImagePosition(item.pos)}
                               className={`text-[9px] font-bold py-0.5 rounded transition-colors ${imagePosition === item.pos
-                                  ? 'text-violet-500'
-                                  : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
+                                ? 'text-violet-500'
+                                : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'
                                 }`}
                             >
                               {item.label}
@@ -2385,10 +2398,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       type="button"
                       onClick={() => applyFilterPreset(preset.id)}
                       className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${activeFilterPreset === preset.id
-                          ? 'bg-amber-600 border-amber-600 text-white font-bold shadow-sm'
-                          : isDark
-                            ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
-                            : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
+                        ? 'bg-amber-600 border-amber-600 text-white font-bold shadow-sm'
+                        : isDark
+                          ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-400 hover:text-white hover:bg-[#252525]'
+                          : 'bg-white border-slate-200 text-slate-600 hover:bg-slate-100'
                         }`}
                     >
                       {preset.label}
@@ -2494,10 +2507,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       type="button"
                       onClick={() => setMaxFileKB(item.kb)}
                       className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${maxFileKB === item.kb
-                          ? 'bg-emerald-600 border-emerald-600 text-white font-bold shadow-sm'
-                          : isDark
-                            ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-300 hover:bg-[#252525]'
-                            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                        ? 'bg-emerald-600 border-emerald-600 text-white font-bold shadow-sm'
+                        : isDark
+                          ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-300 hover:bg-[#252525]'
+                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
                         }`}
                     >
                       {item.label}
@@ -2571,10 +2584,10 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                       type="button"
                       onClick={() => setPrintDPI(item.dpi)}
                       className={`px-2.5 py-1 rounded-lg border text-[11px] font-medium transition-all ${printDPI === item.dpi
-                          ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-sm'
-                          : isDark
-                            ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-300 hover:bg-[#252525]'
-                            : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
+                        ? 'bg-indigo-600 border-indigo-600 text-white font-bold shadow-sm'
+                        : isDark
+                          ? 'bg-[#1C1C1C] border-[#2A2A2A] text-slate-300 hover:bg-[#252525]'
+                          : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-100'
                         }`}
                     >
                       {item.label}
@@ -2644,8 +2657,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                             type="button"
                             onClick={() => handlePaperUnitChange(u)}
                             className={`px-2 py-0.5 rounded-md uppercase transition-all ${paperUnit === u
-                                ? 'bg-blue-600 text-white shadow-sm'
-                                : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
+                              ? 'bg-blue-600 text-white shadow-sm'
+                              : isDark ? 'text-slate-400 hover:text-white' : 'text-slate-600 hover:text-slate-900'
                               }`}
                           >
                             {u}
@@ -2670,8 +2683,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                         onClick={togglePaperLock}
                         title={lockPaperRatio ? 'Unlock Aspect Ratio' : 'Lock Aspect Ratio'}
                         className={`p-2 mt-4 rounded-xl border transition-all ${lockPaperRatio
-                            ? 'bg-blue-500/20 border-blue-500/40 text-blue-500'
-                            : isDark ? 'bg-[#202020] border-[#333] text-slate-400' : 'bg-white border-slate-300 text-slate-500'
+                          ? 'bg-blue-500/20 border-blue-500/40 text-blue-500'
+                          : isDark ? 'bg-[#202020] border-[#333] text-slate-400' : 'bg-white border-slate-300 text-slate-500'
                           }`}
                       >
                         {lockPaperRatio ? <Lock size={14} /> : <Unlock size={14} />}
@@ -2699,8 +2712,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   <button
                     onClick={() => setOrientation('portrait')}
                     className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${orientation === 'portrait'
-                        ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold'
-                        : isDark ? 'bg-[#161616] border-[#262626] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+                      ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold'
+                      : isDark ? 'bg-[#161616] border-[#262626] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
                       }`}
                   >
                     <div className="w-3 h-4 border-2 border-current rounded-sm" />
@@ -2709,8 +2722,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                   <button
                     onClick={() => setOrientation('landscape')}
                     className={`flex items-center justify-center gap-2 py-2 px-3 rounded-xl border text-xs font-semibold transition-all ${orientation === 'landscape'
-                        ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold'
-                        : isDark ? 'bg-[#161616] border-[#262626] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
+                      ? 'bg-blue-600/15 border-blue-500/40 text-blue-500 font-bold'
+                      : isDark ? 'bg-[#161616] border-[#262626] text-slate-400' : 'bg-slate-50 border-slate-200 text-slate-600'
                       }`}
                   >
                     <div className="w-4 h-3 border-2 border-current rounded-sm" />
@@ -2797,8 +2810,8 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
             {/* Floating Paper Dimension & Recenter Badge */}
             <div className="absolute top-3 left-3 z-20 flex items-center gap-2 pointer-events-auto">
               <div className={`px-2.5 py-1 rounded-xl border backdrop-blur-md shadow-md text-[10px] font-mono font-bold flex items-center gap-1.5 ${isDark
-                  ? 'bg-[#121212]/85 border-[#2A2A2A] text-slate-300'
-                  : 'bg-white/85 border-slate-200 text-slate-700'
+                ? 'bg-[#121212]/85 border-[#2A2A2A] text-slate-300'
+                : 'bg-white/85 border-slate-200 text-slate-700'
                 }`}>
                 <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
                 {layout.pWidth} × {layout.pHeight} mm ({orientation} • {printDPI} DPI)
@@ -2844,11 +2857,26 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                 }}
               >
 
+                {/* Empty Grid Dropzone Upload */}
+                {layout.activePhotoCount === 0 && (
+                  <div className="absolute inset-0 flex items-center justify-center p-6 z-10 pointer-events-auto">
+                    <FileDropzoneUpload
+                      onFileSelected={handlePhotoFileSelected}
+                      accept="image/*"
+                      title="Add Photo to Grid"
+                      subtitle="Drop image, paste or snap camera photo"
+                      accentColor="blue"
+                      enableCamera={true}
+                      className="w-full max-w-xs"
+                    />
+                  </div>
+                )}
+
                 {/* Photos rendering */}
                 {photoIndices.map(({ r, c }) => {
                   const cellIndex = r * layout.cols + c;
                   const cellSrc = getCellImageSrc(cellIndex);
-                  
+
                   const left = layout.actualMarginLeft + c * (layout.phWidth + spacing);
                   const top = layout.actualMarginTop + r * (layout.phHeight + spacing);
                   return (
@@ -2893,7 +2921,7 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
                             <ImageIcon size={24} />
                           </div>
                         )}
-                        
+
                         {/* Hover Overlay Hint */}
                         <div className="absolute inset-0 bg-blue-500/10 opacity-0 group-hover:opacity-100 transition-opacity pointer-events-none flex items-center justify-center backdrop-blur-[1px]">
                           <div className="bg-blue-600 text-white text-[9px] font-bold px-2 py-1 rounded shadow-md uppercase tracking-wider">

@@ -2,6 +2,7 @@ import React, { useState, useRef } from "react";
 import { FileImage, Download, Trash2, GripVertical, AlertCircle, Eye, Camera } from "lucide-react";
 import { CameraCaptureModal } from "../CameraCaptureModal";
 import { useClipboardImages } from "./useQuickUtilsPaste";
+import { FileDropzoneUpload } from "./FileDropzoneUpload";
 import { PDFDocument, PageSizes } from "pdf-lib";
 import {
   DndContext,
@@ -195,9 +196,6 @@ export const ImageToPdfConverter = () => {
     }
   };
 
-  // Every pasted image becomes a new page
-  useClipboardImages(addImages, { enabled: !isCameraOpen });
-
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
       addImages(Array.from(e.target.files));
@@ -321,56 +319,17 @@ export const ImageToPdfConverter = () => {
         </p>
       </div>
 
-      <div
-        onClick={() => fileInputRef.current?.click()}
-        onDragOver={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragOver(true);
-        }}
-        onDragLeave={(e) => {
-          e.stopPropagation();
-          setIsDragOver(false);
-        }}
-        onDrop={(e) => {
-          e.preventDefault();
-          e.stopPropagation();
-          setIsDragOver(false);
-          if (e.dataTransfer.files) {
-            addImages(Array.from(e.dataTransfer.files));
-          }
-        }}
-        className={`w-full h-40 p-6 border-2 border-dashed rounded-xl flex flex-col items-center justify-center cursor-pointer transition-colors mb-8 group ${
-          isDragOver
-            ? "border-blue-500 bg-blue-50 dark:bg-blue-950/20"
-            : "border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 bg-slate-50 dark:bg-[#161b22]/50"
-        }`}
-      >
-        <FileImage
-          size={28}
-          className={`mb-2 transition-colors ${isDragOver ? "text-blue-500" : "text-slate-400 group-hover:text-blue-500"}`}
-        />
-        <span className="text-slate-600 dark:text-slate-300 font-medium">
-          {isDragOver ? "Drop images here" : "Click or drag to add images"}
-        </span>
-        <span className="text-slate-400 text-xs mt-1">Supports JPG, PNG, WEBP · or paste with Ctrl+V</span>
-        <input
-          ref={fileInputRef}
-          type="file"
-          multiple
+      <div className="mb-6 w-full">
+        <FileDropzoneUpload
+          onFilesSelected={addImages}
+          multiple={true}
           accept="image/*"
-          onChange={handleFileSelect}
-          className="hidden"
+          title={images.length > 0 ? "Add More Images" : "Drop Images to Convert to PDF"}
+          subtitle="Supports PNG, JPG, WEBP, AVIF • Add single or multiple images"
+          accentColor="blue"
+          compact={images.length > 0}
         />
       </div>
-
-      <button
-        type="button"
-        onClick={() => setIsCameraOpen(true)}
-        className="-mt-5 mb-8 w-full py-2.5 flex items-center justify-center gap-2 bg-blue-50 hover:bg-blue-100 dark:bg-blue-900/20 dark:hover:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800/50 rounded-lg text-sm font-semibold transition-colors"
-      >
-        <Camera size={16} /> {images.length > 0 ? "Take Another Photo" : "Take Photo with Camera"}
-      </button>
 
       {error && (
         <div className="w-full bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800/50 text-red-600 dark:text-red-400 p-3 rounded-lg mb-6 flex items-center gap-2">

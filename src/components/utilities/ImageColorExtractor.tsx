@@ -3,6 +3,8 @@ import { Pipette, Upload, Copy, Check, Image as ImageIcon, Camera, Code2, ImageD
 import { getColorSync, getPaletteSync, getSwatchesSync } from "colorthief";
 import { CameraCaptureModal } from "../CameraCaptureModal";
 import { useClipboardImages } from "./useQuickUtilsPaste";
+import { FileDropzoneUpload } from "./FileDropzoneUpload";
+import clsx from "clsx";
 
 interface ColorData {
   hex: string;
@@ -263,7 +265,7 @@ export const ImageColorExtractor = () => {
     }
   };
 
-  useClipboardImages((images) => setImageSrc(URL.createObjectURL(images[0])), { enabled: !isCameraOpen });
+  useClipboardImages((images) => setImageSrc(URL.createObjectURL(images[0])), { enabled: !isCameraOpen && imageSrc !== null });
 
   const formatPercentage = (proportion?: number) => {
     if (proportion === undefined) return "";
@@ -340,66 +342,60 @@ export const ImageColorExtractor = () => {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div className={clsx("grid grid-cols-1 gap-8", imageSrc
+        && "lg:grid-cols-3 "
+      )}>
         {/* Left Column: Image Upload & Preview */}
         <div className="lg:col-span-1 flex flex-col gap-4">
-          <div
-            onDrop={handleDrop}
-            onDragOver={(e) => {
-              e.preventDefault();
-              e.stopPropagation();
-            }}
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full aspect-square border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-fuchsia-500 dark:hover:border-fuchsia-500 rounded-xl bg-slate-50 dark:bg-[#161b22]/50 flex flex-col items-center justify-center cursor-pointer transition-colors group overflow-hidden relative shadow-sm"
-          >
-            {imageSrc ? (
-              <img
-                ref={imgRef}
-                src={imageSrc}
-                alt="Uploaded"
-                className="w-full h-full object-contain"
-                crossOrigin="anonymous"
-                onLoad={extractColors}
-              />
-            ) : (
-              <>
-                <Upload
-                  size={32}
-                  className="text-slate-400 group-hover:text-fuchsia-500 mb-3 transition-colors"
-                />
-                <span className="text-slate-600 dark:text-slate-300 font-medium text-sm mb-1 text-center px-4">
-                  Drop, paste or<br/>click to browse
-                </span>
-              </>
-            )}
-            <input
-              ref={fileInputRef}
-              type="file"
-              accept="image/*"
-              onChange={handleFileSelect}
-              className="hidden"
-            />
-          </div>
-
-          <button
-            onClick={() => setIsCameraOpen(true)}
-            className="w-full py-2 flex items-center justify-center gap-2 bg-fuchsia-50 hover:bg-fuchsia-100 dark:bg-fuchsia-900/20 dark:hover:bg-fuchsia-900/40 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-200 dark:border-fuchsia-800/50 rounded-lg text-sm font-semibold transition-colors"
-          >
-            <Camera size={16} /> {imageSrc ? "Take Another Photo" : "Take Photo with Camera"}
-          </button>
-
-          {imageSrc && (
-            <button
-              onClick={() => {
-                setImageSrc(null);
-                setDominantColor(null);
-                setPalette([]);
-                setSwatches(null);
+          {!imageSrc ? (
+            <FileDropzoneUpload
+              onFileSelected={(file) => {
+                const url = URL.createObjectURL(file);
+                setImageSrc(url);
               }}
-              className="w-full py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-sm font-semibold transition-colors"
-            >
-              Clear Image
-            </button>
+              accept="image/*"
+              title="Drop Image for Palette"
+              subtitle="Supports PNG, JPG, WEBP • or tap to browse"
+              accentColor="fuchsia"
+              compact={true}
+              className="w-full"
+            />
+          ) : (
+            <div className="flex flex-col gap-3">
+              <div className="w-full aspect-square border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-[#161b22]/50 flex items-center justify-center overflow-hidden relative shadow-sm">
+                <img
+                  ref={imgRef}
+                  src={imageSrc}
+                  alt="Uploaded"
+                  className="w-full h-full object-contain"
+                  crossOrigin="anonymous"
+                  onLoad={extractColors}
+                />
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsCameraOpen(true)}
+                  className="flex-1 py-2 flex items-center justify-center gap-1.5 bg-fuchsia-50 hover:bg-fuchsia-100 dark:bg-fuchsia-900/20 dark:hover:bg-fuchsia-900/40 text-fuchsia-700 dark:text-fuchsia-300 border border-fuchsia-200 dark:border-fuchsia-800/50 rounded-lg text-xs font-semibold transition-colors"
+                >
+                  <Camera size={14} /> Retake
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setImageSrc(null);
+                    setDominantColor(null);
+                    setPalette([]);
+                    setSwatches(null);
+                  }}
+                  className="flex-1 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold transition-colors"
+                >
+                  Clear
+                </button>
+              </div>
+            </div>
           )}
         </div>
 
@@ -409,12 +405,7 @@ export const ImageColorExtractor = () => {
             <div className="flex items-center justify-center h-full text-slate-400">
               Extracting colors...
             </div>
-          ) : !dominantColor ? (
-            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-3 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-[#161b22]/20">
-              <ImageIcon size={48} className="opacity-20" />
-              <p>Upload an image to see its colors</p>
-            </div>
-          ) : (
+          ) : !dominantColor ? null : (
             <>
               {/* Export everything at once */}
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-[#161b22]/50 px-4 py-3">
@@ -463,7 +454,7 @@ export const ImageColorExtractor = () => {
                       {formatPercentage(dominantColor.proportion)}
                     </span>
                   </div>
-                  
+
                   {/* Copy overlay */}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
                     <button
@@ -496,28 +487,28 @@ export const ImageColorExtractor = () => {
                   <div className="grid grid-cols-5 sm:grid-cols-10 gap-x-2 gap-y-3">
                     {palette.map((color, idx) => (
                       <div key={idx} className="flex flex-col gap-1 min-w-0">
-                      <div
-                        onClick={() => copyToClipboard(color.hex, `palette-${idx}`)}
-                        className="aspect-square rounded-lg shadow-inner cursor-pointer relative group overflow-hidden"
-                        style={{ backgroundColor: color.hex }}
-                        title={`${color.hex} (${formatPercentage(color.proportion)})`}
-                      >
-                        <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 bg-black/20 backdrop-blur-[2px] transition-all">
-                          {copied === `palette-${idx}` ? (
-                            <Check size={16} className="text-white drop-shadow-md" />
-                          ) : (
-                            <Copy size={16} className="text-white drop-shadow-md" />
-                          )}
-                          {color.proportion && (
-                            <span className="text-[10px] text-white font-bold mt-1 drop-shadow-md">
-                              {formatPercentage(color.proportion)}
-                            </span>
-                          )}
+                        <div
+                          onClick={() => copyToClipboard(color.hex, `palette-${idx}`)}
+                          className="aspect-square rounded-lg shadow-inner cursor-pointer relative group overflow-hidden"
+                          style={{ backgroundColor: color.hex }}
+                          title={`${color.hex} (${formatPercentage(color.proportion)})`}
+                        >
+                          <div className="absolute inset-0 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 bg-black/20 backdrop-blur-[2px] transition-all">
+                            {copied === `palette-${idx}` ? (
+                              <Check size={16} className="text-white drop-shadow-md" />
+                            ) : (
+                              <Copy size={16} className="text-white drop-shadow-md" />
+                            )}
+                            {color.proportion && (
+                              <span className="text-[10px] text-white font-bold mt-1 drop-shadow-md">
+                                {formatPercentage(color.proportion)}
+                              </span>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                      <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                        {copied === `palette-${idx}` ? "Copied" : color.hex.toUpperCase()}
-                      </span>
+                        <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                          {copied === `palette-${idx}` ? "Copied" : color.hex.toUpperCase()}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -560,7 +551,7 @@ export const ImageColorExtractor = () => {
                               {role}
                             </span>
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center opacity-0 group-hover:opacity-100">
-                               <Copy size={16} className="text-white drop-shadow-md" />
+                              <Copy size={16} className="text-white drop-shadow-md" />
                             </div>
                           </div>
                           <div className="bg-white dark:bg-[#161b22] p-2 flex justify-between items-center text-xs">

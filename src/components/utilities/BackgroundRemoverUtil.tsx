@@ -1,11 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Sparkles,
-  Upload,
   Download,
   Copy,
   Check,
-  Camera,
   RotateCcw,
   Sliders,
   Image as ImageIcon,
@@ -38,6 +36,7 @@ import { CameraCaptureModal } from "../CameraCaptureModal";
 import { useClipboardImages } from "./useQuickUtilsPaste";
 import { formatFileSize } from "../../lib/formatFileSize";
 import { ColorPickerTrigger } from "../image-workspace/components/shared/ColorPickers";
+import { FileDropzoneUpload, SampleImageItem } from "./FileDropzoneUpload";
 
 type ViewMode = "slider" | "cutout" | "retouch" | "sidebyside";
 type BgType = "transparent" | "color" | "gradient" | "blur";
@@ -335,7 +334,7 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
     (images) => {
       if (images[0]) handleImageFile(images[0]);
     },
-    { enabled: !isCameraOpen }
+    { enabled: !isCameraOpen && selectedImageSrc !== null }
   );
 
   // Initialize EraserEngine once a new cut-out is produced
@@ -1055,8 +1054,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                 type="button"
                 onClick={() => setIsSidebarOpen((prev) => !prev)}
                 className={`hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg font-medium text-xs transition-colors border ${isSidebarOpen
-                    ? "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700"
-                    : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent hover:border-slate-200 dark:hover:border-slate-800"
+                  ? "bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 border-slate-300 dark:border-slate-700"
+                  : "text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 border-transparent hover:border-slate-200 dark:hover:border-slate-800"
                   }`}
                 title={isSidebarOpen ? "Collapse Studio Panel" : "Expand Studio Panel"}
               >
@@ -1071,90 +1070,24 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
       {/* Main Workspace Body */}
       {!selectedImageSrc ? (
         /* Empty / Upload State */
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          className={`flex-1 flex flex-col items-center justify-center p-6 transition-all ${isDraggingOver ? "bg-emerald-500/5 ring-2 ring-emerald-500 ring-inset" : ""
-            }`}
-        >
-          <div className="max-w-xl w-full flex flex-col items-center text-center space-y-6">
-            {/* Drop Zone Box */}
-            <div className="w-full relative border-2 border-dashed border-slate-300 dark:border-slate-700/80 hover:border-emerald-500 dark:hover:border-emerald-500 rounded-3xl p-8 sm:p-10 transition-all bg-white/80 dark:bg-[#12161f]/80 shadow-sm hover:shadow-md group flex flex-col items-center justify-center">
-              <input
-                type="file"
-                accept="image/*"
-                onChange={(e) => {
-                  const file = e.target.files?.[0];
-                  if (file) handleImageFile(file);
-                }}
-                className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
-              />
-
-              <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 rounded-2xl group-hover:scale-110 transition-transform shadow-inner mb-4">
-                <Upload size={32} />
-              </div>
-
-              <h3 className="text-base font-bold text-slate-900 dark:text-white">
-                Drag & Drop Image Here
-              </h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mt-1.5">
-                Supports PNG, JPG, WEBP, AVIF, BMP. Or click anywhere in the box to browse.
-              </p>
-
-              {/* Action Badges / Shortcuts */}
-              <div className="flex flex-wrap items-center justify-center gap-2 mt-5">
-                <span className="flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
-                  <Copy size={12} className="text-emerald-500" />
-                  Paste from clipboard (Ctrl + V)
-                </span>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setIsCameraOpen(true);
-                  }}
-                  className="relative z-20 flex items-center gap-1.5 px-3 py-1 rounded-full text-[11px] font-semibold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-emerald-600 dark:hover:text-emerald-400 border border-slate-200 dark:border-slate-700 transition-colors"
-                >
-                  <Camera size={12} className="text-emerald-500" />
-                  Take Photo
-                </button>
-              </div>
-            </div>
-
-            {/* Quick Test Samples */}
-            <div className="w-full pt-2">
-              <div className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 mb-3">
-                Or Try Sample Images
-              </div>
-              <div className="grid grid-cols-3 gap-3">
-                {SAMPLE_IMAGES.map((sample) => (
-                  <button
-                    key={sample.name}
-                    type="button"
-                    onClick={() => handleLoadSample(sample.url, sample.name)}
-                    className="group relative rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-emerald-500/50 hover:shadow-md transition-all text-left flex flex-col"
-                  >
-                    <div className="aspect-[4/3] w-full overflow-hidden bg-slate-100 dark:bg-slate-800">
-                      <img
-                        src={sample.url}
-                        alt={sample.name}
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      />
-                    </div>
-                    <div className="p-2 flex items-center justify-between">
-                      <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 truncate">
-                        {sample.name}
-                      </span>
-                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-1.5 py-0.5 rounded">
-                        {sample.badge}
-                      </span>
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
-          </div>
+        <div className="flex-1 flex flex-col items-center sm:justify-center p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+          <FileDropzoneUpload
+            onFileSelected={handleImageFile}
+            accept="image/*"
+            title="Drop Image to Remove Background"
+            subtitle="Supports PNG, JPG, WEBP, AVIF, BMP • or tap to browse"
+            accentColor="emerald"
+            sampleImages={SAMPLE_IMAGES.map((s) => ({
+              label: s.name,
+              url: s.url,
+              badge: s.badge,
+            }))}
+            onSampleSelect={(url) => {
+              const sample = SAMPLE_IMAGES.find((s) => s.url === url);
+              handleLoadSample(url, sample?.name || "sample.jpg");
+            }}
+            className="max-w-xl"
+          />
         </div>
       ) : (
         /* Active Image Studio */
@@ -1166,14 +1099,14 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                 type="button"
                 onClick={() => setMobileTab("canvas")}
                 className={`relative flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-[11px] font-semibold transition-all duration-200 select-none ${mobileTab === "canvas"
-                    ? "bg-white dark:bg-[#222c3d] text-slate-900 dark:text-white shadow-xs border border-black/5 dark:border-white/10"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                  ? "bg-white dark:bg-[#222c3d] text-slate-900 dark:text-white shadow-xs border border-black/5 dark:border-white/10"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                   }`}
               >
                 <span
                   className={`flex items-center justify-center w-4 h-4 rounded transition-colors ${mobileTab === "canvas"
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      : "bg-transparent text-slate-400 dark:text-slate-500"
+                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                    : "bg-transparent text-slate-400 dark:text-slate-500"
                     }`}
                 >
                   <Eye size={12} strokeWidth={2.2} />
@@ -1185,14 +1118,14 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                 type="button"
                 onClick={() => setMobileTab("studio")}
                 className={`relative flex items-center justify-center gap-1.5 py-1 px-2 rounded-md text-[11px] font-semibold transition-all duration-200 select-none ${mobileTab === "studio"
-                    ? "bg-white dark:bg-[#222c3d] text-slate-900 dark:text-white shadow-xs border border-black/5 dark:border-white/10"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                  ? "bg-white dark:bg-[#222c3d] text-slate-900 dark:text-white shadow-xs border border-black/5 dark:border-white/10"
+                  : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
                   }`}
               >
                 <span
                   className={`flex items-center justify-center w-4 h-4 rounded transition-colors ${mobileTab === "studio"
-                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
-                      : "bg-transparent text-slate-400 dark:text-slate-500"
+                    ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400"
+                    : "bg-transparent text-slate-400 dark:text-slate-500"
                     }`}
                 >
                   <SlidersHorizontal size={12} strokeWidth={2.2} />
@@ -1215,8 +1148,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                   type="button"
                   onClick={() => setViewMode("slider")}
                   className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap ${viewMode === "slider"
-                      ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   title="Drag divider to compare original vs cutout"
                 >
@@ -1227,8 +1160,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                   type="button"
                   onClick={() => setViewMode("cutout")}
                   className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap ${viewMode === "cutout"
-                      ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   title="View cutout only"
                 >
@@ -1239,8 +1172,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                   type="button"
                   onClick={() => setViewMode("retouch")}
                   className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap ${viewMode === "retouch"
-                      ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   title="Manual retouch: Erase leftover background or restore missing parts"
                 >
@@ -1254,8 +1187,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                   type="button"
                   onClick={() => setViewMode("sidebyside")}
                   className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-[11px] sm:text-xs font-semibold transition-all whitespace-nowrap ${viewMode === "sidebyside"
-                      ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
-                      : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-xs"
+                    : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                     }`}
                   title="Side by side comparison"
                 >
@@ -1274,8 +1207,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                   onTouchStart={() => setIsHoldingOriginal(true)}
                   onTouchEnd={() => setIsHoldingOriginal(false)}
                   className={`px-1.5 sm:px-2 py-0.5 sm:py-1 rounded-md text-[10px] sm:text-xs font-semibold border transition-all select-none whitespace-nowrap ${isHoldingOriginal
-                      ? "bg-emerald-500 text-white border-emerald-500"
-                      : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800"
+                    ? "bg-emerald-500 text-white border-emerald-500"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-800"
                     }`}
                   title="Hold to see original (or hold Spacebar)"
                 >
@@ -1323,8 +1256,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                       type="button"
                       onClick={() => setRetouchMode("erase")}
                       className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${retouchMode === "erase"
-                          ? "bg-rose-500 text-white shadow-xs"
-                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                        ? "bg-rose-500 text-white shadow-xs"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                         }`}
                       title="Erase remaining unwanted background"
                     >
@@ -1335,8 +1268,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                       type="button"
                       onClick={() => setRetouchMode("restore")}
                       className={`flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md text-xs font-semibold transition-all ${retouchMode === "restore"
-                          ? "bg-emerald-500 text-white shadow-xs"
-                          : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+                        ? "bg-emerald-500 text-white shadow-xs"
+                        : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
                         }`}
                       title="Restore accidentally cut-out subject pixels"
                     >
@@ -1414,8 +1347,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                       type="button"
                       onClick={() => setIsTouchUpExpanded((prev) => !prev)}
                       className={`flex items-center gap-1 px-1.5 py-1 rounded-md text-[11px] font-semibold border transition-all ${isTouchUpExpanded
-                          ? "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 shadow-xs"
-                          : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/60"
+                        ? "bg-slate-200 dark:bg-slate-700 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 shadow-xs"
+                        : "text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border-slate-200 dark:border-slate-700/60"
                         }`}
                       title="Toggle Hardness, Softness, & Strength controls"
                     >
@@ -1439,8 +1372,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                           setBrushOpacity(100);
                         }}
                         className={`px-2 py-0.5 rounded text-[11px] font-medium transition-all ${brushHardness >= 95
-                            ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold"
-                            : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                          ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold"
+                          : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
                           }`}
                       >
                         Hard Brush
@@ -1449,8 +1382,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                         type="button"
                         onClick={() => setBrushHardness(25)}
                         className={`flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium transition-all ${brushHardness < 95
-                            ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold"
-                            : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
+                          ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-xs font-semibold"
+                          : "text-slate-500 hover:text-slate-900 dark:hover:text-white"
                           }`}
                       >
                         <Feather size={11} className="text-emerald-500" />
@@ -1664,8 +1597,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
           {/* Right Sidebar Controls Panel (Smooth Desktop Drawer & Mobile Tab View) */}
           <div
             className={`border-t md:border-t-0 border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161b22] flex flex-col min-h-0 h-full overflow-y-auto overscroll-y-contain touch-pan-y overflow-x-hidden custom-scrollbar transition-all duration-300 ease-in-out ${mobileTab === "studio"
-                ? "flex-1 w-full p-4 md:flex-none"
-                : "hidden md:flex md:flex-none"
+              ? "flex-1 w-full p-4 md:flex-none"
+              : "hidden md:flex md:flex-none"
               } ${isSidebarOpen
                 ? "md:w-80 md:min-w-[320px] md:max-w-[320px] md:opacity-100 md:p-4 md:border-l md:pointer-events-auto"
                 : "md:w-0 md:min-w-0 md:max-w-0 md:opacity-0 md:p-0 md:border-l-0 md:overflow-hidden md:pointer-events-none"
@@ -1819,8 +1752,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                               type="button"
                               onClick={() => setSolidColor(col)}
                               className={`w-7 h-7 rounded-lg border transition-transform ${solidColor.toLowerCase() === col.toLowerCase()
-                                  ? "scale-110 ring-2 ring-emerald-500 border-white"
-                                  : "border-black/10 dark:border-white/10 hover:scale-110"
+                                ? "scale-110 ring-2 ring-emerald-500 border-white"
+                                : "border-black/10 dark:border-white/10 hover:scale-110"
                                 }`}
                               style={{ backgroundColor: col }}
                               title={`Extracted: ${col}`}
@@ -1842,8 +1775,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                             type="button"
                             onClick={() => setSolidColor(c.value)}
                             className={`h-8 rounded-lg border transition-transform ${solidColor === c.value
-                                ? "scale-105 border-emerald-500 ring-2 ring-emerald-500/20"
-                                : "border-black/10 dark:border-white/10 hover:scale-105"
+                              ? "scale-105 border-emerald-500 ring-2 ring-emerald-500/20"
+                              : "border-black/10 dark:border-white/10 hover:scale-105"
                               }`}
                             style={{ backgroundColor: c.value }}
                             title={c.label}
@@ -1904,8 +1837,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                                 type="button"
                                 onClick={() => setSelectedGradient(g)}
                                 className={`h-10 rounded-xl border flex items-end p-1 transition-all ${isSelected
-                                    ? "border-emerald-500 ring-2 ring-emerald-500/30 scale-105"
-                                    : "border-black/10 dark:border-white/10 hover:scale-105"
+                                  ? "border-emerald-500 ring-2 ring-emerald-500/30 scale-105"
+                                  : "border-black/10 dark:border-white/10 hover:scale-105"
                                   }`}
                                 style={{
                                   background: `linear-gradient(135deg, ${g.from}, ${g.to})`,
@@ -1935,8 +1868,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                               type="button"
                               onClick={() => setSelectedGradient(g)}
                               className={`h-10 rounded-xl border flex items-end p-1 transition-all ${isSelected
-                                  ? "border-emerald-500 ring-2 ring-emerald-500/30 scale-105"
-                                  : "border-black/10 dark:border-white/10 hover:scale-105"
+                                ? "border-emerald-500 ring-2 ring-emerald-500/30 scale-105"
+                                : "border-black/10 dark:border-white/10 hover:scale-105"
                                 }`}
                               style={{
                                 background: `linear-gradient(135deg, ${g.from}, ${g.to})`,
@@ -2073,11 +2006,10 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                             key={sc.value}
                             type="button"
                             onClick={() => setShadowColor(sc.value)}
-                            className={`w-6 h-6 rounded-lg border transition-all ${
-                              shadowColor.toLowerCase() === sc.value.toLowerCase()
-                                ? "scale-110 ring-2 ring-emerald-500 border-white dark:border-slate-800"
-                                : "border-black/10 dark:border-white/10 hover:scale-105"
-                            }`}
+                            className={`w-6 h-6 rounded-lg border transition-all ${shadowColor.toLowerCase() === sc.value.toLowerCase()
+                              ? "scale-110 ring-2 ring-emerald-500 border-white dark:border-slate-800"
+                              : "border-black/10 dark:border-white/10 hover:scale-105"
+                              }`}
                             style={{ backgroundColor: sc.value }}
                             title={sc.label}
                           />
@@ -2143,8 +2075,8 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                                 type="button"
                                 onClick={() => setShadowColor(col)}
                                 className={`w-5 h-5 rounded-md border transition-transform ${shadowColor.toLowerCase() === col.toLowerCase()
-                                    ? "scale-110 ring-2 ring-emerald-500 border-white"
-                                    : "border-black/10 dark:border-white/10 hover:scale-110"
+                                  ? "scale-110 ring-2 ring-emerald-500 border-white"
+                                  : "border-black/10 dark:border-white/10 hover:scale-110"
                                   }`}
                                 style={{ backgroundColor: col }}
                                 title={`Shadow from image: ${col}`}

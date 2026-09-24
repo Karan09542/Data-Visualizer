@@ -1,14 +1,14 @@
-import React, { useState, useRef } from "react";
-import { FileSpreadsheet, Download, Copy, Check, Upload, AlertCircle } from "lucide-react";
+import React, { useState } from "react";
+import { FileSpreadsheet, Download, Copy, Check, AlertCircle } from "lucide-react";
 import Papa from "papaparse";
 import * as XLSX from "xlsx";
+import { FileDropzoneUpload } from "./FileDropzoneUpload";
 
 export const CsvToJsonConverter = () => {
   const [jsonData, setJsonData] = useState<string>("");
   const [fileName, setFileName] = useState<string>("");
   const [error, setError] = useState<string>("");
   const [copied, setCopied] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const processFile = async (file: File) => {
     setError("");
@@ -45,25 +45,6 @@ export const CsvToJsonConverter = () => {
     } else {
       setError("Unsupported file format. Please upload a .csv or .xlsx file.");
     }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFile(e.target.files[0]);
-    }
-    // Clear input so same file can be selected again
-    e.target.value = "";
-  };
-
-  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFile(e.dataTransfer.files[0]);
-    }
-  };
-
-  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
   };
 
   const copyToClipboard = async () => {
@@ -105,28 +86,16 @@ export const CsvToJsonConverter = () => {
       </div>
 
       {!jsonData ? (
-        <div
-          onDrop={handleDrop}
-          onDragOver={handleDragOver}
-          onClick={() => fileInputRef.current?.click()}
-          className="w-full h-48 border-2 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-500 dark:hover:border-blue-500 rounded-xl bg-slate-50 dark:bg-[#161b22]/50 flex flex-col items-center justify-center cursor-pointer transition-colors mb-6 group"
-        >
-          <Upload
-            size={32}
-            className="text-slate-400 group-hover:text-blue-500 mb-3 transition-colors"
-          />
-          <span className="text-slate-600 dark:text-slate-300 font-medium text-lg mb-1">
-            Click or drag to upload
-          </span>
-          <span className="text-slate-400 text-sm">Supports .csv, .xlsx, .xls</span>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel"
-            onChange={handleFileSelect}
-            className="hidden"
-          />
-        </div>
+        <FileDropzoneUpload
+          onFileSelected={processFile}
+          accept=".csv, .xlsx, .xls, application/vnd.openxmlformats-officedocument.spreadsheetml.sheet, application/vnd.ms-excel, text/csv"
+          title="Drop CSV or Excel Spreadsheet Here"
+          subtitle="Supports .csv, .xlsx, .xls • or tap to browse"
+          pasteNotice="Paste CSV Data"
+          accentColor="blue"
+          enableCamera={false}
+          className="mb-6 w-full"
+        />
       ) : (
         <div className="flex flex-col h-[500px] bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden shadow-sm">
           <div className="flex flex-wrap items-center justify-between p-3 border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-900/50 gap-2">

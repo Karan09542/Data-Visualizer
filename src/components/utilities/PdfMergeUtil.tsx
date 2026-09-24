@@ -9,6 +9,7 @@ import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { PDFDocument, degrees } from 'pdf-lib';
 import { useStore } from '../../store/useStore';
 import MediaCarousel from '../MediaCarousel';
+import { FileDropzoneUpload } from './FileDropzoneUpload';
 
 // Ensure worker is set for pdfjs
 // Bundled with the app, and so precached, rather than fetched from unpkg: PDFs open offline.
@@ -792,23 +793,17 @@ export const PdfMergeUtil = () => {
         </AnimatePresence>
 
         {items.length === 0 && !isProcessing && (
-          <div className={`flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-2xl transition-all duration-300 ${isDraggingOver ? 'border-indigo-500 bg-indigo-50 dark:bg-indigo-900/20 scale-[1.02]' : 'border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900/50 hover:bg-slate-50 dark:hover:bg-slate-900/80 hover:border-slate-400 dark:hover:border-slate-600'}`}>
-            <div className="w-16 h-16 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center mb-6">
-              <UploadCloud className="w-8 h-8 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <h3 className="text-xl font-bold text-slate-800 dark:text-slate-200 mb-2">
-              Drop PDFs & Images here
-            </h3>
-            <p className="text-slate-500 dark:text-slate-400 text-center max-w-sm mb-8 px-4">
-              Drag and drop multiple files to extract their pages. Supported formats: PDF, PNG, JPG, WEBP.
-            </p>
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isProcessing || isMerging}
-              className="px-6 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl shadow-md shadow-indigo-600/20 transition-all hover:scale-105 disabled:opacity-50"
-            >
-              Browse Files
-            </button>
+          <div className="flex-1 flex flex-col items-center justify-center p-4 sm:p-6 overflow-y-auto custom-scrollbar">
+            <FileDropzoneUpload
+              onFilesSelected={(files) => processFiles(files, mergeMode)}
+              onFileSelected={(file) => processFiles([file], mergeMode)}
+              multiple={true}
+              accept=".pdf,image/png,image/jpeg,image/webp"
+              title="Drop PDFs & Images Here"
+              subtitle="Drag & drop multiple files to extract pages • PDF, PNG, JPG, WEBP"
+              accentColor="indigo"
+              className="max-w-xl"
+            />
           </div>
         )}
 

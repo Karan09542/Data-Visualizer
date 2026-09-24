@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -21,6 +21,7 @@ const WaveDisplacementStudio = lazyWithRetry(() => import("./WaveDisplacementStu
 // which are needed unless the Sticker Maker tab is actually opened.
 const StickerMakerUtil = lazyWithRetry(() => import("./StickerMakerUtil").then(m => ({ default: m.StickerMakerUtil })), "Sticker Maker");
 const BackgroundRemoverUtil = lazyWithRetry(() => import("./BackgroundRemoverUtil").then(m => ({ default: m.BackgroundRemoverUtil })), "Background Remover");
+const ImageUpscalerUtil = lazyWithRetry(() => import("./ImageUpscalerUtil").then(m => ({ default: m.ImageUpscalerUtil })), "Image Upscaler");
 
 /** Everyday groups first; developer tools last */
 const TAB_GROUPS = [
@@ -33,6 +34,7 @@ const TAB_GROUPS = [
 const TABS = [
   // Photos
   { id: "bgremover", group: "photos", label: "Background Remover", description: "Isolate subjects and remove backgrounds with AI", icon: Sparkles, activeClass: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/30", iconClass: "text-emerald-500" },
+  { id: "upscaler", group: "photos", label: "Upscale Image", description: "AI super-resolution up to 8x with sharpening", icon: ArrowUpRight, activeClass: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-800/30", iconClass: "text-indigo-500" },
   { id: "passport", group: "photos", label: "Passport Photo Maker", description: "Make print-ready passport and ID photos", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "text-blue-500" },
   { id: "imgslicer", group: "photos", label: "Split Image into Pieces", description: "Cut one image into a grid of tiles", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
   { id: "colorthief", group: "photos", label: "Pick Colors from a Photo", description: "Find the main colors in any image", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "text-fuchsia-500" },
@@ -57,8 +59,22 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"bgremover" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("bgremover");
-  const [isMaximized, setIsMaximized] = useState<boolean>(false);
+  const [activeTab, setActiveTab] = useState<"bgremover" | "upscaler" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("bgremover");
+  const [isMaximized, setIsMaximized] = useState<boolean>(() => {
+    if (typeof window !== "undefined") {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
+
+  // Ensure fullscreen on mobile when modal opens
+  useEffect(() => {
+    if (typeof window !== "undefined" && isOpen) {
+      if (window.innerWidth < 768) {
+        setIsMaximized(true);
+      }
+    }
+  }, [isOpen]);
 
   // Pasted images go to the open tool, never to the import modal behind the popup
   useQuickUtilsPasteGuard(isOpen);
@@ -106,23 +122,21 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
 
           {/* Modal Container */}
           <motion.div
-            layout
-            initial={{ opacity: 0, scale: 0.95, y: 10 }}
+            initial={{ opacity: 0, scale: 0.98, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.95, y: 10 }}
+            exit={{ opacity: 0, scale: 0.98, y: 8 }}
             transition={{ 
-              layout: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
-              opacity: { duration: 0.15 },
-              scale: { duration: 0.15 }
+              duration: 0.16,
+              ease: [0.16, 1, 0.3, 1]
             }}
             className={`relative ${isMaximized
               ? "w-full h-full max-w-none max-h-none rounded-none border-none p-0"
-              : "w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] md:w-[94vw] max-w-6xl h-[calc(100dvh-1rem)] md:h-[90vh] md:max-h-[850px] md:rounded-2xl border border-black/10 dark:border-white/10"
+              : "w-full h-full h-dvh max-w-none max-h-none rounded-none border-0 md:w-[94vw] md:max-w-6xl md:h-[90vh] md:max-h-[850px] md:rounded-2xl md:border md:border-black/10 md:dark:border-white/10"
               } bg-slate-50 dark:bg-[#080b11] shadow-2xl flex flex-col md:flex-row overflow-hidden`}
           >
             {/* Sidebar / Top Navigation */}
             <div className="w-full md:w-72 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 bg-white dark:bg-[#161b22] flex flex-col shrink-0 select-none">
-              <div className="p-2.5 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2">
+              <div className="p-2.5 sm:p-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between gap-2 pt-[max(0.625rem,env(safe-area-inset-top))]">
                 <h1 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0 truncate">
                   Quick Tools
                 </h1>
@@ -220,7 +234,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
             </div>
 
             {/* Main Content Area */}
-            <div className="flex-1 h-full overflow-hidden flex flex-col bg-slate-50/50 dark:bg-[#0c0f16]/50">
+            <div className="flex-1 h-full overflow-hidden flex flex-col bg-slate-50/50 dark:bg-[#0c0f16]/50 pb-[env(safe-area-inset-bottom)]">
               <div className={activeTab === "wavedisp" ? "w-full h-full flex flex-col" : "hidden"}>
                 <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Animated Photo Effects...</div>}>
                   <WaveDisplacementStudio />
@@ -229,6 +243,11 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               {activeTab === "bgremover" && (
                 <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Background Remover...</div>}>
                   <BackgroundRemoverUtil />
+                </Suspense>
+              )}
+              {activeTab === "upscaler" && (
+                <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Image Upscaler...</div>}>
+                  <ImageUpscalerUtil />
                 </Suspense>
               )}
               {activeTab === "passport" && <PassportStudioUtil />}

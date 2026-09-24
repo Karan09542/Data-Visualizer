@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Camera, ChevronDown, RefreshCcw, Check, ArrowLeft, RotateCw, Video, Square, StopCircle, Zap, ZapOff } from 'lucide-react';
-import ReactCrop, { type Crop } from 'react-image-crop';
+import { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { cn } from '@/lib/utils';
 import { DocumentWorkspace } from './camera/DocumentWorkspace';
