@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight, Moon, Paintbrush, Layers } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight, Moon, Paintbrush, Layers, Crop } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -25,6 +25,7 @@ const ImageUpscalerUtil = lazyWithRetry(() => import("./ImageUpscalerUtil").then
 const LowLightEnhancerUtil = lazyWithRetry(() => import("./LowLightEnhancerUtil").then(m => ({ default: m.LowLightEnhancerUtil })), "Low Light Enhancer");
 const StyleTransferUtil = lazyWithRetry(() => import("./StyleTransferUtil").then(m => ({ default: m.StyleTransferUtil })), "Art Style Transfer");
 const ImageDepthUtil = lazyWithRetry(() => import("./ImageDepthUtil").then(m => ({ default: m.ImageDepthUtil })), "Image Depth");
+const ImageCropUtil = lazyWithRetry(() => import("./ImageCropUtil").then(m => ({ default: m.ImageCropUtil })), "Advanced Crop");
 
 /** Everyday groups first; developer tools last */
 const TAB_GROUPS = [
@@ -36,6 +37,7 @@ const TAB_GROUPS = [
 
 const TABS = [
   // Photos
+  { id: "crop", group: "photos", label: "Advanced Crop", description: "Trim, rotate, and sculpt images for social media & custom shapes", icon: Crop, activeClass: "bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 shadow-sm border border-teal-200/50 dark:border-teal-800/30", iconClass: "text-teal-500" },
   { id: "bgremover", group: "photos", label: "Background Remover", description: "Isolate subjects and remove backgrounds with AI", icon: Sparkles, activeClass: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/30", iconClass: "text-emerald-500" },
   { id: "upscaler", group: "photos", label: "Upscale Image", description: "AI super-resolution up to 8x with sharpening", icon: ArrowUpRight, activeClass: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-800/30", iconClass: "text-indigo-500" },
   { id: "lowlight", group: "photos", label: "Low Light Enhance", description: "Brighten dark photos and recover shadow details with AI", icon: Moon, activeClass: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-200/50 dark:border-amber-800/30", iconClass: "text-amber-500" },
@@ -65,7 +67,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("bgremover");
+  const [activeTab, setActiveTab] = useState<"crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("crop");
   const [isMaximized, setIsMaximized] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
       return window.innerWidth < 768;
@@ -246,6 +248,11 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                   <WaveDisplacementStudio />
                 </Suspense>
               </div>
+              {activeTab === "crop" && (
+                <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Crop Tool...</div>}>
+                  <ImageCropUtil />
+                </Suspense>
+              )}
               {activeTab === "bgremover" && (
                 <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Background Remover...</div>}>
                   <BackgroundRemoverUtil />
