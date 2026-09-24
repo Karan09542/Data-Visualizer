@@ -1,7 +1,7 @@
 import React, { useState, useEffect, Suspense } from "react";
 import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -20,6 +20,7 @@ const WaveDisplacementStudio = lazyWithRetry(() => import("./WaveDisplacementStu
 // Split out: it pulls in the AI runtime, the eraser engine and d3, none of
 // which are needed unless the Sticker Maker tab is actually opened.
 const StickerMakerUtil = lazyWithRetry(() => import("./StickerMakerUtil").then(m => ({ default: m.StickerMakerUtil })), "Sticker Maker");
+const BackgroundRemoverUtil = lazyWithRetry(() => import("./BackgroundRemoverUtil").then(m => ({ default: m.BackgroundRemoverUtil })), "Background Remover");
 
 /** Everyday groups first; developer tools last */
 const TAB_GROUPS = [
@@ -31,6 +32,7 @@ const TAB_GROUPS = [
 
 const TABS = [
   // Photos
+  { id: "bgremover", group: "photos", label: "Background Remover", description: "Isolate subjects and remove backgrounds with AI", icon: Sparkles, activeClass: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/30", iconClass: "text-emerald-500" },
   { id: "passport", group: "photos", label: "Passport Photo Maker", description: "Make print-ready passport and ID photos", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "text-blue-500" },
   { id: "imgslicer", group: "photos", label: "Split Image into Pieces", description: "Cut one image into a grid of tiles", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
   { id: "colorthief", group: "photos", label: "Pick Colors from a Photo", description: "Find the main colors in any image", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "text-fuchsia-500" },
@@ -55,7 +57,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
+  const [activeTab, setActiveTab] = useState<"bgremover" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("bgremover");
   const [isMaximized, setIsMaximized] = useState<boolean>(false);
 
   // Pasted images go to the open tool, never to the import modal behind the popup
@@ -77,7 +79,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
       {isOpen && (
         <div 
           data-quick-utils-modal="true"
-          className={`custom-dropzone quick-utils-modal fixed inset-0 z-[600] flex items-center justify-center ${isMaximized ? "p-0" : "p-0 md:p-4 sm:p-2"}`}
+          className="custom-dropzone quick-utils-modal fixed inset-0 z-[600] flex items-center justify-center p-0"
           onDragEnter={(e) => {
             e.stopPropagation();
           }}
@@ -104,13 +106,18 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
 
           {/* Modal Container */}
           <motion.div
+            layout
             initial={{ opacity: 0, scale: 0.95, y: 10 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 10 }}
-            transition={{ type: "spring", damping: 25, stiffness: 300 }}
-            className={`relative transition-all duration-300 ${isMaximized
-              ? "w-screen h-screen max-w-none max-h-none rounded-none border-none p-0"
-              : "w-full h-full md:h-[90vh] md:max-h-[850px] max-w-6xl md:rounded-2xl border border-black/10 dark:border-white/10"
+            transition={{ 
+              layout: { duration: 0.2, ease: [0.16, 1, 0.3, 1] },
+              opacity: { duration: 0.15 },
+              scale: { duration: 0.15 }
+            }}
+            className={`relative ${isMaximized
+              ? "w-full h-full max-w-none max-h-none rounded-none border-none p-0"
+              : "w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] md:w-[94vw] max-w-6xl h-[calc(100dvh-1rem)] md:h-[90vh] md:max-h-[850px] md:rounded-2xl border border-black/10 dark:border-white/10"
               } bg-slate-50 dark:bg-[#080b11] shadow-2xl flex flex-col md:flex-row overflow-hidden`}
           >
             {/* Sidebar / Top Navigation */}
@@ -150,6 +157,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                   {/* Mobile Close Button */}
                   <button
                     onClick={onClose}
+                    id="quick-tools-mobile-close-btn"
                     className="md:hidden p-1.5 sm:p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors shrink-0"
                   >
                     <X size={16} />
@@ -158,6 +166,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                   {/* Maximize & Close buttons for desktop */}
                   <div className="hidden md:flex items-center gap-1">
                     <button
+                      id="quick-tools-maximize-btn"
                       onClick={() => setIsMaximized(!isMaximized)}
                       className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                       title={isMaximized ? "Restore Modal" : "Maximize Fullscreen"}
@@ -165,6 +174,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                       {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
                     </button>
                     <button
+                      id="quick-tools-close-btn"
                       onClick={onClose}
                       className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
                       title="Close"
@@ -216,6 +226,11 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                   <WaveDisplacementStudio />
                 </Suspense>
               </div>
+              {activeTab === "bgremover" && (
+                <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Background Remover...</div>}>
+                  <BackgroundRemoverUtil />
+                </Suspense>
+              )}
               {activeTab === "passport" && <PassportStudioUtil />}
               {activeTab === "img2pdf" && <ImageToPdfConverter />}
               {activeTab === "pdfmerge" && <PdfMergeUtil />}

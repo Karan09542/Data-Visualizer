@@ -289,13 +289,21 @@ export const ColorPickerPortal = ({ color, onChange, onClose, anchorRef, onApply
    );
 };
 
-export const ColorPickerTrigger = ({ color, onChange, className, label }: any) => {
+export const ColorPickerTrigger = ({ color, onChange, className, style, label, children }: any) => {
    const [isOpen, setIsOpen] = useState(false);
    const triggerRef = useRef<HTMLButtonElement>(null);
    const defaultClass = "w-5 h-5 rounded border border-[#333] shadow-inner cursor-pointer transition active:scale-95 hover:border-slate-400";
+   const computedStyle = style !== undefined ? style : { backgroundColor: color };
    return (
       <>
-         <button ref={triggerRef} className={className || defaultClass} style={{ backgroundColor: color }} onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}>
+         <button
+            ref={triggerRef}
+            type="button"
+            className={className || defaultClass}
+            style={computedStyle}
+            onClick={(e) => { e.stopPropagation(); setIsOpen(!isOpen); }}
+         >
+            {children}
             {label && <span className="sr-only">{label}</span>}
          </button>
          {isOpen && <ColorPickerPortal color={color} onChange={onChange} onClose={() => setIsOpen(false)} anchorRef={triggerRef} />}
