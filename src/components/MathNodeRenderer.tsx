@@ -1658,7 +1658,11 @@ export const MathNodeRenderer: React.FC<any> = ({
   const content = (
     <div
       ref={rootRef}
-      className={`${appTheme} relative flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-2xl overflow-hidden transition-[border-color,box-shadow] duration-300 ${isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "w-full h-full rounded-xl"} ${canResize ? "resize nodrag" : ""}`}
+      className={`${appTheme} flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-2xl overflow-hidden transition-[border-color,box-shadow] duration-300 ${
+        // Only one position class: with both `relative` and `fixed`, Tailwind's order makes
+        // `relative` win and the maximized view lands below the page, off screen.
+        isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "relative w-full h-full rounded-xl"
+      } ${canResize ? "resize nodrag" : ""}`}
       style={{
         width: isFullscreen ? undefined : width,
         height: isFullscreen ? undefined : height,
