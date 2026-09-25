@@ -117,6 +117,18 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
     }
   }, [value, cursorPos, isFocused, variables]);
 
+  // The preview only changes when this row's text changes, a variable is added, removed
+  // or renamed (names are coloured), or a variable it uses changes value (the "= …"
+  // result). Other sliders moving must not redo it: every row would flash at once.
+  const variablesRef = useRef(variables);
+  variablesRef.current = variables;
+  const latexVariablesKey = React.useMemo(() => {
+    const used = variables
+      .filter((v) => new RegExp(`(^|[^\\w])${v.name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}([^\\w]|$)`).test(value))
+      .map((v) => `${v.name}=${v.value}`);
+    return `${variables.map((v) => v.name).join(",")}|${used.join(",")}`;
+  }, [variables, value]);
+
   useEffect(() => {
     if (isFocused || forceEditMode || error || !value.trim()) {
       setLatexResult({});
@@ -136,6 +148,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
     let safetyTimeoutId: any;
 
     const computeLatex = async () => {
+      const variables = variablesRef.current;
       const coloredVars: Record<string, string> = {};
       variables.forEach((v) => {
         coloredVars[v.name] = getVarColor(v.name);
@@ -190,7 +203,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
       clearTimeout(timeoutId);
       clearTimeout(safetyTimeoutId);
     };
-  }, [value, isFocused, forceEditMode, error, variables, expressionToLatexWithEval, latexOverride]);
+  }, [value, isFocused, forceEditMode, error, latexVariablesKey, expressionToLatexWithEval, latexOverride]);
 
   const handleKeyDown = (
     e: React.KeyboardEvent<HTMLTextAreaElement | HTMLDivElement>,
@@ -393,7 +406,9 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   let renderedContent = null;
 
   if (!isFocused && !forceEditMode && !error && value.trim()) {
-    if (isComputingLatex) {
+    // While an update is computed, keep showing the current preview: swapping it for a
+    // short placeholder changes the row's height and makes the whole panel jump.
+    if (isComputingLatex && !latexResult.latex) {
       // Skeleton shimmer while computing LaTeX in worker
       renderedContent = (
         <div className="w-full px-2 py-2 flex items-center overflow-x-hidden">
