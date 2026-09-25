@@ -18,6 +18,8 @@ export interface GamePlayerProps {
 /** One player component per game module. Register new games here alongside their module. */
 const PLAYERS: Record<GameTypeId, ComponentType<GamePlayerProps>> = {
   crossword: CrosswordPlayer,
+  // Word Wheel is a crossword with one fixed wheel; the same player handles both.
+  wordwheel: CrosswordPlayer,
 };
 
 export function PlayView() {

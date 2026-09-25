@@ -56,11 +56,12 @@ interface PrefsDoc { version: 1; prefs: LearningPrefs }
 
 export const DEFAULT_PREFS: LearningPrefs = {
   activeSetId: null,
-  gameType: "crossword",
+  gameType: "wordwheel",
   gameSetId: null,
   wordCount: 8,
   selection: "weakest",
   inputMode: "wheel",
+  wheelSize: 12,
 };
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
@@ -403,7 +404,7 @@ export const useLearningStore = create<LearningState>()((set, get) => ({
       progress,
       wordCount: options.wordCount,
       selection: options.selection,
-      hints: options.hints,
+      hints: { wheelSize: get().prefs.wheelSize, ...options.hints },
     });
     if (!result.ok) return result;
 

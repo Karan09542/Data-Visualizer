@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { AlertCircle, Grid3x3, Loader2, Play, Plus, Trash2 } from "lucide-react";
+import { AlertCircle, CircleDot, Grid3x3, Loader2, Play, Plus, Trash2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getGame, listGames } from "../games";
 import { useLearningStore } from "../store/useLearningStore";
@@ -9,7 +9,10 @@ import { useMediaQuery } from "./hooks";
 
 const GAME_ICONS: Record<string, React.ReactNode> = {
   crossword: <Grid3x3 size={22} />,
+  wordwheel: <CircleDot size={22} />,
 };
+
+const WHEEL_SIZES = [8, 10, 12, 15];
 
 const SELECTIONS: { value: WordSelection; label: string; description: string }[] = [
   { value: "weakest", label: "Needs practice", description: "Words you know least, and haven't seen in a while" },
@@ -17,7 +20,6 @@ const SELECTIONS: { value: WordSelection; label: string; description: string }[]
   { value: "newest", label: "Newest", description: "Words you added most recently" },
 ];
 
-const SIZES = [4, 6, 8, 12, 16];
 
 export function CreateGameView() {
   const sets = useLearningStore((s) => s.sets);
@@ -38,7 +40,8 @@ export function CreateGameView() {
   const eligible = useMemo(() => pool.filter((w) => game.isEligible(w)), [pool, game]);
   const skipped = pool.length - eligible.length;
   const maxCount = Math.min(game.maxWords, eligible.length);
-  const sizes = SIZES.filter((n) => n >= game.minWords && n <= game.maxWords);
+  const sizes = (game.wordCountOptions ?? [4, 6, 8, 12, 16]).filter((n) => n >= game.minWords && n <= game.maxWords);
+  const usesWheel = game.id === "wordwheel";
   const count = Math.max(game.minWords, Math.min(prefs.wordCount, maxCount));
   const canPlay = eligible.length >= game.minWords;
 
@@ -182,7 +185,7 @@ export function CreateGameView() {
           <>
             <section>
               <div className="mb-2.5 flex items-baseline justify-between">
-                <SectionLabel>How many words</SectionLabel>
+                <SectionLabel>{usesWheel ? "Up to how many words" : "How many words"}</SectionLabel>
                 <span className="text-xs text-slate-500 dark:text-slate-400">{eligible.length} available</span>
               </div>
               <Segmented
@@ -195,6 +198,22 @@ export function CreateGameView() {
                 ]}
               />
             </section>
+
+            {usesWheel && (
+              <section>
+                <SectionLabel className="mb-2.5">Letters on the wheel</SectionLabel>
+                <Segmented
+                  label="Letters on the wheel"
+                  value={prefs.wheelSize}
+                  onChange={(n) => store().setPrefs({ wheelSize: n })}
+                  options={WHEEL_SIZES.map((n) => ({ value: n, label: String(n) }))}
+                />
+                <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
+                  The game picks words from your list that can all be spelled with these letters. A bigger wheel fits more of your
+                  words; a smaller one is quicker to scan.
+                </p>
+              </section>
+            )}
 
             <section>
               <SectionLabel className="mb-2.5">Focus on</SectionLabel>

@@ -112,6 +112,8 @@ export interface LearningPrefs {
   selection: WordSelection;
   /** How letters are entered while playing: swiping a letter wheel, or typing on keys. */
   inputMode: InputMode;
+  /** Most letters on the Word Wheel. */
+  wheelSize: number;
 }
 
 export type InputMode = "wheel" | "keys";

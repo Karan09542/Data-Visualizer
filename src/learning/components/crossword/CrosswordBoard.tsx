@@ -1,4 +1,4 @@
-import React, { memo, useMemo } from "react";
+import React, { memo, useEffect, useMemo, useState } from "react";
 import {
   activeEntry,
   cellLinks,
@@ -34,6 +34,15 @@ export const CrosswordBoard = memo(function CrosswordBoard({
   boardRef,
 }: CrosswordBoardProps) {
   const { rows, cols, solution, numbers, entries } = puzzle;
+  // Big grids on phones get small squares; below this size clue numbers would sit on the letters.
+  const [compact, setCompact] = useState(false);
+  useEffect(() => {
+    const el = boardRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(([entry]) => setCompact(entry.contentRect.width / cols < 24));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [boardRef, cols]);
   const links = cellLinks(puzzle);
   const entry = activeEntry(puzzle, state);
   const wordCells = useMemo(() => new Set(entry?.cells ?? []), [entry]);
@@ -70,6 +79,7 @@ export const CrosswordBoard = memo(function CrosswordBoard({
       onKeyDown={onKeyDown}
       className="lg-board"
       data-celebrate={celebrating || undefined}
+      data-compact={compact || undefined}
       style={
         {
           "--cols": cols,
