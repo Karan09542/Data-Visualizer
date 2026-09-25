@@ -1594,9 +1594,15 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (exampleData) {
       setFunctions(exampleData.functions);
       setVariables(exampleData.variables);
-      // Examples keep their sliders in the default group and animate freely.
-      setGroups([{ id: "default", name: "Mathematical Parameters", isCollapsed: false }]);
-      applyTimelineAndView({ mode: "continuous", min: 0, max: 10, autoplay: true }, { x: [-5, 5], y: [-5, 5] });
+      // Richer examples bring their own slider groups, timeline and view; plain ones
+      // use the default group and animate freely.
+      setGroups(
+        exampleData.groups ?? [{ id: "default", name: "Mathematical Parameters", isCollapsed: false }],
+      );
+      applyTimelineAndView(
+        exampleData.timeline ?? { mode: "continuous", min: 0, max: 10, autoplay: true },
+        exampleData.view ?? { x: [-5, 5], y: [-5, 5] },
+      );
     }
   };
 
@@ -3008,6 +3014,22 @@ export const MathNodeRenderer: React.FC<any> = ({
                                         <FunctionSquare className="w-4 h-4" strokeWidth={2} />
                                       </button>
                                     </div>
+
+                                    <label className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+                                      <input
+                                        type="checkbox"
+                                        checked={!!f.labelPlain}
+                                        onChange={(e) =>
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id ? { ...fn, labelPlain: e.target.checked } : fn,
+                                            ),
+                                          )
+                                        }
+                                        className="accent-blue-500"
+                                      />
+                                      Plain text (no math formatting). Live values: {"{{v0}}"}
+                                    </label>
 
                                     {/* Label Settings Panel */}
                                     <div className="flex flex-col gap-2 mt-2 p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80">
@@ -6556,7 +6578,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                               <SafeLabel
                                                                 at={[p[0] + dx, p[1] + dy]}
                                                                 tex={hasLiveValues(f.label) ? renderLiveLabel(f.label!, baseScope) : f.label!}
-                                                                plain={hasLiveValues(f.label)}
+                                                                plain={!!f.labelPlain || hasLiveValues(f.label)}
                                                                 color={f.color}
                                                                 rotation={f.labelRotation}
                                                                 scale={f.labelScale}
@@ -7337,7 +7359,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                               (hasLiveValues(f.label) ? renderLiveLabel(f.label!, baseScope) : f.label)
                                             }
                                             rawLatex={!!odeTex}
-                                            plain={!odeTex && hasLiveValues(f.label)}
+                                            plain={!odeTex && (!!f.labelPlain || hasLiveValues(f.label))}
                                             color={f.color}
                                             rotation={f.labelRotation}
                                             scale={f.labelScale}

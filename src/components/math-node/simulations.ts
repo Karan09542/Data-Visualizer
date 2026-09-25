@@ -52,11 +52,11 @@ export interface SimulationPreset {
 
 // ─── Builders ─────────────────────────────────────────────────────────────────
 
-const INK = "#94a3b8"; // neutral: guides, predicted paths, the world
-const TEXT = "#64748b"; // readable on both the light and the dark canvas
+export const INK = "#94a3b8"; // neutral: guides, predicted paths, the world
+export const TEXT = "#64748b"; // readable on both the light and the dark canvas
 const GROUND = "#16a34a";
 
-function rows(prefix: string) {
+export function sceneRows(prefix: string) {
   let n = 0;
   const base = (type: MathFunction["type"], expr: string, color: string, extra: Partial<MathFunction> = {}): MathFunction => ({
     id: `${prefix}_${++n}`,
@@ -84,13 +84,14 @@ function rows(prefix: string) {
         showPoint: false,
         showLabel: true,
         label: text,
+        labelPlain: true,
         labelAlignment: "center",
         ...extra,
       }),
   };
 }
 
-function slider(
+export function sceneSlider(
   name: string,
   displayName: string,
   value: number,
@@ -113,12 +114,12 @@ function slider(
   };
 }
 
-const group = (id: string, name: string): VariableGroup => ({ id, name, isCollapsed: false });
+export const sceneGroup = (id: string, name: string): VariableGroup => ({ id, name, isCollapsed: false });
 
 // ─── Projectile ───────────────────────────────────────────────────────────────
 
 function projectile(): SimulationScene {
-  const r = rows("proj");
+  const r = sceneRows("proj");
   const ACCENT = "#ec4899";
   const HANDLE = "#0ea5e9";
   const MARK = "#f59e0b";
@@ -144,12 +145,12 @@ function projectile(): SimulationScene {
       r.readout("[R/2, -1.3]", "t = {{clock}} / {{T}} s", TEXT),
     ],
     variables: [
-      slider("v0", "Launch speed (m/s)", 10, [0, 20, 0.1], "How fast it leaves. Drag the blue arrow.", "launch"),
-      slider("angle", "Launch angle (°)", 45, [0, 90, 1], "Degrees above the ground. 45° goes furthest on flat ground.", "launch"),
-      slider("h0", "Launch height (m)", 0, [0, 10, 0.1], "Drag the blue dot up to launch from a cliff.", "launch"),
-      slider("g", "Gravity (m/s²)", 9.8, [0.5, 25, 0.1], "Earth 9.8, Moon 1.6, Mars 3.7, Jupiter 24.8", "world"),
+      sceneSlider("v0", "Launch speed (m/s)", 10, [0, 20, 0.1], "How fast it leaves. Drag the blue arrow.", "launch"),
+      sceneSlider("angle", "Launch angle (°)", 45, [0, 90, 1], "Degrees above the ground. 45° goes furthest on flat ground.", "launch"),
+      sceneSlider("h0", "Launch height (m)", 0, [0, 10, 0.1], "Drag the blue dot up to launch from a cliff.", "launch"),
+      sceneSlider("g", "Gravity (m/s²)", 9.8, [0.5, 25, 0.1], "Earth 9.8, Moon 1.6, Mars 3.7, Jupiter 24.8", "world"),
     ],
-    groups: [group("launch", "Launch"), group("world", "World")],
+    groups: [sceneGroup("launch", "Launch"), sceneGroup("world", "World")],
     timeline: { mode: "once", min: 0, max: 5, endExpr: "T" },
     view: { x: [-2, 14], y: [-3, 8] },
   };
@@ -158,7 +159,7 @@ function projectile(): SimulationScene {
 // ─── Spring ───────────────────────────────────────────────────────────────────
 
 function spring(): SimulationScene {
-  const r = rows("spring");
+  const r = sceneRows("spring");
   const MASS = "#3b82f6";
   const VEL = "#f59e0b";
   // The spring hangs off a wall at x = 0 on the line y = 5; at rest the mass sits at 4.
@@ -182,13 +183,13 @@ function spring(): SimulationScene {
       r.readout("[6, -3.9]", "Undamped period 2π√(m/k) = {{2*pi*sqrt(m/k)}} s", TEXT),
     ],
     variables: [
-      slider("k", "Stiffness k (N/m)", 4, [0.5, 20, 0.1], "Stiffer springs pull harder and swing faster.", "spring"),
-      slider("m", "Mass m (kg)", 1, [0.1, 5, 0.1], "Heavier masses swing slower.", "spring"),
-      slider("c", "Damping c (kg/s)", 0.2, [0, 3, 0.05], "Friction that drains energy. 0 swings forever.", "spring"),
-      slider("x0", "Pulled to x₀ (m)", 1.5, [-2.5, 2.5, 0.05], "Where it's released. Drag the mass.", "start"),
-      slider("v0", "Pushed at v₀ (m/s)", 0, [-5, 5, 0.1], "A starting push.", "start"),
+      sceneSlider("k", "Stiffness k (N/m)", 4, [0.5, 20, 0.1], "Stiffer springs pull harder and swing faster.", "spring"),
+      sceneSlider("m", "Mass m (kg)", 1, [0.1, 5, 0.1], "Heavier masses swing slower.", "spring"),
+      sceneSlider("c", "Damping c (kg/s)", 0.2, [0, 3, 0.05], "Friction that drains energy. 0 swings forever.", "spring"),
+      sceneSlider("x0", "Pulled to x₀ (m)", 1.5, [-2.5, 2.5, 0.05], "Where it's released. Drag the mass.", "start"),
+      sceneSlider("v0", "Pushed at v₀ (m/s)", 0, [-5, 5, 0.1], "A starting push.", "start"),
     ],
-    groups: [group("spring", "Spring"), group("start", "Release")],
+    groups: [sceneGroup("spring", "Spring"), sceneGroup("start", "Release")],
     timeline: { mode: "once", min: 0, max: 12 },
     view: { x: [-1.5, 13], y: [-4.5, 7.5] },
   };
@@ -197,7 +198,7 @@ function spring(): SimulationScene {
 // ─── Pendulum ─────────────────────────────────────────────────────────────────
 
 function pendulum(): SimulationScene {
-  const r = rows("pend");
+  const r = sceneRows("pend");
   const BOB = "#ef4444";
   // Pivot at (5, 7.5). Below it, θ(t) is drawn on the real axes (radians).
   return {
@@ -216,12 +217,12 @@ function pendulum(): SimulationScene {
       r.readout("[5, -3.3]", "Small-swing period 2π√(L/g) = {{2*pi*sqrt(L/g)}} s", TEXT),
     ],
     variables: [
-      slider("th0", "Release angle (°)", 60, [-170, 170, 1], "Drag the bob. Wide swings take longer than the formula says.", "start"),
-      slider("L", "Length L (m)", 2, [0.5, 3, 0.1], "Longer pendulums swing slower.", "pendulum"),
-      slider("g", "Gravity (m/s²)", 9.8, [0.5, 25, 0.1], "Earth 9.8, Moon 1.6", "pendulum"),
-      slider("c", "Air drag", 0, [0, 1, 0.02], "Slows the swing down over time.", "pendulum"),
+      sceneSlider("th0", "Release angle (°)", 60, [-170, 170, 1], "Drag the bob. Wide swings take longer than the formula says.", "start"),
+      sceneSlider("L", "Length L (m)", 2, [0.5, 3, 0.1], "Longer pendulums swing slower.", "pendulum"),
+      sceneSlider("g", "Gravity (m/s²)", 9.8, [0.5, 25, 0.1], "Earth 9.8, Moon 1.6", "pendulum"),
+      sceneSlider("c", "Air drag", 0, [0, 1, 0.02], "Slows the swing down over time.", "pendulum"),
     ],
-    groups: [group("start", "Release"), group("pendulum", "Pendulum")],
+    groups: [sceneGroup("start", "Release"), sceneGroup("pendulum", "Pendulum")],
     timeline: { mode: "once", min: 0, max: 10 },
     view: { x: [-1, 11], y: [-4, 11.5] },
   };
@@ -230,7 +231,7 @@ function pendulum(): SimulationScene {
 // ─── Motion graphs ────────────────────────────────────────────────────────────
 
 function motionGraphs(): SimulationScene {
-  const r = rows("kin");
+  const r = sceneRows("kin");
   const CAR = "#3b82f6";
   const VEL = "#f59e0b";
   // The cart rides a vertical track left of the axes, so its height IS its position:
@@ -253,11 +254,11 @@ function motionGraphs(): SimulationScene {
       r.readout("[4, 7.4]", "x = {{pos(time)}} m    v = {{vel(time)}} m/s    a = {{a}} m/s²", TEXT),
     ],
     variables: [
-      slider("x0", "Start position x₀ (m)", 1, [-4, 6, 0.1], "Drag the cart up or down the track.", "start"),
-      slider("v0", "Start velocity v₀ (m/s)", 2, [-4, 4, 0.1], "Drag the orange arrow on the cart.", "start"),
-      slider("a", "Acceleration a (m/s²)", -0.5, [-2, 2, 0.05], "Constant. Negative slows an upward-moving cart.", "motion"),
+      sceneSlider("x0", "Start position x₀ (m)", 1, [-4, 6, 0.1], "Drag the cart up or down the track.", "start"),
+      sceneSlider("v0", "Start velocity v₀ (m/s)", 2, [-4, 4, 0.1], "Drag the orange arrow on the cart.", "start"),
+      sceneSlider("a", "Acceleration a (m/s²)", -0.5, [-2, 2, 0.05], "Constant. Negative slows an upward-moving cart.", "motion"),
     ],
-    groups: [group("start", "At t = 0"), group("motion", "Motion")],
+    groups: [sceneGroup("start", "At t = 0"), sceneGroup("motion", "Motion")],
     timeline: { mode: "once", min: 0, max: 8 },
     view: { x: [-3.5, 9], y: [-6.5, 8] },
   };
