@@ -62,6 +62,9 @@
   display: inline-block;
 }
 
+.lg-board[data-compact="true"] .lg-cell-num { display: none; }
+.lg-board[data-compact="true"] .lg-cell { font-size: calc(var(--size) * 0.62); }
+
 .lg-cell[data-word="true"] {
   background: #eef2ff;
   border-color: #c7d2fe;

@@ -185,19 +185,37 @@ function Player({
   const toggle = useCallback(() => dispatch({ type: "toggleDirection" }), [dispatch]);
   const step = useCallback((s: 1 | -1) => dispatch({ type: "nextEntry", step: s }), [dispatch]);
 
-  const inputMode = useLearningStore((s) => s.prefs.inputMode);
+  // Word Wheel puzzles carry one wheel for the whole game; a plain crossword's wheel follows the
+  // active clue and can be swapped for keys.
+  const fixedWheel = puzzle.wheel;
+  const preferredInput = useLearningStore((s) => s.prefs.inputMode);
+  const inputMode = fixedWheel ? "wheel" : preferredInput;
   const [shuffles, setShuffles] = useState(0);
   const wheel = useMemo(
-    () => (entry ? wheelLetters(entry.answer, `${entry.id}:${shuffles}`) : []),
+    () =>
+      fixedWheel
+        ? wheelLetters(fixedWheel.join(""), `${game.id}:${shuffles}`)
+        : entry
+          ? wheelLetters(entry.answer, `${entry.id}:${shuffles}`)
+          : [],
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [entry?.id, shuffles],
+    [fixedWheel, game.id, entry?.id, shuffles],
+  );
+  const openAnswers = useMemo(
+    () => new Set(puzzle.entries.filter((e) => !state.solved.includes(e.id)).map((e) => e.answer)),
+    [puzzle, state.solved],
   );
   const submitWord = useCallback(
     (word: string): WheelResult => {
-      const { events } = dispatch({ type: "submitWord", word, entryId: entry?.id });
-      return events.some((e: CrosswordEvent) => e.type === "correct" || e.type === "complete") ? "correct" : "wrong";
+      // With a fixed wheel the word may answer any clue, so no single clue is charged a wrong try.
+      const { events } = dispatch({ type: "submitWord", word, entryId: fixedWheel ? undefined : entry?.id });
+      const found = events.some((e: CrosswordEvent) => e.type === "correct" || e.type === "complete");
+      if (!found && puzzle.entries.some((e) => e.answer === word && stateRef.current.solved.includes(e.id))) {
+        setAnnouncement(`${word} is already in the grid.`);
+      }
+      return found ? "correct" : "wrong";
     },
-    [dispatch, entry?.id],
+    [dispatch, entry?.id, fixedWheel, puzzle],
   );
   const toggleInput = () =>
     useLearningStore.getState().setPrefs({ inputMode: inputMode === "wheel" ? "keys" : "wheel" });
@@ -256,7 +274,7 @@ function Player({
               Reveal<span className="hidden sm:inline"> word</span>
             </span>
           </ActionButton>
-          <ActionButton
+          {!fixedWheel && <ActionButton
             size="icon"
             className="sm:ml-auto"
             onClick={toggleInput}
@@ -264,8 +282,8 @@ function Player({
             title={inputMode === "wheel" ? "Type with keys instead" : "Use the letter wheel"}
           >
             {inputMode === "wheel" ? <Keyboard size={17} /> : <CircleDot size={17} />}
-          </ActionButton>
-          <ActionButton variant="ghost" className="flex-1 sm:flex-none" onClick={endGame}>
+          </ActionButton>}
+          <ActionButton variant="ghost" className={cn("flex-1 sm:flex-none", fixedWheel && "sm:ml-auto")} onClick={endGame}>
             <Flag size={16} /> End
           </ActionButton>
         </div>
@@ -296,16 +314,22 @@ function Player({
   );
 
   const entrySolved = !!entry && state.solved.includes(entry.id);
-  const letterWheel = playing && inputMode === "wheel" && entry && (
+  const wordsLeft = total - solvedCount;
+  const letterWheel = playing && inputMode === "wheel" && (fixedWheel || entry) && (
     <LetterWheel
-      key={entry.id}
+      key={fixedWheel ? "fixed" : entry!.id}
       letters={wheel}
-      targetLength={entry.cells.length}
-      disabled={entrySolved}
+      shouldSubmit={(word) => (fixedWheel ? openAnswers.has(word) : word.length >= entry!.cells.length)}
+      idleLabel={fixedWheel ? `${wordsLeft} ${wordsLeft === 1 ? "word" : "words"} to find` : `${entry!.cells.length} letters`}
+      disabled={!fixedWheel && entrySolved}
       disabledLabel="Solved ✓"
       onSubmit={submitWord}
       onShuffle={() => setShuffles((n) => n + 1)}
-      className={isDesktop ? "mx-auto w-full max-w-[21rem]" : "mx-auto w-full max-w-[20rem] [&>.lg-wheel]:max-w-[min(13.5rem,54vw)]"}
+      className={
+        isDesktop
+          ? "mx-auto w-full max-w-[22rem]"
+          : cn("mx-auto w-full max-w-[21rem]", fixedWheel ? "[&>.lg-wheel]:max-w-[min(15rem,60vw)]" : "[&>.lg-wheel]:max-w-[min(13.5rem,54vw)]")
+      }
     />
   );
 
@@ -331,7 +355,7 @@ function Player({
             {keyboard}
             {!touch && playing && (
               <p className="text-center text-xs text-slate-400 dark:text-slate-500">
-                {inputMode === "wheel" ? "Swipe the wheel or type · " : "Type to fill · "}Arrows move · Space switches direction · Enter goes to the next clue
+                {fixedWheel ? "Swipe any word from the wheel, in any order · " : inputMode === "wheel" ? "Swipe the wheel or type · " : "Type to fill · "}Arrows move · Space switches direction · Enter goes to the next clue
               </p>
             )}
           </div>

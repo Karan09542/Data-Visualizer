@@ -88,6 +88,12 @@ export function generateGame(req: GenerateRequest): GameGeneration {
 
   const count = Math.max(module.minWords, Math.min(req.wordCount, module.maxWords, eligible.length));
   const ranked = rankWords(eligible, req.progress, req.selection, random);
+
+  if (module.selectsOwnWords) {
+    const result = module.generate(ranked, random, { ...req.hints, wordCount: count });
+    if (result.ok === false) return { ok: false, reason: result.reason };
+    return { ok: true, module, puzzle: result.puzzle, state: module.createState(result.puzzle), wordIds: result.wordIds, leftOut: [] };
+  }
   let chosen = ranked.slice(0, count);
   let reserve = ranked.slice(count);
   let best: GenerateResult<unknown> | null = null;

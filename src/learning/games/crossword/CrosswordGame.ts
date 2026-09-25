@@ -39,6 +39,11 @@ export interface CrosswordPuzzle {
   numbers: (number | null)[];
   /** Across entries by number, then down entries by number: the order clues are read in. */
   entries: CrosswordEntry[];
+  /**
+   * Word Wheel only: the letters on the wheel for the whole game. Every answer can be spelled
+   * from them. Absent for a plain crossword, whose wheel follows the active clue.
+   */
+  wheel?: string[];
 }
 
 export type CellMark = "" | "hint" | "reveal";
@@ -529,6 +534,7 @@ export function restore(puzzle: unknown, state: unknown): { puzzle: CrosswordPuz
     return null;
   }
   if (p.solution[s.cursor?.cell] == null) return null;
+  if (p.wheel !== undefined && !(Array.isArray(p.wheel) && p.wheel.every((l) => typeof l === "string"))) return null;
   return {
     puzzle: p,
     state: {
@@ -548,6 +554,7 @@ export const crosswordModule: GameModule<CrosswordPuzzle, CrosswordState> = {
   minWords: 2,
   maxWords: 16,
   defaultWordCount: 8,
+  wordCountOptions: [4, 6, 8, 12, 16],
   isEligible: isCrosswordEligible,
   ineligibleReason: `Crossword answers need ${MIN_ANSWER}–${MAX_ANSWER} letters and a meaning.`,
   generate: generateCrossword,

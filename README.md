@@ -79,6 +79,7 @@ A native micro-tool suite built right into the app—no external websites or clo
 ### 6. 🎓 Learning Games
 Build your own vocabulary and practice it with games. Open it with **Learn** in the toolbar (the graduation cap on phones).
 * **My Words**: add words with a meaning and an example sentence, organize them into sets, paste whole lists from notes or a spreadsheet, and track mastery per word.
+* **Word Wheel**: one wheel of 8–15 letters for the whole game. The game picks up to 20 of your words that can all be spelled from it, and you find them in any order by swiping the wheel, Wordscapes-style. Meanings are the clues.
 * **Crossword**: meanings become clues. Swipe or tap the letters on a letter wheel to spell the answer and it drops into its place in the grid, or switch to typing with a keyboard. Each word is checked as you finish it, with letter hints or a full reveal when you're stuck.
 * **Results & Review**: score, time and a word-by-word breakdown after every game, plus one tap to practice the words you missed.
 * **Offline-first**: everything is saved automatically to the Origin Private File System, with IndexedDB as a fallback, and stays in sync across open tabs.

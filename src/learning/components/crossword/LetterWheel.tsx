@@ -7,8 +7,10 @@ export type WheelResult = "correct" | "wrong";
 interface LetterWheelProps {
   /** The letters around the rim, in display order. Duplicates are separate letters. */
   letters: string[];
-  /** Length of the answer being looked for; a tapped word is checked once it gets this long. */
-  targetLength: number;
+  /** Whether a word built by tapping should be checked now, e.g. once it is long enough. */
+  shouldSubmit: (word: string) => boolean;
+  /** Shown in the middle while nothing is selected, e.g. "6 letters". */
+  idleLabel: string;
   disabled?: boolean;
   /** Shown in the middle when the wheel is disabled. */
   disabledLabel?: string;
@@ -30,7 +32,7 @@ const letterSize = (n: number) => (n <= 5 ? 25 : n <= 7 ? 22 : n <= 9 ? 19 : n <
  * onto the previous letter takes it off again. Coordinates are percentages of the wheel, so it
  * scales with whatever width it is given.
  */
-export function LetterWheel({ letters, targetLength, disabled, disabledLabel, onSubmit, onShuffle, className }: LetterWheelProps) {
+export function LetterWheel({ letters, shouldSubmit, idleLabel, disabled, disabledLabel, onSubmit, onShuffle, className }: LetterWheelProps) {
   const discRef = useRef<HTMLDivElement>(null);
   const [path, setPathState] = useState<number[]>([]);
   const pathRef = useRef<number[]>([]);
@@ -107,7 +109,7 @@ export function LetterWheel({ letters, targetLength, disabled, disabledLabel, on
     if (current.includes(i)) return;
     const next = [...current, i];
     setPath(next);
-    if (next.length >= targetLength) submit(next);
+    if (shouldSubmit(next.map((k) => letters[k]).join(""))) submit(next);
   };
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
@@ -150,7 +152,7 @@ export function LetterWheel({ letters, targetLength, disabled, disabledLabel, on
     const current = pathRef.current;
     if (d.moved) submit(current);
     else if (d.removeOnTap) setPath(current.slice(0, -1));
-    else if (current.length >= targetLength) submit(current);
+    else if (shouldSubmit(current.map((k) => letters[k]).join(""))) submit(current);
   };
 
   const onPointerCancel = () => {
@@ -210,17 +212,21 @@ export function LetterWheel({ letters, targetLength, disabled, disabledLabel, on
           {disabled ? (
             <span className="text-[6.5cqw] font-semibold text-emerald-600 dark:text-emerald-400">{disabledLabel}</span>
           ) : word ? (
-            <span
+            // Tapping the word checks it, for words built by tapping that are not checked on their own.
+            <button
+              type="button"
+              onClick={() => !feedback && !drag.current && submit(pathRef.current)}
+              aria-label={`Check ${word}`}
               className={cn(
-                "rounded-full px-[4cqw] py-[1.5cqw] font-bold tracking-[0.08em] text-white shadow-sm transition-colors",
+                "pointer-events-auto rounded-full px-[4cqw] py-[1.5cqw] font-bold tracking-[0.08em] text-white shadow-sm transition-colors",
                 feedback === "correct" ? "lg-pop bg-emerald-500" : feedback === "wrong" ? "bg-rose-500" : "bg-indigo-600",
               )}
               style={{ fontSize: `${Math.min(8, (inner * 1.35) / Math.max(word.length, 3))}cqw` }}
             >
               {word}
-            </span>
+            </button>
           ) : (
-            <span className="text-[6cqw] font-medium text-slate-400 dark:text-slate-500">{targetLength} letters</span>
+            <span className="text-[6cqw] font-medium text-slate-400 dark:text-slate-500">{idleLabel}</span>
           )}
         </div>
 

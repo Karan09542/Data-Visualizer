@@ -25,6 +25,10 @@ export interface GameEvaluation {
 export interface GenerateHints {
   /** Width divided by height of the space the game will be shown in. */
   aspect?: number;
+  /** How many words the player asked for; passed to modules that pick their own words. */
+  wordCount?: number;
+  /** Most letters a letter wheel may hold, for games built around one. */
+  wheelSize?: number;
 }
 
 export interface GameModule<P = unknown, S = unknown> {
@@ -34,6 +38,13 @@ export interface GameModule<P = unknown, S = unknown> {
   minWords: number;
   maxWords: number;
   defaultWordCount: number;
+  /** Choices offered for "how many words". */
+  wordCountOptions?: number[];
+  /**
+   * When true the module receives every eligible word, best first, and chooses its own subset
+   * (e.g. words that share one set of letters) instead of being handed the top few.
+   */
+  selectsOwnWords?: boolean;
   /** Whether a word can appear in this game at all. */
   isEligible(word: VocabWord): boolean;
   /** Shown next to words the game has to skip. */
