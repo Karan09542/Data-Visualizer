@@ -27,3 +27,4 @@ export * from "./Timeline";
 export * from "./scope";
 export * from "./simulations";
 export * from "./SimulationGallery";
+export * from "./CalculatorResult";

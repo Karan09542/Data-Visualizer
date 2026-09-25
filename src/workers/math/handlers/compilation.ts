@@ -187,12 +187,19 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
 
       const node = context.registry.getParsedNode(f.expr);
       if (node) {
+        // In a calculator row, km, mi, deg … are units ("5 km to mi"), not missing sliders.
+        const units: string[] = [];
+        if (f.type === "calculator") {
+          node.traverse((n: any) => {
+            if (n.isSymbolNode && (context.math as any).Unit?.isValuelessUnit?.(n.name)) units.push(n.name);
+          });
+        }
         extractVariables(
           node,
           assignedVars,
           varsToAdd,
           context,
-          f.type === "polar" ? POLAR_BUILTINS : [],
+          f.type === "polar" ? POLAR_BUILTINS : units,
         );
       }
 

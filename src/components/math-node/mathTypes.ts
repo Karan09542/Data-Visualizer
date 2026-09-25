@@ -29,7 +29,8 @@ export interface MathFunction {
     | "vector"
     | "polygon"
     | "inequality"
-    | "line";
+    | "line"
+    | "calculator";
   compiled?: any;
   compiledKey?: string;
   expr2?: string; // For parametric x/y or polar r/theta
@@ -45,6 +46,10 @@ export interface MathFunction {
   labelFlipY?: boolean;
   showLabelPoint?: boolean;
   labelAlignment?: "center" | "above" | "below" | "left" | "right" | "custom";
+  /** Calculator rows: how the answer is written, and to how many significant digits. */
+  calcNotation?: "auto" | "normal" | "scientific";
+  calcDigits?: number;
+
   /** Show the label as ordinary text instead of formatting it as math. */
   labelPlain?: boolean;
   fillColor?: string;
