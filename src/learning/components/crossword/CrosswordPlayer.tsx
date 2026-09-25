@@ -1,11 +1,12 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Eye, Flag, Lightbulb, PartyPopper, Timer } from "lucide-react";
+import { CircleDot, Eye, Flag, Keyboard, Lightbulb, PartyPopper, Timer } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   activeEntry,
   reduce,
   restore,
   type CrosswordAction,
+  type CrosswordEvent,
   type CrosswordPuzzle,
   type CrosswordState,
 } from "../../games/crossword/CrosswordGame";
@@ -15,8 +16,33 @@ import { ActionButton, EmptyState, formatDuration, useConfirm } from "../primiti
 import { CrosswordBoard, type BoardFlash } from "./CrosswordBoard";
 import { ClueBar, ClueList, clueLength } from "./ClueList";
 import { LetterKeyboard } from "./LetterKeyboard";
+import { LetterWheel, type WheelResult } from "./LetterWheel";
+import { useLearningStore } from "../../store/useLearningStore";
 
 const CONFETTI_COLORS = ["#6366f1", "#8b5cf6", "#10b981", "#f59e0b", "#ec4899", "#0ea5e9"];
+
+/**
+ * The answer's letters in a shuffled order that stays put for a given seed (so the wheel does not
+ * jump on every render) and never spells the answer outright.
+ */
+function wheelLetters(answer: string, seed: string): string[] {
+  let h = 2166136261;
+  for (let i = 0; i < seed.length; i++) h = Math.imul(h ^ seed.charCodeAt(i), 16777619);
+  const random = () => {
+    h = Math.imul(h ^ (h >>> 15), 2246822507);
+    h = Math.imul(h ^ (h >>> 13), 3266489909);
+    return ((h ^= h >>> 16) >>> 0) / 4294967296;
+  };
+  const letters = [...answer];
+  for (let attempt = 0; attempt < 8; attempt++) {
+    for (let i = letters.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [letters[i], letters[j]] = [letters[j], letters[i]];
+    }
+    if (letters.join("") !== answer || new Set(letters).size === 1) break;
+  }
+  return letters;
+}
 
 export function CrosswordPlayer(props: GamePlayerProps) {
   const initial = useMemo(() => restore(props.game.puzzle, props.game.state), [props.game.id]);
@@ -84,13 +110,15 @@ function Player({
           setAnnouncement(`${e.number} ${e.direction} is not quite right. Check the highlighted letters.`);
         } else if (event.type === "revealed" && e) {
           setAnnouncement(`Revealed: ${e.word}.`);
+        } else if (event.type === "rejected" && event.counted) {
+          setAnnouncement(`${event.word} is not the answer.`);
         } else if (event.type === "complete") {
           setCelebrating(true);
           setAnnouncement("Crossword complete!");
           onFinish(next);
         }
       }
-      return next;
+      return { state: next, events };
     },
     [puzzle, clock, onSave, onFinish, showFlash],
   );
@@ -157,6 +185,23 @@ function Player({
   const toggle = useCallback(() => dispatch({ type: "toggleDirection" }), [dispatch]);
   const step = useCallback((s: 1 | -1) => dispatch({ type: "nextEntry", step: s }), [dispatch]);
 
+  const inputMode = useLearningStore((s) => s.prefs.inputMode);
+  const [shuffles, setShuffles] = useState(0);
+  const wheel = useMemo(
+    () => (entry ? wheelLetters(entry.answer, `${entry.id}:${shuffles}`) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [entry?.id, shuffles],
+  );
+  const submitWord = useCallback(
+    (word: string): WheelResult => {
+      const { events } = dispatch({ type: "submitWord", word, entryId: entry?.id });
+      return events.some((e: CrosswordEvent) => e.type === "correct" || e.type === "complete") ? "correct" : "wrong";
+    },
+    [dispatch, entry?.id],
+  );
+  const toggleInput = () =>
+    useLearningStore.getState().setPrefs({ inputMode: inputMode === "wheel" ? "keys" : "wheel" });
+
   const endGame = async () => {
     const left = total - solvedCount;
     const ok = await confirm({
@@ -166,7 +211,7 @@ function Player({
       variant: "warning",
     });
     if (!ok) return;
-    const next = dispatch({ type: "end" });
+    const { state: next } = dispatch({ type: "end" });
     onFinish(next);
     onContinue();
   };
@@ -211,7 +256,16 @@ function Player({
               Reveal<span className="hidden sm:inline"> word</span>
             </span>
           </ActionButton>
-          <ActionButton variant="ghost" className="flex-1 sm:ml-auto sm:flex-none" onClick={endGame}>
+          <ActionButton
+            size="icon"
+            className="sm:ml-auto"
+            onClick={toggleInput}
+            aria-label={inputMode === "wheel" ? "Type with keys instead" : "Use the letter wheel"}
+            title={inputMode === "wheel" ? "Type with keys instead" : "Use the letter wheel"}
+          >
+            {inputMode === "wheel" ? <Keyboard size={17} /> : <CircleDot size={17} />}
+          </ActionButton>
+          <ActionButton variant="ghost" className="flex-1 sm:flex-none" onClick={endGame}>
             <Flag size={16} /> End
           </ActionButton>
         </div>
@@ -237,8 +291,22 @@ function Player({
     </div>
   );
 
-  const keyboard = touch && playing && (
+  const keyboard = touch && playing && inputMode === "keys" && (
     <LetterKeyboard extraLetters={extraLetters} onLetter={letter} onBackspace={backspace} onToggleDirection={toggle} />
+  );
+
+  const entrySolved = !!entry && state.solved.includes(entry.id);
+  const letterWheel = playing && inputMode === "wheel" && entry && (
+    <LetterWheel
+      key={entry.id}
+      letters={wheel}
+      targetLength={entry.cells.length}
+      disabled={entrySolved}
+      disabledLabel="Solved ✓"
+      onSubmit={submitWord}
+      onShuffle={() => setShuffles((n) => n + 1)}
+      className={isDesktop ? "mx-auto w-full max-w-[21rem]" : "mx-auto w-full max-w-[20rem] [&>.lg-wheel]:max-w-[min(13.5rem,54vw)]"}
+    />
   );
 
   const clueBar = !celebrating && <ClueBar puzzle={puzzle} state={state} onStep={step} onToggle={toggle} />;
@@ -263,11 +331,14 @@ function Player({
             {keyboard}
             {!touch && playing && (
               <p className="text-center text-xs text-slate-400 dark:text-slate-500">
-                Type to fill · Arrows move · Space switches direction · Enter goes to the next clue
+                {inputMode === "wheel" ? "Swipe the wheel or type · " : "Type to fill · "}Arrows move · Space switches direction · Enter goes to the next clue
               </p>
             )}
           </div>
-          <ClueList puzzle={puzzle} state={state} onSelect={selectEntry} autoScroll className="min-h-0 overflow-y-auto overscroll-contain pr-1" />
+          <div className="flex min-h-0 flex-col gap-5">
+            {letterWheel && <div className="shrink-0">{letterWheel}</div>}
+            <ClueList puzzle={puzzle} state={state} onSelect={selectEntry} autoScroll className="min-h-0 flex-1 overflow-y-auto overscroll-contain pr-1" />
+          </div>
         </div>
       ) : (
         <>
@@ -275,10 +346,11 @@ function Player({
             {board}
             <ClueList puzzle={puzzle} state={state} onSelect={selectEntry} autoScroll={false} className="mt-6" />
           </div>
-          {(clueBar || keyboard) && (
+          {(clueBar || keyboard || letterWheel) && (
             <div className={cn("space-y-2 border-t border-slate-200 bg-white px-3 pt-2 dark:border-slate-800 dark:bg-[#0d1117]", "pb-[max(0.75rem,env(safe-area-inset-bottom))]")}>
               {clueBar}
               {keyboard}
+              {letterWheel}
             </div>
           )}
         </>

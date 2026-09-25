@@ -60,6 +60,7 @@ export const DEFAULT_PREFS: LearningPrefs = {
   gameSetId: null,
   wordCount: 8,
   selection: "weakest",
+  inputMode: "wheel",
 };
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";

@@ -2,7 +2,7 @@
 
 .lg-board {
   --gap: 3px;
-  --cell-max: 46px;
+  --cell-max: 56px;
   --board-max-h: 100000px;
   display: grid;
   grid-template-columns: repeat(var(--cols), minmax(0, 1fr));
@@ -188,12 +188,25 @@
 
 .lg-key:active { transform: translateY(1px) scale(0.97); }
 
+/* Letter wheel ---------------------------------------------------------- */
+
+.lg-wheel {
+  container-type: inline-size;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.lg-wheel-shake { animation: lg-shake 420ms ease-in-out; }
+
 @media (prefers-reduced-motion: reduce) {
   .lg-pop,
   .lg-cell[data-flash],
   .lg-board[data-celebrate="true"] .lg-cell,
   .lg-confetti > span,
-  .lg-card-in {
+  .lg-card-in,
+  .lg-wheel-shake {
     animation: none !important;
   }
   .lg-confetti { display: none; }

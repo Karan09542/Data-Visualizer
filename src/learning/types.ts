@@ -110,7 +110,11 @@ export interface LearningPrefs {
   gameSetId: Id | null;
   wordCount: number;
   selection: WordSelection;
+  /** How letters are entered while playing: swiping a letter wheel, or typing on keys. */
+  inputMode: InputMode;
 }
+
+export type InputMode = "wheel" | "keys";
 
 export type LearningView = "words" | "create" | "play" | "results" | "review";
 

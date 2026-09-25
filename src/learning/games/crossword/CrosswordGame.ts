@@ -72,6 +72,8 @@ export type CrosswordAction =
   | { type: "toggleDirection" }
   | { type: "hint" }
   | { type: "revealEntry" }
+  /** A whole word from the letter wheel, aimed at `entryId` (the active clue). */
+  | { type: "submitWord"; word: string; entryId?: string }
   | { type: "tick"; ms: number }
   | { type: "end" };
 
@@ -79,6 +81,8 @@ export type CrosswordEvent =
   | { type: "correct"; entryId: string }
   | { type: "wrong"; entryId: string }
   | { type: "revealed"; entryId: string }
+  /** A wheel word that answers no open clue. `counted` is true when it was a full-length guess. */
+  | { type: "rejected"; entryId?: string; word: string; counted: boolean }
   | { type: "complete" };
 
 // ---------------------------------------------------------------------------
@@ -442,6 +446,26 @@ export function reduce(
       events.push({ type: "revealed", entryId: entry.id });
       checkEntries(puzzle, s, changed, events);
       if (s.status === "playing") moveToNextEntry(puzzle, s, entry, 1);
+      break;
+    }
+    case "submitWord": {
+      const word = [...action.word].map(foldLetter).join("");
+      const open = puzzle.entries.filter((e) => !s.solved.includes(e.id) && e.answer === word);
+      // The active clue first; otherwise any open clue with exactly this answer (anagrams of the
+      // wheel letters can belong to another word).
+      const target = open.find((e) => e.id === action.entryId) ?? open[0];
+      if (!target) {
+        const aimed = puzzle.entries.find((e) => e.id === action.entryId);
+        const counted = !!aimed && !s.solved.includes(aimed.id) && [...word].length === aimed.cells.length;
+        if (counted) s.mistakes = { ...s.mistakes, [aimed!.id]: (s.mistakes[aimed!.id] ?? 0) + 1 };
+        events.push({ type: "rejected", entryId: aimed?.id, word, counted });
+        break;
+      }
+      target.cells.forEach((c, i) => {
+        if (!isLocked(puzzle, s, c)) setLetter(s, c, target.answer[i]);
+      });
+      checkEntries(puzzle, s, target.cells, events);
+      if (s.status === "playing") moveToNextEntry(puzzle, s, target, 1);
       break;
     }
     case "end": {
