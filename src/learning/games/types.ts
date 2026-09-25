@@ -27,7 +27,7 @@ export interface GenerateHints {
   aspect?: number;
   /** How many words the player asked for; passed to modules that pick their own words. */
   wordCount?: number;
-  /** Most letters a letter wheel may hold, for games built around one. */
+  /** Most letters a letter wheel may hold, for games built around one; 0 means choose automatically. */
   wheelSize?: number;
 }
 
