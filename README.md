@@ -76,6 +76,16 @@ A native micro-tool suite built right into the app—no external websites or clo
 
 ---
 
+### 6. 🎓 Learning Games
+Build your own vocabulary and practice it with games. Open it with **Learn** in the toolbar (the graduation cap on phones).
+* **My Words**: add words with a meaning and an example sentence, organize them into sets, paste whole lists from notes or a spreadsheet, and track mastery per word.
+* **Crossword**: meanings become clues. Works with keyboard or touch (on-screen keyboard on phones), checks each word as you finish it, and offers letter hints or a full reveal.
+* **Results & Review**: score, time and a word-by-word breakdown after every game, plus one tap to practice the words you missed.
+* **Offline-first**: everything is saved automatically to the Origin Private File System, with IndexedDB as a fallback, and stays in sync across open tabs.
+* **Pluggable**: game rules live in `src/learning/games/` apart from the UI, so new games (matching, fill-in-the-blank, unscramble) register alongside the crossword.
+
+---
+
 ## 🛡️ Architectural & Privacy Guarantees
 
 | Guarantee | How It Works |
@@ -156,6 +166,7 @@ Data-Visualizer/
 │   │   ├── utilities/           # Quick Tools (ImageCropUtil, StyleTransfer, PDF, etc.)
 │   │   ├── nodes/               # Graph canvas nodes (Python, JS, API, JSON primitives)
 │   │   └── ui/                  # Reusable UI components (Modals, Selects, Buttons)
+│   ├── learning/                # Learning Games: vocabulary, game modules, storage, panel UI
 │   ├── pages/                   # Route views (Home workspace, About, Examples, Terms)
 │   ├── workers/                 # Web Workers (pyWorker.ts for isolated Pyodide execution)
 │   ├── services/                # WebRTC, P2P data channels, storage, and API clients

@@ -49,6 +49,7 @@ import {
   Brain,
   LayoutGrid,
   Atom,
+  GraduationCap,
 } from "lucide-react";
 import { useFullscreen } from "../hooks/useFullscreen";
 import CustomSelect from "./CustomSelect";
@@ -869,6 +870,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             </svg>
             Data Visualizer
           </Link>
+          <button
+            onClick={() => useStore.getState().setIsLearningGamesOpen(true)}
+            className="hidden lg:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded-full text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors"
+            title="Learning Games: practice your vocabulary with crosswords"
+            aria-label="Open Learning Games"
+          >
+            <GraduationCap size={14} />
+            <span>Learn</span>
+          </button>
           <div className="hidden xl:flex items-center gap-4 ml-4 text-xs font-semibold">
             <Link
               to="/about"
@@ -1226,6 +1236,14 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             <Sparkles size={16} className="animate-pulse" />
           </button>
           <button
+            onClick={() => useStore.getState().setIsLearningGamesOpen(true)}
+            className="p-2 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
+            title="Learning Games"
+            aria-label="Open Learning Games"
+          >
+            <GraduationCap size={19} />
+          </button>
+          <button
             onClick={() => setIsWikiSearchOpen(true)}
             className="p-2 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
             title="Search Wikipedia"
@@ -1543,6 +1561,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   >
                     <BookOpen size={16} className="text-emerald-500" />
                     <span>Wikipedia</span>
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setIsMobileMenuOpen(false);
+                      useStore.getState().setIsLearningGamesOpen(true);
+                    }}
+                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+                  >
+                    <GraduationCap size={16} className="text-indigo-500" />
+                    <span>Learning Games</span>
                   </button>
 
                   {canGoFullscreen && (
