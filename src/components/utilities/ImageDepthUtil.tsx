@@ -19,11 +19,23 @@ import {
   Sun,
   Cloud,
   Gauge,
+  Paintbrush,
+  Eraser,
+  Undo2,
+  Redo2,
+  Trash2,
 } from "lucide-react";
 import { FileDropzoneUpload, SampleImageItem } from "./FileDropzoneUpload";
 import CustomSelect from "../CustomSelect";
 import { ai } from "../../ai";
 import { AIProgressEvent, DepthEstimationResult } from "../../ai/types";
+import { EraserEngine } from "../../lib/eraser";
+import type { EraseStroke } from "../../lib/eraser";
+
+/** The painting surface is capped: a phone photo is far more pixels than a screen can show. */
+const PAINT_MAX_DIM = 1400;
+/** A soft edge, so a touch-up blends into the effect around it instead of cutting a hole. */
+const BRUSH_HARDNESS = 45;
 
 /** Photos with clear near and far subjects, where a depth map is easy to read. */
 const SAMPLE_IMAGES: SampleImageItem[] = [
@@ -116,6 +128,20 @@ export function ImageDepthUtil() {
   const [mobileTab, setMobileTab] = useState<"canvas" | "controls">("canvas");
   const [copyFeedback, setCopyFeedback] = useState(false);
   const [exportFormat, setExportFormat] = useState<ExportFormat>("png");
+
+  // ── Touch-ups: brush the effect away, or paint it back ───────────────────
+  const eraserRef = useRef<EraserEngine | null>(null);
+  /** Kept outside the engine so a change of strength re-runs the model without losing the work. */
+  const strokesRef = useRef<EraseStroke[]>([]);
+  const undoneRef = useRef<EraseStroke[]>([]);
+  const paintCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const brushRingRef = useRef<HTMLDivElement | null>(null);
+  const isPaintingRef = useRef(false);
+  const lastPointRef = useRef<{ x: number; y: number } | null>(null);
+  const [brushMode, setBrushMode] = useState<"off" | "erase" | "restore">("off");
+  const [brushSize, setBrushSize] = useState(70);
+  const [canUndo, setCanUndo] = useState(false);
+  const [canRedo, setCanRedo] = useState(false);
 
   // Split comparison slider
   const splitBoxRef = useRef<HTMLDivElement>(null);
@@ -272,14 +298,223 @@ export function ImageDepthUtil() {
     []
   );
 
-  // The preview is what gets shown and exported.
+  /** Only the three photo effects can be brushed; a depth map has nothing to take away. */
+  const canTouchUp = activeLook.usesStrength;
+
+  /**
+   * The picture as it stands: the effect, with whatever has been brushed away showing the
+   * original photo underneath. This is what the preview, Copy and Save all use.
+   */
+  const composite = useCallback((): HTMLCanvasElement | null => {
+    if (!resultCanvas) return null;
+    const engine = eraserRef.current;
+    if (!engine || !sourceImage || !canTouchUp || !engine.hasEdits) return resultCanvas;
+
+    const out = document.createElement("canvas");
+    out.width = resultCanvas.width;
+    out.height = resultCanvas.height;
+    const ctx = out.getContext("2d")!;
+    ctx.drawImage(sourceImage, 0, 0, out.width, out.height);
+    ctx.drawImage(engine.canvas, 0, 0);
+    return out;
+  }, [resultCanvas, sourceImage, canTouchUp]);
+
+  const refreshPreview = useCallback(() => {
+    const canvas = composite();
+    setPreviewUrl(canvas ? canvas.toDataURL("image/jpeg", 0.92) : "");
+  }, [composite]);
+
+  /** Repaints the whole painting surface from the photo and the effect. */
+  const drawPaintSurface = useCallback(() => {
+    const canvas = paintCanvasRef.current;
+    const engine = eraserRef.current;
+    if (!canvas || !engine || !sourceImage) return;
+    const ctx = canvas.getContext("2d")!;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.drawImage(sourceImage, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(engine.canvas, 0, 0, canvas.width, canvas.height);
+  }, [sourceImage]);
+
+  // A new result means a new engine; the strokes already made are replayed onto it.
   useEffect(() => {
-    if (!resultCanvas) {
-      setPreviewUrl("");
+    eraserRef.current?.destroy();
+    eraserRef.current = null;
+
+    if (!resultCanvas || !sourceImage || !canTouchUp) {
+      setCanUndo(false);
+      setCanRedo(false);
+      setPreviewUrl(resultCanvas ? resultCanvas.toDataURL("image/jpeg", 0.92) : "");
       return;
     }
-    setPreviewUrl(resultCanvas.toDataURL("image/jpeg", 0.92));
+
+    const engine = new EraserEngine(resultCanvas, resultCanvas.width, resultCanvas.height);
+    if (strokesRef.current.length > 0) engine.setStrokes(strokesRef.current);
+    eraserRef.current = engine;
+    undoneRef.current = [];
+    setCanUndo(strokesRef.current.length > 0);
+    setCanRedo(false);
+
+    const surface = paintCanvasRef.current;
+    if (surface) {
+      const fit = Math.min(1, PAINT_MAX_DIM / Math.max(resultCanvas.width, resultCanvas.height));
+      surface.width = Math.max(1, Math.round(resultCanvas.width * fit));
+      surface.height = Math.max(1, Math.round(resultCanvas.height * fit));
+    }
+    drawPaintSurface();
+    refreshPreview();
+  }, [resultCanvas, sourceImage, canTouchUp, drawPaintSurface, refreshPreview]);
+
+  // Turning the brush on mounts the surface, which then has to be sized and filled.
+  useEffect(() => {
+    if (brushMode === "off") return;
+    const surface = paintCanvasRef.current;
+    if (!surface || !resultCanvas) return;
+    const fit = Math.min(1, PAINT_MAX_DIM / Math.max(resultCanvas.width, resultCanvas.height));
+    surface.width = Math.max(1, Math.round(resultCanvas.width * fit));
+    surface.height = Math.max(1, Math.round(resultCanvas.height * fit));
+    drawPaintSurface();
+  }, [brushMode, resultCanvas, drawPaintSurface]);
+
+  /** Repaints just the band a stroke touched, so a drag stays smooth on a large photo. */
+  const refreshArea = useCallback(
+    (from: { x: number; y: number }, to: { x: number; y: number }, radius: number) => {
+      const canvas = paintCanvasRef.current;
+      const engine = eraserRef.current;
+      if (!canvas || !engine || !sourceImage || !resultCanvas) return;
+      const scale = canvas.width / resultCanvas.width;
+      const pad = radius + 4;
+      const sx = Math.max(0, Math.min(from.x, to.x) - pad);
+      const sy = Math.max(0, Math.min(from.y, to.y) - pad);
+      const sw = Math.min(resultCanvas.width - sx, Math.abs(to.x - from.x) + pad * 2);
+      const sh = Math.min(resultCanvas.height - sy, Math.abs(to.y - from.y) + pad * 2);
+      if (sw <= 0 || sh <= 0) return;
+
+      const ctx = canvas.getContext("2d")!;
+      const dx = sx * scale;
+      const dy = sy * scale;
+      const dw = sw * scale;
+      const dh = sh * scale;
+      ctx.clearRect(dx, dy, dw, dh);
+      ctx.drawImage(sourceImage, sx, sy, sw, sh, dx, dy, dw, dh);
+      ctx.drawImage(engine.canvas, sx, sy, sw, sh, dx, dy, dw, dh);
+    },
+    [sourceImage, resultCanvas]
+  );
+
+  /** Screen position to a point in the photo's own pixels. */
+  const toImagePoint = useCallback((clientX: number, clientY: number) => {
+    const canvas = paintCanvasRef.current;
+    if (!canvas || !resultCanvas) return null;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0 || rect.height <= 0) return null;
+    return {
+      x: ((clientX - rect.left) / rect.width) * resultCanvas.width,
+      y: ((clientY - rect.top) / rect.height) * resultCanvas.height,
+    };
   }, [resultCanvas]);
+
+  /** The brush is set in screen pixels, so it has to be measured against the photo on screen. */
+  const brushImageSize = useCallback(() => {
+    const canvas = paintCanvasRef.current;
+    if (!canvas || !resultCanvas) return brushSize;
+    const rect = canvas.getBoundingClientRect();
+    if (rect.width <= 0) return brushSize;
+    return Math.max(2, brushSize * (resultCanvas.width / rect.width));
+  }, [brushSize, resultCanvas]);
+
+  const moveRing = useCallback((clientX: number, clientY: number) => {
+    const ring = brushRingRef.current;
+    const canvas = paintCanvasRef.current;
+    if (!ring || !canvas) return;
+    const rect = canvas.getBoundingClientRect();
+    ring.style.transform = `translate3d(${clientX - rect.left}px, ${clientY - rect.top}px, 0) translate(-50%, -50%)`;
+  }, []);
+
+  const handlePaintDown = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const engine = eraserRef.current;
+    if (brushMode === "off" || !engine) return;
+    const point = toImagePoint(e.clientX, e.clientY);
+    if (!point) return;
+    e.preventDefault();
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { }
+
+    isPaintingRef.current = true;
+    lastPointRef.current = point;
+    moveRing(e.clientX, e.clientY);
+
+    const size = brushImageSize();
+    engine.beginStroke(point, { size, hardness: BRUSH_HARDNESS, opacity: 100, mode: brushMode });
+    refreshArea(point, point, size / 2);
+  };
+
+  const handlePaintMove = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (brushMode === "off") return;
+    moveRing(e.clientX, e.clientY);
+    const engine = eraserRef.current;
+    if (!isPaintingRef.current || !engine) return;
+    const point = toImagePoint(e.clientX, e.clientY);
+    if (!point) return;
+    const from = lastPointRef.current || point;
+    engine.extendStroke(point);
+    refreshArea(from, point, brushImageSize() / 2);
+    lastPointRef.current = point;
+  };
+
+  const handlePaintUp = (e: React.PointerEvent<HTMLCanvasElement>) => {
+    const engine = eraserRef.current;
+    if (!isPaintingRef.current || !engine) return;
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { }
+    isPaintingRef.current = false;
+    lastPointRef.current = null;
+
+    const stroke = engine.endStroke();
+    if (!stroke) return;
+    strokesRef.current = engine.getStrokes();
+    undoneRef.current = [];
+    setCanUndo(true);
+    setCanRedo(false);
+    drawPaintSurface();
+    refreshPreview();
+  };
+
+  const undoTouchUp = () => {
+    const engine = eraserRef.current;
+    if (!engine) return;
+    const all = engine.getStrokes();
+    const last = all[all.length - 1];
+    if (!last) return;
+    engine.removeStroke(last.id);
+    undoneRef.current.push(last);
+    strokesRef.current = engine.getStrokes();
+    setCanUndo(strokesRef.current.length > 0);
+    setCanRedo(true);
+    drawPaintSurface();
+    refreshPreview();
+  };
+
+  const redoTouchUp = () => {
+    const engine = eraserRef.current;
+    const stroke = undoneRef.current.pop();
+    if (!engine || !stroke) return;
+    engine.applyStroke(stroke);
+    strokesRef.current = engine.getStrokes();
+    setCanUndo(true);
+    setCanRedo(undoneRef.current.length > 0);
+    drawPaintSurface();
+    refreshPreview();
+  };
+
+  const clearTouchUps = () => {
+    const engine = eraserRef.current;
+    if (!engine) return;
+    engine.clear();
+    strokesRef.current = [];
+    undoneRef.current = [];
+    setCanUndo(false);
+    setCanRedo(false);
+    drawPaintSurface();
+    refreshPreview();
+  };
 
   // ── Picking a photo ──────────────────────────────────────────────────────
   const openImage = useCallback(
@@ -288,6 +523,9 @@ export function ImageDepthUtil() {
       setSourceFileName(name);
       setSourceFileSize(size);
       setResultCanvas(null);
+      strokesRef.current = [];
+      undoneRef.current = [];
+      setBrushMode("off");
       setMobileTab("canvas");
       runDepth(img, look, strength, modelId);
     },
@@ -321,6 +559,8 @@ export function ImageDepthUtil() {
   // ── Changing the look re-renders from the model ──────────────────────────
   const chooseLook = (mode: DepthMode) => {
     setLook(mode);
+    const look = LOOKS.find(l => l.id === mode);
+    if (!look?.usesStrength) setBrushMode("off");
     if (sourceImage) runDepth(sourceImage, mode, strength, modelId);
   };
 
@@ -336,9 +576,10 @@ export function ImageDepthUtil() {
 
   // ── Export ───────────────────────────────────────────────────────────────
   const copyToClipboard = async () => {
-    if (!resultCanvas) return;
+    const canvas = composite();
+    if (!canvas) return;
     try {
-      const blob = await new Promise<Blob | null>(resolve => resultCanvas.toBlob(resolve, "image/png"));
+      const blob = await new Promise<Blob | null>(resolve => canvas.toBlob(resolve, "image/png"));
       if (!blob) return;
       await navigator.clipboard.write([new ClipboardItem({ "image/png": blob })]);
       setCopyFeedback(true);
@@ -350,10 +591,11 @@ export function ImageDepthUtil() {
   };
 
   const downloadImage = () => {
-    if (!resultCanvas) return;
+    const canvas = composite();
+    if (!canvas) return;
     const mime = exportFormat === "png" ? "image/png" : exportFormat === "jpeg" ? "image/jpeg" : "image/webp";
     const ext = exportFormat === "png" ? "png" : exportFormat === "jpeg" ? "jpg" : "webp";
-    resultCanvas.toBlob(
+    canvas.toBlob(
       blob => {
         if (!blob) return;
         const url = URL.createObjectURL(blob);
@@ -383,6 +625,9 @@ export function ImageDepthUtil() {
 
   const resetAll = () => {
     runTokenRef.current++;
+    strokesRef.current = [];
+    undoneRef.current = [];
+    setBrushMode("off");
     setSourceImage(null);
     setResultCanvas(null);
     setPreviewUrl("");
@@ -582,7 +827,40 @@ export function ImageDepthUtil() {
               </div>
             )}
 
-            {previewUrl && (
+            {previewUrl && brushMode !== "off" && (
+              <div
+                className="relative max-w-full max-h-full flex items-center justify-center p-4 transition-transform duration-100"
+                style={{ transform: `scale(${zoomLevel})` }}
+              >
+                <div className="relative rounded-xl overflow-hidden shadow-2xl border border-cyan-500/40 cursor-none touch-none">
+                  <canvas
+                    ref={paintCanvasRef}
+                    onPointerDown={handlePaintDown}
+                    onPointerMove={handlePaintMove}
+                    onPointerUp={handlePaintUp}
+                    onPointerCancel={handlePaintUp}
+                    onPointerLeave={() => { if (brushRingRef.current) brushRingRef.current.style.opacity = "0"; }}
+                    onPointerEnter={() => { if (brushRingRef.current) brushRingRef.current.style.opacity = "1"; }}
+                    className="block w-auto h-auto max-w-[85vw] max-h-[70vh] touch-none"
+                  />
+                  <div
+                    ref={brushRingRef}
+                    className="pointer-events-none absolute top-0 left-0 rounded-full border-2 opacity-0 transition-[width,height] duration-75"
+                    style={{
+                      width: brushSize,
+                      height: brushSize,
+                      borderColor: brushMode === "erase" ? "rgba(244,63,94,0.95)" : "rgba(34,211,238,0.95)",
+                      backgroundColor: brushMode === "erase" ? "rgba(244,63,94,0.12)" : "rgba(34,211,238,0.12)",
+                    }}
+                  />
+                  <div className="absolute top-2.5 left-2.5 px-2 py-0.5 rounded-md bg-black/70 backdrop-blur-xs text-[10px] font-bold tracking-wider uppercase text-white shadow-xs pointer-events-none">
+                    {brushMode === "erase" ? "Erasing the effect" : "Painting it back"}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {previewUrl && brushMode === "off" && (
               <div
                 className="relative max-w-full max-h-full flex items-center justify-center p-4 transition-transform duration-100"
                 style={{ transform: `scale(${zoomLevel})` }}
@@ -761,6 +1039,99 @@ export function ImageDepthUtil() {
                   : "Applies to Portrait Blur, Studio Light and Fog."}
               </p>
             </div>
+
+            {/* Touch-ups */}
+            {canTouchUp && (
+              <div className="space-y-2.5 py-4 border-b border-slate-200 dark:border-slate-800">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center gap-1.5">
+                    <Paintbrush size={13} className="text-cyan-500" /> Touch-ups
+                  </span>
+                  <div className="flex items-center gap-0.5">
+                    <button
+                      type="button"
+                      onClick={undoTouchUp}
+                      disabled={!canUndo}
+                      title="Undo the last stroke"
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
+                    >
+                      <Undo2 size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={redoTouchUp}
+                      disabled={!canRedo}
+                      title="Redo"
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-white/5 disabled:opacity-30 transition-colors"
+                    >
+                      <Redo2 size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={clearTouchUps}
+                      disabled={!canUndo && !canRedo}
+                      title="Remove every touch-up"
+                      className="w-7 h-7 rounded-lg flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-rose-50 dark:hover:bg-rose-500/15 hover:text-rose-500 disabled:opacity-30 transition-colors"
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5">
+                  {([
+                    { id: "off" as const, label: "Off", icon: <Eye size={13} /> },
+                    { id: "erase" as const, label: "Erase", icon: <Eraser size={13} /> },
+                    { id: "restore" as const, label: "Restore", icon: <Paintbrush size={13} /> },
+                  ]).map(item => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => {
+                        setBrushMode(item.id);
+                        if (item.id !== "off") setMobileTab("canvas");
+                      }}
+                      disabled={isWorking || !resultCanvas}
+                      aria-pressed={brushMode === item.id}
+                      className={`flex-1 flex items-center justify-center gap-1.5 px-2 py-1.5 rounded-lg text-[11px] font-semibold border transition-all disabled:opacity-40 ${brushMode === item.id
+                        ? item.id === "erase"
+                          ? "bg-rose-500/15 border-rose-500/40 text-rose-600 dark:text-rose-300"
+                          : item.id === "restore"
+                            ? "bg-cyan-500/15 border-cyan-500/40 text-cyan-600 dark:text-cyan-300"
+                            : "bg-slate-200/70 dark:bg-white/10 border-slate-300 dark:border-white/15 text-slate-700 dark:text-white"
+                        : "bg-white dark:bg-[#12161f] border-slate-200 dark:border-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white"
+                        }`}
+                    >
+                      {item.icon}
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400 shrink-0">Size</span>
+                  <input
+                    type="range"
+                    min={12}
+                    max={220}
+                    step={2}
+                    value={brushSize}
+                    onChange={e => setBrushSize(parseInt(e.target.value, 10))}
+                    className="flex-1 accent-cyan-500 h-1.5 bg-slate-200 dark:bg-slate-800 rounded-lg cursor-pointer"
+                  />
+                  <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 w-9 text-right">{brushSize}px</span>
+                </div>
+
+                <p className="text-[10px] text-slate-400 leading-snug">
+                  {brushMode === "off"
+                    ? `Paint the ${activeLook.label.toLowerCase()} away where you do not want it, or paint it back.`
+                    : brushMode === "erase"
+                      ? "Painting brings the original photo back through the effect."
+                      : "Painting puts the effect back where you erased it."}
+                  {" "}Touch-ups stay when you change strength or model.
+                </p>
+              </div>
+            )}
 
             {/* Model */}
             <div className="space-y-2.5 py-4 border-b border-slate-200 dark:border-slate-800">

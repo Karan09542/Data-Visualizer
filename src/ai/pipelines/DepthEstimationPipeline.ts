@@ -398,6 +398,115 @@ export class DepthEstimationPipeline implements TaskPipeline {
   }
 
   /**
+   * The range of distances the subject occupies, or null when it cannot be told apart.
+   *
+   * Splitting the scene into near and far is not enough on its own: a subject is not flat. On a
+   * standing figure the face can sit as far back as the wall behind its feet, and a split through
+   * the middle of it leaves the face blurred while the hem of the dress stays sharp - exactly the
+   * fault this fixes.
+   *
+   * So the subject is followed rather than guessed at. Starting from the middle of the frame, the
+   * walk spreads outwards across the depth map but refuses to cross a fold - a place where depth
+   * changes far faster than it does across the picture as a whole, which is what the boundary
+   * between one object and another looks like. Whatever it reaches is one surface, and the range
+   * of depths on it is the range to keep sharp.
+   *
+   * It only answers when the answer is worth having: a region that covers almost nothing, almost
+   * everything, or a spread of depth too wide to be one subject means the walk leaked, and the
+   * caller falls back to the near/far split.
+   */
+  private subjectBand(depth: Float32Array, width: number, height: number): { near: number; far: number } | null {
+    const work = 160;
+    const scale = Math.min(1, work / Math.max(width, height));
+    const sw = Math.max(8, Math.round(width * scale));
+    const sh = Math.max(8, Math.round(height * scale));
+    const small = this.resizeDepthMap(depth, width, height, sw, sh);
+    const count = sw * sh;
+
+    // How fast depth changes at each point, and what counts as fast for this picture.
+    const grad = new Float32Array(count);
+    for (let y = 0; y < sh; y++) {
+      for (let x = 0; x < sw; x++) {
+        const left = small[y * sw + Math.max(0, x - 1)];
+        const right = small[y * sw + Math.min(sw - 1, x + 1)];
+        const up = small[Math.max(0, y - 1) * sw + x];
+        const down = small[Math.min(sh - 1, y + 1) * sw + x];
+        grad[y * sw + x] = Math.hypot((right - left) / 2, (down - up) / 2);
+      }
+    }
+    const limit = Math.max(0.004, 2.5 * this.median(grad));
+
+    // Walk out from the middle, never crossing a fold and never stepping far in one go.
+    const STEP = 0.05;
+    const seen = new Uint8Array(count);
+    const stack = new Int32Array(count);
+    let top = 0;
+    const from = (v: number, size: number) => Math.floor(size * v);
+    for (let y = from(0.42, sh); y < from(0.58, sh); y++) {
+      for (let x = from(0.42, sw); x < from(0.58, sw); x++) {
+        const at = y * sw + x;
+        if (seen[at] || grad[at] > limit) continue;
+        seen[at] = 1;
+        stack[top++] = at;
+      }
+    }
+
+    while (top > 0) {
+      const at = stack[--top];
+      const x = at % sw;
+      const y = (at - x) / sw;
+      const here = small[at];
+      const visit = (nx: number, ny: number) => {
+        if (nx < 0 || ny < 0 || nx >= sw || ny >= sh) return;
+        const next = ny * sw + nx;
+        if (seen[next] || grad[next] > limit) return;
+        if (Math.abs(small[next] - here) > STEP) return;
+        seen[next] = 1;
+        stack[top++] = next;
+      };
+      visit(x + 1, y);
+      visit(x - 1, y);
+      visit(x, y + 1);
+      visit(x, y - 1);
+    }
+
+    let found = 0;
+    for (let i = 0; i < count; i++) if (seen[i]) found++;
+    const share = found / count;
+    if (share < 0.02 || share > 0.9) return null;
+
+    const values = new Float32Array(found);
+    let at = 0;
+    for (let i = 0; i < count; i++) if (seen[i]) values[at++] = small[i];
+    values.sort();
+    const pick = (q: number) => values[Math.min(found - 1, Math.floor(found * q))];
+    // One subject does not span half the scene; that much means the walk escaped into the rest.
+    // Judged on the full extent, before the trimming below can hide it.
+    if (pick(0.98) - pick(0.02) > 0.45) return null;
+    // The outer tenth at each end is then left out: a walk that slipped a little way into the
+    // background would otherwise stretch the band over it and blur nothing at all.
+    return { near: pick(0.1), far: pick(0.9) };
+  }
+
+  /** The middle value, via a histogram: a full sort of every pixel is not worth it here. */
+  private median(values: Float32Array): number {
+    const bins = 256;
+    const histogram = new Uint32Array(bins);
+    let peak = 0;
+    for (let i = 0; i < values.length; i++) if (values[i] > peak) peak = values[i];
+    if (peak <= 0) return 0;
+    for (let i = 0; i < values.length; i++) {
+      histogram[Math.min(bins - 1, Math.round((values[i] / peak) * (bins - 1)))]++;
+    }
+    let seen = 0;
+    for (let b = 0; b < bins; b++) {
+      seen += histogram[b];
+      if (seen >= values.length / 2) return (b / (bins - 1)) * peak;
+    }
+    return peak;
+  }
+
+  /**
    * Spreads the blur a little way into what stays sharp.
    *
    * The depth map's edges are softer than the photo's, so the subject's outline carries a thin
@@ -471,17 +580,32 @@ export class DepthEstimationPipeline implements TaskPipeline {
     height: number,
     strength = 1
   ): ImageData {
-    const threshold = this.focusThreshold(rawDepth);
     const falloff = 0.18;
     const radius = this.blurRadiusFor(width, height, strength);
     const gentle = this.blurredCopy(original, Math.max(2, radius * 0.35));
     const strong = this.blurredCopy(original, radius);
 
-    // How much each pixel is blurred: nothing at the subject and anything in front of it, easing
-    // to everything well behind it.
+    // How much each pixel is blurred.
     const blend = new Float32Array(width * height);
-    for (let i = 0; i < blend.length; i++) {
-      blend[i] = 1 - this.smoothstep(threshold - falloff, threshold, rawDepth[i]);
+    const band = this.subjectBand(rawDepth, width, height);
+
+    if (band) {
+      // The subject was found: everything at its distance stays sharp, and the blur grows with
+      // the distance away from it - behind it, and in front of it as a lens would.
+      const margin = 0.04;
+      const near = band.near - margin;
+      const far = band.far + margin;
+      const bandFalloff = 0.14;
+      for (let i = 0; i < blend.length; i++) {
+        const away = Math.max(near - rawDepth[i], rawDepth[i] - far, 0);
+        blend[i] = this.smoothstep(0, bandFalloff, away);
+      }
+    } else {
+      // Nothing to follow: fall back to the nearest part of the scene staying sharp.
+      const threshold = this.focusThreshold(rawDepth);
+      for (let i = 0; i < blend.length; i++) {
+        blend[i] = 1 - this.smoothstep(threshold - falloff, threshold, rawDepth[i]);
+      }
     }
     const spread = this.spreadBlur(blend, width, height, Math.round(Math.max(width, height) * 0.004));
 
