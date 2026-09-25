@@ -339,6 +339,7 @@ export interface StoreState {
   isShortcutsOpen: boolean;
   isMathHelpOpen: boolean;
   isYoutubeSearchOpen: boolean;
+  isLearningGamesOpen: boolean;
   activeDocumentId: number | null;
   activeDocumentName: string | null;
   isDirty: boolean;
@@ -426,6 +427,7 @@ export interface StoreState {
   setIsShortcutsOpen: (isOpen: boolean) => void;
   setIsMathHelpOpen: (isOpen: boolean) => void;
   setIsYoutubeSearchOpen: (isOpen: boolean) => void;
+  setIsLearningGamesOpen: (isOpen: boolean) => void;
   setShowMediaPreview: (show: boolean) => void;
   toggleManualMediaRender: (nodeId: string) => void;
   setGlobalTextExpanded: (expanded: boolean) => void;
@@ -555,6 +557,7 @@ export const useStore = create<StoreState>()(
         isShortcutsOpen: false,
         isMathHelpOpen: false,
         isYoutubeSearchOpen: false,
+        isLearningGamesOpen: false,
         isSavedDocsOpen: false,
         proxyServers: [],
         setProxyServers: (proxies) =>
@@ -1313,6 +1316,7 @@ export const useStore = create<StoreState>()(
           void set({ isShortcutsOpen: isOpen }),
         setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
         setIsYoutubeSearchOpen: (isOpen: boolean) => set({ isYoutubeSearchOpen: isOpen }),
+        setIsLearningGamesOpen: (isOpen: boolean) => set({ isLearningGamesOpen: isOpen }),
         setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
         setStickyNotesEnabled: (enabled: boolean) => set({ stickyNotesEnabled: enabled }),
         setActiveDocumentId: (id: number | null) => set({ activeDocumentId: id }),

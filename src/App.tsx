@@ -39,6 +39,7 @@ const ProductivityLayer = lazyWithRetry(() => import("./components/ProductivityL
 const StickyNotesManager = lazyWithRetry(() => import("./components/StickyNotesManager"), 'StickyNotesManager');
 const AudioPlayerModal = lazyWithRetry(() => import("./audio/components/AudioPlayerModal"), 'AudioPlayerModal');
 const MiniPlayer = lazyWithRetry(() => import("./audio/components/MiniPlayer"), 'MiniPlayer');
+const LearningGamesPanel = lazyWithRetry(() => import("./learning/components/LearningGamesPanel"), 'LearningGamesPanel');
 import { FloatingMic } from "./voice/components/FloatingMic";
 import { useVoice } from "./voice/useVoice";
 import { GlobalErrorBoundary } from "./components/AppErrorPopup";
@@ -62,6 +63,12 @@ function App() {
   const setIsSavedDocsOpen = useStore((state) => state.setIsSavedDocsOpen);
   const visualizerMode = useStore((state) => state.visualizerMode);
   const isFileProcessing = useStore((state) => state.isFileProcessing);
+  const isLearningGamesOpen = useStore((state) => state.isLearningGamesOpen);
+  // Load the Learning Games bundle on first use, then keep it mounted so closing can animate.
+  const [learningGamesLoaded, setLearningGamesLoaded] = useState(false);
+  useEffect(() => {
+    if (isLearningGamesOpen) setLearningGamesLoaded(true);
+  }, [isLearningGamesOpen]);
   const undoStack = useStore((state) => state.undoStack);
   const redoStack = useStore((state) => state.redoStack);
   const undo = useStore((state) => state.undo);
@@ -826,6 +833,12 @@ function App() {
         <AudioPlayerModal />
         <MiniPlayer />
       </Suspense>
+
+      {learningGamesLoaded && (
+        <Suspense fallback={null}>
+          <LearningGamesPanel />
+        </Suspense>
+      )}
 
       <FloatingMic />
 
