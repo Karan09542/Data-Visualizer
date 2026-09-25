@@ -12,6 +12,10 @@ import { useEffect, useRef, type RefObject } from 'react';
  *    overwriting the browser's value and nudging the element by a fraction of a pixel
  *  - a node is placed by its centre, so each nudge also moves it on screen
  *
+ * Releasing the corner also fires a click, which would select the node; a selected node is
+ * drawn 5% larger, so the node seemed to jump the moment the resize ended. That click is
+ * swallowed.
+ *
  * So nothing is committed while the corner is held. The element is left to the browser, and a
  * transform keeps its top-left corner still, since a node grows from its centre. The final size
  * is stored once on release, in a single render.
@@ -19,13 +23,15 @@ import { useEffect, useRef, type RefObject } from 'react';
 export function useNodeResize(
   ref: RefObject<HTMLElement | null>,
   commit: (width: number, height: number) => void,
+  /** Off while the node isn't resizable (e.g. shown fullscreen). */
+  enabled = true,
 ) {
   const commitRef = useRef(commit);
   commitRef.current = commit;
 
   useEffect(() => {
     const element = ref.current;
-    if (!element) return;
+    if (!element || !enabled) return;
 
     let startSize: { width: number; height: number } | null = null;
     let observer: ResizeObserver | null = null;
@@ -48,11 +54,31 @@ export function useNodeResize(
       stop();
 
       element!.style.transform = '';
+      swallowNextClick();
       const width = Math.round(element!.offsetWidth);
       const height = Math.round(element!.offsetHeight);
       if (width !== Math.round(began.width) || height !== Math.round(began.height)) {
         commitRef.current(width, height);
       }
+    }
+
+    // The click that ends a resize gesture isn't a click on the node.
+    let clickGuardTimer: ReturnType<typeof setTimeout> | null = null;
+    const swallow = (e: MouseEvent) => {
+      e.stopPropagation();
+      e.preventDefault();
+      releaseClickGuard();
+    };
+    function releaseClickGuard() {
+      window.removeEventListener('click', swallow, true);
+      if (clickGuardTimer) clearTimeout(clickGuardTimer);
+      clickGuardTimer = null;
+    }
+    function swallowNextClick() {
+      releaseClickGuard();
+      window.addEventListener('click', swallow, true);
+      // If no click follows (released somewhere else), stop guarding.
+      clickGuardTimer = setTimeout(releaseClickGuard, 300);
     }
 
     const onPointerDown = (e: PointerEvent) => {
@@ -82,7 +108,8 @@ export function useNodeResize(
     return () => {
       element.removeEventListener('pointerdown', onPointerDown);
       stop();
+      releaseClickGuard();
       element.style.transform = '';
     };
-  }, [ref]);
+  }, [ref, enabled]);
 }

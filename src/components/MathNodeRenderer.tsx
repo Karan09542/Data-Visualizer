@@ -24,6 +24,7 @@ import {
   Copy,
   CopyPlus,
   RotateCcw,
+  SkipBack,
   GripVertical,
   Menu,
   MoreVertical,
@@ -133,6 +134,7 @@ import type { GraphView } from "./math-node/simulations";
 import { solveDrag, snapToStep } from "../lib/math/dragSolve";
 import { hasLiveValues, renderLiveLabel } from "../lib/math/liveLabel";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
+import { useNodeResize } from "../hooks/useNodeResize";
 import { splitRelation } from "../lib/math/splitRelation";
 import { parseOdeSystemCached } from "../lib/math/odeSystem";
 import { getOdeExtent } from "../lib/math/odeCurveData";
@@ -1633,21 +1635,42 @@ export const MathNodeRenderer: React.FC<any> = ({
     applyTimelineAndView(scene.timeline, scene.view);
   };
 
+  // On the canvas (not expanded, not fullscreen) the node is a small card: graph only.
+  const isCompact = !isExpanded && !isFullscreen;
+  // Resizable from its corner while it sits on the canvas; `width` is only given there.
+  const canResize = !isFullscreen && width !== undefined;
+  const rootRef = useRef<HTMLDivElement>(null);
+  useNodeResize(
+    rootRef,
+    useCallback(
+      (w: number, h: number) => useStore.getState().setCustomNodeSize(nodeId, w, h),
+      [nodeId],
+    ),
+    canResize,
+  );
+  const hasAnyAnimationRows =
+    hasTimeDependentFunction || functions.some((f) => f.hasCustomTimeline);
+
   // One shape for every icon button in the header, so they line up and hit the same size.
   const headerIconBtn =
     "size-7 inline-flex items-center justify-center rounded-lg shrink-0 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40";
 
   const content = (
     <div
-      className={`${appTheme} flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-2xl overflow-hidden transition-all duration-300 ${isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "w-full h-full rounded-xl"}`}
+      ref={rootRef}
+      className={`${appTheme} relative flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-2xl overflow-hidden transition-[border-color,box-shadow] duration-300 ${isFullscreen ? "fixed inset-0 z-[9999] rounded-none" : "w-full h-full rounded-xl"} ${canResize ? "resize nodrag" : ""}`}
       style={{
         width: isFullscreen ? undefined : width,
         height: isFullscreen ? undefined : height,
+        ...(canResize ? { minWidth: 280, minHeight: 220 } : {}),
       }}
     >
       {/* Header */}
-      <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 cursor-move drag-handle">
+      <div
+        className={`flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 cursor-move drag-handle ${isCompact ? "px-2.5 py-1.5" : "px-4 py-2"}`}
+      >
         <div className="flex items-center gap-2 min-w-0">
+          {!isCompact && (
           <button
             onClick={() => {
               if (window.innerWidth < 768) {
@@ -1662,15 +1685,49 @@ export const MathNodeRenderer: React.FC<any> = ({
           >
             <Menu size={16} />
           </button>
+          )}
           <Layers
-            size={16}
-            className="hidden md:block shrink-0 text-blue-500 dark:text-blue-400"
+            size={isCompact ? 14 : 16}
+            className={`${isCompact ? "" : "hidden md:block"} shrink-0 text-blue-500 dark:text-blue-400`}
           />
-          <span className="font-semibold text-sm text-slate-800 dark:text-slate-300 truncate">
-            Advanced Math Graph
+          <span
+            className={`font-semibold text-slate-800 dark:text-slate-300 truncate ${isCompact ? "text-xs" : "text-sm"}`}
+            title="Advanced Math Graph"
+          >
+            {isCompact ? "Math Graph" : "Advanced Math Graph"}
           </span>
         </div>
         <div className="flex items-center gap-1.5 nodrag shrink-0">
+          {/* On the canvas the Timeline panel isn't shown: run the animation from here. */}
+          {isCompact && hasAnyAnimationRows && (
+            <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
+              <button
+                onClick={handleTogglePlay}
+                className={`${headerIconBtn} ${isPlaying ? "" : "text-blue-600 dark:text-blue-400"}`}
+                title={isPlaying ? "Pause" : timeMode === "once" && time >= effectiveTimeMax - 1e-9 ? "Run again" : "Play"}
+              >
+                {isPlaying ? (
+                  <Pause size={14} fill="currentColor" />
+                ) : timeMode === "once" && time >= effectiveTimeMax - 1e-9 ? (
+                  <RotateCcw size={14} />
+                ) : (
+                  <Play size={14} fill="currentColor" />
+                )}
+              </button>
+              {timeMode !== "continuous" && (
+                <button
+                  onClick={() => {
+                    timeRef.current = timeBounds.min;
+                    setTime(timeBounds.min);
+                  }}
+                  className={headerIconBtn}
+                  title="Back to the start"
+                >
+                  <SkipBack size={14} />
+                </button>
+              )}
+            </div>
+          )}
           {/* Graph actions */}
           <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
             <button
@@ -1687,10 +1744,11 @@ export const MathNodeRenderer: React.FC<any> = ({
             <button
               onClick={() => setViewResetKey((k) => k + 1)}
               className={headerIconBtn}
-              title="Reset Origin (Center Graph)"
+              title="Back to the starting view"
             >
               <Crosshair size={15} />
             </button>
+            {!isCompact && (
             <button
               onClick={() => setShowHelp(true)}
               className="h-7 inline-flex items-center gap-1.5 px-2 rounded-lg text-xs font-medium shrink-0 text-indigo-600 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-500/10 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-500/40"
@@ -1699,6 +1757,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               <HelpCircle size={14} />
               <span className="hidden sm:inline">Help</span>
             </button>
+            )}
           </div>
 
           {/* Window actions */}
@@ -5935,9 +5994,21 @@ export const MathNodeRenderer: React.FC<any> = ({
               "--mafs-line-color": appTheme === "dark" ? "#334155" : "#e2e8f0",
               "--grid-line-subdivision-color":
                 appTheme === "dark" ? "#1e293b" : "#f1f5f9",
+              // Labels and readouts shrink with a small graph so they fit the card.
+              "--math-label-scale": Math.max(0.65, Math.min(1, graphSize.width / 700)),
             } as React.CSSProperties
           }
         >
+          {/* Where the animation is, on the small canvas card that has no Timeline. */}
+          {isCompact && hasAnyAnimationRows && (
+            <div
+              data-no-trace
+              className="absolute bottom-2 left-2 z-30 pointer-events-none px-2 py-0.5 rounded-md bg-white/85 dark:bg-slate-900/85 border border-slate-200/80 dark:border-slate-700/60 text-[10px] font-mono tabular-nums text-slate-600 dark:text-slate-300 shadow-sm"
+            >
+              t = {Number.isFinite(time) ? time.toFixed(2) : "∞"}
+              {timeMode !== "continuous" && ` / ${effectiveTimeMax.toFixed(2)} s`}
+            </div>
+          )}
           {/* Graph Controls */}
           {(isExpanded || isFullscreen) && (
             <div
@@ -8098,6 +8169,19 @@ export const MathNodeRenderer: React.FC<any> = ({
             </div>
           )}
         </div>
+
+        {/* The native resize corner is hard to see; draw a grip over it. */}
+        {canResize && (
+          <svg
+            aria-hidden="true"
+            width="12"
+            height="12"
+            viewBox="0 0 12 12"
+            className="absolute bottom-1 right-1 z-[60] pointer-events-none text-slate-400/80 dark:text-slate-500"
+          >
+            <path d="M11 4 L4 11 M11 8 L8 11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+          </svg>
+        )}
 
         {/* Help Modal Overlay */}
         {showHelp &&
