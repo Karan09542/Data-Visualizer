@@ -1196,7 +1196,8 @@ Vector(ball, ball + [vx, vy - g*time]/4)`}</pre>
                           <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                             Put a formula in double braces inside a label and it shows the current value:
                             <code className="font-mono text-indigo-600 dark:text-indigo-400"> {"t = {{time}} s"}</code>. Add <code className="font-mono text-indigo-600 dark:text-indigo-400">:N</code> for N decimals, as in
-                            <code className="font-mono text-indigo-600 dark:text-indigo-400">{" {{v0:1}}"}</code>. A point with <i>Show point</i> off and a live label is a text readout.
+                            <code className="font-mono text-indigo-600 dark:text-indigo-400">{" {{v0:1}}"}</code>. A point with <i>Show point</i> off and a live label is a text readout. Tick <b>Plain text</b> under the label for
+                            sentences, so they aren't formatted as math.
                           </p>
                         </div>
 
