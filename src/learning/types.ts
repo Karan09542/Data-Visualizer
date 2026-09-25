@@ -112,7 +112,7 @@ export interface LearningPrefs {
   selection: WordSelection;
   /** How letters are entered while playing: swiping a letter wheel, or typing on keys. */
   inputMode: InputMode;
-  /** Most letters on the Word Wheel. */
+  /** Most letters on the Word Wheel; 0 lets the game choose the smallest wheel that fits. */
   wheelSize: number;
 }
 

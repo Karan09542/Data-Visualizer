@@ -12,7 +12,13 @@ const GAME_ICONS: Record<string, React.ReactNode> = {
   wordwheel: <CircleDot size={22} />,
 };
 
-const WHEEL_SIZES = [8, 10, 12, 15];
+const WHEEL_SIZES = [
+  { value: 0, label: "Auto" },
+  { value: 8, label: "8" },
+  { value: 10, label: "10" },
+  { value: 12, label: "12" },
+  { value: 15, label: "15" },
+];
 
 const SELECTIONS: { value: WordSelection; label: string; description: string }[] = [
   { value: "weakest", label: "Needs practice", description: "Words you know least, and haven't seen in a while" },
@@ -206,11 +212,12 @@ export function CreateGameView() {
                   label="Letters on the wheel"
                   value={prefs.wheelSize}
                   onChange={(n) => store().setPrefs({ wheelSize: n })}
-                  options={WHEEL_SIZES.map((n) => ({ value: n, label: String(n) }))}
+                  options={WHEEL_SIZES}
                 />
                 <p className="mt-2 text-xs text-slate-500 dark:text-slate-400">
-                  The game picks words from your list that can all be spelled with these letters. A bigger wheel fits more of your
-                  words; a smaller one is quicker to scan.
+                  {prefs.wheelSize === 0
+                    ? "Auto fits as many of your words as it can, on the smallest wheel that holds them (up to 15 letters)."
+                    : "The game picks words from your list that can all be spelled with these letters. A bigger wheel fits more of your words; a smaller one is quicker to scan."}
                 </p>
               </section>
             )}

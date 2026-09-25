@@ -10,9 +10,10 @@ import type { VocabWord } from "../../types";
 import type { GameModule, GenerateHints, GenerateResult } from "../types";
 import { crosswordModule, generateCrossword, isCrosswordEligible, type CrosswordPuzzle, type CrosswordState } from "./CrosswordGame";
 
-export const WHEEL_MIN = 6;
+export const WHEEL_MIN = 5;
 export const WHEEL_MAX = 15;
-export const WHEEL_DEFAULT = 12;
+/** A wheel size of 0 means "Auto": the game picks the size. */
+export const WHEEL_AUTO = 0;
 const MIN_WHEEL_ANSWER = 3;
 
 type Counts = Map<string, number>;
@@ -113,6 +114,24 @@ export function planWheels(ranked: readonly VocabWord[], wordCount: number, whee
   return plans.sort((a, b) => b.words.length - a.words.length || a.rankCost - b.rankCost);
 }
 
+/**
+ * Auto wheel size: tries every size, finds the most words any wheel can hold, and returns the
+ * plans for the smallest wheel that still holds that many. Fewer letters are quicker to scan,
+ * so size only grows when it brings in more of the player's words.
+ */
+export function autoPlans(ranked: readonly VocabWord[], wordCount: number, random: () => number): WheelPlan[] {
+  const bySize: WheelPlan[][] = [];
+  let most = 0;
+  for (let size = WHEEL_MIN; size <= WHEEL_MAX; size++) {
+    const plans = planWheels(ranked, wordCount, size, random);
+    bySize.push(plans);
+    most = Math.max(most, plans[0]?.words.length ?? 0);
+    // Nothing can beat a plan that already has every word asked for.
+    if (most >= wordCount) break;
+  }
+  return bySize.find((plans) => (plans[0]?.words.length ?? 0) === most && most > 0) ?? [];
+}
+
 /** The smallest set of letters that spells every answer, in a fixed order. */
 export function wheelFor(answers: readonly string[]): string[] {
   let wheel: Counts = new Map();
@@ -125,12 +144,20 @@ export function generateWordWheel(
   random: () => number,
   hints: GenerateHints = {},
 ): GenerateResult<CrosswordPuzzle> {
-  const wheelSize = Math.max(WHEEL_MIN, Math.min(WHEEL_MAX, Math.round(hints.wheelSize ?? WHEEL_DEFAULT)));
-  const plans = planWheels(ranked, Math.max(2, hints.wordCount ?? 10), wheelSize, random);
+  const wordCount = Math.max(2, hints.wordCount ?? 10);
+  const requested = Math.round(hints.wheelSize ?? WHEEL_AUTO);
+  const plans =
+    requested === WHEEL_AUTO
+      ? autoPlans(ranked, wordCount, random)
+      : planWheels(ranked, wordCount, Math.max(WHEEL_MIN, Math.min(WHEEL_MAX, requested)), random);
   if (plans.length === 0) {
+    const size = Math.max(WHEEL_MIN, Math.min(WHEEL_MAX, requested));
     return {
       ok: false,
-      reason: `Your words don't share enough letters for a ${wheelSize}-letter wheel. Try a bigger wheel, or add more words.`,
+      reason:
+        requested === WHEEL_AUTO
+          ? `Your words don't share enough letters to make a wheel of up to ${WHEEL_MAX} letters. Add a few more words and try again.`
+          : `Your words don't share enough letters for ${/^(8|11|18)$/.test(String(size)) ? "an" : "a"} ${size}-letter wheel. Choose Auto or a bigger wheel, or add more words.`,
       leftOut: [],
     };
   }
@@ -146,7 +173,7 @@ export function generateWordWheel(
   if (!best || best.ok === false) {
     return {
       ok: false,
-      reason: "These words share letters but don't cross each other in a grid. Try a different wheel size, or add more words.",
+      reason: "These words have too few letters in common to cross each other in a grid. Add a few more words and try again.",
       leftOut: [],
     };
   }

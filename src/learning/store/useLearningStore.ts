@@ -61,7 +61,7 @@ export const DEFAULT_PREFS: LearningPrefs = {
   wordCount: 8,
   selection: "weakest",
   inputMode: "wheel",
-  wheelSize: 12,
+  wheelSize: 0,
 };
 
 export type SaveStatus = "idle" | "saving" | "saved" | "error";
