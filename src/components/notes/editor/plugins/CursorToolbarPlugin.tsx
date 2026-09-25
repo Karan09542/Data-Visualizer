@@ -11,7 +11,7 @@ export const OPEN_CURSOR_TOOLBAR_COMMAND = createCommand<void>('OPEN_CURSOR_TOOL
 import {
   Bold, Italic, Underline, Strikethrough, Code, SquareTerminal,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, Plus, RotateCcw,
-  Baseline, Highlighter, Pipette, Space
+  Baseline, Highlighter, Pipette, Space, Copy, Check
 } from 'lucide-react';
 import { $setBlocksType, $patchStyleText, $getSelectionStyleValueForProperty } from '@lexical/selection';
 import { $createCodeNode } from '@lexical/code';
@@ -83,6 +83,7 @@ export default function CursorToolbarPlugin() {
   const [anchorRect, setAnchorRect] = useState<DOMRect | null>(null);
   const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
 
+  const [copiedSelection, setCopiedSelection] = useState(false);
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [isUnderline, setIsUnderline] = useState(false);
@@ -505,6 +506,23 @@ export default function CursorToolbarPlugin() {
       }
       if ($isRangeSelection(selection)) apply(selection);
     }, tag ? { tag } : undefined);
+  }, [editor]);
+
+  /** Puts whatever is selected on the clipboard, without changing it. */
+  const copySelectedText = useCallback(() => {
+    let text = '';
+    editor.getEditorState().read(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) text = selection.getTextContent();
+    });
+    if (!text) return;
+    navigator.clipboard.writeText(text).then(
+      () => {
+        setCopiedSelection(true);
+        window.setTimeout(() => setCopiedSelection(false), 1400);
+      },
+      (err) => console.error('Copying the selection failed', err),
+    );
   }, [editor]);
 
   const formatText = (format: TextFormatType) => {
@@ -970,6 +988,15 @@ export default function CursorToolbarPlugin() {
           markInteracting();
         }}
       >
+        <button
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => { e.stopPropagation(); copySelectedText(); }}
+          className={`${BUTTON_BASE} ${copiedSelection ? BUTTON_ACTIVE : BUTTON_IDLE}`}
+          title="Copy the selected text"
+        >
+          {copiedSelection ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
+        </button>
+        <span className="mx-0.5 h-5 w-px shrink-0 bg-black/8 dark:bg-white/12" />
         <button
           onMouseDown={(e) => e.preventDefault()}
           onClick={(e) => { e.stopPropagation(); formatText('bold'); }}

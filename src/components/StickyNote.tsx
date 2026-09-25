@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo, memo } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Maximize2, Minimize2, Trash2, GripVertical, Clipboard, CopyPlus, Check, Eraser, Type, Minus, Plus, MoreHorizontal, Undo2, Redo2, ImageDown, Hash, Code2, ArrowUpToLine, ArrowDownToLine } from 'lucide-react';
+import { X, Maximize2, Minimize2, Trash2, GripVertical, Clipboard, ClipboardPaste, CopyPlus, Check, Eraser, Type, Minus, Plus, MoreHorizontal, Undo2, Redo2, ImageDown, Hash, Code2, ArrowUpToLine, ArrowDownToLine, Lock, LockOpen } from 'lucide-react';
 import type { StickyNote as IStickyNote } from '../lib/db';
 import { FONTS, loadGoogleFont, loadFontsFromContent } from '../utils/fontRegistry';
 import { getMinNoteWidth } from '../utils/NoteUtils';
@@ -17,6 +17,7 @@ import { copyCanvas } from '../utils/tableImage';
 import { FontPicker } from './FontPicker';
 
 import StickyConfirmModal from './notes/StickyConfirmModal';
+import { pasteFromClipboard } from './notes/editor/plugins/BlockMenuOptions';
 
 const DEFAULT_STICKY_FONT = 'Hind';
 const DEFAULT_FONT_SIZE = 15;
@@ -121,6 +122,25 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
 
   const updatedLabel = useMemo(() => TIME_FORMAT.format(note.updatedAt), [note.updatedAt]);
   const editorRef = useRef<ILexicalEditor | null>(null);
+
+  const isReadOnly = !!note.isReadOnly;
+  const toggleReadOnly = useCallback(() => {
+    onUpdate({ ...latestNoteRef.current, content: latestContentRef.current, isReadOnly: !latestNoteRef.current.isReadOnly, updatedAt: Date.now() });
+  }, [onUpdate]);
+
+  /** Whatever is on the clipboard, dropped into the note where the cursor is. */
+  const pasteIntoNote = useCallback(async () => {
+    const editor = editorRef.current;
+    if (!editor || isReadOnly) return;
+    editor.focus();
+    const landed = await pasteFromClipboard(editor);
+    if (landed) flashCopiedRef.current?.('pasted');
+  }, [isReadOnly]);
+
+  // Assigned below, once flashCopied exists; kept in a ref so the callback above stays stable.
+  const flashCopiedRef = useRef<((kind: string) => void) | null>(null);
+
+
 
   const isMax = note.isMaximized;
   const activeFontFamily = note.fontFamily || DEFAULT_STICKY_FONT;
@@ -393,6 +413,9 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
     if (copiedTimerRef.current) clearTimeout(copiedTimerRef.current);
     copiedTimerRef.current = window.setTimeout(() => setCopiedKind(null), 1600);
   }, []);
+  flashCopiedRef.current = flashCopied;
+
+
 
   /** The note's text as Markdown, headings, lists and all */
   const copyAsMarkdown = useCallback(async () => {
@@ -642,7 +665,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               e.stopPropagation();
             }}
             onClick={undo}
-            disabled={!history.canUndo}
+            disabled={!history.canUndo || isReadOnly}
             className={TOOL_BUTTON}
             title={history.canUndo ? 'Undo' : 'Nothing to undo'}
           >
@@ -655,7 +678,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               e.stopPropagation();
             }}
             onClick={redo}
-            disabled={!history.canRedo}
+            disabled={!history.canRedo || isReadOnly}
             className={TOOL_BUTTON}
             title={history.canRedo ? 'Redo' : 'Nothing to redo'}
           >
@@ -669,6 +692,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               e.stopPropagation();
             }}
             onClick={() => addLine('before')}
+            disabled={isReadOnly}
             className={TOOL_BUTTON}
             title="Add line above"
           >
@@ -681,10 +705,22 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
               e.stopPropagation();
             }}
             onClick={() => addLine('after')}
+            disabled={isReadOnly}
             className={TOOL_BUTTON}
             title="Add line below"
           >
             <ArrowDownToLine size={15} />
+          </button>
+
+          <button
+            type="button"
+            onPointerDown={handleActionPointerDown}
+            onClick={toggleReadOnly}
+            className={isReadOnly ? TOOL_BUTTON_ACTIVE : TOOL_BUTTON}
+            title={isReadOnly ? 'Locked for reading - press to edit' : 'Lock for reading'}
+            aria-pressed={isReadOnly}
+          >
+            {isReadOnly ? <Lock size={15} /> : <LockOpen size={15} />}
           </button>
 
           <button
@@ -760,6 +796,21 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
             </button>
 
             <div className="my-1 h-px bg-black/7 dark:bg-white/10" />
+
+            <button
+              type="button"
+              onClick={() => {
+                setShowMoreActions(false);
+                void pasteIntoNote();
+              }}
+              disabled={isReadOnly}
+              className={MENU_ITEM}
+            >
+              {copiedKind === 'pasted'
+                ? <Check size={15} className="shrink-0 text-emerald-500" />
+                : <ClipboardPaste size={15} className="shrink-0 opacity-60" />}
+              <span>{copiedKind === 'pasted' ? 'Pasted' : 'Paste from clipboard'}</span>
+            </button>
 
             <button type="button" onClick={handleMobileDuplicateClick} className={MENU_ITEM}>
               <CopyPlus size={15} className="shrink-0 opacity-60" />
@@ -870,10 +921,13 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
           onSave={handleSave}
           onChange={handleInstantChange}
           isEditing={true}
+          isReadOnly={isReadOnly}
           style={noteTextStyle}
           editorRef={editorRef}
           onHistoryChange={handleHistoryChange}
         />
+
+
 
         {/* Color Picker Overlay */}
         <AnimatePresence>
@@ -959,6 +1013,7 @@ export default memo(StickyNote, (prev, next) =>
   prev.note.zIndex === next.note.zIndex &&
   prev.note.isMinimized === next.note.isMinimized &&
   prev.note.isMaximized === next.note.isMaximized &&
+  prev.note.isReadOnly === next.note.isReadOnly &&
   prev.note.fontFamily === next.note.fontFamily &&
   prev.note.fontSize === next.note.fontSize &&
   prev.note.updatedAt === next.note.updatedAt

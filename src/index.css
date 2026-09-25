@@ -151,6 +151,14 @@
     scrollbar-width: none !important;
     /* Firefox */
   }
+
+  /* On touch / mobile devices where hover is not supported, always show image action buttons */
+  @media (hover: none), (pointer: coarse) {
+    .image-action-overlay {
+      opacity: 1 !important;
+      pointer-events: auto !important;
+    }
+  }
 }
 
 @keyframes blink {

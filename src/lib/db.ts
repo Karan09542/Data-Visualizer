@@ -163,6 +163,8 @@ export interface StickyNote {
   fontSize?: number;
   isMinimized: boolean;
   isMaximized?: boolean;
+  /** Locked for reading: the text can be selected and copied, but not edited. */
+  isReadOnly?: boolean;
   zIndex?: number;
   isFavorite?: boolean;
   order?: number;

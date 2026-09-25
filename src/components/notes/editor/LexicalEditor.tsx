@@ -65,6 +65,8 @@ interface LexicalEditorProps {
   onSave: (content: string) => void;
   onChange?: (content: string) => void;
   isEditing: boolean;
+  /** Locks the note: the text can still be selected and copied, but nothing can change it. */
+  isReadOnly?: boolean;
   style?: React.CSSProperties;
   editorRef?: React.MutableRefObject<import('lexical').LexicalEditor | null>;
   /** Tells the parent whether undo and redo currently have anything to do */
@@ -225,6 +227,15 @@ function ExternalContentSyncPlugin({ content }: { content: string }) {
   return null;
 }
 
+/** Holds the editor open or closed to edits, which is all "read only" needs to mean. */
+function EditableStatePlugin({ isReadOnly }: { isReadOnly: boolean }) {
+  const [editor] = useLexicalComposerContext();
+  React.useEffect(() => {
+    editor.setEditable(!isReadOnly);
+  }, [editor, isReadOnly]);
+  return null;
+}
+
 function FontLoaderPlugin({ content }: { content: string }) {
   const [editor] = useLexicalComposerContext();
 
@@ -277,7 +288,7 @@ function FontLoaderPlugin({ content }: { content: string }) {
   return null;
 }
 
-export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, style, editorRef, onHistoryChange }: LexicalEditorProps) {
+export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, isReadOnly = false, style, editorRef, onHistoryChange }: LexicalEditorProps) {
   
   const initialConfig = useMemo(() => {
     let parsedState = null;
@@ -343,7 +354,7 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
               />
             }
             placeholder={
-              isEditing ? (
+              isEditing && !isReadOnly ? (
                 <div 
                   className="absolute inset-0 pointer-events-none opacity-30 px-6 py-8 sm:px-10 sm:py-12 w-full max-w-4xl mx-auto overflow-hidden" 
                   style={style}
@@ -355,6 +366,7 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
             ErrorBoundary={LexicalErrorBoundary}
           />
           <HistoryPlugin />
+          <EditableStatePlugin isReadOnly={isReadOnly} />
           <EditorRefPlugin editorRef={editorRef} />
           <HistoryStatePlugin onHistoryChange={onHistoryChange} />
           <ListPlugin />
@@ -377,7 +389,7 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
           <CodeActionMenuPlugin />
           <CodeGutterPlugin />
           
-          {isEditing && (
+          {isEditing && !isReadOnly && (
             <>
               <CodeHighlightPlugin />
               <CursorToolbarPlugin />

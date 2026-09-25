@@ -6,7 +6,7 @@ import { $setBlocksType } from '@lexical/selection';
 import { INSERT_UNORDERED_LIST_COMMAND, INSERT_ORDERED_LIST_COMMAND, INSERT_CHECK_LIST_COMMAND } from '@lexical/list';
 import { $createCodeNode } from '@lexical/code';
 import { INSERT_HORIZONTAL_RULE_COMMAND } from '@lexical/react/LexicalHorizontalRuleNode';
-import { Type, List, ListOrdered, CheckSquare, Quote, Code, Heading1, Heading2, Heading3, Minus, ImageIcon, Camera, Mic, Table, ListTodo, ArrowUpToLine, ArrowDownToLine, SlidersHorizontal, Trash2 } from 'lucide-react';
+import { Type, List, ListOrdered, CheckSquare, Quote, Code, Heading1, Heading2, Heading3, Minus, ImageIcon, Camera, Mic, Table, ListTodo, ArrowUpToLine, ArrowDownToLine, SlidersHorizontal, Trash2, ClipboardPaste } from 'lucide-react';
 import { INSERT_TABLE_COMMAND, $createTableNodeWithDimensions, TableRowNode, TableCellNode } from '@lexical/table';
 import { $insertNodeToNearestRoot } from '@lexical/utils';
 import { $createListNode, $createListItemNode } from '@lexical/list';
@@ -22,14 +22,16 @@ export class CommandOption extends MenuOption {
   onSelect: (editor: LexicalEditor) => void;
   isMedia?: boolean;
   type?: 'image' | 'camera' | 'audio';
+  category?: 'insert' | 'turnInto' | 'danger';
 
-  constructor(title: string, menuIcon: React.ReactNode, options: { onSelect: (editor: LexicalEditor) => void, isMedia?: boolean, type?: 'image' | 'camera' | 'audio' }) {
+  constructor(title: string, menuIcon: React.ReactNode, options: { onSelect: (editor: LexicalEditor) => void, isMedia?: boolean, type?: 'image' | 'camera' | 'audio', category?: 'insert' | 'turnInto' | 'danger' }) {
     super(title);
     this.title = title;
     this.menuIcon = menuIcon;
     this.onSelect = options.onSelect;
     this.isMedia = options.isMedia;
     this.type = options.type;
+    this.category = options.category;
   }
 }
 
@@ -120,8 +122,113 @@ export const deleteBlock = (editor: LexicalEditor) => {
   });
 };
 
+/** The note this editor belongs to; media is stored against it. */
+const noteIdOf = (editor: LexicalEditor) => editor._config.namespace.replace('StickyNoteEditor-', '');
+
+/**
+ * Opens the file picker and puts whatever comes back into the note.
+ *
+ * The insert command needs a file, so something has to ask for one - which is why the menus that
+ * listed "Image Upload" without this did nothing at all when it was chosen.
+ */
+const pickImages = (editor: LexicalEditor) => {
+  const input = document.createElement('input');
+  input.type = 'file';
+  input.accept = 'image/*';
+  input.multiple = true;
+  input.style.display = 'none';
+  document.body.appendChild(input);
+
+  const done = () => input.remove();
+  input.addEventListener('change', () => {
+    const noteId = noteIdOf(editor);
+    Array.from(input.files || []).forEach((file) => {
+      editor.dispatchCommand(INSERT_IMAGE_COMMAND, { noteId, file });
+    });
+    done();
+  });
+  input.addEventListener('cancel', done);
+  input.click();
+};
+
+/**
+ * Puts whatever is on the clipboard into the note at the cursor.
+ *
+ * A picture is taken over plain text when the clipboard holds both, since that is the one the
+ * editor cannot otherwise reach without a keyboard.
+ */
+export const pasteFromClipboard = async (editor: LexicalEditor) => {
+  try {
+    if (navigator.clipboard?.read) {
+      const items = await navigator.clipboard.read();
+      for (const item of items) {
+        const imageType = item.types.find((type) => type.startsWith('image/'));
+        if (!imageType) continue;
+        const blob = await item.getType(imageType);
+        const file = new File([blob], `pasted.${imageType.split('/')[1] || 'png'}`, { type: imageType });
+        editor.dispatchCommand(INSERT_IMAGE_COMMAND, { noteId: noteIdOf(editor), file });
+        return true;
+      }
+    }
+  } catch {
+    // No permission, or the clipboard holds something unreadable: text is still worth a try.
+  }
+
+  try {
+    const text = await navigator.clipboard.readText();
+    if (!text) return false;
+    editor.update(() => {
+      const selection = $getSelection();
+      if ($isRangeSelection(selection)) {
+        selection.insertText(text);
+        return;
+      }
+      const paragraph = $createParagraphNode();
+      paragraph.append($createTextNode(text));
+      $getRoot().append(paragraph);
+      paragraph.selectEnd();
+    });
+    return true;
+  } catch (err) {
+    console.warn('The clipboard could not be read', err);
+    return false;
+  }
+};
+
+/**
+ * Things to put into the note rather than turn the current line into.
+ *
+ * Kept apart from the blocks above so both menus can show them under their own heading, and so
+ * the slash menu's shortcut row has something real to point at.
+ */
+export const getMediaOptions = () => [
+  new CommandOption('Image Upload', <ImageIcon size={16} />, {
+    isMedia: true,
+    type: 'image',
+    category: 'insert',
+    onSelect: (editor) => setTimeout(() => pickImages(editor), 0),
+  }),
+  new CommandOption('Camera Capture', <Camera size={16} />, {
+    isMedia: true,
+    type: 'camera',
+    category: 'insert',
+    onSelect: (editor) => setTimeout(() => editor.dispatchCommand(OPEN_CAMERA_MODAL_COMMAND, undefined), 0),
+  }),
+  new CommandOption('Audio Recording', <Mic size={16} />, {
+    isMedia: true,
+    type: 'audio',
+    category: 'insert',
+    onSelect: (editor) => setTimeout(() => editor.dispatchCommand(OPEN_AUDIO_MODAL_COMMAND, undefined), 0),
+  }),
+  new CommandOption('Paste from clipboard', <ClipboardPaste size={16} />, {
+    category: 'insert',
+    onSelect: (editor) => setTimeout(() => { void pasteFromClipboard(editor); }, 0),
+  }),
+];
+
 export const getBaseOptions = () => [
   new CommandOption('Text', <Type size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.update(() => {
         const selection = $getSelection();
@@ -132,6 +239,7 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Open Overlay', <SlidersHorizontal size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       setTimeout(() => {
         editor.dispatchCommand(OPEN_CURSOR_TOOLBAR_COMMAND, undefined);
@@ -139,6 +247,7 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Heading 1', <Heading1 size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.update(() => {
         const selection = $getSelection();
@@ -149,6 +258,7 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Heading 2', <Heading2 size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.update(() => {
         const selection = $getSelection();
@@ -159,6 +269,7 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Heading 3', <Heading3 size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.update(() => {
         const selection = $getSelection();
@@ -169,21 +280,25 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Bulleted List', <List size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.dispatchCommand(INSERT_UNORDERED_LIST_COMMAND, undefined as any);
     },
   }),
   new CommandOption('Numbered List', <ListOrdered size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.dispatchCommand(INSERT_ORDERED_LIST_COMMAND, undefined as any);
     },
   }),
   new CommandOption('Checklist', <CheckSquare size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.dispatchCommand(INSERT_CHECK_LIST_COMMAND, undefined as any);
     },
   }),
   new CommandOption('Quote', <Quote size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.update(() => {
         const selection = $getSelection();
@@ -194,11 +309,13 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Divider', <Minus size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.dispatchCommand(INSERT_HORIZONTAL_RULE_COMMAND, undefined);
     },
   }),
   new CommandOption('Code Block', <Code size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       editor.update(() => {
         const selection = $getSelection();
@@ -209,6 +326,7 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Table', <Table size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       // Defer the command to the next tick so the Slash Menu removal update finishes
       // and the selection settles properly into a RangeSelection.
@@ -222,6 +340,7 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Todo Table', <ListTodo size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => {
       setTimeout(() => {
         editor.update(() => {
@@ -257,9 +376,17 @@ export const getBaseOptions = () => [
     },
   }),
   new CommandOption('Add line above', <ArrowUpToLine size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => addBlock(editor, 'before'),
   }),
   new CommandOption('Add line below', <ArrowDownToLine size={16} />, {
+    category: 'turnInto',
     onSelect: (editor) => addBlock(editor, 'after'),
   }),
 ];
+
+export const getDeleteOption = () =>
+  new CommandOption('Delete Block', <Trash2 size={16} />, {
+    category: 'danger',
+    onSelect: (editor) => deleteBlock(editor),
+  });
