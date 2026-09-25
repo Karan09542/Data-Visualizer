@@ -1,5 +1,21 @@
-import React, { useState } from "react";
-import { Crosshair, SkipBack, Pause, Play, Settings } from "lucide-react";
+import React, { useEffect, useState } from "react";
+import { Crosshair, SkipBack, Pause, Play, RotateCcw, Settings } from "lucide-react";
+
+/**
+ * continuous: time keeps growing. loop / bounce: repeat between start and end.
+ * once: a simulation run. Plays to the end and stops there; Play again starts over.
+ */
+export type TimeMode = "continuous" | "loop" | "bounce" | "once";
+
+const MODE_LABELS: Record<TimeMode, string> = {
+  continuous: "Continuous",
+  loop: "Loop",
+  bounce: "Bounce",
+  once: "Run once",
+};
+
+const formatTime = (v: number) =>
+  !Number.isFinite(v) ? "∞" : Math.abs(v) >= 1e6 ? v.toExponential(2) : v.toFixed(2);
 
 interface TimelineProps {
   tracePoints: boolean;
@@ -13,8 +29,15 @@ interface TimelineProps {
   timeRef: React.MutableRefObject<number>;
   isPlaying: boolean;
   setIsPlaying: (playing: boolean) => void;
-  timeMode: "continuous" | "loop" | "bounce";
-  setTimeMode: (mode: "continuous" | "loop" | "bounce") => void;
+  timeMode: TimeMode;
+  setTimeMode: (mode: TimeMode) => void;
+  /** End time as a formula (e.g. "T", the flight time). Empty uses timeBounds.max. */
+  endExpr: string;
+  setEndExpr: (expr: string) => void;
+  /** The end time actually in use: endExpr's value, or timeBounds.max. */
+  effectiveMax: number;
+  /** Play/pause; in "once" mode, playing from the end starts over. */
+  onTogglePlay: () => void;
 }
 
 export const Timeline: React.FC<TimelineProps> = ({
@@ -29,8 +52,29 @@ export const Timeline: React.FC<TimelineProps> = ({
   setIsPlaying,
   timeMode,
   setTimeMode,
+  endExpr,
+  setEndExpr,
+  effectiveMax,
+  onTogglePlay,
 }) => {
   const [showTimeSettings, setShowTimeSettings] = useState(false);
+  // What's typed in the End field: a number sets the end, anything else is a formula.
+  const [endDraft, setEndDraft] = useState(endExpr || String(timeBounds.max));
+  useEffect(() => {
+    setEndDraft(endExpr || String(timeBounds.max));
+  }, [endExpr, timeBounds.max]);
+  const commitEnd = (text: string) => {
+    const trimmed = text.trim();
+    const n = Number(trimmed);
+    if (trimmed !== "" && Number.isFinite(n)) {
+      setEndExpr("");
+      setTimeBounds((prev) => ({ ...prev, max: n }));
+    } else {
+      setEndExpr(trimmed);
+    }
+  };
+  const bounded = timeMode !== "continuous";
+  const atEnd = timeMode === "once" && time >= effectiveMax;
 
   return (
     <div className="flex flex-col gap-3 pt-4 pb-2 border-t border-slate-200 dark:border-slate-800">
@@ -80,19 +124,24 @@ export const Timeline: React.FC<TimelineProps> = ({
               />
               <span className="text-slate-400 italic">to</span>
               <input
-                type="number"
-                value={timeBounds.max}
-                onChange={(e) =>
-                  setTimeBounds((prev) => ({
-                    ...prev,
-                    max: Number(e.target.value),
-                  }))
-                }
-                className="w-14 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200 rounded-md px-2 py-1 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-center shadow-sm"
-                title="End Time"
+                type="text"
+                value={endDraft}
+                onChange={(e) => setEndDraft(e.target.value)}
+                onBlur={(e) => commitEnd(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") commitEnd((e.target as HTMLInputElement).value);
+                }}
+                className="w-20 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-800 dark:text-slate-200 rounded-md px-2 py-1 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 transition-all font-mono text-center shadow-sm"
+                title="End time: a number, or a formula such as T or 2*v0*sin(a)/g"
               />
             </div>
           </div>
+
+          {endExpr && (
+            <p className="-mt-1 text-[10px] text-slate-400 dark:text-slate-500 text-right">
+              Ends at {endExpr} = {formatTime(effectiveMax)}
+            </p>
+          )}
 
           <div className="h-px w-full bg-slate-200 dark:bg-slate-700/50" />
 
@@ -100,14 +149,15 @@ export const Timeline: React.FC<TimelineProps> = ({
             <span className="font-medium text-slate-500 dark:text-slate-400">
               Playback Mode
             </span>
-            <div className="flex gap-1 bg-slate-200 dark:bg-slate-900 p-1 rounded-lg border border-slate-300 dark:border-slate-700 shadow-inner">
-              {(["continuous", "loop", "bounce"] as const).map((m) => (
+            <div className="flex flex-wrap justify-end gap-1 bg-slate-200 dark:bg-slate-900 p-1 rounded-lg border border-slate-300 dark:border-slate-700 shadow-inner">
+              {(["continuous", "loop", "bounce", "once"] as const).map((m) => (
                 <button
                   key={m}
                   onClick={() => setTimeMode(m)}
-                  className={`px-2.5 py-1 rounded-md capitalize font-medium transition-all ${timeMode === m ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm" : "hover:bg-slate-300/50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"}`}
+                  title={m === "once" ? "Play to the end and stop, like a simulation run" : undefined}
+                  className={`px-2 py-1 rounded-md font-medium whitespace-nowrap transition-all ${timeMode === m ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm" : "hover:bg-slate-300/50 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-400"}`}
                 >
-                  {m}
+                  {MODE_LABELS[m]}
                 </button>
               ))}
             </div>
@@ -156,13 +206,15 @@ export const Timeline: React.FC<TimelineProps> = ({
               <SkipBack size={15} />
             </button>
             <button
-              onClick={() => setIsPlaying(!isPlaying)}
+              onClick={onTogglePlay}
               className={`p-1.5 rounded-md text-white shadow-md transition-all hover:scale-105 active:scale-95 flex items-center justify-center ${isPlaying ? "bg-slate-600 hover:bg-slate-500 dark:bg-slate-600" : "bg-blue-600 hover:bg-blue-500 dark:bg-blue-600"}`}
               style={{ width: '28px', height: '28px' }}
-              title={isPlaying ? "Pause" : "Play"}
+              title={isPlaying ? "Pause" : atEnd ? "Run again" : timeMode === "once" ? "Start" : "Play"}
             >
               {isPlaying ? (
                 <Pause size={14} fill="currentColor" />
+              ) : atEnd ? (
+                <RotateCcw size={14} />
               ) : (
                 <Play size={14} className="ml-0.5" fill="currentColor" />
               )}
@@ -173,25 +225,28 @@ export const Timeline: React.FC<TimelineProps> = ({
           <div className="flex-1 flex flex-col gap-2">
             <div className="flex items-center justify-between">
               <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-widest">
-                Time
+                {timeMode === "once" ? "Run" : "Time"}
               </span>
-              <span className="text-xs font-mono font-medium text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700/80 shadow-inner">
-                {!Number.isFinite(time) ? "∞" : Math.abs(time) >= 1e6 ? time.toExponential(2) : time.toFixed(2)}
+              <span className="text-xs font-mono font-medium whitespace-nowrap text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-900/80 px-2 py-0.5 rounded border border-slate-200 dark:border-slate-700/80 shadow-inner tabular-nums">
+                t = {formatTime(time)}
+                {bounded && (
+                  <span className="text-slate-400 dark:text-slate-500"> / {formatTime(effectiveMax)} s</span>
+                )}
               </span>
             </div>
-            {timeMode !== "continuous" ? (
+            {bounded ? (
               <input
                 type="range"
                 min={timeBounds.min}
-                max={timeBounds.max}
-                step={(timeBounds.max - timeBounds.min) / 1000}
+                max={effectiveMax}
+                step={(effectiveMax - timeBounds.min) / 1000 || 0.001}
                 value={time}
                 onChange={(e) => {
                   const val = parseFloat(e.target.value);
                   setTime(val);
                   timeRef.current = val;
                 }}
-                onMouseDown={() => setIsPlaying(false)}
+                onPointerDown={() => setIsPlaying(false)}
                 className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full appearance-none cursor-pointer outline-none hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-110 active:[&::-webkit-slider-thumb]:scale-95 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3.5 [&::-moz-range-thumb]:h-3.5 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-blue-500 [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-110 active:[&::-moz-range-thumb]:scale-95 [&::-moz-range-thumb]:transition-transform"
               />
             ) : (

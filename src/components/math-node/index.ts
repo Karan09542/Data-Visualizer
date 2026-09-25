@@ -24,3 +24,6 @@ export * from "./TraceOverlay";
 
 export * from "./VariableManager";
 export * from "./Timeline";
+export * from "./scope";
+export * from "./simulations";
+export * from "./SimulationGallery";

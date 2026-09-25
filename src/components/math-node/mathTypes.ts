@@ -77,6 +77,13 @@ export interface MathFunction {
   odeSteps?: number; // integration steps (default 1000)
   odeAnimate?: boolean; // show a dot moving along the solution
 
+  /**
+   * Dragging this point (or an arrow's tip) sets these variables: the handle moves the
+   * sliders, and the drag solver works out their values from where it's dropped.
+   * One name slides the handle along its path; two move it freely.
+   */
+  dragVars?: string[];
+
   // Behaviors
   isDraggable?: boolean;
   isTransformable?: boolean;

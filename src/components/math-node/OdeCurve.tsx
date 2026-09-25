@@ -4,8 +4,10 @@ import { sampleOdeAt, type OdeSolution } from "../../lib/math/odeSolver";
 import {
   buildOdePath,
   computeOdeExtent,
+  odePlaybackTime,
   setOdeExtent,
   solveCompiledOde,
+  solveCompiledOdeCached,
 } from "../../lib/math/odeCurveData";
 import { DEFAULT_IMAGE_WIDTH, PointImage } from "./PointImage";
 import type { CompiledOde } from "./mathTypes";
@@ -20,6 +22,11 @@ interface OdeCurveProps {
   scope: any;
   /** Changes whenever the solution could change; the solve is cached on it. */
   sampleKey: string;
+  /**
+   * Key for the shared solve cache. Rows that follow this solution through the scope
+   * solve with the same key, so the work is done once.
+   */
+  solveKey?: string;
   tRange?: [number, number];
   steps?: number;
   /** Which quantities go on each axis: "t" or a state's display name (x, x', …). */
@@ -47,6 +54,7 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
   compiledOde,
   scope,
   sampleKey,
+  solveKey,
   tRange,
   steps = 1000,
   axes,
@@ -69,6 +77,17 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
 
   const solution = useMemo<OdeSolution | null>(() => {
     if (!system || stateCount === 0) return null;
+    if (solveKey) {
+      return solveCompiledOdeCached(
+        solveKey,
+        system,
+        compiledOde.derivatives,
+        compiledOde.initials,
+        scope,
+        [t0, t1],
+        steps,
+      );
+    }
     return solveCompiledOde(
       system,
       compiledOde.derivatives,
@@ -79,7 +98,7 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
     );
     // `scope` is covered by sampleKey (see dependencyKey).
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sampleKey, t0, t1, steps, stateCount]);
+  }, [sampleKey, solveKey, t0, t1, steps, stateCount]);
 
   const [axisX, axisY] = axes ?? ["t", system?.states[0]?.display ?? "t"];
 
@@ -99,10 +118,9 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
 
   const marker = useMemo<Vec2 | null>(() => {
     if (!animate || !solution || !system) return null;
-    const span = t1 - t0;
-    if (!(span > 0)) return null;
     // Loop the playback over the solved interval; works for negative times too.
-    const looped = t0 + (((markerTime - t0) % span) + span) % span;
+    const looped = odePlaybackTime(markerTime, t0, t1);
+    if (!Number.isFinite(looped)) return null;
     const states = sampleOdeAt(solution, looped);
     if (!states) return null;
     const pick = (axis: string) => {

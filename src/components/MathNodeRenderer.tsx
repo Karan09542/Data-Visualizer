@@ -43,6 +43,8 @@ import {
   PanelLeft,
   PanelRight,
   PanelBottom,
+  Home,
+  Hand,
 } from "lucide-react";
 
 import {
@@ -79,8 +81,6 @@ import {
   computePCA,
   decoupleGeometry,
   parseAndAdjustForCompile,
-  indexHelper,
-  normalizeGeometryValue,
   resolveGeometryPoints,
   InsertAboveIcon,
   InsertBelowIcon,
@@ -117,7 +117,20 @@ import {
   TraceOverlay,
   VariableManager,
   Timeline,
+  buildBaseScope,
+  definitionName,
+  isDefinitionRow,
+  isTailTipVector,
+  handlePosition,
+  odeSolveKey,
+  publishedOdeNames,
+  SIMULATIONS,
+  SimulationGallery,
 } from "./math-node";
+import type { TimeMode } from "./math-node/Timeline";
+import type { GraphView } from "./math-node/simulations";
+import { solveDrag, snapToStep } from "../lib/math/dragSolve";
+import { hasLiveValues, renderLiveLabel } from "../lib/math/liveLabel";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { splitRelation } from "../lib/math/splitRelation";
 import { parseOdeSystemCached } from "../lib/math/odeSystem";
@@ -143,6 +156,34 @@ function defaultFunctionLabel(fn: MathFunction): string {
   return (fn as any).latex || fn.expr || "";
 }
 
+
+const DEFAULT_VIEW: GraphView = { x: [-5, 5], y: [-5, 5] };
+
+const isRange = (r: any): r is [number, number] =>
+  Array.isArray(r) && r.length === 2 && r.every((n) => typeof n === "number" && Number.isFinite(n)) && r[1] > r[0];
+
+function readGraphView(view: any): GraphView {
+  return view && isRange(view.x) && isRange(view.y) ? { x: view.x, y: view.y } : DEFAULT_VIEW;
+}
+
+/** Timeline settings saved with the node; older saves have none and get the defaults. */
+function readTimelineSettings(t: any): {
+  mode: TimeMode;
+  min: number;
+  max: number;
+  speed: number;
+  endExpr: string;
+} {
+  const num = (v: any, fallback: number) => (typeof v === "number" && Number.isFinite(v) ? v : fallback);
+  const modes: TimeMode[] = ["continuous", "loop", "bounce", "once"];
+  return {
+    mode: t && modes.includes(t.mode) ? t.mode : "continuous",
+    min: num(t?.min, 0),
+    max: num(t?.max, 10),
+    speed: num(t?.speed, 1),
+    endExpr: typeof t?.endExpr === "string" ? t.endExpr : "",
+  };
+}
 
 export const MathNodeRenderer: React.FC<any> = ({
   nodeId,
@@ -432,18 +473,6 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   const sidebarRef = useRef<HTMLDivElement>(null);
 
-  const [time, setTime] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [timeMode, setTimeMode] = useState<"loop" | "bounce" | "continuous">(
-    "continuous",
-  );
-  const [timeBounds, setTimeBounds] = useState({
-    min: 0,
-    max: 10,
-    speed: 1,
-    direction: 1,
-  });
-  const [tracePoints, setTracePoints] = useState(false);
   const initialGridSettings = useMemo(() => {
     let settings: any = {};
     if (typeof data?.value === "string") {
@@ -489,8 +518,35 @@ export const MathNodeRenderer: React.FC<any> = ({
         typeof settings.sidebarWidth === "number" ? settings.sidebarWidth : 320,
       sidebarHeight:
         typeof settings.sidebarHeight === "number" ? settings.sidebarHeight : 280,
+      timeline: readTimelineSettings(settings.timeline),
+      view: readGraphView(settings.view),
     };
   }, []);
+
+  // A saved simulation reopens paused at its start, ready for Start.
+  const [time, setTime] = useState(initialGridSettings.timeline.min);
+  const [isPlaying, setIsPlaying] = useState(initialGridSettings.timeline.mode !== "once");
+  const [timeMode, setTimeMode] = useState<TimeMode>(initialGridSettings.timeline.mode);
+  const [timeBounds, setTimeBounds] = useState({
+    min: initialGridSettings.timeline.min,
+    max: initialGridSettings.timeline.max,
+    speed: initialGridSettings.timeline.speed,
+    direction: 1,
+  });
+  // End time as a formula ("T" = flight time); empty means timeBounds.max.
+  const [timeEndExpr, setTimeEndExpr] = useState(initialGridSettings.timeline.endExpr);
+  const [tracePoints, setTracePoints] = useState(false);
+  // Where the graph opens and where Reset View returns to.
+  const [homeView, setHomeView] = useState<GraphView>(initialGridSettings.view);
+  // Mafs only reads its viewBox on mount, so a new home view remounts the graph.
+  const isFirstHomeViewRef = useRef(true);
+  useEffect(() => {
+    if (isFirstHomeViewRef.current) {
+      isFirstHomeViewRef.current = false;
+      return;
+    }
+    setViewResetKey((k) => k + 1);
+  }, [homeView]);
 
   const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
     initialGridSettings.gridType,
@@ -597,6 +653,16 @@ export const MathNodeRenderer: React.FC<any> = ({
   const functionsRef = useRef(functions);
   const variablesRef = useRef(variables);
   const groupsRef = useRef(groups);
+  const timelineSettings = useMemo(
+    () => ({
+      mode: timeMode,
+      min: timeBounds.min,
+      max: timeBounds.max,
+      speed: timeBounds.speed,
+      endExpr: timeEndExpr,
+    }),
+    [timeMode, timeBounds.min, timeBounds.max, timeBounds.speed, timeEndExpr],
+  );
   const gridSettingsRef = useRef({
     gridType,
     axisStepStr,
@@ -610,6 +676,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     panelPosition,
     sidebarWidth,
     sidebarHeight,
+    timeline: timelineSettings,
+    view: homeView,
   });
 
   useEffect(() => {
@@ -635,6 +703,8 @@ export const MathNodeRenderer: React.FC<any> = ({
       panelPosition,
       sidebarWidth,
       sidebarHeight,
+      timeline: timelineSettings,
+      view: homeView,
     };
   }, [
     gridType,
@@ -649,6 +719,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     panelPosition,
     sidebarWidth,
     sidebarHeight,
+    timelineSettings,
+    homeView,
   ]);
 
   const stripFunctions = (fns: MathFunction[]) =>
@@ -749,6 +821,20 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setSidebarWidth(parsed.gridSettings.sidebarWidth);
               if (typeof parsed.gridSettings.sidebarHeight === "number")
                 setSidebarHeight(parsed.gridSettings.sidebarHeight);
+              if (parsed.gridSettings.timeline) {
+                const tl = readTimelineSettings(parsed.gridSettings.timeline);
+                setTimeMode(tl.mode);
+                setTimeEndExpr(tl.endExpr);
+                setTimeBounds((b) => ({ ...b, min: tl.min, max: tl.max, speed: tl.speed }));
+              }
+              if (parsed.gridSettings.view) {
+                const view = readGraphView(parsed.gridSettings.view);
+                setHomeView((prev) =>
+                  prev.x[0] === view.x[0] && prev.x[1] === view.x[1] && prev.y[0] === view.y[0] && prev.y[1] === view.y[1]
+                    ? prev
+                    : view,
+                );
+              }
             }
           }
         }
@@ -827,6 +913,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     panelPosition,
     sidebarWidth,
     sidebarHeight,
+    timelineSettings,
+    homeView,
   ]);
 
   useEffect(() => {
@@ -919,7 +1007,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     return () => observer.disconnect();
   }, [isFullscreen, isExpanded]);
 
-  const timeRef = useRef(0);
+  const timeRef = useRef(initialGridSettings.timeline.min);
+  const timeMaxRef = useRef(initialGridSettings.timeline.max);
 
   const reqRef = useRef<number>(0);
   const lastTimeRef = useRef<number>(0);
@@ -1066,13 +1155,21 @@ export const MathNodeRenderer: React.FC<any> = ({
   // Whether any visible function's expression actually references t/time — if nothing
   // does, there's no reason to keep the rAF loop ticking (and re-sampling every curve)
   // 60x/sec for a plain static graph.
+  // Rows that follow a solved equation (x, dx, …) move with the clock too.
+  const odeNames = publishedOdeNames(functions);
+  const followsOde = (expr: string) => {
+    for (const name of odeNames) {
+      if (new RegExp(`(^|[^\\w])${name}([^\\w]|$)`).test(expr)) return true;
+    }
+    return false;
+  };
   const hasTimeDependentFunction = functions.some(
     (f) =>
       f.visible &&
       (f.type === "differential"
         ? // ODE solutions are static; only the dot moving along them needs the clock.
           f.odeAnimate !== false
-        : /\b(t|time)\b/.test(f.expr)),
+        : /\b(t|time)\b/.test(f.expr) || (odeNames.size > 0 && followsOde(f.expr))),
   );
 
   // Animation loop
@@ -1092,20 +1189,29 @@ export const MathNodeRenderer: React.FC<any> = ({
       lastTimeRef.current = timestamp;
 
       if (isPlaying) {
+        const timeMax = timeMaxRef.current;
         let newTime = timeRef.current + dt * timeBounds.speed * timeBounds.direction;
         let newDirection = timeBounds.direction;
 
-        if (timeMode !== "continuous") {
-          if (newTime >= timeBounds.max) {
+        if (timeMode === "once") {
+          // A run: stop at the end and stay there (Play starts it over).
+          if (newTime >= timeMax) {
+            newTime = timeMax;
+            setIsPlaying(false);
+          } else if (newTime < timeBounds.min) {
+            newTime = timeBounds.min;
+          }
+        } else if (timeMode !== "continuous") {
+          if (newTime >= timeMax) {
             if (timeMode === "loop") {
               newTime = timeBounds.min;
             } else if (timeMode === "bounce") {
-              newTime = timeBounds.max;
+              newTime = timeMax;
               newDirection = -1;
             }
           } else if (newTime <= timeBounds.min) {
             if (timeMode === "loop") {
-              newTime = timeBounds.max;
+              newTime = timeMax;
             } else if (timeMode === "bounce") {
               newTime = timeBounds.min;
               newDirection = 1;
@@ -1192,74 +1298,74 @@ export const MathNodeRenderer: React.FC<any> = ({
     functionsSerializedKey,
   ]);
 
-  // theta defaults to 0 so non-polar expressions that mention it still evaluate, but a
-  // user variable named theta must win (polar sweeps bind theta per sample anyway).
-  const baseScope: any = { theta: 0 };
-  for (const v of variables) baseScope[v.name] = v.value;
-  baseScope.t = time;
-  baseScope.time = time;
-  baseScope.ln = mathjs.log;
-  baseScope.log10 = mathjs.log10;
-  baseScope.indexHelper = indexHelper;
+  // Sliders, time, helpers, then every row in order (definitions, solved ODE states).
+  const baseScope: any = buildBaseScope(functions, variables, time);
 
-  // Expose geometry functions in baseScope
-  baseScope.Line = (...args: any[]) => args;
-  baseScope.Vector = (...args: any[]) => args;
-  baseScope.Polygon = (...args: any[]) => args;
-  baseScope.Point = (...args: any[]) => args;
+  // The end of the timeline, which may be a formula such as the flight time "T".
+  let effectiveTimeMax = timeBounds.max;
+  if (timeEndExpr.trim()) {
+    try {
+      const v = Number(mathjs.evaluate(timeEndExpr, Object.create(baseScope)));
+      if (Number.isFinite(v) && v > timeBounds.min) effectiveTimeMax = v;
+    } catch { }
+  }
+  // The animation loop reads the end through a ref: it changes with the sliders.
+  timeMaxRef.current = effectiveTimeMax;
 
-  // Expose individual timelines as pre-defined variables in the base scope (e.g., t_1, t_2, t_f)
-  functions.forEach((f, idx) => {
-    const fTime = f.hasCustomTimeline
-      ? f.time !== undefined
-        ? f.time
-        : 0
-      : time;
-    // By index
-    baseScope[`t_${idx + 1}`] = fTime;
-
-    // By function name if available
-    if (f.name) {
-      const match = f.name.match(/^([a-zA-Z0-9_]+)/);
-      const fnId = match ? match[1] : f.name;
-      if (fnId && fnId !== "t" && fnId !== "time") {
-        baseScope[`t_${fnId}`] = fTime;
-      }
+  const handleTogglePlay = () => {
+    if (isPlaying) {
+      setIsPlaying(false);
+      return;
     }
-  });
-
-  // Pre-evaluate functions so definitions or matrices are available sequentially
-  functions.forEach((f) => {
-    if (f.type === "differential") return; // solved numerically, nothing to pre-evaluate
-    if (f.compiled) {
-      try {
-        const fTime = f.hasCustomTimeline
-          ? f.time !== undefined
-            ? f.time
-            : 0
-          : time;
-        const fScope = Object.create(baseScope);
-        fScope.t = fTime;
-        fScope.time = time;
-
-        const val = f.compiled.evaluate(fScope);
-
-        // Propagate variables defined in fScope to baseScope
-        for (const key of Object.keys(fScope)) {
-          if (key !== "t" && key !== "time" && key !== "theta" && key !== "x" && key !== "y") {
-            baseScope[key] = fScope[key];
-          }
-        }
-
-        const refName = f.label || f.name;
-        if (refName) {
-          baseScope[refName] = ["point", "line", "vector", "polygon"].includes(f.type)
-            ? normalizeGeometryValue(val)
-            : val;
-        }
-      } catch (e) { }
+    // A finished run starts over from the beginning.
+    if (timeMode === "once" && timeRef.current >= effectiveTimeMax - 1e-9) {
+      timeRef.current = timeBounds.min;
+      setTime(timeBounds.min);
     }
-  });
+    setIsPlaying(true);
+  };
+
+  // Dragging a handle sets the starting state of a run: pause and go back to the start,
+  // so what you drag is where the motion begins. In continuous mode time just carries on.
+  const rewindForSetup = () => {
+    if (timeMode === "continuous") return timeRef.current;
+    if (isPlaying) setIsPlaying(false);
+    if (timeRef.current !== timeBounds.min) {
+      timeRef.current = timeBounds.min;
+      setTime(timeBounds.min);
+    }
+    return timeBounds.min;
+  };
+
+  /** A handle row was dragged to `target`: solve for its variables and move the sliders. */
+  const handleHandleDrag = (fnId: string, target: [number, number]) => {
+    const fns = functionsRef.current;
+    const vars = variablesRef.current;
+    const f = fns.find((fn) => fn.id === fnId);
+    if (!f || !f.dragVars?.length) return;
+    const bound = f.dragVars
+      .map((name) => vars.find((v) => v.name === name))
+      .filter((v): v is MathVariable => !!v);
+    if (bound.length === 0) return;
+
+    const solveTime = rewindForSetup();
+    const evaluate = (values: number[]) => {
+      const overrides: Record<string, number> = {};
+      bound.forEach((v, i) => (overrides[v.name] = values[i]));
+      const scope = buildBaseScope(fns, vars, solveTime, { overrides, reuseOdeSolutions: true });
+      return handlePosition(f, scope);
+    };
+    const solved = solveDrag(evaluate, bound, target);
+    if (!solved) return;
+
+    const next = new Map(bound.map((v, i) => [v.id, snapToStep(solved[i], v)]));
+    const changed = bound.some((v) => next.get(v.id) !== v.value);
+    if (!changed) return;
+    const updated = vars.map((v) => (next.has(v.id) ? { ...v, value: next.get(v.id)! } : v));
+    // Keep the ref current so the next mouse move in this drag starts from here.
+    variablesRef.current = updated;
+    setVariables(updated);
+  };
 
   const handleUpdateVar = (id: string, updates: Partial<MathVariable>) => {
     setVariables((prev) =>
@@ -1460,6 +1566,21 @@ export const MathNodeRenderer: React.FC<any> = ({
     setActiveExample(null);
   };
 
+  /** Puts the timeline and view back to plain-graph defaults, or to a scene's. */
+  const applyTimelineAndView = (
+    timeline: { mode: TimeMode; min: number; max: number; endExpr?: string; speed?: number; autoplay?: boolean },
+    view: GraphView,
+  ) => {
+    setTimeMode(timeline.mode);
+    setTimeEndExpr(timeline.endExpr ?? "");
+    setTimeBounds({ min: timeline.min, max: timeline.max, speed: timeline.speed ?? 1, direction: 1 });
+    timeRef.current = timeline.min;
+    setTime(timeline.min);
+    setIsPlaying(timeline.autoplay ?? timeline.mode !== "once");
+    setHomeView(view);
+    setViewResetKey((k) => k + 1);
+  };
+
   const handleLoadExample = (exampleName: string) => {
     if (activeExample === exampleName) {
       setFunctions([]);
@@ -1473,7 +1594,22 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (exampleData) {
       setFunctions(exampleData.functions);
       setVariables(exampleData.variables);
+      // Examples keep their sliders in the default group and animate freely.
+      setGroups([{ id: "default", name: "Mathematical Parameters", isCollapsed: false }]);
+      applyTimelineAndView({ mode: "continuous", min: 0, max: 10, autoplay: true }, { x: [-5, 5], y: [-5, 5] });
     }
+  };
+
+  /** Loads a physics lab. Clicking the open one again starts it fresh. */
+  const handleLoadSimulation = (key: string) => {
+    const sim = SIMULATIONS.find((item) => item.key === key);
+    if (!sim) return;
+    const scene = sim.build();
+    setActiveExample(key);
+    setFunctions(scene.functions);
+    setVariables(scene.variables);
+    setGroups(scene.groups);
+    applyTimelineAndView(scene.timeline, scene.view);
   };
 
   // One shape for every icon button in the header, so they line up and hit the same size.
@@ -1656,57 +1792,6 @@ export const MathNodeRenderer: React.FC<any> = ({
                     </div>
                   </div>
 
-                  <div className="flex flex-col gap-1.5 px-1 pb-2">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        Curve Resolution (Depth Sampling)
-                        <span className="text-[10px] normal-case font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded ml-1">
-                          {samplingDepth <= 8
-                            ? "⚡ Fast"
-                            : samplingDepth <= 14
-                              ? "⚡ Balanced"
-                              : samplingDepth <= 20
-                                ? "⚡ High Quality"
-                                : "⚡ Ultra Detail"}
-                        </span>
-                      </label>
-                      <span className="text-[10px] font-mono p-0.5 bg-slate-200 dark:bg-slate-800 rounded px-1.5 text-slate-600 dark:text-slate-300">
-                        {samplingDepth}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={0}
-                      max={30}
-                      step={1}
-                      value={samplingDepth}
-                      onChange={(e) => setSamplingDepth(Number(e.target.value))}
-                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 hover:[&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:transition-all"
-                    />
-                  </div>
-
-                  <div className="flex flex-col gap-1.5 px-1 pb-4 border-b border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
-                        Grid Subdivisions
-                      </label>
-                      <span className="text-[10px] font-mono p-0.5 bg-slate-200 dark:bg-slate-800 rounded px-1.5 text-slate-600 dark:text-slate-300">
-                        {gridSubdivisions}
-                      </span>
-                    </div>
-                    <input
-                      type="range"
-                      min={1}
-                      max={20}
-                      step={1}
-                      value={gridSubdivisions}
-                      onChange={(e) =>
-                        setGridSubdivisions(Number(e.target.value))
-                      }
-                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 hover:[&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:transition-all"
-                    />
-                  </div>
-
                   <div className="flex flex-col gap-3">
                     {functions.map((f, index) => (
                       <div
@@ -1848,10 +1933,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                           >
                             <option
                               value="function"
-                              title="Function"
+                              title="Function, or a named value like T = 2*v0/g"
                               className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                             >
-                              y =
+                              {definitionName(f, functions) ? "def" : "y ="}
                             </option>
                             <option
                               value="differential"
@@ -2428,6 +2513,32 @@ export const MathNodeRenderer: React.FC<any> = ({
                               </div>,
                               document.body,
                             )}
+                          {/* What the row is doing beyond drawing: a named value, or a handle. */}
+                          {(() => {
+                            const defName = definitionName(f, functions);
+                            if (!defName) return null;
+                            const isHelper = defName.includes("(");
+                            return (
+                              <div className="mt-1 flex items-center gap-1.5 text-[10px] text-slate-500 dark:text-slate-400">
+                                <span className="px-1.5 py-0.5 rounded bg-slate-200/70 dark:bg-slate-700/60 font-semibold uppercase tracking-wider text-[9px]">
+                                  {isHelper ? "Helper" : "Value"}
+                                </span>
+                                <span className="font-mono truncate">
+                                  {isHelper
+                                    ? `${defName} can be used in other rows`
+                                    : `${defName} = ${renderLiveLabel(`{{${defName}:3}}`, baseScope)}`}
+                                </span>
+                              </div>
+                            );
+                          })()}
+                          {!!f.dragVars?.length && (
+                            <div className="mt-1 flex items-center gap-1.5 text-[10px] text-sky-600 dark:text-sky-400">
+                              <Hand size={11} className="shrink-0" />
+                              <span className="truncate">
+                                Drag it on the graph to set {f.dragVars.join(" and ")}
+                              </span>
+                            </div>
+                          )}
                           {/* Sliders for just this equation's parameters. They edit the
                               same variables as the Variables Manager, not copies. */}
                           <InlineVariableSliders
@@ -2453,6 +2564,79 @@ export const MathNodeRenderer: React.FC<any> = ({
                             // Sits in the same column as the equation field, so it needs
                             // no extra indent — that would offset it from the field above.
                             <div className="flex flex-col mt-2 gap-2.5 text-[11px] pb-1 animate-fadeIn">
+                              {/* Handle: dragging this point / arrow tip sets sliders */}
+                              {(f.type === "point" || f.type === "vector") && (() => {
+                                const used = referencedVariables(f, functions, variables);
+                                const others = variables.filter((v) => !used.includes(v));
+                                const current = f.dragVars ?? [];
+                                const setSlot = (slot: number, name: string) => {
+                                  const next = [...current];
+                                  if (name) next[slot] = name;
+                                  else next.splice(slot, 1);
+                                  const cleaned = next.filter((n, i) => n && next.indexOf(n) === i).slice(0, 2);
+                                  setFunctions((prev) =>
+                                    prev.map((fn) =>
+                                      fn.id === f.id
+                                        ? {
+                                          ...fn,
+                                          dragVars: cleaned.length ? cleaned : undefined,
+                                          // Moving the sliders replaces rewriting the numbers in the formula.
+                                          isDraggable: cleaned.length ? false : fn.isDraggable,
+                                        }
+                                        : fn,
+                                    ),
+                                  );
+                                };
+                                const options = (
+                                  <>
+                                    <option value="">None</option>
+                                    {used.length > 0 && (
+                                      <optgroup label="Used by this row">
+                                        {used.map((v) => (
+                                          <option key={v.id} value={v.name}>{v.name}{v.displayName ? ` · ${v.displayName}` : ""}</option>
+                                        ))}
+                                      </optgroup>
+                                    )}
+                                    {others.length > 0 && (
+                                      <optgroup label="Other sliders">
+                                        {others.map((v) => (
+                                          <option key={v.id} value={v.name}>{v.name}{v.displayName ? ` · ${v.displayName}` : ""}</option>
+                                        ))}
+                                      </optgroup>
+                                    )}
+                                  </>
+                                );
+                                return (
+                                  <div className="flex flex-col gap-1.5 mb-1">
+                                    <span className="text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700 pb-1 flex items-center gap-1.5">
+                                      <Hand size={12} /> Drag on the graph sets
+                                    </span>
+                                    <p className="text-[10px] leading-snug text-slate-400 dark:text-slate-500">
+                                      {f.type === "vector" ? "Drag the arrow's tip" : "Drag the point"} and these sliders
+                                      follow. One slider slides it along its path; two let it move freely.
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                      <SettingsSelect
+                                        value={current[0] ?? ""}
+                                        onChange={(e) => setSlot(0, e.target.value)}
+                                        aria-label="First slider set by dragging"
+                                      >
+                                        {options}
+                                      </SettingsSelect>
+                                      {current.length > 0 && (
+                                        <SettingsSelect
+                                          value={current[1] ?? ""}
+                                          onChange={(e) => setSlot(1, e.target.value)}
+                                          aria-label="Second slider set by dragging"
+                                        >
+                                          {options}
+                                        </SettingsSelect>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
                               {/* General Behaviors */}
                               <div className="flex flex-col gap-2 mb-2">
                                 <span className="text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700 pb-1">
@@ -5342,9 +5526,68 @@ export const MathNodeRenderer: React.FC<any> = ({
                     ))}
                   </div>
 
+                </div>
+
+                {/* Variables */}
+                <VariableManager
+                  variables={variables}
+                  groups={groups}
+                  missingVars={missingVars}
+                  hoveredVar={hoveredVar}
+                  setHoveredVar={setHoveredVar}
+                  activeActionMenuId={activeActionMenuId}
+                  setActiveActionMenuId={setActiveActionMenuId}
+                  handleAutoAddVar={handleAutoAddVar}
+                  handleAddVariableAt={handleAddVariableAt}
+                  handleUpdateVar={handleUpdateVar}
+                  handleDeleteVar={handleDeleteVar}
+                  setEditingVar={setEditingVar}
+                  setShowVarEditor={setShowVarEditor}
+                  setGroups={setGroups}
+                  setVariables={setVariables}
+                  draggedVariableId={draggedVariableId}
+                  setDraggedVariableId={setDraggedVariableId}
+                  canDragVariableId={canDragVariableId}
+                  setCanDragVariableId={setCanDragVariableId}
+                  dragOverVariableId={dragOverVariableId}
+                  setDragOverVariableId={setDragOverVariableId}
+                  dragOverVariablePosition={dragOverVariablePosition}
+                  setDragOverVariablePosition={setDragOverVariablePosition}
+                  handleDropVariable={handleDropVariable}
+                />
+
+                {/* Timeline & Controls */}
+                <Timeline
+                  tracePoints={tracePoints}
+                  setTracePoints={setTracePoints}
+                  timeBounds={timeBounds}
+                  setTimeBounds={setTimeBounds}
+                  time={time}
+                  setTime={setTime}
+                  timeRef={timeRef}
+                  isPlaying={isPlaying}
+                  setIsPlaying={setIsPlaying}
+                  timeMode={timeMode}
+                  setTimeMode={setTimeMode}
+                  endExpr={timeEndExpr}
+                  setEndExpr={setTimeEndExpr}
+                  effectiveMax={effectiveTimeMax}
+                  onTogglePlay={handleTogglePlay}
+                />
+
+                {/* Library: ready-made labs, examples and templates */}
+                <div className="flex flex-col gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                  <h3 className="font-semibold text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                    <div className="w-1.5 h-1.5 rounded-full bg-pink-500"></div>
+                    Library
+                  </h3>
+                  <SimulationGallery
+                    activeKey={activeExample}
+                    onLoad={handleLoadSimulation}
+                  />
                   <FormulaLibrary onInsertFormula={handleInsertFunctionFromHelp} />
                   {/* Popular & Examples */}
-                  <div className="flex flex-col gap-4 pt-3 border-t border-slate-200 dark:border-slate-700/50">
+                  <div className="flex flex-col gap-4">
                     <div className="flex flex-col gap-2">
                       <h4 className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">
                         Quick Inserts & Templates
@@ -5510,48 +5753,66 @@ export const MathNodeRenderer: React.FC<any> = ({
                   </div>
                 </div>
 
-                {/* Variables */}
-                <VariableManager
-                  variables={variables}
-                  groups={groups}
-                  missingVars={missingVars}
-                  hoveredVar={hoveredVar}
-                  setHoveredVar={setHoveredVar}
-                  activeActionMenuId={activeActionMenuId}
-                  setActiveActionMenuId={setActiveActionMenuId}
-                  handleAutoAddVar={handleAutoAddVar}
-                  handleAddVariableAt={handleAddVariableAt}
-                  handleUpdateVar={handleUpdateVar}
-                  handleDeleteVar={handleDeleteVar}
-                  setEditingVar={setEditingVar}
-                  setShowVarEditor={setShowVarEditor}
-                  setGroups={setGroups}
-                  setVariables={setVariables}
-                  draggedVariableId={draggedVariableId}
-                  setDraggedVariableId={setDraggedVariableId}
-                  canDragVariableId={canDragVariableId}
-                  setCanDragVariableId={setCanDragVariableId}
-                  dragOverVariableId={dragOverVariableId}
-                  setDragOverVariableId={setDragOverVariableId}
-                  dragOverVariablePosition={dragOverVariablePosition}
-                  setDragOverVariablePosition={setDragOverVariablePosition}
-                  handleDropVariable={handleDropVariable}
-                />
+                {/* Rendering quality: rarely changed, so out of the way */}
+                <details className="group/quality border-t border-slate-200 dark:border-slate-800 pt-3">
+                  <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    Display quality
+                    <ChevronDown size={12} className="transition-transform -rotate-90 group-open/quality:rotate-0" />
+                  </summary>
+                  <div className="flex flex-col gap-2 pt-3">
+                  <div className="flex flex-col gap-1.5 px-1 pb-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        Curve Resolution (Depth Sampling)
+                        <span className="text-[10px] normal-case font-medium text-amber-500 bg-amber-500/10 px-1.5 py-0.5 rounded ml-1">
+                          {samplingDepth <= 8
+                            ? "⚡ Fast"
+                            : samplingDepth <= 14
+                              ? "⚡ Balanced"
+                              : samplingDepth <= 20
+                                ? "⚡ High Quality"
+                                : "⚡ Ultra Detail"}
+                        </span>
+                      </label>
+                      <span className="text-[10px] font-mono p-0.5 bg-slate-200 dark:bg-slate-800 rounded px-1.5 text-slate-600 dark:text-slate-300">
+                        {samplingDepth}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={0}
+                      max={30}
+                      step={1}
+                      value={samplingDepth}
+                      onChange={(e) => setSamplingDepth(Number(e.target.value))}
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 hover:[&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:transition-all"
+                    />
+                  </div>
 
-                {/* Timeline & Controls */}
-                <Timeline
-                  tracePoints={tracePoints}
-                  setTracePoints={setTracePoints}
-                  timeBounds={timeBounds}
-                  setTimeBounds={setTimeBounds}
-                  time={time}
-                  setTime={setTime}
-                  timeRef={timeRef}
-                  isPlaying={isPlaying}
-                  setIsPlaying={setIsPlaying}
-                  timeMode={timeMode}
-                  setTimeMode={setTimeMode}
-                />
+                  <div className="flex flex-col gap-1.5 px-1 pb-2">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-1">
+                        Grid Subdivisions
+                      </label>
+                      <span className="text-[10px] font-mono p-0.5 bg-slate-200 dark:bg-slate-800 rounded px-1.5 text-slate-600 dark:text-slate-300">
+                        {gridSubdivisions}
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min={1}
+                      max={20}
+                      step={1}
+                      value={gridSubdivisions}
+                      onChange={(e) =>
+                        setGridSubdivisions(Number(e.target.value))
+                      }
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700/50 rounded-lg appearance-none cursor-pointer hover:bg-slate-300 dark:hover:bg-slate-600 transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3.5 [&::-webkit-slider-thumb]:h-3.5 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:shadow-md hover:[&::-webkit-slider-thumb]:scale-110 hover:[&::-webkit-slider-thumb]:bg-blue-400 [&::-webkit-slider-thumb]:transition-all"
+                    />
+                  </div>
+
+                  </div>
+                </details>
               </div>
             </div>
           )}
@@ -5650,6 +5911,15 @@ export const MathNodeRenderer: React.FC<any> = ({
               <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />
               <button
                 type="button"
+                onClick={() => setViewResetKey((k) => k + 1)}
+                title="Back to the starting view"
+                className="flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <Home size={13} />
+                <span className="hidden sm:inline">Reset view</span>
+              </button>
+              <button
+                type="button"
                 onClick={() =>
                   setShowAdvancedAxisControls(!showAdvancedAxisControls)
                 }
@@ -5691,7 +5961,7 @@ export const MathNodeRenderer: React.FC<any> = ({
             width={graphSize.width}
             height={graphSize.height}
             zoom={{ min: 0.1, max: 20 }}
-            viewBox={{ x: [-5, 5], y: [-5, 5] }}
+            viewBox={homeView}
             preserveAspectRatio="contain"
             pan={true}
           >
@@ -5726,6 +5996,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                 geomCacheRef,
                 samplingDepth,
                 variables,
+                handleHandleDrag,
               };
 
               if (
@@ -5757,12 +6028,14 @@ export const MathNodeRenderer: React.FC<any> = ({
                     geomCacheRef,
                     samplingDepth,
                     variables,
+                    handleHandleDrag,
                   } = ctx;
 
                   const variablesHash = variables?.map((v: any) => `${v.name}:${v.value}`).join(",") || "";
 
                   return functions
-                    .filter((f) => f.visible)
+                    // Definitions (T = …, pos(s) = …) are values for other rows, not drawings.
+                    .filter((f) => f.visible && !isDefinitionRow(f, functions))
                     .map((f) => {
                       // Differential equations are solved numerically, so they carry
                       // compiledOde instead of a single compiled expression. They still
@@ -5956,6 +6229,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                             f.isDraggable &&
                             !f.isTransformable;
 
+                          // A handle whose drag sets sliders (see dragSolve.ts).
+                          const isVarHandle =
+                            !!f.dragVars?.length &&
+                            !f.isTransformable &&
+                            (f.type === "point" || f.type === "vector");
+
                           // Use PCA to compute natural axes for resizing
                           const pca = computePCA(points);
                           // Let pca angle be the base orientaion of the shape when rotation is 0
@@ -6117,6 +6396,20 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                           return (
                             <React.Fragment key={f.id}>
+                              {isInteractionLayer &&
+                                isVarHandle &&
+                                (() => {
+                                  const at = handlePosition(f, baseScope);
+                                  if (!at) return null;
+                                  return (
+                                    <MovablePoint
+                                      key={`${f.id}-handle`}
+                                      point={at}
+                                      color={f.color}
+                                      onMove={(pt) => handleHandleDrag(f.id, pt)}
+                                    />
+                                  );
+                                })()}
                               {isPointBased && (
                                 <Transform translate={[tx, ty]}>
                                   <Transform translate={[px, py]}>
@@ -6236,7 +6529,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                               }}
                                                             />
                                                           ) : null
-                                                        ) : !isInteractionLayer ? (
+                                                        ) : !isInteractionLayer && !isVarHandle ? (
                                                           <Point
                                                             x={p[0]}
                                                             y={p[1]}
@@ -6262,7 +6555,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                               )}
                                                               <SafeLabel
                                                                 at={[p[0] + dx, p[1] + dy]}
-                                                                tex={f.label}
+                                                                tex={hasLiveValues(f.label) ? renderLiveLabel(f.label!, baseScope) : f.label!}
+                                                                plain={hasLiveValues(f.label)}
                                                                 color={f.color}
                                                                 rotation={f.labelRotation}
                                                                 scale={f.labelScale}
@@ -6277,13 +6571,20 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                 })}
                                               {!isInteractionLayer &&
                                                 f.type === "vector" &&
-                                                points.map((p, i) => {
+                                                // Vector(tail, tip) is one arrow between two points;
+                                                // anything else is arrows from the origin.
+                                                (isTailTipVector(f)
+                                                  ? points.length >= 2
+                                                    ? [[points[0], points[1]] as [[number, number], [number, number]]]
+                                                    : []
+                                                  : points.map((p) => [[0, 0], p] as [[number, number], [number, number]])
+                                                ).map(([tail, p], i) => {
                                                   const customDash = getStrokeDasharray(f.lineStyle);
                                                   const isDashed = f.lineStyle && f.lineStyle !== "solid";
                                                   const vectorEl = (
                                                     <Vector
                                                       key={i}
-                                                      tail={[0, 0]}
+                                                      tail={tail}
                                                       tip={p}
                                                       color={f.color}
                                                       style={isDashed ? "dashed" : "solid"}
@@ -6789,6 +7090,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                     compiledOde={f.compiledOde}
                                     scope={baseScope}
                                     sampleKey={curveKey}
+                                    solveKey={odeSolveKey(f, functions, baseScope, fTime, variables)}
                                     transform={isIdentityTransform ? undefined : applyCurveTransform}
                                     tRange={f.tRange}
                                     steps={f.odeSteps ?? 1000}
@@ -7030,8 +7332,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                                         return (
                                           <SafeLabel
                                             at={applyForwardTransform(labelPosLocal)}
-                                            tex={odeTex ?? f.label}
+                                            tex={
+                                              odeTex ??
+                                              (hasLiveValues(f.label) ? renderLiveLabel(f.label!, baseScope) : f.label)
+                                            }
                                             rawLatex={!!odeTex}
+                                            plain={!odeTex && hasLiveValues(f.label)}
                                             color={f.color}
                                             rotation={f.labelRotation}
                                             scale={f.labelScale}
@@ -7608,7 +7914,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                   </div>
                 );
                 const rows = functions
-                  .filter((f) => f.visible && f.compiled)
+                  // A text readout already shows its own values on the canvas.
+                  .filter((f) => f.visible && f.compiled && !(f.type === "point" && f.showPoint === false))
                   .map((f) => {
                     const fTime = f.hasCustomTimeline
                       ? f.time !== undefined
@@ -7618,6 +7925,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                     const fScope = { ...baseScope, t: fTime, time: time };
                     const baseScopeShadow = fScope;
                     try {
+                      const defName = definitionName(f, functions);
+                      if (defName) {
+                        if (defName.includes("(")) return null; // a helper has no single value
+                        return renderRow(f, defName, renderLiveLabel(`{{${defName}}}`, baseScope));
+                      }
                       if (f.type === "function") {
                         const val = f.compiled.evaluate({
                           ...baseScopeShadow,
@@ -7682,9 +7994,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                         const res = resolveGeometryPoints(f, baseScopeShadow);
                         if (res.points && res.points.length > 0) {
                           const pt = res.points[0];
+                          const named = f.expr.match(/^\s*([A-Za-z_]\w*)\s*=/)?.[1];
                           return renderRow(
                             f,
-                            f.label || (f.type === "point" ? "P" : "V"),
+                            (f.label && !hasLiveValues(f.label) ? f.label : named) ||
+                              (f.type === "point" ? "P" : "V"),
                             `(${pt[0].toFixed(2)}, ${pt[1].toFixed(2)})`,
                           );
                         }

@@ -71,7 +71,13 @@ function sweepSymbols(f: MathFunction): string[] {
     return ["t", ...system.states.map((s) => s.id)];
   }
   switch (f.type) {
-    case "function":
+    case "function": {
+      // A definition (k = 2*a, pos = 4 + x) isn't swept over x: its x, if any, is a
+      // value published by a differential row, so it's a real dependency.
+      const node = parseTolerant(f.expr);
+      if (node && (node as any).isAssignmentNode && (node as any).object?.name !== "y") return [];
+      return ["x", "y"];
+    }
     case "implicit":
     case "inequality":
       return ["x", "y"];
@@ -98,6 +104,8 @@ function rowNames(f: MathFunction): string[] {
   if (f.type === "differential") return []; // state names are internal to the solver
   const names: string[] = [];
   for (const raw of [f.name, f.label]) {
+    // A live readout ("x = {{x}} m") is text, not the name of anything.
+    if (raw && raw.includes("{{")) continue;
     const m = raw?.match(/^([a-zA-Z_Ͱ-Ͽ][\wͰ-Ͽ]*)/);
     if (m) names.push(m[1]);
   }

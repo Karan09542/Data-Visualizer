@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from "react";
 import { Point, useTransformContext, usePaneContext, Text, vec } from "mafs";
 import { MathFunction } from "./mathTypes";
 import { computePCA } from "./mathHelpers";
+import { isDefinitionRow, isTailTipVector } from "./scope";
 
 // UI floating over the graph (toolbar, settings panel, inspector) opts out of tracing,
 // so tapping a button doesn't also trace the curve underneath it.
@@ -186,6 +187,9 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
 
       for (const f of functions) {
         if (!f.visible || !f.compiled) continue;
+        // Named values draw nothing, and a hidden dot (a text readout) isn't a target.
+        if (isDefinitionRow(f, functions)) continue;
+        if (f.type === "point" && f.showPoint === false) continue;
 
         try {
           if (f.type === "point") {
@@ -197,7 +201,8 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({
             const rawPts = getPoints(f);
             const transform = getTransformHelper(f, rawPts);
             const pts = rawPts.map((pt: number[]) => transform(pt));
-            if (pts.length > 0) checkSegment(transform([0, 0]), pts[0], f.color);
+            if (isTailTipVector(f) && pts.length >= 2) checkSegment(pts[0], pts[1], f.color);
+            else if (pts.length > 0) checkSegment(transform([0, 0]), pts[0], f.color);
           } else if (f.type === "line" || (f.type as any) === "segment" || (f.type as any) === "ray") {
             const rawPts = getPoints(f);
             const transform = getTransformHelper(f, rawPts);

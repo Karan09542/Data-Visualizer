@@ -13,6 +13,11 @@ interface SafeLabelProps {
   flipY?: boolean;
   /** `tex` is already LaTeX (e.g. a multi-line ODE system); render it as-is. */
   rawLatex?: boolean;
+  /**
+   * Plain text, e.g. a live readout "t = 0.42 s" that changes every frame. Shown in
+   * KaTeX's font so it matches the other labels, without a LaTeX pass per frame.
+   */
+  plain?: boolean;
 }
 
 export const SafeLabel: React.FC<SafeLabelProps> = ({
@@ -24,6 +29,7 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
   flipX = false,
   flipY = false,
   rawLatex = false,
+  plain = false,
 }) => {
   const { viewTransform, userTransform } = useTransformContext();
   const ref = useRef<HTMLSpanElement>(null);
@@ -36,6 +42,9 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
   useEffect(() => {
     let cancelled = false;
 
+    // Plain text is written straight to the DOM below: a readout changes every frame
+    // and must not go through state.
+    if (plain) return;
     if (rawLatex) {
       setFinalTex(tex);
       return;
@@ -77,10 +86,14 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [tex, expressionToLatex, rawLatex]);
+  }, [tex, expressionToLatex, rawLatex, plain]);
 
   useEffect(() => {
     if (!ref.current) return;
+    if (plain) {
+      ref.current.textContent = tex;
+      return;
+    }
     try {
       katex.render(finalTex, ref.current, {
         throwOnError: true,
@@ -91,7 +104,7 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
     } catch (e) {
       ref.current.innerText = finalTex;
     }
-  }, [finalTex]);
+  }, [finalTex, plain, plain ? tex : ""]);
 
   const combinedTransform = vec.matrixMult(viewTransform, userTransform);
   const width = 99999;
@@ -118,6 +131,7 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
           width: "100%",
           height: "100%",
           color: color || "var(--mafs-fg)",
+          ...(plain ? { fontFamily: "KaTeX_Main, 'Times New Roman', serif", fontSize: "1.15em", whiteSpace: "pre" } : {}),
           transform: `rotate(${rotation}deg) scale(${sx}, ${sy})`,
           transformOrigin: "center",
         }}

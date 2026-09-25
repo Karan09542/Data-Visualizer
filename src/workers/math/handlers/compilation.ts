@@ -2,7 +2,7 @@ import { MathWorkerHandler } from "../types";
 import { parseAndAdjustForCompile } from "../utils/parse";
 import { formatMathError } from "../utils/helpers";
 import { splitRelation } from "../../../lib/math/splitRelation";
-import { parseOdeSystem } from "../../../lib/math/odeSystem";
+import { odeExportName, parseOdeSystem } from "../../../lib/math/odeSystem";
 
 const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper"];
 // theta/θ are only implicit (the swept angle) for polar curves; elsewhere a theta is a
@@ -55,12 +55,17 @@ function extractVariables(
   context: any,
   extraBuiltins: string[] = [],
 ) {
+  // Parameters of a definition like pos(s) = A*cos(w*s) are local to it, not sliders.
+  const params = new Set<string>();
   node.traverse((n: any) => {
     if (n.isAssignmentNode) {
       if (n.object && n.object.isSymbolNode) assignedVars.add(n.object.name);
       else if (n.name) assignedVars.add(n.name);
     }
-    if (n.isFunctionAssignmentNode) assignedVars.add(n.name);
+    if (n.isFunctionAssignmentNode) {
+      assignedVars.add(n.name);
+      for (const p of n.params || []) params.add(p);
+    }
   });
 
   node.traverse((n: any) => {
@@ -68,6 +73,7 @@ function extractVariables(
       n.isSymbolNode &&
       !BUILTINS.includes(n.name) &&
       !extraBuiltins.includes(n.name) &&
+      !params.has(n.name) &&
       !n.name.startsWith("t_") &&
       !(context.math as any)[n.name] &&
       !assignedVars.has(n.name)
@@ -104,7 +110,7 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
         const lhs = compileExpression(context, lhsStr);
         const rhs = compileExpression(context, rhsStr);
 
-        if (f.label) assignedVars.add(f.label);
+        if (f.label && !f.label.includes("{{")) assignedVars.add(f.label);
         if (f.name) assignedVars.add(f.name);
 
         const lhsNode = context.registry.getParsedNode(lhsStr);
@@ -136,6 +142,8 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
         for (const s of system.states) {
           stateIds.add(s.id);
           assignedVars.add(s.id);
+          // Published for other rows to follow (x, dx for x'); see math-node/scope.ts.
+          assignedVars.add(odeExportName(s));
         }
 
         let error: string | undefined;
@@ -161,11 +169,20 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
           }
         }
 
+        // Later rows can use the solved state (x, dx, …); give it a stand-in value so
+        // checking those rows here doesn't report it as undefined. Sliders keep theirs.
+        for (const s of system.states) {
+          const name = odeExportName(s);
+          if (!payload.variableNames.includes(name) && !["t", "time", "pi", "e", "i"].includes(name)) {
+            tempBaseScope[name] = 0;
+          }
+        }
+
         return { id: f.id, compiledKey: firstKey, error };
       }
 
       const { key, compiled } = compileExpression(context, f.expr);
-      if (f.label) assignedVars.add(f.label);
+      if (f.label && !f.label.includes("{{")) assignedVars.add(f.label);
       if (f.name) assignedVars.add(f.name);
 
       const node = context.registry.getParsedNode(f.expr);
@@ -197,7 +214,7 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
           }
         }
 
-        const refName = f.label || f.name;
+        const refName = f.label && !f.label.includes("{{") ? f.label : f.name;
         if (refName) tempBaseScope[refName] = val;
       } catch (evalErr: any) {
         error = formatMathError(evalErr.message || String(evalErr));
