@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, HelpCircle, Variable, Zap, Waves, Search, Copy, Check, Plus, BookOpen,
-  LineChart, Binary, Play, Move, Layers, Compass, Sparkles, Info, ChevronRight, CheckSquare
+  LineChart, Binary, Play, Move, Layers, Compass, Sparkles, Info, ChevronRight, CheckSquare, Hand
 } from 'lucide-react';
 import katex from 'katex';
 import 'katex/dist/katex.min.css';
@@ -83,6 +83,7 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
     { id: 'inequalities', title: 'Inequalities', icon: Layers, badge: 'Shading' },
     { id: 'polar-parametric', title: 'Polar & Parametric', icon: Compass, badge: 'Curves' },
     { id: 'differential', title: "Differential Equations", icon: Waves, badge: "x′" },
+    { id: 'simulations', title: 'Build a Simulation', icon: Hand, badge: 'Physics' },
     { id: 'advanced-gallery', title: 'Advanced Gallery', icon: Sparkles, badge: 'Ready' },
   ];
 
@@ -112,6 +113,18 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
         title: 'Starting values and coupled equations',
         keywords: ['initial condition', 'starting value', 'x(0)', 'coupled', 'system', 'phase portrait', 'pendulum', 'oscillator', 'orbit', 'damping'],
         snippet: 'x(0) = 1 sets where it starts; write several equations together to couple them.',
+      },
+      {
+        section: 'simulations',
+        title: 'Drag handles that move sliders',
+        keywords: ['drag', 'handle', 'interactive', 'interact', 'mouse', 'touch', 'slider', 'control', 'aim', 'launch', 'arrow', 'dragvars'],
+        snippet: 'Make a point or an arrow tip a handle: dragging it on the graph sets its sliders.',
+      },
+      {
+        section: 'simulations',
+        title: 'Named values, live labels and runs',
+        keywords: ['definition', 'value', 'readout', 'label', 'live', 'run once', 'start', 'reset', 'end time', 'projectile', 'spring', 'pendulum', 'kinematics', 'simulation', 'lab'],
+        snippet: 'T = 2*v0/g names a value; "t = {{time}} s" shows it live; Run once plays to the end and stops.',
       },
       {
         section: 'function-types',
@@ -1139,6 +1152,74 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                     )}
 
                     {/* Advanced Examples Gallery */}
+                    {activeTab === 'simulations' && (
+                      <div className="space-y-6">
+                        <div className="space-y-2">
+                          <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Build a Simulation</h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                            The labs under <b>Library → Simulations</b> (projectile, spring, pendulum, motion graphs) are made of
+                            ordinary rows. Open one and read its rows, or build your own from the five pieces below.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">1 · Named values</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            A row like <code className="font-mono text-indigo-600 dark:text-indigo-400">T = 2*v0*sin(angle*pi/180)/g</code> names a value instead of drawing a line.
+                            Its current value shows under the row, and later rows can use <code className="font-mono text-indigo-600 dark:text-indigo-400">T</code>.
+                            Helpers work too: <code className="font-mono text-indigo-600 dark:text-indigo-400">pos(s) = x0 + v0*s + a*s^2/2</code>.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">2 · Arrows from anywhere</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            A vector row written as <code className="font-mono text-indigo-600 dark:text-indigo-400">Vector(tail, tip)</code> draws one arrow between two points,
+                            e.g. a velocity arrow on a moving ball:
+                          </p>
+                          <pre className="font-mono text-[11px] bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 text-slate-700 dark:text-slate-300 whitespace-pre-wrap">{`ball = [vx*time, vy*time - g*time^2/2]
+Vector(ball, ball + [vx, vy - g*time]/4)`}</pre>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">3 · Drag handles</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            Open a point or vector row's settings and pick sliders under <b>Drag on the graph sets</b>. Dragging
+                            the point (or the arrow's tip) then moves those sliders. With one slider the handle slides along its
+                            path, like a bob on its circle. With two it moves freely, like aiming a launch arrow by
+                            <code className="font-mono text-indigo-600 dark:text-indigo-400"> v0</code> and <code className="font-mono text-indigo-600 dark:text-indigo-400">angle</code>. Handles stop at the slider's min and max.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">4 · Live labels</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            Put a formula in double braces inside a label and it shows the current value:
+                            <code className="font-mono text-indigo-600 dark:text-indigo-400"> {"t = {{time}} s"}</code>. Add <code className="font-mono text-indigo-600 dark:text-indigo-400">:N</code> for N decimals, as in
+                            <code className="font-mono text-indigo-600 dark:text-indigo-400">{" {{v0:1}}"}</code>. A point with <i>Show point</i> off and a live label is a text readout.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">5 · Follow a solved equation</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            A differential row shares its solution at the current time with the rows after it: the state
+                            <code className="font-mono text-indigo-600 dark:text-indigo-400"> x</code>, and <code className="font-mono text-indigo-600 dark:text-indigo-400">x′</code> as <code className="font-mono text-indigo-600 dark:text-indigo-400">dx</code> (<code className="font-mono text-indigo-600 dark:text-indigo-400">theta′</code> as <code className="font-mono text-indigo-600 dark:text-indigo-400">dtheta</code>).
+                            So a mass can be drawn at <code className="font-mono text-indigo-600 dark:text-indigo-400">[4 + x, 5]</code> while <code className="font-mono text-indigo-600 dark:text-indigo-400">x'' = -(k/m)*x</code> is solved.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">Runs: Start and Reset</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            In the Timeline settings choose <b>Run once</b>: play goes to the end and stops, and play again starts
+                            over. The end can be a formula, such as <code className="font-mono text-indigo-600 dark:text-indigo-400">T</code> for the flight time. Dragging a handle
+                            pauses and rewinds, so what you drag is where the motion starts.
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
                     {activeTab === 'advanced-gallery' && (
                       <div className="space-y-6">
                         <div className="space-y-2">

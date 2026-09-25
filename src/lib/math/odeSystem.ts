@@ -252,3 +252,15 @@ export function parseOdeSystemCached(expr: string): OdeSystem {
   systemCache.set(expr, parsed);
   return parsed;
 }
+
+/**
+ * Name a state is published under, so other rows can follow the solution as time plays:
+ * x → x, x' → dx, x'' → ddx (theta' → dtheta). Primes aren't valid in a plain formula,
+ * so each derivative mark becomes a leading "d".
+ */
+export function odeExportName(state: OdeState): string {
+  const m = state.display.match(/^(.*?)('*)$/);
+  const base = m ? m[1] : state.display;
+  const order = m ? m[2].length : 0;
+  return "d".repeat(order) + base;
+}

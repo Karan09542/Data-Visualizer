@@ -40,6 +40,40 @@ export function solveCompiledOde(
   return solveOdeRK4(deriv, y0, tRange[0], tRange[1], clampOdeSteps(steps, n));
 }
 
+/**
+ * Where playback is on a solved interval [t0, t1]. It loops, but lands on t1 exactly
+ * when time does, so a run that stops at the end shows the end, not the start again.
+ */
+export function odePlaybackTime(time: number, t0: number, t1: number): number {
+  const span = t1 - t0;
+  if (!(span > 0) || !Number.isFinite(time)) return NaN;
+  const offset = (time - t0) % span;
+  if (time > t0 && offset === 0) return t1;
+  return t0 + ((offset + span) % span);
+}
+
+const solveCache = new Map<string, OdeSolution | null>();
+
+/**
+ * solveCompiledOde, cached by a key that changes whenever the solution could change.
+ * The curve and the rows that follow the solution (see scope.ts) share one solve.
+ */
+export function solveCompiledOdeCached(
+  cacheKey: string,
+  system: OdeSystem,
+  derivatives: any[],
+  initials: any[],
+  scope: any,
+  tRange: [number, number],
+  steps: number,
+): OdeSolution | null {
+  if (solveCache.has(cacheKey)) return solveCache.get(cacheKey)!;
+  const solution = solveCompiledOde(system, derivatives, initials, scope, tRange, steps);
+  if (solveCache.size > 60) solveCache.delete(solveCache.keys().next().value as string);
+  solveCache.set(cacheKey, solution);
+  return solution;
+}
+
 /** Where a drawn solution sits, in its own (untransformed) coordinates. */
 export interface OdeExtent {
   cx: number;
