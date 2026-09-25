@@ -723,8 +723,10 @@ export const MathNodeRenderer: React.FC<any> = ({
     homeView,
   ]);
 
+  // compiledKey is runtime state too: saved, it tells a tab that loads the row that
+  // it is already compiled, so the row is never compiled there and draws nothing.
   const stripFunctions = (fns: MathFunction[]) =>
-    fns.map(({ compiled, compiled2, compiledOde, error, ...f }) => f);
+    fns.map(({ compiled, compiled2, compiledOde, compiledKey, error, ...f }) => f);
 
   const saveImmediately = useCallback(
     (
@@ -779,13 +781,25 @@ export const MathNodeRenderer: React.FC<any> = ({
               // Preserve compiled data from existing functions to avoid
               // shape disappearance during re-compilation window
               const compiledMap = new Map(prev.map(f => [f.id, f]));
-              return parsed.functions.map((incomingF: any) => {
+              return parsed.functions.map((raw: any) => {
+                // Older saves carry compiledKey; dropping it makes the row compile here.
+                const { compiledKey: _stale, compiled: _c, compiled2: _c2, compiledOde: _o, ...incomingF } = raw;
                 const existing = compiledMap.get(incomingF.id);
-                if (existing && existing.compiled) {
-                  // Only preserve compiled data if expression and type haven't changed
-                  if (existing.expr === incomingF.expr && existing.type === incomingF.type) {
-                    return { ...incomingF, compiled: existing.compiled, compiled2: existing.compiled2, compiledKey: existing.compiledKey };
-                  }
+                // Keep what's compiled (including a solved equation) while the formula is
+                // the same; anything else is compiled afresh.
+                if (
+                  existing &&
+                  (existing.compiled || existing.compiledOde) &&
+                  existing.expr === incomingF.expr &&
+                  existing.type === incomingF.type
+                ) {
+                  return {
+                    ...incomingF,
+                    compiled: existing.compiled,
+                    compiled2: existing.compiled2,
+                    compiledOde: existing.compiledOde,
+                    compiledKey: existing.compiledKey,
+                  };
                 }
                 return incomingF;
               });
