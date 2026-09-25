@@ -1609,6 +1609,8 @@ export const useStore = create<StoreState>()(
           "activeDocumentName",
           "isDirty",
           "stickyNotesEnabled",
+          // Resized nodes keep their size; their saved positions already allow for it.
+          "nodeSizes",
         ];
         const persistedEntries = Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key)),

@@ -131,7 +131,9 @@ export const SafeLabel: React.FC<SafeLabelProps> = ({
           width: "100%",
           height: "100%",
           color: color || "var(--mafs-fg)",
-          ...(plain ? { fontFamily: "KaTeX_Main, 'Times New Roman', serif", fontSize: "1.15em", whiteSpace: "pre" } : {}),
+          // Shrinks with a small graph (the node's canvas card); see --math-label-scale.
+          fontSize: `calc(var(--math-label-scale, 1) * ${plain ? 1.15 : 1}em)`,
+          ...(plain ? { fontFamily: "KaTeX_Main, 'Times New Roman', serif", whiteSpace: "pre" } : {}),
           transform: `rotate(${rotation}deg) scale(${sx}, ${sy})`,
           transformOrigin: "center",
         }}

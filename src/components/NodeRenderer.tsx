@@ -184,19 +184,27 @@ function NodeRenderer({
    * frame and then the corrected one, which reads as the node vibrating while it is resized.
    */
   const [isResizing, setIsResizing] = React.useState(false);
-  const lastSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const lastSizeRef = useRef<{ width: number; height: number; custom: boolean } | null>(null);
   const resizeSettleRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Set during render below: the size this node has when nobody has resized it.
+  const defaultSizeRef = useRef<{ width: number; height: number } | null>(null);
 
   useLayoutEffect(() => {
-    const size = nodeSizes[node.data.id];
-    if (!size) {
-      lastSizeRef.current = null;
-      return;
-    }
-
-    const previous = lastSizeRef.current;
-    lastSizeRef.current = { width: size.width, height: size.height };
-    if (!previous) return;
+    const custom = nodeSizes[node.data.id];
+    // The first resize starts from the default size. Without it there was nothing to
+    // compare against, so the first resize of a node kept its centre and it jumped.
+    const size = custom ?? defaultSizeRef.current;
+    // A default-sized node may have changed its default since (expanded, collapsed),
+    // so the size it had just before this resize is its default right now.
+    const previous =
+      lastSizeRef.current && !lastSizeRef.current.custom && defaultSizeRef.current
+        ? { ...defaultSizeRef.current, custom: false }
+        : lastSizeRef.current;
+    lastSizeRef.current = size ? { width: size.width, height: size.height, custom: !!custom } : null;
+    if (!size || !previous) return;
+    // Only a resize moves the corner; a node changing its own default size (expanding)
+    // keeps the old behaviour.
+    if (!custom && !previous.custom) return;
 
     const dx = (size.width - previous.width) / 2;
     const dy = (size.height - previous.height) / 2;
@@ -1127,9 +1135,8 @@ function NodeRenderer({
 
   const customSize = nodeSizes[data.id];
 
-  let fWidth = customSize
-    ? customSize.width
-    : isApiNode
+  // The size a node has before anyone resizes it.
+  const defaultWidth = isApiNode
       ? 340
       : isApiResponse
         ? 440
@@ -1152,9 +1159,7 @@ function NodeRenderer({
                       : nodeTheme === "peepal" || nodeTheme === "banyan"
                         ? 220
                         : 260;
-  let fHeight = customSize
-    ? customSize.height
-    : isTodoNode
+  const defaultHeight = isTodoNode
       ? isExpanded
         ? 360
         : 140
@@ -1187,6 +1192,9 @@ function NodeRenderer({
                         : nodeTheme === "peepal" || nodeTheme === "banyan"
                           ? 310
                           : 120;
+  let fWidth = customSize ? customSize.width : defaultWidth;
+  let fHeight = customSize ? customSize.height : defaultHeight;
+  defaultSizeRef.current = { width: defaultWidth, height: defaultHeight };
 
   const isDefaultShape = nodeShape === "default";
 
