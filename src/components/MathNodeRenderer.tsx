@@ -126,6 +126,7 @@ import {
   publishedOdeNames,
   SIMULATIONS,
   SimulationGallery,
+  CalculatorResult,
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
@@ -1847,7 +1848,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                             handleDropFunction(f.id, dragOverFunctionPosition);
                           }
                         }}
-                        className={`flex flex-col md:flex-row md:items-center gap-2 bg-white dark:bg-slate-900/50 p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
+                        className={`flex flex-col md:flex-row md:flex-wrap md:items-center gap-2 bg-white dark:bg-slate-900/50 p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
                       ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""} ${activeActionMenuId === f.id ? "z-[100]" : activeVisualEditorId === f.id ? "z-40" : "z-10"}
                     `}
                         style={{ borderLeftColor: f.color }}
@@ -1948,7 +1949,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                 ? "Polygon"
                                                 : f.type === "differential"
                                                   ? "Differential equation (x' = …, solved numerically)"
-                                                  : "Select function type"
+                                                  : f.type === "calculator"
+                                                    ? "Calculator: shows the answer as you type"
+                                                    : "Select function type"
                             }
                           >
                             <option
@@ -1957,6 +1960,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                               className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
                             >
                               {definitionName(f, functions) ? "def" : "y ="}
+                            </option>
+                            <option
+                              value="calculator"
+                              title="Calculator: type a calculation and see the answer as you type"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              calc
                             </option>
                             <option
                               value="differential"
@@ -2058,8 +2068,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                                     ? odeSystemToLatex(f.expr)
                                     : undefined
                                 }
+                                showEvalResult={f.type !== "calculator"}
                                 placeholder={
-                                  f.type === "differential"
+                                  f.type === "calculator"
+                                    ? "e.g. 2^64 · 6.022e23 * 3 · sqrt(2) · 5 km to mi"
+                                    : f.type === "differential"
                                     ? "e.g. x'' = -k*x - c*x'; x(0) = 1; x'(0) = 0"
                                     : f.type === "polar"
                                       ? "e.g. 1 + cos(theta)"
@@ -2073,7 +2086,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 }
                                 variables={variables}
                                 hoveredVar={hoveredVar}
-                                error={f.error}
+                                // A calculator row explains its own errors, in the answer box, as you type.
+                                error={f.type === "calculator" ? undefined : f.error}
                                 warning={noSolutionMap[f.id] ? "This particular equation has no zero or solutions in the current view" : undefined}
                                 onAddEnter={handleAddFunction}
                                 globalTime={time}
@@ -5372,6 +5386,23 @@ export const MathNodeRenderer: React.FC<any> = ({
                             </div>
                           )}
                         </div>
+                        {/* A calculator's answer gets the card's full width: the formula column
+                            beside the type picker is too narrow for long numbers. */}
+                        {f.type === "calculator" && (
+                          <div className="w-full md:basis-full min-w-0">
+                            <CalculatorResult
+                              expr={f.expr}
+                              scope={baseScope}
+                              notation={f.calcNotation}
+                              digits={f.calcDigits}
+                              onChange={(settings) =>
+                                setFunctions((prev) =>
+                                  prev.map((fn) => (fn.id === f.id ? { ...fn, ...settings } : fn)),
+                                )
+                              }
+                            />
+                          </div>
+                        )}
                         {/* Action Buttons Block */}
                         <div className="absolute right-2 top-2 nodrag shrink-0 z-[1000] flex flex-col md:flex-row items-end md:items-center">
                           {/* Mobile Dropdown Actions Block */}
@@ -5652,6 +5683,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                             type: "differential",
                           },
                           {
+                            label: "Calculator",
+                            fn: "2^64",
+                            type: "calculator",
+                          },
+                          {
                             label: "Quadratic",
                             fn: "a*x^2 + b*x + c",
                             type: "function",
@@ -5713,6 +5749,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                             title={
                               tmpl.type === "polar"
                                 ? `r = ${tmpl.fn}`
+                                : tmpl.type === "calculator"
+                                  ? "A calculator row: the answer shows as you type"
                                 : tmpl.type === "implicit"
                                   ? `${tmpl.fn}`
                                   : `y = ${tmpl.fn}`
@@ -6070,8 +6108,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                   const variablesHash = variables?.map((v: any) => `${v.name}:${v.value}`).join(",") || "";
 
                   return functions
-                    // Definitions (T = …, pos(s) = …) are values for other rows, not drawings.
-                    .filter((f) => f.visible && !isDefinitionRow(f, functions))
+                    // Definitions (T = …, pos(s) = …) and calculator rows are values, not drawings.
+                    .filter((f) => f.visible && f.type !== "calculator" && !isDefinitionRow(f, functions))
                     .map((f) => {
                       // Differential equations are solved numerically, so they carry
                       // compiledOde instead of a single compiled expression. They still

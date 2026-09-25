@@ -31,6 +31,8 @@ interface EquationInputProps {
   onAddEnter?: () => void;
   onBlur?: () => void;
   globalTime?: number;
+  /** Append "= value" to the preview. Calculator rows show their answer separately. */
+  showEvalResult?: boolean;
   forceEditMode?: boolean;
   showKeyboard?: boolean;
   onToggleKeyboard?: () => void;
@@ -49,6 +51,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   onAddEnter,
   onBlur,
   globalTime = 1,
+  showEvalResult = true,
   forceEditMode = false,
   showKeyboard = false,
   onToggleKeyboard,
@@ -417,7 +420,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
       );
     } else if (latexResult.latex) {
       try {
-        const fullTex = latexResult.latex + (latexResult.evalResult ? ` \\mathbf{ = ${latexResult.evalResult.replace(/ /g, "\\ ")}}` : "");
+        const fullTex = latexResult.latex + (showEvalResult && latexResult.evalResult ? ` \\mathbf{ = ${latexResult.evalResult.replace(/ /g, "\\ ")}}` : "");
         renderedContent = (
           <div className="w-full px-2 py-2 flex items-center overflow-x-auto custom-scrollbar relative pr-20 group/preview block">
             <span

@@ -128,6 +128,12 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
       },
       {
         section: 'function-types',
+        title: 'Calculator rows',
+        keywords: ['calculator', 'calc', 'calculate', 'answer', 'scientific notation', 'exponent', '10^', 'precision', 'digits', 'units', 'convert', 'bignumber'],
+        snippet: 'A calc row shows the answer as you type, exactly, in normal digits or ×10ⁿ.',
+      },
+      {
+        section: 'function-types',
         title: 'Cartesian Functions (Explicit)',
         keywords: ['explicit', 'cartesian', 'function', 'sine', 'wave', 'y='],
         snippet: 'y = f(x) standard functions mapping inputs along the coordinate grid.',
@@ -451,6 +457,17 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
                           <h3 className="text-lg font-bold text-slate-800 dark:text-slate-100">Mathematical Function Types</h3>
                           <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                             The Math Node supports 10 distinct mathematical objects. Clicking the operator icon on the left of any equation lets you specify its functional mode:
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">Calculator rows (calc)</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            Pick <code className="font-mono text-indigo-500">calc</code> as a row's type (or Quick Inserts → Calculator) and the
+                            answer appears as you type. Arithmetic is exact to 64 digits, so <code className="font-mono text-indigo-500">0.1 + 0.2</code> is
+                            0.3 and <code className="font-mono text-indigo-500">2^64</code> shows all 20 digits. Very big or small answers switch to
+                            ×10ⁿ automatically; choose <b>123</b> for normal digits or <b>×10ⁿ</b> for scientific notation, and how many significant
+                            digits to keep. Sliders and named values work, and so do units: <code className="font-mono text-indigo-500">5 km to mi</code>.
                           </p>
                         </div>
 
