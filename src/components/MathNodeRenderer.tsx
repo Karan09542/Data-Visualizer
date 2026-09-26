@@ -1716,6 +1716,22 @@ export const MathNodeRenderer: React.FC<any> = ({
   const hasAnyAnimationRows =
     hasTimeDependentFunction || functions.some((f) => f.hasCustomTimeline);
 
+  // The Inspector (live values, shown when maximized) can be folded away; remembered
+  // per browser, like the other panel preferences.
+  const [isInspectorOpen, setIsInspectorOpenState] = useState(() => {
+    try {
+      return localStorage.getItem("mathNode.inspectorOpen") !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const setInspectorOpen = (open: boolean) => {
+    setIsInspectorOpenState(open);
+    try {
+      localStorage.setItem("mathNode.inspectorOpen", open ? "1" : "0");
+    } catch { }
+  };
+
   // One shape for every icon button in the header, so they line up and hit the same size.
   const headerIconBtn =
     "size-7 inline-flex items-center justify-center rounded-lg shrink-0 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200/70 dark:hover:bg-slate-700/70 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/40";
@@ -8116,13 +8132,23 @@ export const MathNodeRenderer: React.FC<any> = ({
           {isFullscreen && (
             <div
               data-no-trace
-              className="absolute bottom-3 right-3 md:bottom-auto md:top-3 z-30 pointer-events-none min-w-[10rem] max-w-[16rem] overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md shadow-lg shadow-slate-900/5 dark:shadow-black/30"
+              className={`absolute bottom-3 right-3 md:bottom-auto md:top-3 z-30 overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md shadow-lg shadow-slate-900/5 dark:shadow-black/30 ${isInspectorOpen ? "min-w-[10rem] max-w-[16rem]" : ""}`}
             >
-              <div className="flex items-center gap-1.5 px-3 py-2 border-b border-slate-200/80 dark:border-slate-800 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+              <button
+                type="button"
+                onClick={() => setInspectorOpen(!isInspectorOpen)}
+                aria-expanded={isInspectorOpen}
+                title={isInspectorOpen ? "Collapse the Inspector" : "Show live values"}
+                className={`w-full flex items-center gap-1.5 px-3 py-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors ${isInspectorOpen ? "border-b border-slate-200/80 dark:border-slate-800" : ""}`}
+              >
                 <Activity size={12} className="text-blue-500 dark:text-blue-400" />
-                Inspector
-              </div>
-              {(() => {
+                <span className="flex-1 text-left">Inspector</span>
+                <ChevronDown
+                  size={12}
+                  className={`transition-transform ${isInspectorOpen ? "" : "-rotate-90"}`}
+                />
+              </button>
+              {isInspectorOpen && (() => {
                 const renderRow = (
                   f: MathFunction,
                   label: React.ReactNode,
@@ -8238,7 +8264,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                   })
                   .filter(Boolean);
                 return (
-                  <div className="flex flex-col gap-1.5 px-3 py-2 font-mono text-[11px]">
+                  // Long scenes list many values: scroll instead of covering the graph.
+                  <div className="flex flex-col gap-1.5 px-3 py-2 font-mono text-[11px] max-h-[45vh] overflow-y-auto custom-scrollbar">
                     {rows.length > 0 ? (
                       rows
                     ) : (

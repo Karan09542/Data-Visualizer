@@ -97,14 +97,14 @@ export const EXAMPLE_GALLERY: {
       labelClass: "text-purple-600 dark:text-purple-400 group-hover:text-purple-700 dark:group-hover:text-purple-300",
     },
     {
-      key: "Geometry", category: "Geometry", label: "Vectors & Polygons",
-      hint: "Draggable points, vectors and shapes",
+      key: "Geometry", category: "Geometry", label: "Triangle Centres",
+      hint: "Drag the corners: centroid, circumcircle, incircle, orthocentre and the Euler line",
       activeClass: "bg-pink-500/10 border-pink-400 dark:border-pink-500 ring-1 ring-pink-400/50",
       labelClass: "text-pink-600 dark:text-pink-400 group-hover:text-pink-700 dark:group-hover:text-pink-300",
     },
     {
-      key: "Matrix", category: "Matrices", label: "Matrix & Det. Eq.",
-      hint: "A line through two draggable points via a determinant",
+      key: "Matrix", category: "Matrices", label: "Linear Transformations",
+      hint: "Drag the basis arrows: the determinant is the purple area, eigenvectors stay on their lines",
       activeClass: "bg-indigo-500/10 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50",
       labelClass: "text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300",
     },
@@ -404,6 +404,143 @@ function normalDistribution(): ExampleScene {
   };
 }
 
+
+// ─── Geometry: the centres of a triangle ──────────────────────────────────────
+
+function triangleCentres(): ExampleScene {
+  const r = sceneRows("tri");
+  const PINK = "#ec4899";
+  const vertex = (name: string, vars: [string, string]) =>
+    r.point(name, PINK, {
+      dragVars: vars,
+      showLabel: true,
+      label: name,
+      labelPlain: true,
+      labelAlignment: "above",
+    });
+  const centre = (expr: string, color: string, label: string) =>
+    r.point(expr, color, { showLabel: true, label, labelPlain: true, labelPosition: [0.3, 0.3], labelAlignment: "custom" });
+  return {
+    functions: [
+      r.define("A = [ax, ay]"),
+      r.define("B = [bx, by]"),
+      r.define("C = [cx, cy]"),
+      // Side lengths, opposite each corner
+      r.define("a = norm(B - C)"),
+      r.define("b = norm(C - A)"),
+      r.define("c = norm(A - B)"),
+      r.define("Area = abs((bx - ax)*(cy - ay) - (cx - ax)*(by - ay))/2"),
+      // Centroid: where the medians meet
+      r.define("G = (A + B + C)/3"),
+      // Circumcentre: equally far from all three corners
+      r.define("D = 2*(ax*(by - cy) + bx*(cy - ay) + cx*(ay - by))"),
+      r.define(
+        "O = [((ax^2 + ay^2)*(by - cy) + (bx^2 + by^2)*(cy - ay) + (cx^2 + cy^2)*(ay - by))/D, ((ax^2 + ay^2)*(cx - bx) + (bx^2 + by^2)*(ax - cx) + (cx^2 + cy^2)*(bx - ax))/D]",
+      ),
+      r.define("R = norm(A - O)"),
+      // Incentre: equally far from all three sides
+      r.define("I = (a*A + b*B + c*C)/(a + b + c)"),
+      r.define("rin = 2*Area/(a + b + c)"),
+      // Orthocentre: where the altitudes meet. Always H = 3G - 2O (the Euler line)
+      r.define("H = 3*G - 2*O"),
+      r.shape("[A, B, C]", PINK, { fillOpacity: 0.12, outlineWidth: 2 }),
+      r.path("O + R*[cos(t), sin(t)]", SKY, [0, TAU], { outlineWidth: 1.5 }),
+      r.path("I + rin*[cos(t), sin(t)]", GREEN, [0, TAU], { outlineWidth: 1.5 }),
+      r.path("A + t*((B + C)/2 - A)", AMBER, [0, 1], { lineStyle: "dotted", outlineWidth: 1 }),
+      r.path("B + t*((C + A)/2 - B)", AMBER, [0, 1], { lineStyle: "dotted", outlineWidth: 1 }),
+      r.path("C + t*((A + B)/2 - C)", AMBER, [0, 1], { lineStyle: "dotted", outlineWidth: 1 }),
+      r.path("O + t*(H - O)", PURPLE, [-0.6, 1.6], { lineStyle: "dashed", outlineWidth: 2 }),
+      centre("O", SKY, "O"),
+      centre("G", AMBER, "G"),
+      centre("I", GREEN, "I"),
+      centre("H", RED, "H"),
+      vertex("A", ["ax", "ay"]),
+      vertex("B", ["bx", "by"]),
+      vertex("C", ["cx", "cy"]),
+      r.readout(
+        "[0.5, -5.5]",
+        "O circumcentre · G centroid · I incentre · H orthocentre",
+        TEXT,
+      ),
+      r.readout(
+        "[0.5, -6.1]",
+        "Area = {{Area}}    Perimeter = {{a + b + c}}    Angles: A = {{acos((b^2 + c^2 - a^2)/(2*b*c))*180/pi:1}}°, B = {{acos((c^2 + a^2 - b^2)/(2*c*a))*180/pi:1}}°, C = {{acos((a^2 + b^2 - c^2)/(2*a*b))*180/pi:1}}°",
+        TEXT,
+      ),
+      r.readout(
+        "[0.5, -6.8]",
+        "Euler line (dashed): O, G and H always line up, with GH = 2·OG ({{norm(H - G)}} = 2 × {{norm(G - O)}})",
+        PURPLE,
+      ),
+    ],
+    variables: [
+      sceneSlider("ax", "A: x", -4, [-6, 6, 0.05], "Drag corner A.", "corners"),
+      sceneSlider("ay", "A: y", -2, [-6, 6, 0.05], "", "corners"),
+      sceneSlider("bx", "B: x", 4.5, [-6, 6, 0.05], "Drag corner B.", "corners"),
+      sceneSlider("by", "B: y", -1.5, [-6, 6, 0.05], "", "corners"),
+      sceneSlider("cx", "C: x", 2.5, [-6, 6, 0.05], "Drag corner C.", "corners"),
+      sceneSlider("cy", "C: y", 2.8, [-6, 6, 0.05], "", "corners"),
+    ],
+    groups: [sceneGroup("corners", "Corners (drag them on the graph)")],
+    view: { x: [-6.8, 7.8], y: [-7.4, 5] },
+  };
+}
+
+// ─── Matrices: a 2×2 matrix as a transformation of the plane ──────────────────
+
+function linearTransformation(): ExampleScene {
+  const r = sceneRows("lin");
+  return {
+    functions: [
+      r.define("M = [[a, b], [c, d]]"),
+      // s blends from doing nothing (the identity) to the full matrix
+      r.define("Ms = (1 - s)*[[1, 0], [0, 1]] + s*M"),
+      r.define("i2 = Ms*[1, 0]"),
+      r.define("j2 = Ms*[0, 1]"),
+      r.define("dt = a*d - b*c"),
+      r.define("tr = a + d"),
+      r.define("disc = tr^2/4 - dt"),
+      r.define("l1 = tr/2 + sqrt(max(disc, 0))"),
+      r.define("l2 = tr/2 - sqrt(max(disc, 0))"),
+      // An eigenvector for each eigenvalue (drawn only when they're real)
+      r.define("e1 = disc < 0 ? [NaN, NaN] : (abs(b) > 1e-9 ? [b, l1 - a] : (abs(c) > 1e-9 ? [l1 - d, c] : [1, 0]))"),
+      r.define("e2 = disc < 0 ? [NaN, NaN] : (abs(b) > 1e-9 ? [b, l2 - a] : (abs(c) > 1e-9 ? [l2 - d, c] : [0, 1]))"),
+      r.shape("[[0, 0], [1, 0], [1, 1], [0, 1]]", INK, { fillOpacity: 0.12, outlineWidth: 1, lineStyle: "dashed" }),
+      r.path("[cos(t), sin(t)]", INK, [0, TAU], { outlineWidth: 1, lineStyle: "dashed" }),
+      r.shape("[[0, 0], i2, i2 + j2, j2]", PURPLE, { fillOpacity: 0.3, outlineWidth: 2 }),
+      r.path("Ms*[cos(t), sin(t)]", PURPLE, [0, TAU], { outlineWidth: 1.5 }),
+      r.path("t*e1/norm(e1)", AMBER, [-8, 8], { lineStyle: "dashed", outlineWidth: 1.5 }),
+      r.path("t*e2/norm(e2)", AMBER, [-8, 8], { lineStyle: "dashed", outlineWidth: 1.5 }),
+      r.arrow("Vector([0, 0], Ms*[vx, vy])", SKY, { outlineWidth: 2 }),
+      r.arrow("Vector([0, 0], [vx, vy])", TEXT, { dragVars: ["vx", "vy"], outlineWidth: 1.5 }),
+      r.arrow("Vector([0, 0], i2)", GREEN, { dragVars: ["a", "c"] }),
+      r.arrow("Vector([0, 0], j2)", RED, { dragVars: ["b", "d"] }),
+      r.readout("[0, 3.7]", "M = ( {{a}}  {{b}} ; {{c}}  {{d}} )    green = first column, red = second", TEXT),
+      r.readout(
+        "[0, -3.3]",
+        'det M = ad − bc = {{dt}}: the purple area{{dt < 0 ? " (negative: the plane is flipped over)" : (abs(dt) < 1e-9 ? " (zero: the plane is squashed onto a line)" : "")}}',
+        PURPLE,
+      ),
+      r.readout(
+        "[0, -3.9]",
+        'Eigenvalues {{disc < 0 ? "are complex: no line stays put (a rotation)" : concat("λ₁ = ", format(l1, 3), ", λ₂ = ", format(l2, 3), ": vectors on the orange lines only stretch")}}',
+        AMBER,
+      ),
+    ],
+    variables: [
+      sceneSlider("a", "a (top left)", 1.5, [-3, 3, 0.05], "Drag the green arrow.", "matrix"),
+      sceneSlider("b", "b (top right)", 0.5, [-3, 3, 0.05], "Drag the red arrow.", "matrix"),
+      sceneSlider("c", "c (bottom left)", 0.5, [-3, 3, 0.05], "Drag the green arrow.", "matrix"),
+      sceneSlider("d", "d (bottom right)", 1, [-3, 3, 0.05], "Drag the red arrow.", "matrix"),
+      sceneSlider("s", "Blend from identity", 1, [0, 1, 0.01], "0 = do nothing, 1 = the full matrix.", "show"),
+      sceneSlider("vx", "Test vector v: x", 1.2, [-3, 3, 0.05], "Drag the grey arrow. Blue is M·v.", "show"),
+      sceneSlider("vy", "Test vector v: y", -0.8, [-3, 3, 0.05], "", "show"),
+    ],
+    groups: [sceneGroup("matrix", "Matrix M"), sceneGroup("show", "Explore")],
+    view: { x: [-4.2, 4.2], y: [-4.4, 4.2] },
+  };
+}
+
 export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Lissajous: {
     functions: [
@@ -478,94 +615,8 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
       },
     ],
   },
-  Geometry: {
-    functions: [
-      {
-        id: "f1",
-        expr: "A = [2, 3]",
-        type: "point",
-        color: COLORS[0],
-        visible: true,
-      },
-      {
-        id: "f2",
-        expr: "B = [-1, 2]",
-        type: "point",
-        color: COLORS[1],
-        visible: true,
-      },
-      {
-        id: "f3",
-        expr: "C = [1, -2]",
-        type: "point",
-        color: COLORS[2],
-        visible: true,
-      },
-      {
-        id: "f4",
-        expr: "[A, B, C]",
-        type: "polygon",
-        color: COLORS[3],
-        visible: true,
-      },
-      {
-        id: "f5",
-        expr: "v = A - B",
-        type: "vector",
-        color: COLORS[4],
-        visible: true,
-      },
-      {
-        id: "f6",
-        expr: "[r * cos(t), r * sin(t)]",
-        type: "parametric",
-        color: COLORS[5],
-        visible: true,
-      },
-    ],
-    variables: [
-      {
-        id: "v1",
-        name: "r",
-        displayName: "Circle Radius",
-        description: "Radius of implicit circle",
-        value: 2,
-        defaultValue: 2,
-        min: 0.1,
-        max: 10,
-        step: 0.1,
-        groupId: "default",
-      },
-    ],
-  },
-  Matrix: {
-    functions: [
-      {
-        id: "f1",
-        expr: "A = [2, 3]",
-        type: "point",
-        color: COLORS[0],
-        visible: true,
-        isDraggable: true,
-      },
-      {
-        id: "f2",
-        expr: "B = [-2, -1]",
-        type: "point",
-        color: COLORS[1],
-        visible: true,
-        isDraggable: true,
-      },
-      {
-        id: "f3",
-        expr: "[[x, y, 1], [A[1], A[2], 1], [B[1], B[2], 1]] = 0",
-        type: "implicit",
-        color: COLORS[2],
-        visible: true,
-      },
-    ],
-    variables: [],
-  },
+  Geometry: triangleCentres(),
+  Matrix: linearTransformation(),
   Lorenz: {
     functions: [
       {
