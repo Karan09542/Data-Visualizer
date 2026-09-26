@@ -116,6 +116,12 @@ const MathHelpPopup: React.FC<MathHelpPopupProps> = ({ isOpen, onClose, onInsert
       },
       {
         section: 'simulations',
+        title: 'Save and load your own graphs',
+        keywords: ['save', 'saved', 'load', 'library', 'my graphs', 'preset', 'template', 'reuse', 'keep', 'store'],
+        snippet: 'Save all equations, sliders, timeline and view, and load them again in one click.',
+      },
+      {
+        section: 'simulations',
         title: 'Drag handles that move sliders',
         keywords: ['drag', 'handle', 'interactive', 'interact', 'mouse', 'touch', 'slider', 'control', 'aim', 'launch', 'arrow', 'dragvars'],
         snippet: 'Make a point or an arrow tip a handle: dragging it on the graph sets its sliders.',
@@ -1233,6 +1239,15 @@ Vector(ball, ball + [vx, vy - g*time]/4)`}</pre>
                             In the Timeline settings choose <b>Run once</b>: play goes to the end and stops, and play again starts
                             over. The end can be a formula, such as <code className="font-mono text-indigo-600 dark:text-indigo-400">T</code> for the flight time. Dragging a handle
                             pauses and rewinds, so what you drag is where the motion starts.
+                          </p>
+                        </div>
+
+                        <div className="p-4 bg-slate-50 dark:bg-slate-900/40 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2">
+                          <span className="text-[10px] font-black uppercase text-indigo-500 bg-indigo-500/10 px-2.5 py-0.5 rounded w-fit block">Save it for later</span>
+                          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                            Press the save icon beside <b>Functions &amp; Equations</b> (or <b>Library → My Saved Graphs → Save current graph</b>).
+                            Every row, slider and group is saved with the timeline and the view. Later, <b>Load</b> brings the whole
+                            graph back, <b>Add</b> puts its rows into the graph you have open, and <b>Update</b> saves over it.
                           </p>
                         </div>
                       </div>

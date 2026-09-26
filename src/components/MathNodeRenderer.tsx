@@ -128,6 +128,8 @@ import {
   SIMULATIONS,
   SimulationGallery,
   CalculatorResult,
+  SavedScenesLibrary,
+  type SceneSnapshot,
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
@@ -1623,6 +1625,69 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
   };
 
+  // ─── Saved graphs ("My Saved Graphs") ─────────────────────────────────────
+  const [saveSceneRequest, setSaveSceneRequest] = useState(0);
+
+  /** Everything needed to rebuild the graph: rows, sliders, groups, timeline, view. */
+  const getSceneSnapshot = (): SceneSnapshot => ({
+    // The playhead (time, direction) isn't part of what was built.
+    functions: stripFunctions(functionsRef.current).map(({ time, direction, ...f }: any) => f),
+    variables: variablesRef.current,
+    groups: groupsRef.current,
+    timeline: timelineSettings,
+    view: homeView,
+    gridType,
+  });
+
+  const handleLoadSavedScene = (scene: SceneSnapshot, mode: "replace" | "add") => {
+    const rows = Array.isArray(scene.functions) ? scene.functions : [];
+    const sliders = Array.isArray(scene.variables) ? scene.variables : [];
+    const sceneGroups = Array.isArray(scene.groups) ? scene.groups : [];
+    setActiveExample(null);
+
+    if (mode === "add") {
+      // New ids so nothing collides with what's there; sliders already in the graph
+      // (same name) are kept as they are.
+      setFunctions((prev) => [
+        ...prev,
+        ...rows.map((f: any) => ({ ...f, id: generateSafeId() })),
+      ]);
+      setVariables((prev) => {
+        const names = new Set(prev.map((v) => v.name));
+        return [
+          ...prev,
+          ...sliders.filter((v: any) => !names.has(v.name)).map((v: any) => ({ ...v, id: generateSafeId() })),
+        ];
+      });
+      setGroups((prev) => {
+        const ids = new Set(prev.map((g) => g.id));
+        return [...prev, ...sceneGroups.filter((g: any) => !ids.has(g.id))];
+      });
+      return;
+    }
+
+    setFunctions(rows.map((f: any) => ({ ...f })));
+    setVariables(sliders);
+    setGroups(
+      sceneGroups.length > 0
+        ? sceneGroups
+        : [{ id: "default", name: "Mathematical Parameters", isCollapsed: false }],
+    );
+    if (scene.gridType === "cartesian" || scene.gridType === "polar" || scene.gridType === "none") {
+      setGridType(scene.gridType);
+    }
+    const tl = readTimelineSettings(scene.timeline);
+    applyTimelineAndView(
+      { ...tl, autoplay: tl.mode !== "once" },
+      readGraphView(scene.view),
+    );
+  };
+
+  const suggestedSceneName =
+    SIMULATIONS.find((sim) => sim.key === activeExample)?.title ??
+    EXAMPLE_GALLERY.find((ex) => ex.key === activeExample)?.label ??
+    "";
+
   /** Loads a physics lab. Clicking the open one again starts it fresh. */
   const handleLoadSimulation = (key: string) => {
     const sim = SIMULATIONS.find((item) => item.key === key);
@@ -1859,6 +1924,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                           );
                         })}
                       </div>
+                      <button
+                        onClick={() => setSaveSceneRequest((n) => n + 1)}
+                        className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="Save this graph (all equations, sliders, timeline and view) to My Saved Graphs"
+                      >
+                        <Save size={14} />
+                      </button>
                       <button
                         onClick={() => setFunctions([])}
                         className="p-1 hover:bg-red-200 dark:hover:bg-red-900/50 rounded text-slate-400 hover:text-red-500 transition-colors"
@@ -5714,6 +5786,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                   <SimulationGallery
                     activeKey={activeExample}
                     onLoad={handleLoadSimulation}
+                  />
+                  <SavedScenesLibrary
+                    getSnapshot={getSceneSnapshot}
+                    onLoad={handleLoadSavedScene}
+                    currentRowCount={functions.length}
+                    suggestedName={suggestedSceneName}
+                    saveRequest={saveSceneRequest}
                   />
                   <FormulaLibrary onInsertFormula={handleInsertFunctionFromHelp} />
                   {/* Popular & Examples */}
