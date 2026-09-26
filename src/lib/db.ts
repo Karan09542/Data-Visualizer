@@ -15,6 +15,26 @@ export interface NodePosition {
   y: number;
 }
 
+/**
+ * A whole math graph saved by the user: every row, slider and group, plus the timeline
+ * and the view, so it can be loaded again in one go like an example.
+ */
+export interface SavedMathScene {
+  id?: number;
+  name: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+  scene: {
+    functions: any[];
+    variables: any[];
+    groups: any[];
+    timeline?: any;
+    view?: { x: [number, number]; y: [number, number] };
+    gridType?: string;
+  };
+}
+
 export interface CustomFormula {
   id?: number;
   name: string;
@@ -193,6 +213,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
   customFormulas: EntityTable<CustomFormula, 'id'>;
+  mathScenes: EntityTable<SavedMathScene, 'id'>;
   assets: EntityTable<Asset, 'assetId'>;
   artboards: EntityTable<Artboard, 'id'>;
   objects: EntityTable<FabricObject, 'id'>;
@@ -256,6 +277,10 @@ db.version(15).stores({
 
 db.version(16).stores({
   sharedFiles: 'id, timestamp'
+});
+
+db.version(17).stores({
+  mathScenes: '++id, name, createdAt, updatedAt'
 });
 
 export { db };
