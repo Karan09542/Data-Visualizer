@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { User as UserIcon, LogOut, Camera, X, Upload, Mail, Lock, Eye, EyeOff, Sparkles, CheckCircle2, Edit2, Trash2 } from 'lucide-react';
 import { useAuthStore } from '../store/useAuthStore';
 import { useStore } from '../store/useStore';
+import { authFetch, API_BASE_URL } from '../lib/authFetch';
 import { CameraCaptureModal } from './CameraCaptureModal';
 
 interface UserMenuProps {
@@ -189,12 +190,8 @@ export function AuthModals() {
         formData.append('photo', editPhotoFile);
       }
 
-      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
-      const response = await fetch(`${baseUrl}/api/users/me`, {
+      const response = await authFetch('/api/users/me', {
         method: 'PUT',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        },
         body: formData
       });
 
@@ -207,8 +204,8 @@ export function AuthModals() {
         const err = await response.json();
         setNotification({ message: err.error || 'Failed to update profile', type: 'error' });
       }
-    } catch (err) {
-      setNotification({ message: 'Network error', type: 'error' });
+    } catch (err: any) {
+      setNotification({ message: err?.message || 'Network error', type: 'error' });
     } finally {
       setIsSavingProfile(false);
     }
@@ -218,13 +215,7 @@ export function AuthModals() {
     if (!token) return;
     setIsDeletingProfile(true);
     try {
-      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
-      const response = await fetch(`${baseUrl}/api/users/me`, {
-        method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${token}`
-        }
-      });
+      const response = await authFetch('/api/users/me', { method: 'DELETE' });
       if (response.ok) {
         setNotification({ message: 'Account deleted successfully', type: 'success' });
         logout();
@@ -233,8 +224,8 @@ export function AuthModals() {
         const err = await response.json();
         setNotification({ message: err.error || 'Failed to delete account', type: 'error' });
       }
-    } catch (err) {
-      setNotification({ message: 'Network error', type: 'error' });
+    } catch (err: any) {
+      setNotification({ message: err?.message || 'Network error', type: 'error' });
     } finally {
       setIsDeletingProfile(false);
       setShowDeleteConfirm(false);
@@ -246,8 +237,7 @@ export function AuthModals() {
     setLoading(true);
     
     try {
-      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
-      const res = await fetch(`${baseUrl}/api/auth/login`, {
+      const res = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email.trim().toLowerCase(), password }),

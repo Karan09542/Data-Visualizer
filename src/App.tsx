@@ -9,6 +9,7 @@ import { NotificationToast } from "./components/NotificationToast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
 import { useStore } from "./store/useStore";
 import { useAuthStore } from "./store/useAuthStore";
+import { refreshAuthToken } from "./lib/authFetch";
 import { useAnnotationStore } from "./store/useAnnotationStore";
 import { parseShareUrl } from "./utils/shareUtils";
 import { initDexieSync } from "./store/dexieSync";
@@ -84,7 +85,14 @@ function App() {
   const [searchParams, setSearchParams] = useSearchParams();
   const focusNodePath = searchParams.get('focusNode');
   const forceWorkspace = searchParams.get('forceWorkspace');
-
+
+  // Tokens expire server-side; refresh on load and on focus so a returning user stays signed in
+  useEffect(() => {
+    refreshAuthToken();
+    const onFocus = () => refreshAuthToken();
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, []);
   useEffect(() => {
     const token = searchParams.get('token');
     if (token) {

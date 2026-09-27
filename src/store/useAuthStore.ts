@@ -17,6 +17,7 @@ interface AuthState {
   authModalTab: 'login' | 'register';
   isProfileModalOpen: boolean;
   setAuth: (token: string, user: User) => void;
+  setToken: (token: string) => void;
   updateUser: (updates: Partial<User>) => void;
   logout: () => void;
   getIsLoggedIn: () => boolean;
@@ -36,6 +37,7 @@ export const useAuthStore = create<AuthState>()(
       authModalTab: 'login',
       isProfileModalOpen: false,
       setAuth: (token, user) => set({ token, user, isAuthModalOpen: false, isProfileModalOpen: false }),
+      setToken: (token) => set({ token }),
       updateUser: (updates) =>
         set((state) => ({
           user: state.user ? { ...state.user, ...updates } : null,

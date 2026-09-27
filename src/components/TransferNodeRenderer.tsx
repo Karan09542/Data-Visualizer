@@ -113,6 +113,8 @@ import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { useAuthStore } from "../store/useAuthStore";
+import { authFetch, refreshAuthToken, handleSessionExpired } from "../lib/authFetch";
+import { getDeviceHandshake, DeviceInfo } from "../lib/deviceInfo";
 import { io, Socket } from "socket.io-client";
 import { SafeModelViewer } from "./SafeModelViewer";
 
@@ -508,6 +510,10 @@ export const TransferNodeRenderer: React.FC<{
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
   const signalingSocketRef = useRef<Socket | null>(null);
   const [targetRemoteEmail, setTargetRemoteEmail] = useState<string | null>(null);
+  const [myDevices, setMyDevices] = useState<DeviceInfo[]>([]);
+  const [devicePicker, setDevicePicker] = useState<{ devices: DeviceInfo[]; auto: boolean } | null>(null);
+  // Which device of the account we are actually negotiating with, so ICE does not drift to another one
+  const activeTargetSocketRef = useRef<string | null>(null);
 
   const [offerQR, setOfferQR] = useState("");
   const [answerQR, setAnswerQR] = useState("");
@@ -558,7 +564,7 @@ export const TransferNodeRenderer: React.FC<{
 
     const serverUrl = import.meta.env.DEV ? window.location.origin : "https://datavisualizer-signalling-server.onrender.com";
     const socket = io(serverUrl, {
-      auth: { token },
+      auth: { token, device: getDeviceHandshake() },
       transports: ["websocket"],
     });
 
@@ -572,6 +578,19 @@ export const TransferNodeRenderer: React.FC<{
           handleAutoConnect(user.defaultTargetEmail!);
         }, 1000);
       }
+    });
+
+    // The signaling server rejects expired tokens; refresh once, then fall back to a real sign-out
+    let authRetried = false;
+    socket.on("connect_error", async (err: any) => {
+      if (err?.message !== "Authentication error" || authRetried) return;
+      authRetried = true;
+      if (!(await refreshAuthToken(true))) handleSessionExpired();
+    });
+
+    socket.on("devices-updated", (devices: DeviceInfo[]) => {
+      setMyDevices(devices);
+      setDevicePicker((prev) => (prev ? { ...prev, devices } : null));
     });
 
     socket.on("webrtc-offer", async (data: any) => {
@@ -1215,7 +1234,11 @@ export const TransferNodeRenderer: React.FC<{
       if (onlinePresence[user.defaultTargetEmail] !== undefined) {
         setAutoConnectAttempted(true);
         if (onlinePresence[user.defaultTargetEmail] === true) {
-          initiateServerConnection(user.defaultTargetEmail);
+          if (user.defaultTargetEmail === user.email) {
+            connectToMyDevices(true);
+          } else {
+            initiateServerConnection(user.defaultTargetEmail);
+          }
         }
       }
     }
@@ -2138,11 +2161,34 @@ export const TransferNodeRenderer: React.FC<{
     };
   };
 
-  const initiateServerConnection = async (targetEmail: string) => {
+  const connectToMyDevices = (auto = false) => {
+    const socket = signalingSocketRef.current;
+    if (!socket || !socket.connected) {
+      setNotification({ message: "Signaling server disconnected", type: "error" });
+      return;
+    }
+    socket.emit("list-devices", (devices: DeviceInfo[] = []) => {
+      setMyDevices(devices);
+      if (devices.length === 0) {
+        setNotification({ message: "No other devices are online with this account", type: "error" });
+        return;
+      }
+      // One other device is unambiguous; more than one and the user has to say which
+      if (devices.length === 1) {
+        initiateServerConnection(user?.email || "", devices[0].socketId);
+        return;
+      }
+      setDevicePicker({ devices, auto });
+    });
+  };
+
+  const initiateServerConnection = async (targetEmail: string, targetSocketId?: string) => {
     if (!signalingSocketRef.current || !signalingSocketRef.current.connected) {
       setNotification({ message: "Signaling server disconnected", type: "error" });
       return;
     }
+
+    activeTargetSocketRef.current = targetSocketId || null;
 
     setPairingWorkflow("signaling");
     setConnectionState("pairing");
@@ -2155,7 +2201,11 @@ export const TransferNodeRenderer: React.FC<{
 
     pc.onicecandidate = (e) => {
       if (e.candidate) {
-        signalingSocketRef.current?.emit("webrtc-ice-candidate", { targetEmail, candidate: e.candidate });
+        signalingSocketRef.current?.emit("webrtc-ice-candidate", {
+          targetEmail,
+          targetSocketId: activeTargetSocketRef.current || undefined,
+          candidate: e.candidate,
+        });
       }
     };
 
@@ -2164,6 +2214,7 @@ export const TransferNodeRenderer: React.FC<{
 
     signalingSocketRef.current.emit("webrtc-offer", { 
       targetEmail, 
+      targetSocketId: targetSocketId || undefined,
       offer,
       senderProfile: {
         username: user?.username,
@@ -2173,6 +2224,10 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const handleAutoConnect = (targetEmail: string) => {
+    if (targetEmail === user?.email) {
+      connectToMyDevices(true);
+      return;
+    }
     initiateServerConnection(targetEmail);
   };
 
@@ -2186,10 +2241,7 @@ export const TransferNodeRenderer: React.FC<{
     if (!searchQuery) return;
     setIsSearching(true);
     try {
-      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
-      const res = await fetch(`${baseUrl}/api/users/search?email=${encodeURIComponent(searchQuery)}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
+      const res = await authFetch(`/api/users/search?email=${encodeURIComponent(searchQuery)}`);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || 'Search failed');
       setSearchResults(data);
@@ -2214,17 +2266,13 @@ export const TransferNodeRenderer: React.FC<{
   const updateDefaultTarget = async (newEmail?: string, toggleAutoConnect?: boolean) => {
     if (!token) return;
     try {
-      const baseUrl = import.meta.env.DEV ? '' : 'https://datavisualizer-signalling-server.onrender.com';
       const body: any = {};
       if (newEmail !== undefined) body.defaultTargetEmail = newEmail.trim().toLowerCase();
       if (toggleAutoConnect !== undefined) body.autoConnectEnabled = toggleAutoConnect;
 
-      const res = await fetch(`${baseUrl}/api/users/me/default-target`, {
+      const res = await authFetch('/api/users/me/default-target', {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -2308,6 +2356,7 @@ export const TransferNodeRenderer: React.FC<{
         return;
       }
       try {
+        if (data.senderSocketId) activeTargetSocketRef.current = data.senderSocketId;
         await pcRef.current.setRemoteDescription(new RTCSessionDescription(data.answer));
         await flushPendingCandidates(pcRef.current, data.senderSocketId);
         setLastConnectedEmail(remoteEmail);
@@ -3326,11 +3375,54 @@ export const TransferNodeRenderer: React.FC<{
                   </div>
                 )}
 
+                {/* Device picker: more than one of my devices is online, so ask instead of guessing */}
+                {devicePicker && (
+                  <div className={`p-3 rounded-xl border ${isDark ? "bg-slate-900/80 border-emerald-500/30" : "bg-white border-emerald-200"}`}>
+                    <div className="flex items-center justify-between mb-2 gap-2">
+                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">
+                        {devicePicker.auto ? "Auto-connect: which device?" : "Choose a device"}
+                      </span>
+                      <button
+                        onClick={() => setDevicePicker(null)}
+                        className="p-1 rounded-md hover:bg-slate-500/10 transition-colors cursor-pointer"
+                        title="Cancel"
+                      >
+                        <X className="w-3.5 h-3.5 text-slate-400" />
+                      </button>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      {devicePicker.devices.map((device) => (
+                        <button
+                          key={device.socketId}
+                          onClick={() => {
+                            setDevicePicker(null);
+                            initiateServerConnection(user?.email || "", device.socketId);
+                          }}
+                          className={`w-full p-2.5 rounded-lg border flex items-center gap-2.5 text-left transition-colors cursor-pointer ${isDark ? "bg-white/5 border-white/10 hover:bg-emerald-500/15" : "bg-slate-50 border-slate-200 hover:bg-emerald-50"}`}
+                        >
+                          {device.platform === "mobile" ? (
+                            <Smartphone className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                          ) : (
+                            <Laptop className="w-4 h-4 text-emerald-500 flex-shrink-0" />
+                          )}
+                          <span className="flex-1 min-w-0 truncate text-xs font-semibold text-slate-700 dark:text-slate-200">
+                            {device.name}
+                          </span>
+                          <span className="text-[10px] font-bold text-emerald-500 flex-shrink-0">CONNECT</span>
+                        </button>
+                      ))}
+                    </div>
+                    <p className="mt-2 text-[10px] text-slate-500 dark:text-slate-400">
+                      {devicePicker.devices.length} devices are signed in as {user?.email}
+                    </p>
+                  </div>
+                )}
+
                 {/* 1. Connect to My Devices */}
                 <div
                   role="button"
                   tabIndex={0}
-                  onClick={() => initiateServerConnection(user?.email || "")}
+                  onClick={() => connectToMyDevices()}
                   className={`cursor-pointer p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20" : "bg-emerald-50 border-emerald-200 hover:bg-emerald-100"}`}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
@@ -3368,7 +3460,7 @@ export const TransferNodeRenderer: React.FC<{
                   <div
                     role="button"
                     tabIndex={0}
-                    onClick={() => initiateServerConnection(user.defaultTargetEmail!)}
+                    onClick={() => user.defaultTargetEmail === user.email ? connectToMyDevices() : initiateServerConnection(user.defaultTargetEmail!)}
                     className={`cursor-pointer p-3 rounded-xl border flex items-center justify-between transition-all group ${isDark ? "bg-blue-500/10 border-blue-500/20 hover:bg-blue-500/20" : "bg-blue-50 border-blue-200 hover:bg-blue-100"}`}
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
