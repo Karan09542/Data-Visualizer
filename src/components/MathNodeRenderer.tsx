@@ -46,6 +46,7 @@ import {
   PanelBottom,
   Home,
   Hand,
+  ScanLine,
 } from "lucide-react";
 
 import {
@@ -130,6 +131,8 @@ import {
   CalculatorResult,
   SavedScenesLibrary,
   type SceneSnapshot,
+  FormulaScanner,
+  type ScannedRow,
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
@@ -1625,6 +1628,53 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
   };
 
+  // ─── Formula scanner (photo or screenshot → rows) ──────────────────────────
+  const [isScannerOpen, setIsScannerOpen] = useState(false);
+
+  /** Adds the rows the scanner read, and sliders for the names nothing defines yet. */
+  const handleAddScannedRows = (rows: ScannedRow[], sliders: string[]) => {
+    setActiveExample(null);
+    setFunctions((prev) => {
+      const next = [...prev];
+      const push = (type: MathFunction["type"], expr: string, extra: Partial<MathFunction> = {}) =>
+        next.push({
+          id: generateSafeId(),
+          expr,
+          color: COLORS[next.length % COLORS.length],
+          visible: true,
+          type,
+          ...extra,
+        });
+      for (const row of rows) {
+        if (row.kind === "function" || row.kind === "definition") {
+          push("function", row.expr);
+          if (row.plotExpr) push("function", row.plotExpr);
+        } else if (row.kind === "differential") {
+          push("differential", row.expr, { tRange: [0, 20], odeSteps: 1000, odeAnimate: true });
+        } else if (row.kind === "point") {
+          push("point", row.expr, row.name ? { name: row.name } : {});
+        } else {
+          push(row.kind, row.expr);
+        }
+      }
+      return next;
+    });
+
+    // A name is covered by a slider, an existing definition, or one of the new rows.
+    const defined = new Set(variables.map((v) => v.name));
+    for (const f of functions) {
+      const def = definitionName(f, functions);
+      if (def) defined.add(def.replace(/\(.*$/, ""));
+      if (f.name) defined.add(f.name);
+    }
+    for (const row of rows) {
+      const assigned = row.expr.match(/^\s*([A-Za-z_]\w*)\s*(\([^)]*\))?\s*=(?!=)/);
+      if (assigned && assigned[1] !== "y" && assigned[1] !== "x") defined.add(assigned[1]);
+      if (row.name) defined.add(row.name);
+    }
+    sliders.filter((name) => !defined.has(name)).forEach(handleAutoAddVar);
+  };
+
   // ─── Saved graphs ("My Saved Graphs") ─────────────────────────────────────
   const [saveSceneRequest, setSaveSceneRequest] = useState(0);
 
@@ -1940,6 +1990,14 @@ export const MathNodeRenderer: React.FC<any> = ({
                           );
                         })}
                       </div>
+                      <button
+                        onClick={() => setIsScannerOpen(true)}
+                        className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                        title="Scan a formula from a photo or screenshot"
+                        aria-label="Scan a formula"
+                      >
+                        <ScanLine size={14} />
+                      </button>
                       <button
                         onClick={() => setSaveSceneRequest((n) => n + 1)}
                         className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
@@ -8292,6 +8350,13 @@ export const MathNodeRenderer: React.FC<any> = ({
             <path d="M11 4 L4 11 M11 8 L8 11" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
           </svg>
         )}
+
+        {/* Formula scanner: reads a photo or screenshot into rows */}
+        <FormulaScanner
+          isOpen={isScannerOpen}
+          onClose={() => setIsScannerOpen(false)}
+          onAddRows={handleAddScannedRows}
+        />
 
         {/* Help Modal Overlay */}
         {showHelp &&

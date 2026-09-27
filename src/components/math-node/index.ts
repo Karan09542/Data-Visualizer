@@ -29,3 +29,4 @@ export * from "./simulations";
 export * from "./SimulationGallery";
 export * from "./CalculatorResult";
 export * from "./SavedScenesLibrary";
+export * from "./FormulaScanner";
