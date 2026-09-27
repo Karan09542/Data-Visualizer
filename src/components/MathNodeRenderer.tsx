@@ -47,6 +47,7 @@ import {
   Home,
   Hand,
   ScanLine,
+  PenLine,
 } from "lucide-react";
 
 import {
@@ -132,7 +133,9 @@ import {
   SavedScenesLibrary,
   type SceneSnapshot,
   FormulaScanner,
+  InlineFormulaDraw,
   type ScannedRow,
+  type RowPlacement,
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
@@ -1628,34 +1631,90 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
   };
 
-  // ─── Formula scanner (photo or screenshot → rows) ──────────────────────────
+  // ─── Formula scanner (photo, screenshot or handwriting → rows) ─────────────
   const [isScannerOpen, setIsScannerOpen] = useState(false);
+  /** The row being rewritten, when the scanner was opened from a row's menu. */
+  const [scannerTarget, setScannerTarget] = useState<{ id: string; expr: string } | null>(null);
+  /** Last row inserted under a target, so repeated "Insert below" keep their order. */
+  const lastInsertedRef = useRef<{ targetId: string; id: string } | null>(null);
 
-  /** Adds the rows the scanner read, and sliders for the names nothing defines yet. */
-  const handleAddScannedRows = (rows: ScannedRow[], sliders: string[]) => {
+  const openScanner = (target: MathFunction | null = null) => {
+    setScannerTarget(target ? { id: target.id, expr: target.expr } : null);
+    lastInsertedRef.current = null;
+    setIsScannerOpen(true);
+  };
+
+  // ─── Inline handwriting pad (inside a row) ─────────────────────────────────
+  const [drawingFnId, setDrawingFnId] = useState<string | null>(null);
+
+  const closeDrawing = () => setDrawingFnId(null);
+
+  const toggleDrawing = (fnId: string) => {
+    if (drawingFnId === fnId) {
+      closeDrawing();
+      return;
+    }
+    if (drawingFnId) closeDrawing();
+    lastInsertedRef.current = null;
+    setActiveActionMenuId(null);
+    setActiveVisualEditorId(null);
+    setDrawingFnId(fnId);
+  };
+
+  /**
+   * Adds the rows the scanner read, and sliders for the names nothing defines yet. With a
+   * placement they replace an existing row or go under it; otherwise they go at the end.
+   */
+  const handleAddScannedRows = (rows: ScannedRow[], sliders: string[], placement?: RowPlacement) => {
     setActiveExample(null);
+
+    // Rows are built (and given ids) out here, not in the state updater, so a re-run of the
+    // updater can't hand out different ids from the ones remembered below.
+    const built: MathFunction[] = [];
+    const push = (type: MathFunction["type"], expr: string, extra: Partial<MathFunction> = {}) =>
+      built.push({
+        id: generateSafeId(),
+        expr,
+        color: COLORS[(functions.length + built.length) % COLORS.length],
+        visible: true,
+        type,
+        ...extra,
+      });
+    for (const row of rows) {
+      if (row.kind === "function" || row.kind === "definition") {
+        push("function", row.expr);
+        if (row.plotExpr) push("function", row.plotExpr);
+      } else if (row.kind === "differential") {
+        push("differential", row.expr, { tRange: [0, 20], odeSteps: 1000, odeAnimate: true });
+      } else if (row.kind === "point") {
+        push("point", row.expr, row.name ? { name: row.name } : {});
+      } else {
+        push(row.kind, row.expr);
+      }
+    }
+    if (built.length === 0) return;
+
+    const lastInserted = lastInsertedRef.current;
+    lastInsertedRef.current = placement?.mode === "below"
+      ? { targetId: placement.fnId, id: built[built.length - 1].id }
+      : null;
+
     setFunctions((prev) => {
+      const targetIndex = placement ? prev.findIndex((f) => f.id === placement.fnId) : -1;
+      if (!placement || targetIndex === -1) return [...prev, ...built];
+
       const next = [...prev];
-      const push = (type: MathFunction["type"], expr: string, extra: Partial<MathFunction> = {}) =>
-        next.push({
-          id: generateSafeId(),
-          expr,
-          color: COLORS[next.length % COLORS.length],
-          visible: true,
-          type,
-          ...extra,
-        });
-      for (const row of rows) {
-        if (row.kind === "function" || row.kind === "definition") {
-          push("function", row.expr);
-          if (row.plotExpr) push("function", row.plotExpr);
-        } else if (row.kind === "differential") {
-          push("differential", row.expr, { tRange: [0, 20], odeSteps: 1000, odeAnimate: true });
-        } else if (row.kind === "point") {
-          push("point", row.expr, row.name ? { name: row.name } : {});
-        } else {
-          push(row.kind, row.expr);
-        }
+      if (placement.mode === "replace") {
+        // The target keeps its id, colour and visibility; its formula and kind are rewritten.
+        const [first, ...rest] = built;
+        const target = prev[targetIndex];
+        next.splice(targetIndex, 1, { ...target, ...first, id: target.id, color: target.color, visible: target.visible }, ...rest);
+      } else {
+        // Under the target, after anything already inserted there, so the order is kept.
+        const afterIndex = lastInserted && lastInserted.targetId === placement.fnId
+          ? prev.findIndex((f) => f.id === lastInserted.id)
+          : -1;
+        next.splice((afterIndex !== -1 ? afterIndex : targetIndex) + 1, 0, ...built);
       }
       return next;
     });
@@ -1991,7 +2050,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                         })}
                       </div>
                       <button
-                        onClick={() => setIsScannerOpen(true)}
+                        onClick={() => openScanner()}
                         className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
                         title="Scan a formula from a photo or screenshot"
                         aria-label="Scan a formula"
@@ -2334,6 +2393,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                               </button>
                               <button
                                 type="button"
+                                onClick={() => toggleDrawing(f.id)}
+                                aria-pressed={drawingFnId === f.id}
+                                className={`p-1 rounded transition-all flex flex-col justify-center ${drawingFnId === f.id
+                                  ? "opacity-100 bg-blue-500/10 text-blue-500 dark:text-blue-400"
+                                  : "opacity-60 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500 dark:text-slate-400"
+                                  }`}
+                                title="Draw formula by hand (replace this row or insert below)"
+                              >
+                                <PenLine size={14} />
+                              </button>
+                              <button
+                                type="button"
                                 onClick={() => {
                                   setActiveActionMenuId(null);
                                   setExpandedSettingsFnId((prev) =>
@@ -2469,6 +2540,16 @@ export const MathNodeRenderer: React.FC<any> = ({
                               </button>
                             </div>
                           </div>
+
+                          {drawingFnId === f.id && (
+                            <InlineFormulaDraw
+                              currentExpr={f.expr}
+                              onApply={(rows, sliders, mode) =>
+                                handleAddScannedRows(rows, sliders, { fnId: f.id, mode })
+                              }
+                              onClose={closeDrawing}
+                            />
+                          )}
 
                           {savingFormulaFnId === f.id &&
                             createPortal(
@@ -5757,6 +5838,28 @@ export const MathNodeRenderer: React.FC<any> = ({
                               <button
                                 onClick={() => {
                                   setActiveActionMenuId(null);
+                                  toggleDrawing(f.id);
+                                }}
+                                title="Write the formula by hand, then replace this row or insert it below"
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors"
+                              >
+                                <PenLine size={14} className="text-blue-500" />{" "}
+                                Draw formula
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
+                                  openScanner(f);
+                                }}
+                                title="Read the formula from a photo or screenshot, then replace this row or insert it below"
+                                className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors"
+                              >
+                                <ScanLine size={14} className="text-slate-500" />{" "}
+                                Scan formula…
+                              </button>
+                              <button
+                                onClick={() => {
+                                  setActiveActionMenuId(null);
                                   handleDuplicateFunction(f.id);
                                 }}
                                 className="w-full flex items-center gap-2.5 p-2 hover:bg-slate-100 dark:hover:bg-slate-700 rounded text-slate-600 dark:text-slate-300 text-xs transition-colors"
@@ -8356,6 +8459,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           isOpen={isScannerOpen}
           onClose={() => setIsScannerOpen(false)}
           onAddRows={handleAddScannedRows}
+          target={scannerTarget}
         />
 
         {/* Help Modal Overlay */}

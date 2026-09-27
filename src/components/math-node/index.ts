@@ -30,3 +30,4 @@ export * from "./SimulationGallery";
 export * from "./CalculatorResult";
 export * from "./SavedScenesLibrary";
 export * from "./FormulaScanner";
+export * from "./InlineFormulaDraw";

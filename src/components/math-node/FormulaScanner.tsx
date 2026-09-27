@@ -12,8 +12,10 @@ import {
   Download,
   HardDrive,
   ImagePlus,
+  ArrowDownToLine,
   Loader2,
   Plus,
+  Replace,
   RotateCcw,
   ScanLine,
   Trash2,
@@ -51,14 +53,23 @@ export interface ScannedRow {
   plotExpr?: string;
 }
 
+/** Where read rows go when the scanner was opened for an existing row. */
+export interface RowPlacement {
+  fnId: string;
+  /** replace: the first row takes the target's place (the rest follow it); below: all go under it. */
+  mode: "replace" | "below";
+}
+
 interface FormulaScannerProps {
   isOpen: boolean;
   onClose: () => void;
   /** Adds the rows; `sliders` are names the rows use that may need a slider. */
-  onAddRows: (rows: ScannedRow[], sliders: string[]) => void;
+  onAddRows: (rows: ScannedRow[], sliders: string[], placement?: RowPlacement) => void;
+  /** An existing row to replace or insert under, instead of adding at the end. */
+  target?: { id: string; expr: string } | null;
 }
 
-const KIND_LABEL: Record<LatexRowKind, string> = {
+export const KIND_LABEL: Record<LatexRowKind, string> = {
   function: "Curve",
   definition: "Definition",
   implicit: "Implicit curve",
@@ -69,7 +80,7 @@ const KIND_LABEL: Record<LatexRowKind, string> = {
   calculator: "Calculator",
 };
 
-const KIND_STYLE: Record<LatexRowKind, string> = {
+export const KIND_STYLE: Record<LatexRowKind, string> = {
   function: "bg-blue-100 text-blue-700 dark:bg-blue-500/15 dark:text-blue-300",
   definition: "bg-slate-200 text-slate-700 dark:bg-slate-700 dark:text-slate-200",
   implicit: "bg-violet-100 text-violet-700 dark:bg-violet-500/15 dark:text-violet-300",
@@ -84,7 +95,7 @@ const FULL_CROP: Crop = { unit: "%", x: 0, y: 0, width: 100, height: 100 };
 
 const mb = (bytes: number) => `${Math.round(bytes / 1e6)} MB`;
 
-function renderTex(latex: string): string | null {
+export function renderTex(latex: string): string | null {
   try {
     return katex.renderToString(latex, { displayMode: true, throwOnError: true, strict: "ignore" });
   } catch {
@@ -101,7 +112,7 @@ function cropFractions(crop: Crop | null): CropFractions | undefined {
 }
 
 /** Names an expression uses, for keeping only the sliders an edited row still needs. */
-function namesIn(expr: string): Set<string> {
+export function namesIn(expr: string): Set<string> {
   const names = new Set<string>();
   for (const statement of expr.split(";")) {
     // Primes and "=" aside (x'' = …, f(x) = …), a row is an ordinary expression.
@@ -121,7 +132,12 @@ function namesIn(expr: string): Set<string> {
  * Reads a formula from a photo or screenshot and adds it to the graph. The reading
  * happens on this device, with a model downloaded once and kept in the browser.
  */
-export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose, onAddRows }) => {
+export const FormulaScanner: React.FC<FormulaScannerProps> = ({
+  isOpen,
+  onClose,
+  onAddRows,
+  target = null,
+}) => {
   const [stored, setStored] = useState<StoredModel | null | undefined>(undefined);
   const [downloading, setDownloading] = useState(false);
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
@@ -199,6 +215,22 @@ export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose,
     return () => window.removeEventListener("paste", onPaste);
   }, [isOpen, takeImage]);
 
+  /** Clears the last reading. */
+  const resetResult = useCallback(() => {
+    readToken.current++;
+    setReading(false);
+    setLatex("");
+    setReadMs(null);
+    setReadError(null);
+    setEdits({});
+    setAdded(new Set());
+  }, []);
+
+  // Each opening (possibly for a different row) starts without last time's result.
+  useEffect(() => {
+    if (isOpen) resetResult();
+  }, [isOpen, target?.id, resetResult]);
+
   // Read whenever there is a picture, the reader is installed, and the box changed.
   useEffect(() => {
     if (!isOpen || !image || !stored || !readCrop) return;
@@ -260,7 +292,7 @@ export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lines, edits]);
 
-  const add = (indexes: number[]) => {
+  const add = (indexes: number[], mode?: RowPlacement["mode"]) => {
     const rows: ScannedRow[] = indexes.map((i) => ({
       kind: lines[i].kind!,
       expr: exprOf(i).trim(),
@@ -273,8 +305,10 @@ export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose,
           return lines[i].symbols.filter((s) => used.has(s));
         }))]
       : [];
-    onAddRows(rows, sliders);
+    onAddRows(rows, sliders, target && mode ? { fnId: target.id, mode } : undefined);
     setAdded((prev) => new Set([...prev, ...indexes]));
+    // Replacing is a one-shot edit of that row: done, so get out of the way.
+    if (mode === "replace") onClose();
   };
 
   const copyLatex = () => {
@@ -308,14 +342,18 @@ export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose,
       <div
         role="dialog"
         aria-modal="true"
-        aria-label="Scan a formula"
+        aria-label={target ? "Rewrite a formula" : "Scan a formula"}
         className="w-full max-w-2xl max-h-full flex flex-col rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-2xl overflow-hidden"
       >
         {/* Header */}
         <div className="flex items-center gap-2 px-4 py-3 border-b border-slate-200 dark:border-slate-800">
           <ScanLine size={16} className="text-blue-600 dark:text-blue-400" />
-          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">Scan a formula</h2>
-          <span className="text-[11px] text-slate-400 dark:text-slate-500 hidden sm:inline">Photo or screenshot → equation</span>
+          <h2 className="text-sm font-semibold text-slate-800 dark:text-slate-100">
+            {target ? "Rewrite formula" : "Scan a formula"}
+          </h2>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500 hidden sm:inline">
+            Photo or screenshot → equation
+          </span>
           <button
             type="button"
             onClick={onClose}
@@ -383,6 +421,16 @@ export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose,
                   <AlertTriangle size={12} className="mt-0.5 shrink-0" /> {downloadError}
                 </p>
               )}
+            </div>
+          )}
+
+          {/* The row being rewritten */}
+          {target && (
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/40 px-3 py-2">
+              <span className="shrink-0 text-[10px] uppercase tracking-wider font-semibold text-slate-500">Current</span>
+              <code className="flex-1 min-w-0 truncate font-mono text-[12px] text-slate-700 dark:text-slate-200" title={target.expr}>
+                {target.expr || "(empty)"}
+              </code>
             </div>
           )}
 
@@ -560,19 +608,47 @@ export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose,
                                 aria-label="Expression for the row"
                                 className="flex-1 min-w-0 h-7 px-2 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 font-mono text-[12px] text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
                               />
-                              <button
-                                type="button"
-                                onClick={() => add([i])}
-                                disabled={!exprOf(i).trim()}
-                                className={`shrink-0 flex items-center gap-1 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors ${
-                                  added.has(i)
-                                    ? "bg-emerald-600 text-white"
-                                    : "bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40"
-                                }`}
-                              >
-                                {added.has(i) ? <Check size={12} /> : <Plus size={12} />}
-                                {added.has(i) ? "Added" : "Add"}
-                              </button>
+                              {target ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() => add([i], "below")}
+                                    disabled={!exprOf(i).trim()}
+                                    title="Add as a new row under the current one"
+                                    className={`shrink-0 flex items-center gap-1 px-2 h-7 rounded-md text-[11px] font-semibold border transition-colors disabled:opacity-40 ${
+                                      added.has(i)
+                                        ? "border-emerald-500/40 text-emerald-600 dark:text-emerald-400"
+                                        : "border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                                    }`}
+                                  >
+                                    {added.has(i) ? <Check size={12} /> : <ArrowDownToLine size={12} />}
+                                    <span className="hidden sm:inline">{added.has(i) ? "Inserted" : "Insert below"}</span>
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => add([i], "replace")}
+                                    disabled={!exprOf(i).trim()}
+                                    title="Replace the current row with this formula"
+                                    className="shrink-0 flex items-center gap-1 px-2.5 h-7 rounded-md text-[11px] font-semibold bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40 transition-colors"
+                                  >
+                                    <Replace size={12} /> Replace
+                                  </button>
+                                </>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => add([i])}
+                                  disabled={!exprOf(i).trim()}
+                                  className={`shrink-0 flex items-center gap-1 px-2.5 h-7 rounded-md text-[11px] font-semibold transition-colors ${
+                                    added.has(i)
+                                      ? "bg-emerald-600 text-white"
+                                      : "bg-blue-600 hover:bg-blue-500 text-white disabled:opacity-40"
+                                  }`}
+                                >
+                                  {added.has(i) ? <Check size={12} /> : <Plus size={12} />}
+                                  {added.has(i) ? "Added" : "Add"}
+                                </button>
+                              )}
                             </div>
                             {line.plotExpr && (
                               <p className="text-[10px] text-slate-500 dark:text-slate-400">
@@ -603,11 +679,12 @@ export const FormulaScanner: React.FC<FormulaScannerProps> = ({ isOpen, onClose,
                       {addable.length > 1 && (
                         <button
                           type="button"
-                          onClick={() => add(addable.filter((i) => !added.has(i)))}
+                          onClick={() => add(addable.filter((i) => !added.has(i)), target ? "below" : undefined)}
                           disabled={addable.every((i) => added.has(i))}
                           className="ml-auto flex items-center gap-1 px-3 h-7 rounded-md text-[11px] font-semibold bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white"
                         >
-                          <Plus size={12} /> Add all
+                          {target ? <ArrowDownToLine size={12} /> : <Plus size={12} />}
+                          {target ? "Insert all below" : "Add all"}
                         </button>
                       )}
                     </div>
