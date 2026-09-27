@@ -844,8 +844,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between gap-4 py-2 px-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-[500] relative transition-colors h-[48px]">
-        <div className="flex items-center gap-3 mr-2 lg:border-r border-slate-300 dark:border-slate-800 lg:pr-4 flex-shrink-0">
+      <div className="flex items-center justify-between gap-2 lg:gap-4 py-2 px-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-[500] relative transition-colors h-[48px]">
+        <div className="flex items-center gap-2 lg:gap-3 mr-1 lg:mr-2 min-w-0 lg:border-r border-slate-300 dark:border-slate-800 lg:pr-4 lg:flex-shrink-0">
           <button
             onClick={() => setIsEditorPanelOpen(!isEditorPanelOpen)}
             className={`p-1.5 rounded transition-colors ${isEditorPanelOpen ? "bg-slate-200 dark:bg-slate-800 text-slate-800 dark:text-slate-100" : "text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-slate-100"}`}
@@ -855,10 +855,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </button>
           <Link
             to="/"
-            className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 hover:text-blue-500 transition-colors"
+            className="font-semibold text-slate-800 dark:text-slate-100 flex items-center gap-2 min-w-0 hover:text-blue-500 transition-colors"
           >
             <svg
-              className="w-5 h-5 text-blue-500"
+              className="w-5 h-5 shrink-0 text-blue-500"
               viewBox="0 0 24 24"
               fill="none"
               stroke="currentColor"
@@ -870,7 +870,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 d="M10 20l4-16m4 4l4 4-4 4M6 16l-4-4 4-4"
               />
             </svg>
-            Data Visualizer
+            <span className="truncate">Data Visualizer</span>
           </Link>
           <button
             onClick={() => {
@@ -1238,7 +1238,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </div>
         </div>
 
-        <div className="lg:hidden flex items-center gap-2">
+        <div className="lg:hidden flex items-center gap-1 shrink-0">
           <button
             onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
             className="flex items-center justify-center p-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm active:scale-95 transition-all"
@@ -1272,7 +1272,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </button>
           <button
             onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
-            className="p-2 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
+            className="p-2 shrink-0 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
           >
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
