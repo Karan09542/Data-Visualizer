@@ -88,7 +88,9 @@ export default defineConfig(({ mode }) => {
         },
         injectManifest: {
           maximumFileSizeToCacheInBytes: 10 * 1024 * 1024,
-          globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,woff,woff2,ttf,json,wasm}']
+          globPatterns: ['**/*.{js,mjs,css,html,ico,png,svg,woff,woff2,ttf,json,wasm}'],
+          // The formula reader's runtime (21 MB) is downloaded on request and kept in OPFS.
+          globIgnores: ['**/ort-wasm-*.wasm']
         }
       }),
       {
@@ -116,7 +118,10 @@ export default defineConfig(({ mode }) => {
       }
     ],
     optimizeDeps: {
-      exclude: ['@jsquash/png', '@jsquash/jpeg', '@jsquash/webp', '@jsquash/avif', '@jsquash/resize']
+      exclude: ['@jsquash/png', '@jsquash/jpeg', '@jsquash/webp', '@jsquash/avif', '@jsquash/resize'],
+      // Only the formula reader's worker imports it; bundling it up front avoids a
+      // dev-server reload (and a cut-off model download) the first time it loads.
+      include: ['@huggingface/transformers']
     },
     resolve: {
       alias: {
