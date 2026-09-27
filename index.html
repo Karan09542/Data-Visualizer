@@ -10,11 +10,13 @@
   <meta name="apple-mobile-web-app-title" content="DataVisualizer" />
   <link rel="apple-touch-icon" href="/app-icon.png" />
   <title>JSON YAML VISUALIZER</title>
-  <meta name="description" content="Instantly visualize JSON and YAML data as interactive node graphs and trees. Perfect for debugging complex data structures." />
-  <meta name="keywords" content="json, yaml, visualizer, graph, tree, data visualization, debugging, kubernetes, json tree, yaml viewer, interactive graph" />
+  <meta name="description"
+    content="Instantly visualize JSON and YAML data as interactive node graphs and trees. Perfect for debugging complex data structures." />
+  <meta name="keywords"
+    content="json, yaml, visualizer, graph, tree, data visualization, debugging, kubernetes, json tree, yaml viewer, interactive graph" />
   <meta name="robots" content="index, follow" />
   <link rel="icon" type="image/x-icon" href="/app-icon.png">
-  
+
   <link rel="canonical" href="https://datavisualizer.urlmediainspector.dev/" />
 
   <!-- Open Graph -->
@@ -25,15 +27,18 @@
   <meta property="og:url" content="https://datavisualizer.urlmediainspector.dev/" />
   <meta property="og:type" content="website" />
   <meta property="og:site_name" content="Json Yaml Visualizer">
-  
+
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="JSON & YAML Visualizer - Data to Diagram" />
-  <meta name="twitter:description" content="Instantly visualize JSON and YAML data as interactive trees and charts. Perfect for debugging Kubernetes files and complex data models." />
+  <meta name="twitter:description"
+    content="Instantly visualize JSON and YAML data as interactive trees and charts. Perfect for debugging Kubernetes files and complex data models." />
   <meta name="twitter:image" content="/og-image.png" />
   <meta name="twitter:url" content="https://datavisualizer.urlmediainspector.dev/" />
 
   <meta name="google-site-verification" content="Yo8Yv--XZCKCORgzPS-yppWh-nsddjluLO5kM43CkHM" />
+  <!-- Data Visualizer URLMediaInspector -->
+  <meta name="google-site-verification" content="1AF2MhOpwp7OoNBWG5tHqBXMU7gSRSKgGk3yZ8Ygcx8" />
 
   <!-- JSON-LD Structured Data Schema -->
   <script type="application/ld+json">
@@ -58,16 +63,16 @@
 <body>
   <script>
     // Browser shim for Node.js requires externalized by Vite
-    window.require = window.require || function(mod) {
+    window.require = window.require || function (mod) {
       if (mod === '@emotion/is-prop-valid') {
         throw new Error("Module not found: @emotion/is-prop-valid");
       }
       console.warn("[Global Shim] require(" + mod + ") called in browser runtime.");
-      return { default: function() {} };
+      return { default: function () { } };
     };
 
     // Auto-reload on chunk load failure (fixes SPA deployments where old chunks are deleted)
-    window.addEventListener('error', function(e) {
+    window.addEventListener('error', function (e) {
       var target = e.target || e.srcElement;
       // Reloading offline cannot fetch anything - it would only throw the user's work away. And a
       // library from a CDN failing is handled where it is used, so only the app's own scripts count.
