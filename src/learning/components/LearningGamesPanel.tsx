@@ -14,6 +14,7 @@ import { ReviewView } from "./ReviewView";
 import { WordsView } from "./WordsView";
 import { ConfirmContext, type ConfirmRequest } from "./primitives";
 import { useMediaQuery } from "./hooks";
+import { fallbackWasShown, setFallbackWasShown } from "../preload";
 import "../learning.css";
 
 const VIEWS: Record<LearningView, () => React.ReactElement> = {
@@ -33,6 +34,13 @@ export default function LearningGamesPanel() {
   const historyCount = useLearningStore((s) => s.history.length);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const reduceMotion = useReducedMotion();
+  const hadFallback = useRef(fallbackWasShown);
+
+  useEffect(() => {
+    if (fallbackWasShown) {
+      setFallbackWasShown(false);
+    }
+  }, []);
   const dragControls = useDragControls();
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -111,7 +119,7 @@ export default function LearningGamesPanel() {
                   : "inset-x-0 bottom-0 top-[max(0.75rem,env(safe-area-inset-top))] rounded-t-[1.75rem]",
               )}
               style={isDesktop ? { width: playing ? "min(1120px, calc(100vw - 1rem))" : "min(540px, calc(100vw - 1rem))" } : undefined}
-              initial={isDesktop ? { x: "105%" } : { y: "100%" }}
+              initial={reduceMotion || hadFallback.current ? false : (isDesktop ? { x: "105%" } : { y: "100%" })}
               animate={isDesktop ? { x: 0 } : { y: 0 }}
               exit={isDesktop ? { x: "105%" } : { y: "100%" }}
               transition={reduceMotion ? { duration: 0 } : { type: "spring", damping: 34, stiffness: 340, mass: 0.9 }}

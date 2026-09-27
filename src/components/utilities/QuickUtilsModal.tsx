@@ -37,15 +37,15 @@ const TAB_GROUPS = [
 
 const TABS = [
   // Photos
+  { id: "passport", group: "photos", label: "Passport Photo Maker", description: "Make print-ready passport and ID photos", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "text-blue-500" },
+  { id: "imgslicer", group: "photos", label: "Split Image into Pieces", description: "Cut one image into a grid of tiles", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
+  { id: "colorthief", group: "photos", label: "Pick Colors from a Photo", description: "Find the main colors in any image", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "text-fuchsia-500" },
   { id: "crop", group: "photos", label: "Advanced Crop", description: "Trim, rotate, and sculpt images for social media & custom shapes", icon: Crop, activeClass: "bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 shadow-sm border border-teal-200/50 dark:border-teal-800/30", iconClass: "text-teal-500" },
   { id: "bgremover", group: "photos", label: "Background Remover", description: "Isolate subjects and remove backgrounds with AI", icon: Sparkles, activeClass: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/30", iconClass: "text-emerald-500" },
   { id: "upscaler", group: "photos", label: "Upscale Image", description: "AI super-resolution up to 8x with sharpening", icon: ArrowUpRight, activeClass: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-800/30", iconClass: "text-indigo-500" },
   { id: "lowlight", group: "photos", label: "Low Light Enhance", description: "Brighten dark photos and recover shadow details with AI", icon: Moon, activeClass: "bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 shadow-sm border border-amber-200/50 dark:border-amber-800/30", iconClass: "text-amber-500" },
   { id: "styletransfer", group: "photos", label: "Art Style Transfer", description: "Transform photos into artistic masterworks with AI", icon: Paintbrush, activeClass: "bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 shadow-sm border border-violet-200/50 dark:border-violet-800/30", iconClass: "text-violet-500" },
   { id: "imagedepth", group: "photos", label: "Image Depth", description: "Map how far away everything is, then blur, light or fog by distance", icon: Layers, activeClass: "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 shadow-sm border border-cyan-200/50 dark:border-cyan-800/30", iconClass: "text-cyan-500" },
-  { id: "passport", group: "photos", label: "Passport Photo Maker", description: "Make print-ready passport and ID photos", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "text-blue-500" },
-  { id: "imgslicer", group: "photos", label: "Split Image into Pieces", description: "Cut one image into a grid of tiles", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
-  { id: "colorthief", group: "photos", label: "Pick Colors from a Photo", description: "Find the main colors in any image", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "text-fuchsia-500" },
   // PDF & Files
   { id: "img2pdf", group: "files", label: "Image to PDF", description: "Turn photos into a single PDF", icon: FileImage, activeClass: "bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 shadow-sm border border-sky-200/50 dark:border-sky-800/30", iconClass: "text-sky-500" },
   { id: "pdfmerge", group: "files", label: "Merge PDFs", description: "Combine several PDFs into one file", icon: FileStack, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "text-blue-500" },
@@ -67,7 +67,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("crop");
+  const [activeTab, setActiveTab] = useState<"crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
   const [isMaximized, setIsMaximized] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
       return window.innerWidth < 768;
@@ -101,7 +101,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
   return (
     <AnimatePresence>
       {isOpen && (
-        <div 
+        <div
           data-quick-utils-modal="true"
           className="custom-dropzone quick-utils-modal fixed inset-0 z-[600] flex items-center justify-center p-0"
           onDragEnter={(e) => {
@@ -133,7 +133,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
             initial={{ opacity: 0, scale: 0.98, y: 8 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.98, y: 8 }}
-            transition={{ 
+            transition={{
               duration: 0.16,
               ease: [0.16, 1, 0.3, 1]
             }}
@@ -148,7 +148,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                 <h1 className="text-xs sm:text-sm font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 shrink-0 truncate">
                   Quick Tools
                 </h1>
-                
+
                 <div className="flex items-center justify-end gap-1.5 sm:gap-2 shrink-0">
                   {/* Mobile Dropdown */}
                   <div className="md:hidden w-[150px] sm:w-[200px]">

@@ -63,6 +63,7 @@ import { CameraCaptureModal } from "./CameraCaptureModal";
 import { WikiSearchOverlay } from "./WikiSearchOverlay";
 import { PromptModal } from "./PromptModal";
 import UserMenu, { AuthModals } from "./UserMenu";
+import { preloadLearningGames } from "../learning/preload";
 import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES, type LayoutMode } from "../constants/visualizer";
 
 const LAYOUT_META: Record<LayoutMode, { label: string; description: string; icon: React.ReactNode }> = {
@@ -120,6 +121,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const setIsDirty = useStore((state) => state.setIsDirty);
   const setLastSavedCode = useStore((state) => state.setLastSavedCode);
   const setNotification = useStore((state) => state.setNotification);
+  const isLearningGamesOpen = useStore((state) => state.isLearningGamesOpen);
 
   const annotations = useAnnotationStore((state) => state.annotations);
 
@@ -871,12 +873,21 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             Data Visualizer
           </Link>
           <button
-            onClick={() => useStore.getState().setIsLearningGamesOpen(true)}
-            className="hidden lg:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded-full text-xs font-semibold text-indigo-600 dark:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 transition-colors"
+            onClick={() => {
+              preloadLearningGames();
+              useStore.getState().setIsLearningGamesOpen(true);
+            }}
+            onMouseEnter={preloadLearningGames}
+            onFocus={preloadLearningGames}
+            className={`hidden lg:flex items-center gap-1.5 ml-3 px-2.5 py-1 rounded-full text-xs font-semibold transition-all ${
+              isLearningGamesOpen
+                ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/30 border border-indigo-600"
+                : "text-indigo-600 dark:text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20"
+            }`}
             title="Learning Games: practice your vocabulary with crosswords"
             aria-label="Open Learning Games"
           >
-            <GraduationCap size={14} />
+            <GraduationCap size={14} className={isLearningGamesOpen ? "animate-pulse" : ""} />
             <span>Learn</span>
           </button>
           <div className="hidden xl:flex items-center gap-4 ml-4 text-xs font-semibold">
@@ -1236,12 +1247,21 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             <Sparkles size={16} className="animate-pulse" />
           </button>
           <button
-            onClick={() => useStore.getState().setIsLearningGamesOpen(true)}
-            className="p-2 text-slate-400 hover:text-white rounded-md hover:bg-slate-800 transition-colors"
+            onClick={() => {
+              preloadLearningGames();
+              useStore.getState().setIsLearningGamesOpen(true);
+            }}
+            onMouseEnter={preloadLearningGames}
+            onTouchStart={preloadLearningGames}
+            className={`p-2 rounded-md transition-colors ${
+              isLearningGamesOpen
+                ? "text-indigo-400 bg-indigo-500/20"
+                : "text-slate-400 hover:text-white hover:bg-slate-800"
+            }`}
             title="Learning Games"
             aria-label="Open Learning Games"
           >
-            <GraduationCap size={19} />
+            <GraduationCap size={19} className={isLearningGamesOpen ? "animate-pulse" : ""} />
           </button>
           <button
             onClick={() => setIsWikiSearchOpen(true)}
@@ -1566,11 +1586,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <button
                     onClick={() => {
                       setIsMobileMenuOpen(false);
+                      preloadLearningGames();
                       useStore.getState().setIsLearningGamesOpen(true);
                     }}
-                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+                    onTouchStart={preloadLearningGames}
+                    className={`flex items-center gap-2 p-3 rounded-xl text-xs font-semibold transition-all border ${
+                      isLearningGamesOpen
+                        ? "bg-indigo-500/10 border-indigo-500/30 text-indigo-600 dark:text-indigo-400"
+                        : "bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+                    }`}
                   >
-                    <GraduationCap size={16} className="text-indigo-500" />
+                    <GraduationCap size={16} className={`text-indigo-500 ${isLearningGamesOpen ? "animate-pulse" : ""}`} />
                     <span>Learning Games</span>
                   </button>
 

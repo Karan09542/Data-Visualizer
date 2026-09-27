@@ -41,6 +41,8 @@ const StickyNotesManager = lazyWithRetry(() => import("./components/StickyNotesM
 const AudioPlayerModal = lazyWithRetry(() => import("./audio/components/AudioPlayerModal"), 'AudioPlayerModal');
 const MiniPlayer = lazyWithRetry(() => import("./audio/components/MiniPlayer"), 'MiniPlayer');
 const LearningGamesPanel = lazyWithRetry(() => import("./learning/components/LearningGamesPanel"), 'LearningGamesPanel');
+import { preloadLearningGames } from "./learning/preload";
+import LearningGamesLoadingFallback from "./learning/components/LearningGamesLoadingFallback";
 import { FloatingMic } from "./voice/components/FloatingMic";
 import { useVoice } from "./voice/useVoice";
 import { GlobalErrorBoundary } from "./components/AppErrorPopup";
@@ -65,11 +67,27 @@ function App() {
   const visualizerMode = useStore((state) => state.visualizerMode);
   const isFileProcessing = useStore((state) => state.isFileProcessing);
   const isLearningGamesOpen = useStore((state) => state.isLearningGamesOpen);
-  // Load the Learning Games bundle on first use, then keep it mounted so closing can animate.
+  // Keep mounted once opened so closing can animate cleanly with exit transitions
   const [learningGamesLoaded, setLearningGamesLoaded] = useState(false);
+  const shouldRenderLearningGames = isLearningGamesOpen || learningGamesLoaded;
+
   useEffect(() => {
     if (isLearningGamesOpen) setLearningGamesLoaded(true);
   }, [isLearningGamesOpen]);
+
+  // Eagerly prefetch learning games when browser is idle to ensure instant opening
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const runPreload = () => {
+        preloadLearningGames();
+      };
+      if ("requestIdleCallback" in window) {
+        (window as any).requestIdleCallback(runPreload, { timeout: 3000 });
+      } else {
+        setTimeout(runPreload, 2000);
+      }
+    }
+  }, []);
   const undoStack = useStore((state) => state.undoStack);
   const redoStack = useStore((state) => state.redoStack);
   const undo = useStore((state) => state.undo);
@@ -85,7 +103,7 @@ function App() {
   const [searchParams, setSearchParams] = useSearchParams();
   const focusNodePath = searchParams.get('focusNode');
   const forceWorkspace = searchParams.get('forceWorkspace');
-
+
   // Tokens expire server-side; refresh on load and on focus so a returning user stays signed in
   useEffect(() => {
     refreshAuthToken();
@@ -842,8 +860,8 @@ function App() {
         <MiniPlayer />
       </Suspense>
 
-      {learningGamesLoaded && (
-        <Suspense fallback={null}>
+      {shouldRenderLearningGames && (
+        <Suspense fallback={isLearningGamesOpen ? <LearningGamesLoadingFallback /> : null}>
           <LearningGamesPanel />
         </Suspense>
       )}
