@@ -212,3 +212,86 @@ export function buildOdePath(
 
   return parts.join(" ");
 }
+
+/**
+ * The drawn solution as tracer geometry: one vertex per solved row, plus the exact
+ * point at any time. That point comes from the same cubic Hermite interpolation the
+ * path is drawn with (a Bézier with controls p ± h·p'/3 is that Hermite cubic), so a
+ * traced point sits on the drawn curve rather than on the chord between two rows.
+ */
+export function odeTraceGeometry(
+  solution: OdeSolution,
+  system: OdeSystem,
+  axisX: string,
+  axisY: string,
+  transform?: (p: [number, number]) => [number, number],
+): {
+  xs: number[];
+  ys: number[];
+  ts: number[];
+  at: (t: number) => [number, number];
+} | null {
+  const cx = odeAxisColumns(system, axisX);
+  const cy = odeAxisColumns(system, axisY);
+  if (!cx || !cy) return null;
+
+  const { data, cols, rows } = solution;
+  const at = (row: number, col: number) => (col < 0 ? 1 : data[row * cols + col]);
+  const PLOTTABLE_LIMIT = 1e6;
+  const map = (x: number, y: number): [number, number] =>
+    transform ? transform([x, y]) : [x, y];
+
+  const xs: number[] = [];
+  const ys: number[] = [];
+  const ts: number[] = [];
+  for (let i = 0; i < rows; i++) {
+    const [x, y] = map(at(i, cx.value), at(i, cy.value));
+    const ok =
+      Number.isFinite(x) && Number.isFinite(y) &&
+      Math.abs(x) <= PLOTTABLE_LIMIT && Math.abs(y) <= PLOTTABLE_LIMIT;
+    xs.push(ok ? x : NaN);
+    ys.push(ok ? y : NaN);
+    ts.push(data[i * cols]);
+  }
+
+  const hermite = (col: { value: number; slope: number }, i: number, s: number, h: number) => {
+    const p0 = at(i, col.value);
+    const p1 = at(i + 1, col.value);
+    const m0 = at(i, col.slope);
+    const m1 = at(i + 1, col.slope);
+    if (!Number.isFinite(m0) || !Number.isFinite(m1)) return p0 + (p1 - p0) * s;
+    const s2 = s * s;
+    const s3 = s2 * s;
+    return (
+      (2 * s3 - 3 * s2 + 1) * p0 +
+      (s3 - 2 * s2 + s) * h * m0 +
+      (-2 * s3 + 3 * s2) * p1 +
+      (s3 - s2) * h * m1
+    );
+  };
+
+  const pointAt = (t: number): [number, number] => {
+    if (rows < 2 || !Number.isFinite(t)) return [NaN, NaN];
+    // Rows are in time order (the step can be negative for a backwards range).
+    const first = data[0];
+    const last = data[(rows - 1) * cols];
+    const forward = last >= first;
+    let lo = 0;
+    let hi = rows - 1;
+    while (hi - lo > 1) {
+      const mid = (lo + hi) >> 1;
+      const tm = data[mid * cols];
+      if (forward ? tm <= t : tm >= t) lo = mid;
+      else hi = mid;
+    }
+    const t0 = data[lo * cols];
+    const h = data[hi * cols] - t0;
+    if (h === 0) return map(at(lo, cx.value), at(lo, cy.value));
+    const s = Math.max(0, Math.min(1, (t - t0) / h));
+    const vx = axisX === "t" ? t0 + s * h : hermite(cx, lo, s, h);
+    const vy = axisY === "t" ? t0 + s * h : hermite(cy, lo, s, h);
+    return map(vx, vy);
+  };
+
+  return { xs, ys, ts, at: pointAt };
+}

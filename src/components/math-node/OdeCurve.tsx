@@ -5,11 +5,13 @@ import {
   buildOdePath,
   computeOdeExtent,
   odePlaybackTime,
+  odeTraceGeometry,
   setOdeExtent,
   solveCompiledOde,
   solveCompiledOdeCached,
 } from "../../lib/math/odeCurveData";
 import { DEFAULT_IMAGE_WIDTH, PointImage } from "./PointImage";
+import { deleteTraceShape, setTraceShape } from "./traceGeometry";
 import type { CompiledOde } from "./mathTypes";
 
 type Vec2 = [number, number];
@@ -115,6 +117,25 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
     const extent = computeOdeExtent(solution, system, axisX, axisY);
     if (extent) setOdeExtent(id, extent);
   }, [id, solution, system, axisX, axisY]);
+
+  // Publish the drawn solution so the tracer can snap to it and slide along it.
+  useEffect(() => {
+    if (!id || !solution || !system || !d) return;
+    const geometry = odeTraceGeometry(solution, system, axisX, axisY, transform);
+    if (!geometry) return;
+    const key = `${id}:ode`;
+    setTraceShape(key, {
+      fnId: id,
+      color: color || "var(--mafs-fg)",
+      kind: "curve",
+      ...geometry,
+      // Time is the natural parameter unless it's already one of the axes.
+      paramName: axisX === "t" || axisY === "t" ? undefined : "t",
+    });
+    return () => deleteTraceShape(key);
+    // `transform` is a fresh closure each render; `d` changes whenever its output does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, solution, system, axisX, axisY, d, color]);
 
   const marker = useMemo<Vec2 | null>(() => {
     if (!animate || !solution || !system) return null;

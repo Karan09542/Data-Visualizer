@@ -1,5 +1,6 @@
-import React, { useMemo } from "react";
+import React, { useEffect, useMemo } from "react";
 import { usePaneContext, useTransformContext } from "mafs";
+import { deleteTraceShape, setTraceShape } from "./traceGeometry";
 
 type Vec2 = [number, number];
 
@@ -53,6 +54,11 @@ export interface SampleOptions {
   scaleY: number;
   /** Finite values beyond these bounds are clamped when written (SVG precision). */
   clamp: [number, number, number, number];
+  /**
+   * Receives every vertex written, with its parameter, for the tracer. A run break
+   * is recorded as a NaN vertex.
+   */
+  trace?: { xs: number[]; ys: number[]; ts: number[] };
 }
 
 /**
@@ -63,21 +69,32 @@ export interface SampleOptions {
 export function sampleCurvePath(
   fn: (t: number) => Vec2,
   domain: Vec2,
-  { minDepth, maxDepth, scaleX, scaleY, clamp }: SampleOptions,
+  { minDepth, maxDepth, scaleX, scaleY, clamp, trace }: SampleOptions,
 ): string {
   const [cx0, cx1, cy0, cy1] = clamp;
   const parts: string[] = [];
   let penDown = false;
   let breakNext = false;
 
-  const emit = (p: Vec2) => {
+  const emit = (p: Vec2, t: number) => {
     if (!isFinitePoint(p)) {
       breakNext = true;
       return;
     }
     const x = p[0] < cx0 ? cx0 : p[0] > cx1 ? cx1 : p[0];
     const y = p[1] < cy0 ? cy0 : p[1] > cy1 ? cy1 : p[1];
-    parts.push(`${penDown && !breakNext ? "L" : "M"}${x} ${y}`);
+    const joined = penDown && !breakNext;
+    parts.push(`${joined ? "L" : "M"}${x} ${y}`);
+    if (trace) {
+      if (!joined && trace.xs.length > 0) {
+        trace.xs.push(NaN);
+        trace.ys.push(NaN);
+        trace.ts.push(NaN);
+      }
+      trace.xs.push(x);
+      trace.ys.push(y);
+      trace.ts.push(t);
+    }
     penDown = true;
     breakNext = false;
   };
@@ -140,7 +157,7 @@ export function sampleCurvePath(
 
     if (deepen) {
       subdivide(a, m, depth + 1, pa, pm);
-      emit(pm);
+      emit(pm, m);
       subdivide(m, b, depth + 1, pm, pb);
     }
   };
@@ -148,9 +165,9 @@ export function sampleCurvePath(
   const [tMin, tMax] = domain;
   const p0 = fn(tMin);
   const p1 = fn(tMax);
-  emit(p0);
+  emit(p0, tMin);
   subdivide(tMin, tMax, 0, p0, p1);
-  emit(p1);
+  emit(p1, tMax);
   return parts.join(" ");
 }
 
@@ -173,6 +190,12 @@ interface SmoothCurveProps {
   minSamplingDepth?: number;
   maxSamplingDepth?: number;
   svgPathProps?: React.SVGProps<SVGPathElement>;
+  /** Publish the drawn geometry under this key so the tracer can snap to it. */
+  traceKey?: string;
+  /** Row the curve belongs to (defaults to traceKey). */
+  traceFnId?: string;
+  /** Parameter to show with traced coordinates, e.g. "t" or "θ". */
+  traceParamName?: string;
 }
 
 /** Drop-in replacement for Mafs `Plot.Parametric` with caching and discontinuity breaks. */
@@ -187,6 +210,9 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
   minSamplingDepth = 8,
   maxSamplingDepth = 14,
   svgPathProps = {},
+  traceKey,
+  traceFnId,
+  traceParamName,
 }) => {
   const { viewTransform } = useTransformContext();
   const pane = usePaneContext();
@@ -197,10 +223,11 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
   const scaleX = quantize(viewTransform[0]);
   const scaleY = quantize(viewTransform[4]);
 
-  const d = useMemo(() => {
+  const sampled = useMemo(() => {
     const w = xp1 - xp0;
     const h = yp1 - yp0;
-    return sampleCurvePath(xy, t, {
+    const trace = traceKey ? { xs: [] as number[], ys: [] as number[], ts: [] as number[] } : undefined;
+    const d = sampleCurvePath(xy, t, {
       minDepth: minSamplingDepth,
       maxDepth: maxSamplingDepth,
       scaleX,
@@ -211,10 +238,30 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
         yp0 - Math.max(100, h * 10),
         yp1 + Math.max(100, h * 10),
       ],
+      trace,
     });
+    // The evaluator that produced these samples, kept with them for the tracer.
+    return { d, trace, xy };
     // `xy` is deliberately not a dependency: `sampleKey` stands in for its output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sampleKey, t[0], t[1], minSamplingDepth, maxSamplingDepth, scaleX, scaleY, xp0, xp1, yp0, yp1]);
+  }, [sampleKey, t[0], t[1], minSamplingDepth, maxSamplingDepth, scaleX, scaleY, xp0, xp1, yp0, yp1, traceKey]);
+
+  const { d, trace } = sampled;
+
+  useEffect(() => {
+    if (!traceKey || !trace || trace.xs.length === 0) return;
+    setTraceShape(traceKey, {
+      fnId: traceFnId ?? traceKey,
+      color: color || "var(--mafs-fg)",
+      kind: "curve",
+      xs: trace.xs,
+      ys: trace.ys,
+      ts: trace.ts,
+      at: sampled.xy,
+      paramName: traceParamName,
+    });
+    return () => deleteTraceShape(traceKey);
+  }, [sampled, traceKey, traceFnId, traceParamName, color]);
 
   if (!d) return null;
 

@@ -4,6 +4,7 @@ import { det } from "mathjs";
 import { getStrokeDasharray } from "./mathTypes";
 import type { FillPatternType } from "./mathTypes";
 import { useStableRange } from "./useStableRange";
+import { deleteTraceShape, setTraceShape } from "./traceGeometry";
 
 interface InequalityPlotProps {
   compiledLHS: any;
@@ -246,6 +247,54 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
     computeXMin, computeXMax, computeYMin, computeYMax,
     tx, ty, px, py, rot, scaleX, scaleY,
   ]);
+
+  // Publish the boundary so the tracer can snap to it. Marching squares emits loose
+  // segments, so it's traced as a segment soup, and hits are polished onto the exact
+  // curve with Newton steps on lhs - rhs.
+  useEffect(() => {
+    if (!id || !paths.boundary) return;
+    const xs: number[] = [];
+    const ys: number[] = [];
+    const cmd = /([ML])s*(-?[d.]+(?:e[-+]?d+)?)[,s]+(-?[d.]+(?:e[-+]?d+)?)/gi;
+    for (let m = cmd.exec(paths.boundary); m; m = cmd.exec(paths.boundary)) {
+      if (m[1].toUpperCase() === "M" && xs.length > 0) {
+        xs.push(NaN);
+        ys.push(NaN);
+      }
+      xs.push(Number(m[2]));
+      ys.push(Number(m[3]));
+    }
+    if (xs.length < 2) return;
+
+    const scope = { ...baseScope, x: 0, y: 0 };
+    const value = (v: any) => {
+      if (v && (v.isMatrix || Array.isArray(v))) {
+        try { return Number(det(v)); } catch { return NaN; }
+      }
+      return Number(v);
+    };
+    const residual = (x: number, y: number) => {
+      const lx = x - tx - px;
+      const ly = y - ty - py;
+      const nx = lx * Math.cos(-rot) - ly * Math.sin(-rot);
+      const ny = lx * Math.sin(-rot) + ly * Math.cos(-rot);
+      scope.x = nx / scaleX + px;
+      scope.y = ny / scaleY + py;
+      try {
+        const l = value(compiledLHS.evaluate(scope));
+        const r = compiledRHS ? value(compiledRHS.evaluate(scope)) : 0;
+        return l - r;
+      } catch {
+        return NaN;
+      }
+    };
+
+    const key = `${id}:boundary`;
+    setTraceShape(key, { fnId: id, color, kind: "curve", xs, ys, residual, soup: true });
+    return () => deleteTraceShape(key);
+    // The boundary string changes whenever anything the residual reads does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paths, id, color]);
 
   useEffect(() => {
     if (onNoSolution && id) {

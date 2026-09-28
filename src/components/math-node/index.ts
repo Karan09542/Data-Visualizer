@@ -21,6 +21,7 @@ export * from "./InlineVariableSliders";
 export * from "./PointImage";
 export * from "./examples";
 export * from "./TraceOverlay";
+export * from "./traceGeometry";
 
 export * from "./VariableManager";
 export * from "./Timeline";

@@ -1,476 +1,307 @@
-import React, { useState, useEffect, useCallback, useRef } from "react";
-import { Point, useTransformContext, usePaneContext, Text, vec } from "mafs";
-import { MathFunction } from "./mathTypes";
-import { computePCA } from "./mathHelpers";
-import { isDefinitionRow, isTailTipVector } from "./scope";
+import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useTransformContext, vec } from "mafs";
+import {
+  deleteTraceShape,
+  formatTraceNumber,
+  getTraceShape,
+  hitTestTrace,
+  projectOntoShape,
+  relocateOnShape,
+  setTraceShape,
+  subscribeTraceShapes,
+  traceShapesVersion,
+  type TraceHit,
+  type TraceShape,
+} from "./traceGeometry";
 
 // UI floating over the graph (toolbar, settings panel, inspector) opts out of tracing,
 // so tapping a button doesn't also trace the curve underneath it.
 const isOverOverlayUI = (e: PointerEvent) =>
   e.target instanceof Element && e.target.closest("[data-no-trace]") !== null;
 
+/** Pick radius around the pointer, in on-screen pixels. */
+const MOUSE_PICK_PX = 20;
+const TOUCH_PICK_PX = 28;
+/** Movement that turns a tap/click into a pan. */
+const TAP_SLOP_PX = 10;
+
+/**
+ * Publishes a shape for the tracer while mounted. It re-publishes only when the
+ * geometry actually changes, so re-rendering every animation frame costs nothing.
+ */
+export const TraceShapeRegistrar: React.FC<{
+  shapeKey: string;
+  shape: TraceShape | null;
+}> = ({ shapeKey, shape }) => {
+  const signature = shape
+    ? [
+      shape.kind,
+      shape.color,
+      Array.prototype.join.call(shape.xs, ","),
+      Array.prototype.join.call(shape.ys, ","),
+    ].join("|")
+    : "";
+  const shapeRef = useRef(shape);
+  shapeRef.current = shape;
+
+  useEffect(() => {
+    const current = shapeRef.current;
+    if (!current) return;
+    setTraceShape(shapeKey, current);
+    return () => deleteTraceShape(shapeKey);
+  }, [shapeKey, signature]);
+
+  return null;
+};
+
 interface TraceOverlayProps {
-  functions: MathFunction[];
-  baseScope: any;
-  time: number;
-  containerRef: React.RefObject<HTMLDivElement>;
+  containerRef: React.RefObject<HTMLDivElement | null>;
 }
 
-export const TraceOverlay: React.FC<TraceOverlayProps> = ({
-  functions,
-  baseScope,
-  time,
-  containerRef,
-}) => {
-  const pane = usePaneContext();
+/**
+ * Shows the value at a point on any drawn shape, and lets it be dragged along the
+ * shape's path.
+ *
+ * - Desktop: hold Shift and hover; the point follows the nearest shape. Release
+ *   Shift and it stays, so it can be grabbed and slid along the curve. A plain
+ *   click on the graph or Escape dismisses it.
+ * - Touch: tap a shape to place the point, drag it along the curve, tap empty
+ *   space to dismiss.
+ */
+export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
   const { viewTransform } = useTransformContext();
-  
-  const [hoverData, setHoverData] = useState<{
-    x: number;
-    y: number;
-    label: string;
-    color: string;
-  } | null>(null);
+  const anchorRef = useRef<SVGGElement>(null);
+  const handleRef = useRef<SVGCircleElement>(null);
+  // Re-render when any shape is redrawn, so the point rides along with animation.
+  useSyncExternalStore(subscribeTraceShapes, traceShapesVersion, traceShapesVersion);
 
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+  const [pin, setPin] = useState<TraceHit | null>(null);
+  const [dragging, setDragging] = useState(false);
 
-  const computeMatchAt = useCallback(
-    (clientX: number, clientY: number, maxPixelDist: number) => {
-      if (!containerRef.current) return null;
+  const scale = {
+    sx: Math.abs(viewTransform[0]) || 1,
+    sy: Math.abs(viewTransform[4]) || 1,
+  };
 
-      const rect = containerRef.current.getBoundingClientRect();
-      const px = clientX - rect.left;
-      const py = clientY - rect.top;
+  // The pin re-evaluated against the current geometry: a parametrised curve keeps
+  // its parameter, so the point moves with the curve as it animates.
+  const shape = pin ? getTraceShape(pin.key) : undefined;
+  const shown = pin && shape ? relocateOnShape(pin.key, pin, scale) : null;
 
-      const xRange = pane && pane.xPaneRange ? pane.xPaneRange : [-5, 5];
-      const yRange = pane && pane.yPaneRange ? pane.yPaneRange : [-5, 5];
+  // Latest values for the native listeners below, which are attached once.
+  const live = useRef({ viewTransform, scale, shown, dragging: false });
+  live.current.viewTransform = viewTransform;
+  live.current.scale = scale;
+  live.current.shown = shown;
 
-      const viewBoxX = (xRange[0] / (xRange[1] - xRange[0])) * rect.width;
-      const viewBoxY = (yRange[1] / (yRange[0] - yRange[1])) * rect.height;
+  // Its shape went away (row hidden, deleted, or no longer drawn): drop the pin.
+  useEffect(() => {
+    if (pin && !shape) setPin(null);
+  }, [pin, shape]);
 
-      const inverseViewTransform = vec.matrixInvert(viewTransform);
-      if (!inverseViewTransform) return null;
-
-      const [mathX, mathY] = vec.transform(
-        [px + viewBoxX, py + viewBoxY],
-        inverseViewTransform
-      );
-
-      // viewTransform is [a, c, tx, b, d, ty]. Index 0 is scaleX, Index 4 is scaleY.
-      const pixelsPerUnitX = Math.abs(viewTransform[0]);
-      const pixelsPerUnitY = Math.abs(viewTransform[4]);
-
-      let closestMatch = null;
-      let minPixelDistSq = maxPixelDist * maxPixelDist;
-
-      const scope = Object.create(baseScope);
-      scope.time = time;
-
-      const distSq = (x1: number, y1: number, x2: number, y2: number) => {
-        const dx = (x2 - x1) * pixelsPerUnitX;
-        const dy = (y2 - y1) * pixelsPerUnitY;
-        return dx * dx + dy * dy;
-      };
-
-      const getInverseTransformHelper = (f: any, pts: number[][]) => {
-        if (!f.isTransformable) return (pt: number[]) => pt;
-        
-        const pca = computePCA((pts && pts.length > 0 ? pts : [[0,0]]) as [number, number][]);
-        const baseAngle = Math.atan2(pca.u[1], pca.u[0]);
-        const px = (f.isPivotEnabled && f.transformPivot) ? f.transformPivot[0] : pca.center[0];
-        const py = (f.isPivotEnabled && f.transformPivot) ? f.transformPivot[1] : pca.center[1];
-        
-        const tx = f.transformTranslate?.[0] || 0;
-        const ty = f.transformTranslate?.[1] || 0;
-        const sx = f.transformScale?.[0] || 1;
-        const sy = f.transformScale?.[1] || 1;
-        const rot = f.transformRotate || 0;
-        
-        return (pt: number[]) => {
-          let x = pt[0] - px - tx;
-          let y = pt[1] - py - ty;
-          
-          let x1 = x * Math.cos(-(rot + baseAngle)) - y * Math.sin(-(rot + baseAngle));
-          let y1 = x * Math.sin(-(rot + baseAngle)) + y * Math.cos(-(rot + baseAngle));
-          
-          if (sx !== 0) x1 /= sx; 
-          if (sy !== 0) y1 /= sy;
-          
-          let lx = x1 * Math.cos(baseAngle) - y1 * Math.sin(baseAngle);
-          let ly = x1 * Math.sin(baseAngle) + y1 * Math.cos(baseAngle);
-          
-          return [lx + px, ly + py];
-        };
-      };
-
-      const getTransformHelper = (f: any, pts: number[][]) => {
-        if (!f.isTransformable) return (pt: number[]) => pt;
-        
-        const pca = computePCA((pts && pts.length > 0 ? pts : [[0,0]]) as [number, number][]);
-        const baseAngle = Math.atan2(pca.u[1], pca.u[0]);
-        const px = (f.isPivotEnabled && f.transformPivot) ? f.transformPivot[0] : pca.center[0];
-        const py = (f.isPivotEnabled && f.transformPivot) ? f.transformPivot[1] : pca.center[1];
-        
-        const tx = f.transformTranslate?.[0] || 0;
-        const ty = f.transformTranslate?.[1] || 0;
-        const sx = f.transformScale?.[0] || 1;
-        const sy = f.transformScale?.[1] || 1;
-        const rot = f.transformRotate || 0;
-        
-        return (pt: number[]) => {
-          let lx = pt[0] - px;
-          let ly = pt[1] - py;
-          let x1 = lx * Math.cos(-baseAngle) - ly * Math.sin(-baseAngle);
-          let y1 = lx * Math.sin(-baseAngle) + ly * Math.cos(-baseAngle);
-          x1 *= sx; y1 *= sy;
-          let x2 = x1 * Math.cos(rot + baseAngle) - y1 * Math.sin(rot + baseAngle);
-          let y2 = x1 * Math.sin(rot + baseAngle) + y1 * Math.cos(rot + baseAngle);
-          return [x2 + px + tx, y2 + py + ty];
-        };
-      };
-
-      const checkPoint = (x: number, y: number, color: string, label?: string) => {
-        if (isNaN(x) || isNaN(y)) return;
-        const d2 = distSq(x, y, mathX, mathY);
-        if (d2 < minPixelDistSq) {
-          minPixelDistSq = d2;
-          closestMatch = {
-            x,
-            y,
-            label: label || `(${x.toFixed(2)}, ${y.toFixed(2)})`,
-            color
-          };
-        }
-      };
-
-      const getPoints = (f: any) => {
-        try {
-          const res = f.compiled.evaluate(scope);
-          if (!res) return [];
-          const arr = res.toArray ? res.toArray() : [res];
-          return arr.map((pt: any) => {
-            if (pt && pt.toArray) return pt.toArray();
-            if (Array.isArray(pt)) return pt;
-            return [pt, 0];
-          });
-        } catch (e) { return []; }
-      };
-
-      const checkSegment = (p1: number[], p2: number[], color: string) => {
-        const dx = p2[0] - p1[0];
-        const dy = p2[1] - p1[1];
-        const l2 = dx*dx + dy*dy;
-        if (l2 === 0) return checkPoint(p1[0], p1[1], color);
-        let t = ((mathX - p1[0]) * dx + (mathY - p1[1]) * dy) / l2;
-        t = Math.max(0, Math.min(1, t));
-        checkPoint(p1[0] + t * dx, p1[1] + t * dy, color);
-      };
-
-      const checkLine = (p1: number[], p2: number[], color: string) => {
-        const dx = p2[0] - p1[0];
-        const dy = p2[1] - p1[1];
-        const l2 = dx*dx + dy*dy;
-        if (l2 === 0) return checkPoint(p1[0], p1[1], color);
-        let t = ((mathX - p1[0]) * dx + (mathY - p1[1]) * dy) / l2;
-        checkPoint(p1[0] + t * dx, p1[1] + t * dy, color);
-      };
-
-      const checkRay = (p1: number[], p2: number[], color: string) => {
-        const dx = p2[0] - p1[0];
-        const dy = p2[1] - p1[1];
-        const l2 = dx*dx + dy*dy;
-        if (l2 === 0) return checkPoint(p1[0], p1[1], color);
-        let t = ((mathX - p1[0]) * dx + (mathY - p1[1]) * dy) / l2;
-        t = Math.max(0, t);
-        checkPoint(p1[0] + t * dx, p1[1] + t * dy, color);
-      };
-
-      for (const f of functions) {
-        if (!f.visible || !f.compiled) continue;
-        // Named values draw nothing, and a hidden dot (a text readout) isn't a target.
-        if (isDefinitionRow(f, functions)) continue;
-        if (f.type === "point" && f.showPoint === false) continue;
-
-        try {
-          if (f.type === "point") {
-            const rawPts = getPoints(f);
-            const transform = getTransformHelper(f, rawPts);
-            const pts = rawPts.map((pt: number[]) => transform(pt));
-            if (pts.length > 0) checkPoint(pts[0][0], pts[0][1], f.color, f.label);
-          } else if (f.type === "vector") {
-            const rawPts = getPoints(f);
-            const transform = getTransformHelper(f, rawPts);
-            const pts = rawPts.map((pt: number[]) => transform(pt));
-            if (isTailTipVector(f) && pts.length >= 2) checkSegment(pts[0], pts[1], f.color);
-            else if (pts.length > 0) checkSegment(transform([0, 0]), pts[0], f.color);
-          } else if (f.type === "line" || (f.type as any) === "segment" || (f.type as any) === "ray") {
-            const rawPts = getPoints(f);
-            const transform = getTransformHelper(f, rawPts);
-            const pts = rawPts.map((pt: number[]) => transform(pt));
-            if (pts.length >= 2) {
-              if ((f.type as any) === "segment") checkSegment(pts[0], pts[1], f.color);
-              else if ((f.type as any) === "ray") checkRay(pts[0], pts[1], f.color);
-              else checkSegment(pts[0], pts[1], f.color); // MathNodeRenderer treats most generic lines as segments visually based on points
-            }
-          } else if (f.type === "polygon") {
-            const rawPts = getPoints(f);
-            const transform = getTransformHelper(f, rawPts);
-            const pts = rawPts.map((pt: number[]) => transform(pt));
-            for (let i = 0; i < pts.length; i++) {
-              checkSegment(pts[i], pts[(i + 1) % pts.length], f.color);
-            }
-          } else if (f.type === "function") {
-            const transform = getTransformHelper(f, []);
-            const inverse = getInverseTransformHelper(f, []);
-            const localMouse = inverse([mathX, mathY]);
-            
-            const rangeX = 30 / pixelsPerUnitX;
-            let bestX = localMouse[0];
-            let bestY = 0;
-            let minDist = Infinity;
-            
-            for (let i = 0; i <= 50; i++) {
-              const x = localMouse[0] - rangeX + 2 * rangeX * (i / 50);
-              scope.x = x;
-              const y = Number(f.compiled.evaluate(scope));
-              if (isNaN(y)) continue;
-              const globalPt = transform([x, y]);
-              const d2 = distSq(globalPt[0], globalPt[1], mathX, mathY);
-              if (d2 < minDist) { minDist = d2; bestX = x; bestY = y; }
-            }
-            
-            if (minDist < Infinity) {
-              let searchRadius = rangeX / 25;
-              for (let iter = 0; iter < 3; iter++) {
-                let localBestX = bestX;
-                let localBestY = bestY;
-                let localMinDist = minDist;
-                for (let i = 0; i <= 20; i++) {
-                  const x = bestX - searchRadius + 2 * searchRadius * (i / 20);
-                  scope.x = x;
-                  const y = Number(f.compiled.evaluate(scope));
-                  if (isNaN(y)) continue;
-                  const globalPt = transform([x, y]);
-                  const d2 = distSq(globalPt[0], globalPt[1], mathX, mathY);
-                  if (d2 < localMinDist) { localMinDist = d2; localBestX = x; localBestY = y; }
-                }
-                minDist = localMinDist; bestX = localBestX; bestY = localBestY;
-                searchRadius /= 10;
-              }
-              const finalGlobal = transform([bestX, bestY]);
-              checkPoint(finalGlobal[0], finalGlobal[1], f.color);
-            }
-          } else if (f.type === "parametric" || f.type === "polar") {
-            const isPolar = f.type === "polar";
-            const tMin = (f as any).tRange ? (f as any).tRange[0] : 0;
-            // Must match the actual sweep used to draw the curve (Plot.Parametric below/elsewhere) —
-            // polar plots are drawn over [0, 2π*5]. Searching a wider range than what's drawn lets
-            // this converge on a mathematically valid point that was never actually rendered.
-            const tMax = (f as any).tRange ? (f as any).tRange[1] : (isPolar ? 2 * Math.PI * 5 : 2 * Math.PI);
-            const samples = isPolar ? 720 : 100;
-            
-            const transform = getTransformHelper(f, []);
-            
-            let bestT = tMin;
-            let bestPt = [0, 0];
-            let minDist = Infinity;
-            
-            for (let i = 0; i <= samples; i++) {
-              const t = tMin + (tMax - tMin) * (i / samples);
-              scope.theta = scope["θ"] = t;
-              scope.t = t;
-              scope.x = t; // fallback if user used x
-              let pt = [0, 0];
-              if (isPolar) {
-                 const r = Number(f.compiled.evaluate(scope));
-                 pt = [r * Math.cos(t), r * Math.sin(t)];
-              } else {
-                 const res = f.compiled.evaluate(scope);
-                 const arr = res && res.toArray ? res.toArray() : res;
-                 if (Array.isArray(arr) && arr.length >= 2) {
-                   pt = [Number(arr[0]), Number(arr[1])];
-                 } else continue;
-              }
-              if (isNaN(pt[0]) || isNaN(pt[1])) continue;
-              const globalPt = transform(pt);
-              const d2 = distSq(globalPt[0], globalPt[1], mathX, mathY);
-              if (d2 < minDist) { minDist = d2; bestT = t; bestPt = pt; }
-            }
-            
-            if (minDist < Infinity) {
-              let searchRadius = (tMax - tMin) / (samples / 2);
-              for (let iter = 0; iter < 3; iter++) {
-                let localBestT = bestT;
-                let localBestPt = bestPt;
-                let localMinDist = minDist;
-                for (let i = 0; i <= 20; i++) {
-                  const t = bestT - searchRadius + 2 * searchRadius * (i / 20);
-                  scope.theta = scope["θ"] = t;
-                  scope.t = t;
-                  scope.x = t;
-                  let pt = [0, 0];
-                  if (isPolar) {
-                     const r = Number(f.compiled.evaluate(scope));
-                     pt = [r * Math.cos(t), r * Math.sin(t)];
-                  } else {
-                     const res = f.compiled.evaluate(scope);
-                     const arr = res && res.toArray ? res.toArray() : res;
-                     if (Array.isArray(arr) && arr.length >= 2) {
-                       pt = [Number(arr[0]), Number(arr[1])];
-                     } else continue;
-                  }
-                  if (isNaN(pt[0]) || isNaN(pt[1])) continue;
-                  const globalPt = transform(pt);
-                  const d2 = distSq(globalPt[0], globalPt[1], mathX, mathY);
-                  if (d2 < localMinDist) { localMinDist = d2; localBestT = t; localBestPt = pt; }
-                }
-                minDist = localMinDist; bestT = localBestT; bestPt = localBestPt;
-                searchRadius /= 10;
-              }
-              const finalGlobal = transform(bestPt);
-              checkPoint(finalGlobal[0], finalGlobal[1], f.color);
-            }
-          } else if (f.type === "implicit" || f.type === "inequality") {
-            const transform = getTransformHelper(f, []);
-            const inverse = getInverseTransformHelper(f, []);
-            const localMouse = inverse([mathX, mathY]);
-            
-            let currX = localMouse[0];
-            let currY = localMouse[1];
-            const EPSILON = 1e-4;
-            
-            for (let iter = 0; iter < 5; iter++) {
-               scope.x = currX; scope.y = currY;
-               const lhs = Number(f.compiled.evaluate(scope));
-               const compiled2 = (f as any).compiled2;
-               const rhs = compiled2 ? Number(compiled2.evaluate(scope)) : 0;
-               const val = lhs - rhs;
-               
-               if (Math.abs(val) < 1e-6) break;
-               
-               scope.x = currX + EPSILON; scope.y = currY;
-               const dxLhs = Number(f.compiled.evaluate(scope));
-               const dxRhs = compiled2 ? Number(compiled2.evaluate(scope)) : 0;
-               const dx = (dxLhs - dxRhs - val) / EPSILON;
-               
-               scope.x = currX; scope.y = currY + EPSILON;
-               const dyLhs = Number(f.compiled.evaluate(scope));
-               const dyRhs = compiled2 ? Number(compiled2.evaluate(scope)) : 0;
-               const dy = (dyLhs - dyRhs - val) / EPSILON;
-               
-               const gradMagSq = dx * dx + dy * dy;
-               if (gradMagSq < 1e-12) break;
-               
-               currX -= val * dx / gradMagSq;
-               currY -= val * dy / gradMagSq;
-            }
-            
-            scope.x = currX; scope.y = currY;
-            const compiled2 = (f as any).compiled2;
-            const finalVal = Number(f.compiled.evaluate(scope)) - (compiled2 ? Number(compiled2.evaluate(scope)) : 0);
-            if (Math.abs(finalVal) < 0.1) {
-              const finalGlobal = transform([currX, currY]);
-              checkPoint(finalGlobal[0], finalGlobal[1], f.color);
-            }
-          }
-        } catch (err) {
-          // Ignore evaluation errors during hover
-        }
-      }
-
-      return closestMatch;
-    },
-    [containerRef, pane, functions, baseScope, time]
-  );
-
-  // Desktop/mouse: hold Shift while hovering to show the live trace point.
-  const handlePointerMove = useCallback(
-    (e: PointerEvent) => {
-      if (e.pointerType === "touch") return;
-      if (!e.shiftKey || isOverOverlayUI(e)) {
-        setHoverData(null);
-        return;
-      }
-      setHoverData(computeMatchAt(e.clientX, e.clientY, 20));
-    },
-    [computeMatchAt]
-  );
-
-  // Mobile/touch: record where the touch started so we can tell a tap from a pan-drag.
-  const handlePointerDown = useCallback((e: PointerEvent) => {
-    if (e.pointerType !== "touch") return;
-    touchStartRef.current = isOverOverlayUI(e)
-      ? null
-      : { x: e.clientX, y: e.clientY };
+  // Pointer → world coordinates through the SVG's own screen matrix. Unlike
+  // arithmetic on bounding boxes and pane ranges, this is exact whatever the page or
+  // the canvas around the node is scaled by.
+  const toWorld = useCallback((clientX: number, clientY: number) => {
+    const svg = anchorRef.current?.ownerSVGElement;
+    const ctm = svg?.getScreenCTM();
+    const inverse = vec.matrixInvert(live.current.viewTransform);
+    if (!svg || !ctm || !inverse) return null;
+    const p = new DOMPoint(clientX, clientY).matrixTransform(ctm.inverse());
+    const [x, y] = vec.transform([p.x, p.y], inverse);
+    // Screen pixels per SVG pixel, to keep pick radii constant on screen.
+    const zoom = Math.hypot(ctm.a, ctm.b) || 1;
+    return { x, y, zoom };
   }, []);
 
-  // Mobile/touch: a short tap (little movement since pointerdown) shows the point value.
-  const handlePointerUp = useCallback(
-    (e: PointerEvent) => {
-      if (e.pointerType !== "touch") return;
-      const start = touchStartRef.current;
-      touchStartRef.current = null;
-      if (!start) return;
-
-      const dx = e.clientX - start.x;
-      const dy = e.clientY - start.y;
-      if (dx * dx + dy * dy > 100) return; // moved more than ~10px: was a pan, not a tap
-
-      setHoverData(computeMatchAt(e.clientX, e.clientY, 28));
+  const pickAt = useCallback(
+    (clientX: number, clientY: number, radiusPx: number) => {
+      const w = toWorld(clientX, clientY);
+      if (!w) return null;
+      return hitTestTrace(w.x, w.y, live.current.scale, radiusPx / w.zoom);
     },
-    [computeMatchAt]
+    [toWorld],
   );
 
+  // Hover, tap and click on the graph.
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    let start: { x: number; y: number } | null = null;
 
-    const handleLeave = (e: PointerEvent) => {
-      // Touch has no real "leave"; pointerup already handles showing the tapped value.
-      if (e.pointerType !== "touch") setHoverData(null);
+    const onMove = (e: PointerEvent) => {
+      if (e.pointerType === "touch" || live.current.dragging) return;
+      // Without Shift the point stays where it was left, ready to be dragged.
+      if (!e.shiftKey || isOverOverlayUI(e)) return;
+      setPin(pickAt(e.clientX, e.clientY, MOUSE_PICK_PX));
     };
 
-    el.addEventListener("pointermove", handlePointerMove);
-    el.addEventListener("pointerdown", handlePointerDown);
-    el.addEventListener("pointerup", handlePointerUp);
-    el.addEventListener("pointerleave", handleLeave);
+    const onDown = (e: PointerEvent) => {
+      start = isOverOverlayUI(e) ? null : { x: e.clientX, y: e.clientY };
+    };
 
+    const onUp = (e: PointerEvent) => {
+      const from = start;
+      start = null;
+      if (!from || live.current.dragging) return;
+      const moved = Math.hypot(e.clientX - from.x, e.clientY - from.y);
+      if (moved > TAP_SLOP_PX) return; // a pan, not a tap
+
+      if (e.pointerType === "touch") {
+        // A tap places the point on the nearest shape, or clears it on empty space.
+        setPin(pickAt(e.clientX, e.clientY, TOUCH_PICK_PX));
+      } else if (e.shiftKey) {
+        setPin(pickAt(e.clientX, e.clientY, MOUSE_PICK_PX));
+      } else {
+        setPin(null);
+      }
+    };
+
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPin(null);
+    };
+
+    el.addEventListener("pointermove", onMove);
+    el.addEventListener("pointerdown", onDown);
+    el.addEventListener("pointerup", onUp);
+    window.addEventListener("keydown", onKey);
     return () => {
-      el.removeEventListener("pointermove", handlePointerMove);
-      el.removeEventListener("pointerdown", handlePointerDown);
-      el.removeEventListener("pointerup", handlePointerUp);
-      el.removeEventListener("pointerleave", handleLeave);
+      el.removeEventListener("pointermove", onMove);
+      el.removeEventListener("pointerdown", onDown);
+      el.removeEventListener("pointerup", onUp);
+      window.removeEventListener("keydown", onKey);
     };
-  }, [containerRef, handlePointerMove, handlePointerDown, handlePointerUp]);
+  }, [containerRef, pickAt]);
 
-  if (!hoverData) return null;
+  // Dragging the point along its shape.
+  const draggable = !!shown && shape?.kind === "curve";
+  useEffect(() => {
+    const handle = handleRef.current;
+    if (!draggable || !handle) return;
 
-  return (
-    <React.Fragment>
-      <Point 
-        x={hoverData.x} 
-        y={hoverData.y} 
-        color={hoverData.color} 
-        opacity={0.8}
-        svgCircleProps={{ style: { filter: "drop-shadow(0px 2px 4px rgba(0,0,0,0.3))" } }}
-      />
-      <Text
-        x={hoverData.x}
-        y={hoverData.y}
-        attach="ne"
-        attachDistance={12}
-        color={hoverData.color}
-        size={14}
-        svgTextProps={{ 
-           style: { 
-             pointerEvents: "none", 
-             fontWeight: "bold",
-             textShadow: "1px 1px 2px white, -1px -1px 2px white, 1px -1px 2px white, -1px 1px 2px white"
-           } 
-        }}
-      >
-        {hoverData.label}
-      </Text>
-    </React.Fragment>
-  );
+    const onDown = (e: PointerEvent) => {
+      // Keep the graph from panning and the node from being dragged.
+      e.stopPropagation();
+      e.preventDefault();
+      const pointerId = e.pointerId;
+      try {
+        handle.setPointerCapture(pointerId);
+      } catch {
+        /* capture is best-effort */
+      }
+      live.current.dragging = true;
+      setDragging(true);
+
+      const onMove = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        ev.preventDefault();
+        const current = live.current.shown;
+        const w = toWorld(ev.clientX, ev.clientY);
+        if (!current || !w) return;
+        const hit = projectOntoShape(current.key, w.x, w.y, live.current.scale, current);
+        if (hit) setPin(hit);
+      };
+      const onEnd = (ev: PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        live.current.dragging = false;
+        setDragging(false);
+        window.removeEventListener("pointermove", onMove);
+        window.removeEventListener("pointerup", onEnd);
+        window.removeEventListener("pointercancel", onEnd);
+      };
+      window.addEventListener("pointermove", onMove, { passive: false });
+      window.addEventListener("pointerup", onEnd);
+      window.addEventListener("pointercancel", onEnd);
+    };
+
+    handle.addEventListener("pointerdown", onDown);
+    return () => handle.removeEventListener("pointerdown", onDown);
+  }, [draggable, toWorld]);
+
+  let content: React.ReactNode = null;
+  if (shown && shape) {
+    const [ux, uy] = vec.transform([shown.x, shown.y], viewTransform);
+    if (Number.isFinite(ux) && Number.isFinite(uy)) {
+      const color = shape.color;
+      // Keep the readout inside the view: flip it left near the right edge and
+      // below near the top.
+      const box = anchorRef.current?.ownerSVGElement?.viewBox?.baseVal;
+      const flipX = !!box && ux > box.x + box.width - 220;
+      const flipY = !!box && uy < box.y + 60;
+      const LABEL_W = 260;
+      const LABEL_H = 40;
+
+      const xText = formatTraceNumber(shown.x, scale.sx);
+      const yText = formatTraceNumber(shown.y, scale.sy);
+      const paramText =
+        shape.paramName && shown.t !== undefined && Number.isFinite(shown.t)
+          ? `${shape.paramName} = ${formatTraceNumber(shown.t, 1000)}`
+          : null;
+
+      content = (
+        <g transform={`translate(${ux} ${uy})`}>
+          <circle
+            r={dragging ? 13 : 10}
+            fill={color}
+            fillOpacity={0.18}
+            style={{ pointerEvents: "none" }}
+          />
+          <circle
+            r={dragging ? 6.5 : 5.5}
+            fill={color}
+            stroke="var(--mafs-bg, #fff)"
+            strokeWidth={2}
+            style={{ pointerEvents: "none" }}
+          />
+          {draggable && (
+            // Larger than it looks, so it's easy to grab with a finger.
+            <circle
+              ref={handleRef}
+              r={20}
+              fill="transparent"
+              data-no-trace
+              style={{
+                pointerEvents: "all",
+                cursor: dragging ? "grabbing" : "grab",
+                touchAction: "none",
+              }}
+            />
+          )}
+          <foreignObject
+            x={flipX ? -16 - LABEL_W : 16}
+            y={flipY ? 12 : -12 - LABEL_H}
+            width={LABEL_W}
+            height={LABEL_H}
+            style={{ overflow: "visible", pointerEvents: "none" }}
+          >
+            <div
+              style={{
+                display: "flex",
+                width: "100%",
+                height: "100%",
+                justifyContent: flipX ? "flex-end" : "flex-start",
+                alignItems: flipY ? "flex-start" : "flex-end",
+              }}
+            >
+              <div className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-lg border border-slate-200 bg-white/95 px-2 py-1 font-mono text-[11px] leading-none text-slate-700 shadow-md dark:border-slate-700 dark:bg-slate-900/95 dark:text-slate-200">
+                <span
+                  className="size-2 shrink-0 rounded-full"
+                  style={{ background: color }}
+                />
+                <span>
+                  ({xText}, {yText})
+                </span>
+                {paramText && (
+                  <span className="text-slate-400 dark:text-slate-500">· {paramText}</span>
+                )}
+              </div>
+            </div>
+          </foreignObject>
+        </g>
+      );
+    }
+  }
+
+  // The anchor is always mounted: it's how the pointer is mapped into the SVG.
+  return <g ref={anchorRef}>{content}</g>;
 };

@@ -118,6 +118,8 @@ import {
   MATH_EXAMPLES,
   EXAMPLE_GALLERY,
   TraceOverlay,
+  TraceShapeRegistrar,
+  runsShape,
   VariableManager,
   Timeline,
   buildBaseScope,
@@ -6381,12 +6383,6 @@ export const MathNodeRenderer: React.FC<any> = ({
               axisSuffix={axisSuffix}
             />
 
-            <TraceOverlay
-              functions={functions}
-              baseScope={baseScope}
-              time={time}
-              containerRef={graphContainerRef}
-            />
 
             {(() => {
               latestContextRef.current = {
@@ -6815,6 +6811,40 @@ export const MathNodeRenderer: React.FC<any> = ({
                                     />
                                   );
                                 })()}
+                              {!isInteractionLayer && isPointBased && (
+                                <TraceShapeRegistrar
+                                  shapeKey={`${f.id}:geometry`}
+                                  shape={(() => {
+                                    // Same maths as the Transform stack below, so the
+                                    // traced geometry is exactly what's drawn.
+                                    const world = (p: [number, number]) => localToGlobal(p[0], p[1]);
+                                    if (f.type === "point") {
+                                      // A hidden dot is a text readout, not a target.
+                                      if (f.showPoint === false && !f.imageSrc) return null;
+                                      return runsShape(f.id, f.color, "point", [points.map(world)]);
+                                    }
+                                    if (f.type === "line") {
+                                      return points.length >= 2
+                                        ? runsShape(f.id, f.color, "curve", [[world(points[0]), world(points[1])]])
+                                        : null;
+                                    }
+                                    if (f.type === "polygon") {
+                                      return points.length > 2
+                                        ? runsShape(f.id, f.color, "curve", [[...points, points[0]].map(world)])
+                                        : null;
+                                    }
+                                    if (f.type === "vector") {
+                                      const arrows: [number, number][][] = isTailTipVector(f)
+                                        ? points.length >= 2
+                                          ? [[world(points[0]), world(points[1])]]
+                                          : []
+                                        : points.map((p) => [world([0, 0]), world(p)]);
+                                      return arrows.length ? runsShape(f.id, f.color, "curve", arrows) : null;
+                                    }
+                                    return null;
+                                  })()}
+                                />
+                              )}
                               {isPointBased && (
                                 <Transform translate={[tx, ty]}>
                                   <Transform translate={[px, py]}>
@@ -7215,6 +7245,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       })()}
                                     <SmoothCurve
                                       key={`${f.id}-parametric`}
+                                      traceKey={`${f.id}:curve`}
+                                      traceFnId={f.id}
+                                      traceParamName="t"
                                       sampleKey={curveKey}
                                       minSamplingDepth={Math.max(
                                         8,
@@ -7420,6 +7453,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       })()}
                                     <SmoothCurve
                                       key={`${f.id}-polar`}
+                                      traceKey={`${f.id}:curve`}
+                                      traceFnId={f.id}
+                                      traceParamName="θ"
                                       sampleKey={curveKey}
                                       minSamplingDepth={Math.max(
                                         8,
@@ -7604,6 +7640,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       })()}
                                     <SmoothCurve
                                       key={`${f.id}-function`}
+                                      traceKey={`${f.id}:curve`}
+                                      traceFnId={f.id}
                                       sampleKey={curveKey}
                                       minSamplingDepth={Math.max(
                                         8,
@@ -8285,6 +8323,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                   <PlotErrorBoundary label="interaction layer" resetKey={functionsSaveKey}>
                     <MathNodesLayer isInteractionLayer={true} />
                   </PlotErrorBoundary>
+                  {/* Last, so its drag handle sits above every curve's stroke. */}
+                  <TraceOverlay containerRef={graphContainerRef} />
                 </React.Fragment>
               );
             })()}
