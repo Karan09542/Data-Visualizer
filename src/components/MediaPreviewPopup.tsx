@@ -227,6 +227,7 @@ const MediaPreviewPopup: React.FC = () => {
             src={resolvedUrl}
             alt={fileName}
             rotation={rotation}
+            enableCoordinates
             className="w-full h-full max-w-full max-h-full object-contain rounded-md shadow-xl"
           />
         </div>

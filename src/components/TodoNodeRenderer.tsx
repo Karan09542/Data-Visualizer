@@ -3,8 +3,6 @@ import { createPortal } from "react-dom";
 import { TreeNode } from "../utils/transformer";
 import { useStore } from "../store/useStore";
 import {
-  CheckCircle2,
-  Circle,
   Plus,
   Maximize2,
   ListTodo,
@@ -25,35 +23,51 @@ import {
   PlusCircle,
   ExternalLink
 } from "lucide-react";
-import { setValueAtPath } from "../utils/pathUtils";
 import { TaskImagePreview } from "./TaskImagePreview";
+import { ConfirmModal } from "./ConfirmModal";
+import * as todo from "./todo/todoModel";
+import { useTodoList, writeTasks, writeTodoList } from "./todo/todoStorage";
+import {
+  LengthHint,
+  MENU_CLASS,
+  MenuDivider,
+  MenuItem,
+  PriorityBadge,
+  PriorityPicker,
+  TaskCheckbox,
+} from "./todo/TodoUI";
 
-export interface TodoTask {
-  id: string;
-  text: string;
-  completed: boolean;
-  status?: "Todo" | "In Progress" | "Blocked" | "Review" | "Completed";
-  priority?: "Critical" | "High" | "Medium" | "Low" | "Normal";
-  dueDate?: string;
-  tags?: string[];
-  notes?: string;
-  tasks?: TodoTask[];
-  imageHashes?: string[];
-}
+// The shared model owns these types; re-exported for existing imports.
+export type { TodoTask, TodoNodeData } from "./todo/todoModel";
+type TodoTask = todo.TodoTask;
 
-export interface TodoNodeData {
-  title: string;
-  tasks: TodoTask[];
-}
+// Fixed section heights, so the node's size can be computed exactly.
+const HEADER_H = 84;
+const FOOTER_H = 44;
+const ROW_H = 38;
+const EMPTY_H = 150;
+const MAX_ROWS = 8;
 
-const checkHasIncompleteChildren = (tasks?: TodoTask[]): boolean => {
-  if (!tasks || tasks.length === 0) return false;
-  return tasks.some((t) => {
-    const isComp = t.completed || t.status === "Completed";
-    if (!isComp) return true;
-    return checkHasIncompleteChildren(t.tasks);
-  });
-};
+const ICON_BUTTON =
+  "h-7 w-7 flex items-center justify-center rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer";
+
+const SAMPLE_TASKS = (): TodoTask[] => [
+  todo.createTask("Database layer setup", {
+    priority: "High",
+    tasks: [
+      todo.createTask("Set up the Redis server", { completed: true, status: "Completed" }),
+      todo.createTask("Add a Redis caching layer", { completed: true, status: "Completed" }),
+      todo.createTask("Optimize slow database queries", { priority: "High" }),
+    ],
+  }),
+  todo.createTask("Backend security", {
+    priority: "Medium",
+    tasks: [
+      todo.createTask("Add rate limiting", { priority: "Medium" }),
+      todo.createTask("Write integration tests", { priority: "Low" }),
+    ],
+  }),
+];
 
 interface TodoNodeProps {
   nodeId: string;
@@ -63,16 +77,17 @@ interface TodoNodeProps {
 }
 
 export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNodeProps) {
-  const parsedData = useStore((state) => state.parsedData);
-  const setCode = useStore((state) => state.setCode);
-  const codeFormat = useStore((state) => state.codeFormat);
   const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
   const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
   const nodeSizes = useStore((state) => state.nodeSizes);
   const setSelectedNodeId = useStore((state) => state.setSelectedNodeId);
   const setNotification = useStore((state) => state.setNotification);
   const customSize = nodeSizes[nodeId];
-  const [todoData, setTodoData] = useState<TodoNodeData>({ title: "Tasks", tasks: [] });
+
+  // Read live from the document: edits made in the workspace or with Alt+T show
+  // up here straight away, and every change below saves through the shared store.
+  const path = data.path;
+  const todoData = useTodoList(path);
 
   // Compact state internally toggles Tree vs Flat view in this node
   const [nodeIsFlat, setNodeIsFlat] = useState<boolean>(false);
@@ -84,6 +99,10 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   const [activeMenuTaskId, setActiveMenuTaskId] = useState<string | null>(null);
   const [isTitleFocused, setIsTitleFocused] = useState(false);
   const [isFooterInputFocused, setIsFooterInputFocused] = useState(false);
+  // Bulk actions that can't be undone wait here for confirmation.
+  const [pendingBulkAction, setPendingBulkAction] = useState<
+    "clearAll" | "clearCompleted" | "reset" | "samples" | null
+  >(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const menuButtonRef = useRef<HTMLButtonElement>(null);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
@@ -109,22 +128,6 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     }
   }, [isMenuOpen]);
 
-  const serializedValue = typeof data?.value === "object" && data?.value !== null
-    ? JSON.stringify(data.value)
-    : (data?.value || "");
-
-  useEffect(() => {
-    try {
-      if (typeof data.value === "string") {
-        setTodoData(JSON.parse(data.value));
-      } else if (typeof data.value === "object" && data.value !== null) {
-        setTodoData(data.value as any);
-      }
-    } catch (e) {
-      setTodoData({ title: "Tasks", tasks: [] });
-    }
-  }, [serializedValue]);
-
   // Handle click outside to close options menu
   useEffect(() => {
     function handleClickOutside(event: MouseEvent | TouchEvent) {
@@ -140,117 +143,25 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     };
   }, []);
 
-  const syncTaskCompletionState = (tList: TodoTask[]): TodoTask[] => {
-    return tList.map((t) => {
-      let updatedTasks = t.tasks;
-      if (t.tasks && t.tasks.length > 0) {
-        updatedTasks = syncTaskCompletionState(t.tasks);
-      }
+  /**
+   * Saves a change to the tasks. In tree view parents follow their subtasks'
+   * completion; in flat view each task is edited on its own.
+   */
+  const saveTasks = (update: (tasks: TodoTask[]) => TodoTask[] | null, resync = false) =>
+    writeTasks(path, update, { sync: resync || !nodeIsFlat });
 
-      const hasChildren = updatedTasks && updatedTasks.length > 0;
-      const hasIncomplete =
-        hasChildren &&
-        updatedTasks.some(
-          (sub) => !sub.completed && sub.status !== "Completed",
-        );
+  const saveTitle = (title: string) =>
+    writeTodoList(path, (list) => ({ ...list, title: title.slice(0, todo.MAX_LIST_TITLE) }), { sync: false });
 
-      let completed = t.completed;
-      let status = t.status;
-      if (hasChildren) {
-        if (hasIncomplete) {
-          completed = false;
-          if (status === "Completed") {
-            status = "Todo";
-          }
-        } else {
-          completed = true;
-          status = "Completed";
-        }
-      }
-
-      return {
-        ...t,
-        tasks: updatedTasks,
-        completed,
-        status,
-      };
-    });
-  };
-
-  const saveTodoData = async (newData: TodoNodeData, forceSync = false) => {
-    if (newData.tasks && (!nodeIsFlat || forceSync)) {
-      newData.tasks = syncTaskCompletionState(newData.tasks);
-    }
-    setTodoData(newData);
-    const updated = setValueAtPath(parsedData, data.path, newData);
-    let newCode = "";
-    if (codeFormat === "yaml") {
-      try {
-        const yaml = (await import("js-yaml")).default;
-        newCode = yaml.dump(updated);
-      } catch (e) {
-        newCode = JSON.stringify(updated, null, 2);
-      }
-    } else {
-      newCode = JSON.stringify(updated, null, 2);
-    }
-    setCode(newCode);
-  };
-
-  const getStats = (tasks: TodoTask[]) => {
-    let total = 0;
-    let completed = 0;
-    const walk = (tList: TodoTask[]) => {
-      for (const t of tList) {
-        total++;
-        if (t.completed || t.status === "Completed") completed++;
-        if (t.tasks) walk(t.tasks);
-      }
-    };
-    walk(tasks || []);
-    return { total, completed };
-  };
-
-  const { total, completed } = getStats(todoData.tasks);
+  const { total, completed } = todo.countTasks(todoData.tasks);
   const remaining = total - completed;
   const progress = total === 0 ? 0 : Math.round((completed / total) * 100);
 
-  const toggleTaskComplete = (taskId: string) => {
-    const setCompletedRecursive = (task: TodoTask, completed: boolean): TodoTask => {
-      if (nodeIsFlat) return task; // In flat mode, do not affect children
-      return {
-        ...task,
-        completed,
-        status: completed ? "Completed" : "Todo",
-        tasks: task.tasks ? task.tasks.map(t => setCompletedRecursive(t, completed)) : []
-      };
-    };
-
-    const toggleAndPropagate = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map(t => {
-        if (t.id === taskId) {
-          const nextVal = !t.completed;
-          return {
-            ...t,
-            completed: nextVal,
-            status: nextVal ? "Completed" : "Todo",
-            tasks: t.tasks && !nodeIsFlat ? t.tasks.map(sub => setCompletedRecursive(sub, nextVal)) : t.tasks
-          };
-        }
-        if (t.tasks && t.tasks.length > 0) {
-          return {
-            ...t,
-            tasks: toggleAndPropagate(t.tasks)
-          };
-        }
-        return t;
-      });
-    };
-
-    const firstPass = toggleAndPropagate(todoData.tasks || []);
-    // `saveTodoData` automatically calls syncTaskCompletionState which handles bubbling status UP
-    saveTodoData({ ...todoData, tasks: firstPass });
-  };
+  const toggleTaskComplete = (taskId: string) =>
+    saveTasks((tasks) => {
+      const task = todo.findTask(tasks, taskId);
+      return task ? todo.setTaskDone(tasks, taskId, !todo.isTaskDone(task), !nodeIsFlat) : null;
+    });
 
   const startEditingTask = (taskId: string, currentText: string) => {
     setEditingTaskId(taskId);
@@ -258,66 +169,23 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   };
 
   const saveEditedTaskName = (taskId: string, newText: string) => {
-    if (!newText.trim()) return;
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map(t => {
-        if (t.id === taskId) {
-          return { ...t, text: newText.trim() };
-        }
-        if (t.tasks) return { ...t, tasks: walk(t.tasks) };
-        return t;
-      });
-    };
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
     setEditingTaskId(null);
+    if (!newText.trim()) return;
+    saveTasks((tasks) => todo.updateTask(tasks, taskId, { text: newText.trim() }));
   };
 
-  const cyclePriority = (taskId: string) => {
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map(t => {
-        if (t.id === taskId) {
-          const current = t.priority || "Low";
-          let next: "Critical" | "High" | "Medium" | "Low" | "Normal" = "Low";
-          if (current === "Low") next = "Medium";
-          else if (current === "Medium") next = "High";
-          else if (current === "High") next = "Low";
-          return { ...t, priority: next };
-        }
-        if (t.tasks) return { ...t, tasks: walk(t.tasks) };
-        return t;
-      });
-    };
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
-  };
+  const setTaskPriority = (taskId: string, priority: todo.TodoPriority) =>
+    saveTasks((tasks) => todo.updateTask(tasks, taskId, { priority }));
 
   const handleAddNewTask = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!newTaskText.trim()) return;
-    const newTask: TodoTask = {
-      id: Math.random().toString(36).substr(2, 9),
-      text: newTaskText.trim(),
-      completed: false,
-      priority: "Low",
-      status: "Todo"
-    };
-    saveTodoData({
-      ...todoData,
-      tasks: [...(todoData.tasks || []), newTask]
-    });
+    const task = todo.createTask(newTaskText);
+    saveTasks((tasks) => todo.addTask(tasks, task));
     setNewTaskText("");
   };
 
-  const deleteTask = (taskId: string) => {
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList
-        .filter(t => t.id !== taskId)
-        .map(t => ({
-          ...t,
-          tasks: t.tasks ? walk(t.tasks) : []
-        }));
-    };
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
-  };
+  const deleteTask = (taskId: string) => saveTasks((tasks) => todo.removeTask(tasks, taskId));
 
   const openWorkspace = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -325,199 +193,52 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   };
 
   const clearCompletedTasks = () => {
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList
-        .filter(t => !t.completed && t.status !== "Completed")
-        .map(t => ({
-          ...t,
-          tasks: t.tasks ? walk(t.tasks) : []
-        }));
-    };
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
+    saveTasks(todo.clearCompleted);
     setIsMenuOpen(false);
   };
 
   const resetAllTasks = () => {
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map(t => ({
-        ...t,
-        completed: false,
-        status: "Todo",
-        tasks: t.tasks ? walk(t.tasks) : []
-      }));
-    };
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
+    saveTasks(todo.resetProgress);
     setIsMenuOpen(false);
   };
 
   const clearAllTasks = () => {
-    saveTodoData({ ...todoData, tasks: [] });
+    saveTasks(() => []);
     setIsMenuOpen(false);
   };
 
   const addSampleTasks = () => {
-    const samples: TodoTask[] = [
-      {
-        id: "s1",
-        text: "Database Layer Setup",
-        completed: false,
-        status: "Todo",
-        priority: "High",
-        tasks: [
-          { id: "s1-1", text: "Setup Redis Server", completed: true, status: "Completed", priority: "Low" },
-          { id: "s1-2", text: "Add redis caching layer", completed: true, status: "Completed", priority: "Low" },
-          { id: "s1-3", text: "Optimize database queries", completed: false, status: "Todo", priority: "High" }
-        ]
-      },
-      {
-        id: "s2",
-        text: "Backend Security Protection",
-        completed: false,
-        status: "Todo",
-        priority: "Medium",
-        tasks: [
-          { id: "s2-1", text: "Implement rate limiting", completed: false, status: "Todo", priority: "Medium" },
-          { id: "s2-2", text: "Write system integration tests", completed: false, status: "Todo", priority: "Low" }
-        ]
-      }
-    ];
-    saveTodoData({ ...todoData, tasks: samples });
+    saveTasks(() => SAMPLE_TASKS(), true);
     setIsMenuOpen(false);
   };
 
+  const expandParent = (parentId: string) =>
+    setCollapsedTaskIds((prev) => prev.filter((x) => x !== parentId));
+
+  // Tab / Shift+Tab while renaming: keep editing the same task at its new level.
   const indentTask = (id: string) => {
-    let success = false;
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      if (success) return tList;
-      const index = tList.findIndex((t) => t.id === id);
-      if (index > 0) {
-        const targetTask = tList[index];
-        const prevSibling = tList[index - 1];
-        const updatedList = tList.filter((t) => t.id !== id);
-        prevSibling.tasks = [...(prevSibling.tasks || []), targetTask];
-        success = true;
-        setCollapsedTaskIds((prev) => prev.filter((x) => x !== prevSibling.id));
-        return updatedList;
-      }
-      return tList.map((t) => {
-        if (t.tasks && t.tasks.length > 0) {
-          return { ...t, tasks: walk(t.tasks) };
-        }
-        return t;
-      });
-    };
-
-    const updatedTasks = walk(todoData.tasks || []);
-    if (success) {
-      saveTodoData({ ...todoData, tasks: updatedTasks });
-      setTimeout(() => startEditingTask(id, editingText), 50);
-    }
-  };
-
-  const outdentTask = (id: string) => {
-    let taskToMove: TodoTask | null = null;
-    const removeAndExtract = (tList: TodoTask[], parentId: string | null = null): { list: TodoTask[]; parentOfTarget: string | null } => {
-      let foundParentId: string | null = null;
-      const filtered = tList.filter((t) => {
-        if (t.id === id) {
-          taskToMove = t;
-          foundParentId = parentId;
-          return false;
-        }
-        return true;
-      });
-
-      const mapped = filtered.map((t) => {
-        if (t.tasks && t.tasks.length > 0) {
-          const res = removeAndExtract(t.tasks, t.id);
-          if (res.parentOfTarget) foundParentId = res.parentOfTarget;
-          return { ...t, tasks: res.list };
-        }
-        return t;
-      });
-
-      return { list: mapped, parentOfTarget: foundParentId };
-    };
-
-    const { list: cleanList, parentOfTarget } = removeAndExtract(todoData.tasks || []);
-    if (!taskToMove || !parentOfTarget) return;
-
-    const insertAfterParent = (tList: TodoTask[]): TodoTask[] => {
-      const newList: TodoTask[] = [];
-      for (const t of tList) {
-        newList.push(t);
-        if (t.id === parentOfTarget && taskToMove) {
-          newList.push(taskToMove);
-        } else if (t.tasks && t.tasks.length > 0) {
-          t.tasks = insertAfterParent(t.tasks);
-        }
-      }
-      return newList;
-    };
-
-    const updatedTasks = insertAfterParent(cleanList);
-    saveTodoData({ ...todoData, tasks: updatedTasks });
+    saveTasks((tasks) => {
+      const result = todo.indentTask(tasks, id);
+      if (!result) return null;
+      expandParent(result.parentId);
+      return result.tasks;
+    });
     setTimeout(() => startEditingTask(id, editingText), 50);
   };
 
-  const moveTaskInTree = (id: string, direction: "up" | "down") => {
-    let success = false;
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      if (success) return tList;
-      const index = tList.findIndex((t) => t.id === id);
-      if (index !== -1) {
-        const newList = [...tList];
-        if (direction === "up" && index > 0) {
-          const temp = newList[index];
-          newList[index] = newList[index - 1];
-          newList[index - 1] = temp;
-          success = true;
-          return newList;
-        } else if (direction === "down" && index < newList.length - 1) {
-          const temp = newList[index];
-          newList[index] = newList[index + 1];
-          newList[index + 1] = temp;
-          success = true;
-          return newList;
-        }
-      }
-      return tList.map((t) => {
-        if (t.tasks && t.tasks.length > 0) {
-          return { ...t, tasks: walk(t.tasks) };
-        }
-        return t;
-      });
-    };
-
-    const updated = walk(todoData.tasks || []);
-    if (success) {
-      saveTodoData({ ...todoData, tasks: updated });
-    }
+  const outdentTask = (id: string) => {
+    saveTasks((tasks) => todo.outdentTask(tasks, id));
+    setTimeout(() => startEditingTask(id, editingText), 50);
   };
 
+  const moveTaskInTree = (id: string, direction: "up" | "down") =>
+    saveTasks((tasks) => todo.moveTask(tasks, id, direction));
+
   const addNestedSubtask = (parentId: string) => {
-    const newId = Math.random().toString(36).substring(2, 9);
-    const newTask: TodoTask = {
-      id: newId,
-      text: "",
-      completed: false,
-      status: "Todo",
-      priority: "Normal",
-    };
-
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map((t) => {
-        if (t.id === parentId) {
-          return { ...t, tasks: [...(t.tasks || []), newTask] };
-        }
-        if (t.tasks) return { ...t, tasks: walk(t.tasks) };
-        return t;
-      });
-    };
-
-    setCollapsedTaskIds((prev) => prev.filter((x) => x !== parentId));
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
-    setEditingTaskId(newId);
+    const task = todo.createTask("");
+    expandParent(parentId);
+    saveTasks((tasks) => todo.addTask(tasks, task, parentId));
+    setEditingTaskId(task.id);
     setEditingText("");
     setNodeIsFlat(false);
   };
@@ -530,17 +251,9 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
   };
 
   const collapseAllSubtasks = () => {
-    const ids: string[] = [];
-    const walk = (tList: TodoTask[]) => {
-      for (const t of tList) {
-        if (t.tasks && t.tasks.length > 0) {
-          ids.push(t.id);
-          walk(t.tasks);
-        }
-      }
-    };
-    walk(todoData.tasks || []);
-    setCollapsedTaskIds(ids);
+    setCollapsedTaskIds(
+      todo.flattenTasks(todoData.tasks).filter((x) => x.task.tasks?.length).map((x) => x.task.id),
+    );
     setIsMenuOpen(false);
   };
 
@@ -549,29 +262,20 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     setIsMenuOpen(false);
   };
 
-  // Helper to flatten tasks with depth mapping
-  const flattenTasks = (tasks: TodoTask[], depth = 0): { task: TodoTask, depth: number }[] => {
-    let result: { task: TodoTask, depth: number }[] = [];
-    for (const t of tasks || []) {
-      result.push({ task: t, depth });
-      if (t.tasks && t.tasks.length > 0 && (nodeIsFlat ? true : !collapsedTaskIds.includes(t.id))) {
-        result = result.concat(flattenTasks(t.tasks, depth + 1));
-      }
-    }
-    return result;
-  };
+  // Rows in display order: every task in flat view, collapsed subtrees skipped in tree view.
+  const flatTasks = todo.flattenTasks(todoData.tasks, nodeIsFlat ? [] : collapsedTaskIds);
 
-  const flatTasks = flattenTasks(todoData.tasks);
+  // The list shows up to MAX_ROWS rows before scrolling (at least 3, so a task that
+  // wraps onto two lines doesn't immediately need a scrollbar).
+  const listHeight =
+    flatTasks.length === 0
+      ? EMPTY_H
+      : Math.max(3, Math.min(flatTasks.length, MAX_ROWS)) * ROW_H;
 
-  // Auto handle resizing based on number of preview tasks in Tree/Flat list views
+  // Auto handle resizing: the node is exactly header + list + footer tall.
   useEffect(() => {
-    const taskCount = flatTasks.length;
     const targetWidth = 385;
-    // Cap at 8 items for a neat compact flow, standard item h=39
-    const itemsCount = Math.min(taskCount, 8);
-    const calculatedHeight = isExpanded
-      ? Math.max(260, 56 + 54 + (itemsCount === 0 ? 80 : itemsCount * 39) + 40)
-      : 130;
+    const calculatedHeight = isExpanded ? HEADER_H + listHeight + FOOTER_H + 2 : 130;
 
     if (!customSize || customSize.width !== targetWidth || customSize.height !== calculatedHeight) {
       setCustomNodeSize(nodeId, targetWidth, calculatedHeight);
@@ -580,52 +284,62 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     if (onResize) {
       onResize(targetWidth, calculatedHeight);
     }
-  }, [isExpanded, total, nodeId, nodeIsFlat, todoData.tasks, customSize, setCustomNodeSize, onResize, flatTasks.length]);
+  }, [isExpanded, total, nodeId, nodeIsFlat, customSize, setCustomNodeSize, onResize, listHeight]);
 
-  // Choose sequence of tasks to display based on isFlatList setting
   const tasksToRender = nodeIsFlat
-    ? flatTasks.map(item => ({ ...item, depth: 0 }))
+    ? flatTasks.map((item) => ({ ...item, depth: 0 }))
     : flatTasks;
 
-  const priorityMeta = (task: TodoTask) => {
-    const isDone = task.completed || task.status === "Completed";
-    if (isDone) {
-      return {
-        badgeStyle: "bg-emerald-950/40 text-emerald-400 border border-emerald-500/15 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md",
-        dotStyle: "bg-emerald-400 shadow-[0_0_8px_rgba(52,211,153,0.5)]",
-        label: "Done"
-      };
-    }
+  const nodeName =
+    typeof data.name === "string" ? data.name.replace("_todo_node", "").replace(".todo", "") : "tasks";
 
-    const priority = task.priority || "Low";
-    switch (priority) {
-      case "Critical":
-      case "High":
-        return {
-          badgeStyle: "bg-amber-950/40 text-amber-500 border border-amber-500/15 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md",
-          dotStyle: "bg-amber-500 shadow-[0_0_8px_rgba(245,158,11,0.5)]",
-          label: "High"
-        };
-      case "Medium":
-        return {
-          badgeStyle: "bg-indigo-950/40 text-indigo-400 border border-indigo-500/15 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md",
-          dotStyle: "bg-indigo-500 shadow-[0_0_8px_rgba(129,140,248,0.5)]",
-          label: "Medium"
-        };
-      case "Low":
-      case "Normal":
-      default:
-        return {
-          badgeStyle: "bg-blue-950/40 text-blue-400 border border-blue-500/15 text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-md",
-          dotStyle: "bg-[#2563EB] shadow-[0_0_8px_rgba(37,99,235,0.5)]",
-          label: "Low"
-        };
+  // Bulk actions ask first; loading samples only when it would replace tasks.
+  const runOrConfirm = (action: NonNullable<typeof pendingBulkAction>) => {
+    setIsMenuOpen(false);
+    if (action === "samples" && total === 0) {
+      addSampleTasks();
+      return;
     }
+    setPendingBulkAction(action);
   };
+
+  const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+  const bulkConfirm = pendingBulkAction
+    ? {
+      clearAll: {
+        title: "Clear all tasks?",
+        message: `This permanently deletes ${plural(total, "task")}, including subtasks, notes and attachments. This can't be undone.`,
+        confirmText: "Clear all",
+        variant: "danger" as const,
+        run: clearAllTasks,
+      },
+      clearCompleted: {
+        title: "Clear completed tasks?",
+        message: `This permanently deletes ${plural(completed, "completed task")}. This can't be undone.`,
+        confirmText: "Clear completed",
+        variant: "danger" as const,
+        run: clearCompletedTasks,
+      },
+      reset: {
+        title: "Reset progress?",
+        message: `All ${plural(total, "task")} will be marked as not done. Titles, notes and attachments are kept.`,
+        confirmText: "Reset",
+        variant: "warning" as const,
+        run: resetAllTasks,
+      },
+      samples: {
+        title: "Replace with sample tasks?",
+        message: `Your ${plural(total, "task")} will be replaced by sample tasks. This can't be undone.`,
+        confirmText: "Replace",
+        variant: "warning" as const,
+        run: addSampleTasks,
+      },
+    }[pendingBulkAction]
+    : null;
 
   return (
     <div
-      className="w-[360px] sm:w-[380px] select-none pointer-events-auto cursor-default overflow-hidden bg-white/95 dark:bg-[#0a0f1d]/95 backdrop-blur-md border border-slate-200 dark:border-[#1e293b] rounded-[20px] shadow-2xl transition-all nodrag"
+      className="w-[360px] sm:w-[380px] select-none pointer-events-auto cursor-default overflow-hidden bg-white dark:bg-[#0b1020] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl shadow-slate-900/5 dark:shadow-black/40 nodrag"
       onClick={(e) => {
         e.stopPropagation();
       }}
@@ -636,9 +350,22 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
         }
       }}
     >
-      {/* Header Panel */}
+      {bulkConfirm && (
+        <ConfirmModal
+          isOpen
+          title={bulkConfirm.title}
+          message={bulkConfirm.message}
+          confirmText={bulkConfirm.confirmText}
+          variant={bulkConfirm.variant}
+          onConfirm={bulkConfirm.run}
+          onClose={() => setPendingBulkAction(null)}
+        />
+      )}
+
+      {/* Header: title, counts, view and menu; progress underneath. Drag to move. */}
       <div
-        className="flex items-center justify-between px-4 py-3.5 border-b border-slate-200 dark:border-[#1b2230] bg-slate-50/60 dark:bg-[#111625]/60 shrink-0 drag-handle cursor-move"
+        className="drag-handle cursor-move flex flex-col justify-center gap-2.5 px-3.5 border-b border-slate-200/80 dark:border-slate-800"
+        style={{ height: HEADER_H }}
         onClick={(e) => {
           e.stopPropagation();
           const selectedId = useStore.getState().selectedNodeId;
@@ -647,227 +374,229 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
           }
         }}
       >
-        <div className="flex items-center gap-3 max-w-[65%]">
-          {/* List Indicator with Blue glow */}
-          <div className="relative flex items-center justify-center w-9 h-9 rounded-full bg-blue-100 dark:bg-[#1e40af]/20 border border-blue-200 dark:border-[#3b82f6]/30 shadow-[0_0_12px_rgba(59,130,246,0.25)] text-blue-400 shrink-0">
-            <ListTodo size={17} />
+        <div className="flex items-center gap-2.5">
+          <div
+            className="w-8 h-8 shrink-0 rounded-lg flex items-center justify-center bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-1 ring-inset ring-blue-500/20"
+            title={`Node: ${nodeName}`}
+          >
+            <ListTodo size={16} />
           </div>
-          <div className="flex flex-col min-w-0 flex-1">
-            <span className="text-[10px] font-mono text-slate-500 uppercase tracking-widest leading-none mb-0.5 select-none font-bold truncate max-w-full">
-              node: {typeof data.name === "string" ? data.name.replace("_todo_node", "").replace(".todo", "") : "tasks"}
-            </span>
-            <div className="relative w-full flex items-center">
+          <div className="min-w-0 flex-1">
+            <div className="relative flex items-center">
               <input
                 type="text"
-                maxLength={50}
-                className="font-bold text-[15px] leading-tight text-slate-800 dark:text-slate-100 bg-transparent border-none outline-none w-full truncate focus:ring-1 focus:ring-blue-500/30 rounded px-1 -ml-1 transition-all pr-12"
+                maxLength={todo.MAX_LIST_TITLE}
+                aria-label="List title"
+                className="w-full min-w-0 truncate bg-transparent text-[14px] font-semibold leading-5 text-slate-900 dark:text-slate-100 outline-none rounded px-1 -mx-1 hover:bg-slate-100 dark:hover:bg-white/5 focus:bg-slate-100 dark:focus:bg-white/5 focus:ring-1 focus:ring-blue-500/40 transition-colors cursor-text"
                 value={todoData.title || "Tasks"}
-                onChange={(e) => saveTodoData({ ...todoData, title: e.target.value })}
+                onChange={(e) => saveTitle(e.target.value)}
                 onFocus={() => setIsTitleFocused(true)}
                 onBlur={() => setIsTitleFocused(false)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" || e.key === "Escape") (e.target as HTMLInputElement).blur();
+                }}
                 onClick={(e) => e.stopPropagation()}
                 onMouseDown={(e) => e.stopPropagation()}
               />
               {isTitleFocused && (
-                <span className="absolute right-1 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 py-0.5 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10 animate-in fade-in duration-100">
-                  {todoData.title?.length || 0}/50
-                </span>
+                <LengthHint
+                  length={todoData.title?.length || 0}
+                  max={todo.MAX_LIST_TITLE}
+                  className="absolute right-1"
+                />
               )}
             </div>
-          </div>
-          <span className="text-[11px] font-semibold text-blue-400 bg-blue-500/15 px-2.5 py-0.5 rounded-full border border-blue-500/10 shrink-0">
-            {completed} / {total}
-          </span>
-        </div>
-
-        {/* Dynamic Controls Option (Tree, Flat, Detail, More) */}
-        <div className="flex items-center gap-1.5 shrink-0 relative">
-          {/* Compact Switcher between Tree vs Flat List */}
-          <div className="flex bg-slate-100 dark:bg-[#131924] p-0.5 rounded-lg border border-slate-200 dark:border-slate-800/80">
-            <button
-              onClick={() => {
-                setNodeIsFlat(false);
-                if (todoData.tasks) {
-                  saveTodoData({ ...todoData }, true);
-                }
-              }}
-              className={`p-1 rounded-md transition-all ${!nodeIsFlat ? "bg-blue-600/20 text-blue-400 border border-blue-500/10 shadow-sm" : "text-slate-500 hover:text-slate-600 dark:text-slate-300"}`}
-              title="Tree structure"
-            >
-              <FolderTree size={13} />
-            </button>
-            <button
-              onClick={() => setNodeIsFlat(true)}
-              className={`p-1 rounded-md transition-all ${nodeIsFlat ? "bg-blue-600/20 text-blue-400 border border-blue-500/10 shadow-sm" : "text-slate-500 hover:text-slate-600 dark:text-slate-300"}`}
-              title="Flat list"
-            >
-              <Layers size={13} />
-            </button>
+            <div className="text-[11px] leading-4 tabular-nums text-slate-500 dark:text-slate-400">
+              {total === 0 ? "No tasks yet" : `${completed} of ${total} done`}
+            </div>
           </div>
 
-          <button
-            onClick={openWorkspace}
-            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-[#161B26]/60 hover:bg-slate-200 dark:hover:bg-[#1E2533] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
-            title="Open Fullscreen Workspace"
-          >
-            <Maximize2 size={13} />
-          </button>
-
-          <button
-            ref={menuButtonRef}
-            onClick={() => setIsMenuOpen(!isMenuOpen)}
-            className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-100/60 dark:bg-[#161B26]/60 hover:bg-slate-200 dark:hover:bg-[#1E2533] text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 transition-all cursor-pointer"
-            title="Options Menu"
-          >
-            <MoreVertical size={13} />
-          </button>
+          <div className="flex items-center gap-0.5 shrink-0" onMouseDown={(e) => e.stopPropagation()}>
+            <div className="flex items-center p-0.5 mr-0.5 rounded-md bg-slate-100 dark:bg-white/5" role="group" aria-label="View">
+              {(
+                [
+                  { flat: false, Icon: FolderTree, label: "Tree view" },
+                  { flat: true, Icon: Layers, label: "Flat list" },
+                ] as const
+              ).map(({ flat, Icon, label }) => (
+                <button
+                  key={label}
+                  type="button"
+                  aria-pressed={nodeIsFlat === flat}
+                  title={label}
+                  onClick={() => {
+                    setNodeIsFlat(flat);
+                    // Back in tree view, re-derive parents from their subtasks.
+                    if (!flat) saveTasks((tasks) => tasks, true);
+                  }}
+                  className={`h-6 w-6 flex items-center justify-center rounded-[5px] transition-colors cursor-pointer ${
+                    nodeIsFlat === flat
+                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                  }`}
+                >
+                  <Icon size={13} />
+                </button>
+              ))}
+            </div>
+            <button type="button" onClick={openWorkspace} className={ICON_BUTTON} title="Open in workspace">
+              <Maximize2 size={14} />
+            </button>
+            <button
+              ref={menuButtonRef}
+              type="button"
+              onClick={() => setIsMenuOpen(!isMenuOpen)}
+              className={`${ICON_BUTTON} ${isMenuOpen ? "bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-100" : ""}`}
+              title="More actions"
+              aria-haspopup="menu"
+              aria-expanded={isMenuOpen}
+            >
+              <MoreVertical size={14} />
+            </button>
+          </div>
 
           {isMenuOpen && createPortal(
             <div
               ref={dropdownRef}
               style={menuStyle}
-              className="w-44 bg-white dark:bg-[#0e1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 overflow-hidden pointer-events-auto"
+              role="menu"
+              className={MENU_CLASS}
               onMouseDown={(e) => e.stopPropagation()}
             >
-              <button
+              <MenuItem
+                icon={<ExternalLink size={14} />}
+                label="Open in new tab"
                 onClick={() => {
                   setIsMenuOpen(false);
                   const url = new URL(window.location.href);
-                  url.searchParams.set('focusNode', nodeId);
-                  window.open(url.toString(), '_blank');
+                  url.searchParams.set("focusNode", nodeId);
+                  window.open(url.toString(), "_blank");
                 }}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
-              >
-                <ExternalLink size={12} className="text-blue-500" />
-                <span>Open in New Tab</span>
-              </button>
-              <button
-                onClick={addSampleTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
-              >
-                <Sparkles size={12} className="text-amber-400" />
-                <span>Load Sample Tasks</span>
-              </button>
-              <button
-                onClick={expandAllSubtasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
-              >
-                <FolderTree size={12} className="text-blue-400" />
-                <span>Expand All</span>
-              </button>
-              <button
-                onClick={collapseAllSubtasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
-              >
-                <Layers size={12} className="text-slate-500 dark:text-slate-400" />
-                <span>Collapse All</span>
-              </button>
-              <button
-                onClick={clearCompletedTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
-              >
-                <Trash2 size={12} className="text-emerald-400" />
-                <span>Clear Completed</span>
-              </button>
-              <button
-                onClick={resetAllTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
-              >
-                <RefreshCw size={12} className="text-blue-400" />
-                <span>Reset All Tasks</span>
-              </button>
-              <button
-                onClick={clearAllTasks}
-                className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 flex items-center gap-2 transition-colors border-t border-slate-200 dark:border-slate-800/60"
-              >
-                <Trash2 size={12} className="text-rose-500" />
-                <span>Clear All Tasks</span>
-              </button>
+              />
+              <MenuItem icon={<Sparkles size={14} />} label="Load sample tasks" onClick={() => runOrConfirm("samples")} />
+              <MenuDivider />
+              <MenuItem icon={<FolderTree size={14} />} label="Expand all" onClick={expandAllSubtasks} disabled={nodeIsFlat} />
+              <MenuItem icon={<Layers size={14} />} label="Collapse all" onClick={collapseAllSubtasks} disabled={nodeIsFlat} />
+              <MenuDivider />
+              <MenuItem
+                icon={<Trash2 size={14} />}
+                label="Clear completed"
+                hint={completed || undefined}
+                onClick={() => runOrConfirm("clearCompleted")}
+                disabled={completed === 0}
+              />
+              <MenuItem
+                icon={<RefreshCw size={14} />}
+                label="Reset progress"
+                onClick={() => runOrConfirm("reset")}
+                disabled={completed === 0}
+              />
+              <MenuDivider />
+              <MenuItem
+                icon={<Trash2 size={14} />}
+                label="Clear all tasks"
+                hint={total || undefined}
+                danger
+                onClick={() => runOrConfirm("clearAll")}
+                disabled={total === 0}
+              />
             </div>,
             document.body
           )}
         </div>
-      </div>
 
-      {/* Progress Indicators matching mock precisely */}
-      <div className="px-4 py-3 bg-slate-50/20 dark:bg-[#111625]/20 shrink-0">
-        <div className="flex justify-between items-center mb-1.5">
-          <span className="text-xs font-semibold text-slate-800 dark:text-slate-100">{progress}% Complete</span>
-          <span className="text-xs text-slate-500 dark:text-slate-400 font-normal">{completed} done • {remaining} remaining</span>
-        </div>
-        <div className="w-full h-1.5 bg-slate-200 dark:bg-[#1b2230] rounded-full overflow-hidden">
-          <div
-            className="h-full bg-blue-500 rounded-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(59,130,246,0.5)]"
-            style={{ width: `${progress}%` }}
-          />
+        <div className="flex items-center gap-2.5" title={`${progress}% complete`}>
+          <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-white/[0.06] overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-[width] duration-500 ease-out ${progress === 100 ? "bg-emerald-500" : "bg-blue-500"}`}
+              style={{ width: `${progress}%` }}
+            />
+          </div>
+          <span className="w-8 text-right text-[11px] font-medium tabular-nums text-slate-600 dark:text-slate-300">
+            {progress}%
+          </span>
         </div>
       </div>
 
-      {/* Tasks Queue List Area */}
-      <div className="overflow-y-auto max-h-[260px] custom-scrollbar divide-y divide-slate-200 dark:divide-[#1b2230] border-t border-slate-200 dark:border-[#1b2230]">
+      {/* Tasks */}
+      <div className="overflow-y-auto custom-scrollbar" style={{ height: listHeight }}>
         {tasksToRender.length === 0 ? (
-          <div className="py-8 px-4 flex-1 flex flex-col items-center justify-center text-slate-500 text-xs italic">
-            <span className="mb-1">No tasks in this node yet.</span>
-            <span className="text-[10px] text-slate-600">Type below to create one instantly!</span>
+          <div className="h-full flex flex-col items-center justify-center gap-2 px-6 text-center">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center bg-slate-100 dark:bg-white/5 text-slate-400">
+              <ListTodo size={18} />
+            </div>
+            <div>
+              <p className="text-[13px] font-medium text-slate-700 dark:text-slate-200">No tasks yet</p>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400">Type below and press Enter to add one.</p>
+            </div>
+            <button
+              type="button"
+              onClick={addSampleTasks}
+              className="text-[12px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+            >
+              Load sample tasks
+            </button>
           </div>
         ) : (
           tasksToRender.map(({ task, depth }, idx) => {
-            const isDone = task.completed || task.status === "Completed";
-            const hasIncompleteChildren = !nodeIsFlat && checkHasIncompleteChildren(task.tasks);
-            const meta = priorityMeta(task);
+            const isDone = todo.isTaskDone(task);
+            const hasChildren = !nodeIsFlat && !!task.tasks && task.tasks.length > 0;
+            const isCollapsed = collapsedTaskIds.includes(task.id);
+            const isBlocked = !isDone && !nodeIsFlat && todo.hasIncompleteChildren(task.tasks);
+            const priority = todo.priorityOf(task);
+            const indent = nodeIsFlat ? 0 : depth * 18;
+            const isEditing = editingTaskId === task.id;
+            const menuOpen = activeMenuTaskId === task.id;
 
             return (
               <div
                 key={`${task.id}-${idx}`}
-                className="flex items-center gap-3 py-2 px-4 hover:bg-slate-800/10 group transition-all duration-150"
-                style={{ paddingLeft: !nodeIsFlat ? `${depth * 1.1 + 1}rem` : "1rem" }}
+                className={`group relative flex items-start gap-2 pr-2 py-[9px] border-b border-slate-100 dark:border-white/[0.04] transition-colors ${
+                  menuOpen ? "bg-slate-50 dark:bg-white/[0.04]" : "hover:bg-slate-50 dark:hover:bg-white/[0.03]"
+                }`}
+                style={{ paddingLeft: 10 + indent }}
               >
-                {/* Check/Circle Bullet toggles state */}
-                <button
-                  onClick={() => {
-                    if (!isDone && hasIncompleteChildren) {
-                      setNotification({ message: 'Complete subtasks first', type: 'info' });
-                      return;
-                    }
-                    toggleTaskComplete(task.id);
-                  }}
-                  className={`shrink-0 flex items-center justify-center w-5 h-5 rounded-full transition-colors outline-none ${!isDone && hasIncompleteChildren
-                      ? 'cursor-not-allowed opacity-50 text-slate-600 border border-slate-700'
-                      : isDone
-                        ? 'text-emerald-500 hover:text-emerald-400'
-                        : 'text-slate-600 hover:text-blue-400 border border-slate-700 hover:border-blue-400/55'
-                    }`}
-                  title={!isDone && hasIncompleteChildren ? "Complete subtasks first" : isDone ? "Mark Pending" : "Mark Completed"}
-                >
-                  {isDone ? (
-                    <CheckCircle2 size={16} className="fill-emerald-500/10" />
-                  ) : (
-                    <Circle size={15} />
-                  )}
-                </button>
+                {/* Indent guide, like a file tree */}
+                {depth > 0 && !nodeIsFlat && (
+                  <span
+                    className="absolute top-0 bottom-0 w-px bg-slate-200 dark:bg-slate-800"
+                    style={{ left: 10 + indent - 10 }}
+                  />
+                )}
 
-                {/* Subtask Hierarchy Controls */}
-                {!nodeIsFlat && task.tasks && task.tasks.length > 0 ? (
-                  <button
-                    onClick={(e) => toggleCollapseTask(task.id, e)}
-                    className="shrink-0 flex items-center justify-center w-3 h-3 ml-[-8px] mr-0.5 text-slate-500 hover:text-slate-600 dark:text-slate-300"
-                  >
-                    <ChevronRight size={14} className={`transition-transform ${!collapsedTaskIds.includes(task.id) ? "rotate-90" : ""}`} />
-                  </button>
-                ) : !nodeIsFlat && depth > 0 ? (
-                  <div className="w-2 ml-[-8px] mr-0.5 border-l border-slate-300 dark:border-slate-700/50 h-5" />
-                ) : null}
+                {!nodeIsFlat && (
+                  <span className="w-4 h-5 shrink-0 flex items-center justify-center">
+                    {hasChildren && (
+                      <button
+                        type="button"
+                        onClick={(e) => toggleCollapseTask(task.id, e)}
+                        className="w-4 h-4 rounded flex items-center justify-center text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 cursor-pointer"
+                        aria-label={isCollapsed ? "Expand subtasks" : "Collapse subtasks"}
+                        aria-expanded={!isCollapsed}
+                      >
+                        <ChevronRight size={13} className={`transition-transform ${isCollapsed ? "" : "rotate-90"}`} />
+                      </button>
+                    )}
+                  </span>
+                )}
 
-                <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
-                  {/* Title */}
-                  {editingTaskId === task.id ? (
-                    <div className="relative w-full flex flex-col">
+                <TaskCheckbox
+                  done={isDone}
+                  blocked={isBlocked}
+                  onToggle={() => toggleTaskComplete(task.id)}
+                  onBlocked={() => setNotification({ message: "Complete its subtasks first", type: "info" })}
+                  className="mt-0.5"
+                />
+
+                <div className="flex-1 min-w-0">
+                  {isEditing ? (
+                    <div className="relative">
                       <textarea
-                        maxLength={100}
+                        maxLength={todo.MAX_TASK_TEXT}
                         value={editingText}
                         onChange={(e) => {
                           setEditingText(e.target.value);
-                          e.target.style.height = 'auto';
+                          e.target.style.height = "auto";
                           e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
                         }}
                         onKeyDown={(e) => {
@@ -879,101 +608,94 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                             setEditingTaskId(null);
                           } else if (e.key === "Tab") {
                             e.preventDefault();
-                            if (e.shiftKey) {
-                              saveEditedTaskName(task.id, editingText);
-                              outdentTask(task.id);
-                            } else {
-                              saveEditedTaskName(task.id, editingText);
-                              indentTask(task.id);
-                            }
+                            saveEditedTaskName(task.id, editingText);
+                            if (e.shiftKey) outdentTask(task.id);
+                            else indentTask(task.id);
                           }
                         }}
                         onBlur={() => saveEditedTaskName(task.id, editingText)}
                         autoFocus
                         rows={1}
-                        className="bg-white dark:bg-[#111625] text-slate-800 dark:text-white text-[12.5px] pl-1.5 pr-14 py-0.5 rounded border border-blue-500/80 outline-none w-full font-normal resize-none overflow-hidden"
+                        placeholder="Task name"
+                        className="w-full min-h-[24px] resize-none overflow-hidden rounded-md border border-blue-500 bg-white dark:bg-slate-950 px-1.5 py-0.5 text-[13px] leading-5 text-slate-900 dark:text-slate-100 outline-none ring-2 ring-blue-500/20"
                         onClick={(e) => e.stopPropagation()}
                         onMouseDown={(e) => e.stopPropagation()}
-                        style={{ minHeight: "24px", height: "auto" }}
                         onFocus={(e) => {
-                          e.target.style.height = 'auto';
+                          e.target.style.height = "auto";
                           e.target.style.height = `${Math.max(24, e.target.scrollHeight)}px`;
                           e.target.setSelectionRange(e.target.value.length, e.target.value.length);
                         }}
                       />
-                      <span className="absolute right-1 bottom-0.5 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10">
-                        {editingText.length}/100
-                      </span>
+                      <LengthHint
+                        length={editingText.length}
+                        max={todo.MAX_TASK_TEXT}
+                        className="absolute right-1.5 bottom-1"
+                      />
                     </div>
                   ) : (
                     <span
-                      className={`text-[12.5px] font-normal leading-normal truncate w-full cursor-text ${isDone
-                          ? 'text-slate-500 line-through'
-                          : 'text-slate-800 dark:text-slate-100 hover:text-slate-900 dark:hover:text-white transition-colors'
-                        }`}
+                      className={`block text-[13px] leading-5 break-words line-clamp-2 cursor-text ${
+                        isDone ? "text-slate-400 dark:text-slate-500 line-through" : "text-slate-800 dark:text-slate-100"
+                      }`}
                       onClick={() => startEditingTask(task.id, task.text)}
-                      title="Click to edit"
+                      title={task.text ? `${task.text}\n\nClick to edit` : "Click to edit"}
                     >
-                      {task.text}
+                      {task.text || <span className="italic text-slate-400">Untitled task</span>}
                     </span>
                   )}
 
-                  {/* Image Preview */}
                   {task.imageHashes && task.imageHashes.length > 0 && (
-                    <TaskImagePreview imageHashes={task.imageHashes} compact={true} />
+                    <TaskImagePreview imageHashes={task.imageHashes} compact strip />
                   )}
                 </div>
 
-                {/* Clickable Priority/Done Pill Badge (cycles priority on click!) */}
-                <button
-                  onClick={() => cyclePriority(task.id)}
-                  className={meta.badgeStyle}
-                  title="Click to cycle priority"
-                >
-                  {meta.label}
-                </button>
-
-                {/* Action Controls Container */}
-                <div className="flex items-center gap-0.5 opacity-60 group-hover:opacity-100 transition-opacity shrink-0 task-menu-container relative">
-                  {/* Edit/Rename button */}
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      if (editingTaskId === task.id) {
-                        saveEditedTaskName(task.id, editingText);
-                      } else {
-                        startEditingTask(task.id, task.text);
-                      }
-                    }}
-                    className={`p-1 rounded cursor-pointer transition-colors ${editingTaskId === task.id
-                        ? "text-emerald-400 hover:bg-emerald-950/20"
-                        : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40"
-                      }`}
-                    title={editingTaskId === task.id ? "Save name" : "Edit Name"}
+                <div className="flex items-center gap-1 shrink-0 h-5 mt-px">
+                  {/* Normal priority isn't worth a badge on every row; set it from the ⋯ menu. */}
+                  {!isDone && priority !== todo.DEFAULT_PRIORITY && (
+                    <PriorityBadge
+                      priority={priority}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveMenuTaskId(menuOpen ? null : task.id);
+                      }}
+                    />
+                  )}
+                  <div
+                    className={`flex items-center transition-opacity ${
+                      menuOpen || isEditing
+                        ? "opacity-100"
+                        : "opacity-0 group-hover:opacity-100 focus-within:opacity-100 [@media(hover:none)]:opacity-100"
+                    }`}
                   >
-                    {editingTaskId === task.id ? (
-                      <CheckCircle2 size={13} />
-                    ) : (
-                      <Pencil size={13} />
-                    )}
-                  </button>
-
-                  <TaskMenuPortal
-                    task={task}
-                    activeMenuTaskId={activeMenuTaskId}
-                    setActiveMenuTaskId={setActiveMenuTaskId}
-                    addNestedSubtask={addNestedSubtask}
-                    indentTask={indentTask}
-                    outdentTask={outdentTask}
-                    moveTaskInTree={moveTaskInTree}
-                    deleteTask={deleteTask}
-                  />
-                </div>
-
-                {/* Right Margin Status Dot */}
-                <div className="flex items-center justify-center pr-1 shrink-0">
-                  <span className={`w-1.5 h-1.5 rounded-full ${meta.dotStyle}`} />
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (isEditing) saveEditedTaskName(task.id, editingText);
+                        else startEditingTask(task.id, task.text);
+                      }}
+                      className={`h-6 w-6 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+                        isEditing
+                          ? "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10"
+                          : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10"
+                      }`}
+                      title={isEditing ? "Save" : "Rename"}
+                    >
+                      {isEditing ? <Check size={13} /> : <Pencil size={12} />}
+                    </button>
+                    <TaskMenuPortal
+                      task={task}
+                      activeMenuTaskId={activeMenuTaskId}
+                      setActiveMenuTaskId={setActiveMenuTaskId}
+                      addNestedSubtask={addNestedSubtask}
+                      indentTask={indentTask}
+                      outdentTask={outdentTask}
+                      moveTaskInTree={moveTaskInTree}
+                      deleteTask={deleteTask}
+                      setTaskPriority={setTaskPriority}
+                      isFlat={nodeIsFlat}
+                    />
+                  </div>
                 </div>
               </div>
             );
@@ -981,42 +703,46 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
         )}
       </div>
 
-      {/* Footer input to Add Task directly inside Node */}
+      {/* Add a task */}
       <form
         onSubmit={handleAddNewTask}
-        className="px-4 py-2 border-t border-slate-200 dark:border-[#1b2230] bg-slate-50/40 dark:bg-[#111625]/40 flex items-center gap-2 hover:bg-slate-100/70 dark:hover:bg-[#111625]/70 transition-colors"
+        className="flex items-center gap-2 px-3 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/60 dark:bg-white/[0.02]"
+        style={{ height: FOOTER_H }}
       >
-        <button
-          type="button"
-          onClick={() => handleAddNewTask()}
-          className="w-5 h-5 rounded-full border border-dashed border-slate-600 hover:border-blue-400 flex items-center justify-center text-slate-500 hover:text-blue-400 transition-all shrink-0"
-          title="Add task"
-        >
-          <Plus size={12} />
-        </button>
-        <div className="relative flex-1 flex items-center min-w-0">
-          <input
-            type="text"
-            maxLength={100}
-            placeholder="Add new task..."
-            value={newTaskText}
-            onChange={(e) => setNewTaskText(e.target.value)}
-            onFocus={() => setIsFooterInputFocused(true)}
-            onBlur={() => setIsFooterInputFocused(false)}
-            className="bg-transparent border-none outline-none text-xs text-slate-800 dark:text-slate-100 placeholder-slate-500 w-full focus:ring-0 pr-14"
-          />
-          {isFooterInputFocused && (
-            <span className="absolute right-1 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none">
-              {newTaskText.length}/100
-            </span>
-          )}
-        </div>
-        <button
-          type="submit"
-          className="px-1.5 py-0.5 rounded text-[10px] font-mono border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 transition-colors shrink-0"
-        >
-          Enter
-        </button>
+        <Plus
+          size={15}
+          className={`shrink-0 transition-colors ${isFooterInputFocused ? "text-blue-500" : "text-slate-400"}`}
+        />
+        <input
+          type="text"
+          maxLength={todo.MAX_TASK_TEXT}
+          placeholder="Add a task…"
+          aria-label="New task"
+          value={newTaskText}
+          onChange={(e) => setNewTaskText(e.target.value)}
+          onFocus={() => setIsFooterInputFocused(true)}
+          onBlur={() => setIsFooterInputFocused(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setNewTaskText("");
+              (e.target as HTMLInputElement).blur();
+            }
+          }}
+          className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+        />
+        <LengthHint length={newTaskText.length} max={todo.MAX_TASK_TEXT} className="shrink-0" />
+        {newTaskText.trim() ? (
+          <button
+            type="submit"
+            className="h-6 px-2.5 shrink-0 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium transition-colors cursor-pointer"
+          >
+            Add
+          </button>
+        ) : (
+          <kbd className="h-5 px-1.5 shrink-0 flex items-center rounded border border-slate-200 dark:border-slate-700 text-[10px] font-sans text-slate-400">
+            Enter
+          </kbd>
+        )}
       </form>
     </div>
   );
@@ -1031,12 +757,15 @@ const TaskMenuPortal = ({
   outdentTask,
   moveTaskInTree,
   deleteTask,
+  setTaskPriority,
+  isFlat,
 }: any) => {
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const [style, setStyle] = useState<React.CSSProperties>({});
   const [copiedType, setCopiedType] = useState<string | null>(null);
   const isOpen = activeMenuTaskId === task.id;
+  const current = todo.priorityOf(task);
 
   const handleCopy = (type: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -1044,7 +773,13 @@ const TaskMenuPortal = ({
     setTimeout(() => {
       setCopiedType(null);
       setActiveMenuTaskId(null);
-    }, 1500);
+    }, 1200);
+  };
+
+  const run = (fn: () => void) => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    fn();
+    setActiveMenuTaskId(null);
   };
 
   useLayoutEffect(() => {
@@ -1063,7 +798,7 @@ const TaskMenuPortal = ({
       }
 
       setStyle({
-        position: 'fixed',
+        position: "fixed",
         top: `${top}px`,
         left: `${left}px`,
         zIndex: 99999,
@@ -1081,19 +816,27 @@ const TaskMenuPortal = ({
           setActiveMenuTaskId(null);
         }
       };
+      const handleKey = (e: KeyboardEvent) => {
+        if (e.key === "Escape") setActiveMenuTaskId(null);
+      };
 
       const timeoutId = setTimeout(() => {
-        document.addEventListener('mousedown', handleClickOutside, true);
-        document.addEventListener('touchstart', handleClickOutside, true);
+        document.addEventListener("mousedown", handleClickOutside, true);
+        document.addEventListener("touchstart", handleClickOutside, true);
+        document.addEventListener("keydown", handleKey);
       }, 0);
 
       return () => {
         clearTimeout(timeoutId);
-        document.removeEventListener('mousedown', handleClickOutside, true);
-        document.removeEventListener('touchstart', handleClickOutside, true);
+        document.removeEventListener("mousedown", handleClickOutside, true);
+        document.removeEventListener("touchstart", handleClickOutside, true);
+        document.removeEventListener("keydown", handleKey);
       };
     }
   }, [isOpen, setActiveMenuTaskId]);
+
+  const copyIcon = (type: string) =>
+    copiedType === type ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />;
 
   return (
     <>
@@ -1101,92 +844,73 @@ const TaskMenuPortal = ({
         ref={buttonRef}
         type="button"
         onMouseDown={(e) => {
-          // Changed to onMouseDown to ensure it captures events quickly before click outside
+          // Captured before the outside-click handler, so a second click closes it.
           e.stopPropagation();
         }}
         onClick={(e) => {
           e.stopPropagation();
           setActiveMenuTaskId(isOpen ? null : task.id);
         }}
-        className={`p-1 rounded cursor-pointer transition-colors ${isOpen ? "bg-slate-100 text-slate-900 dark:bg-slate-800 dark:text-white" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/40"
-          }`}
+        className={`h-6 w-6 flex items-center justify-center rounded-md transition-colors cursor-pointer ${
+          isOpen
+            ? "bg-slate-100 dark:bg-white/10 text-slate-800 dark:text-slate-100"
+            : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10"
+        }`}
+        title="Task actions"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
       >
         <MoreVertical size={13} />
       </button>
 
       {isOpen && createPortal(
-        <div ref={menuRef} style={style} className="w-44 bg-white dark:bg-[#0e1322] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 flex flex-col pointer-events-auto">
-          <button
-            onClick={(e) => { e.stopPropagation(); addNestedSubtask(task.id); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
-          >
-            <PlusCircle size={12} className="text-blue-400" />
-            <span>Add Subtask</span>
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); indentTask(task.id); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
-          >
-            <CornerDownRight size={12} className="text-slate-500 dark:text-slate-400" />
-            <span>Convert to Subtask</span>
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); outdentTask(task.id); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
-          >
-            <CornerLeftUp size={12} className="text-slate-500 dark:text-slate-400" />
-            <span>Promote to Parent</span>
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); moveTaskInTree(task.id, 'up'); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
-          >
-            <ArrowUp size={12} className="text-slate-500 dark:text-slate-400" />
-            <span>Move Up</span>
-          </button>
-          <button
-            onClick={(e) => { e.stopPropagation(); moveTaskInTree(task.id, 'down'); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
-          >
-            <ArrowDown size={12} className="text-slate-500 dark:text-slate-400" />
-            <span>Move Down</span>
-          </button>
-          <button
+        <div
+          ref={menuRef}
+          style={style}
+          role="menu"
+          className={MENU_CLASS}
+          onMouseDown={(e) => e.stopPropagation()}
+        >
+          <div className="px-3 pt-1.5 pb-2">
+            <div className="mb-1.5 text-[10px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+              Priority
+            </div>
+            <PriorityPicker
+              value={current}
+              onChange={(p) => {
+                setTaskPriority(task.id, p);
+                setActiveMenuTaskId(null);
+              }}
+            />
+          </div>
+          <MenuDivider />
+          <MenuItem icon={<PlusCircle size={14} />} label="Add subtask" onClick={run(() => addNestedSubtask(task.id))} />
+          {!isFlat && (
+            <>
+              <MenuItem icon={<CornerDownRight size={14} />} label="Indent (make subtask)" hint="Tab" onClick={run(() => indentTask(task.id))} />
+              <MenuItem icon={<CornerLeftUp size={14} />} label="Outdent" hint="⇧Tab" onClick={run(() => outdentTask(task.id))} />
+            </>
+          )}
+          <MenuItem icon={<ArrowUp size={14} />} label="Move up" onClick={run(() => moveTaskInTree(task.id, "up"))} />
+          <MenuItem icon={<ArrowDown size={14} />} label="Move down" onClick={run(() => moveTaskInTree(task.id, "down"))} />
+          <MenuDivider />
+          <MenuItem
+            icon={copyIcon("title")}
+            label={copiedType === "title" ? "Copied" : "Copy title"}
             onClick={(e) => { e.stopPropagation(); handleCopy("title", task.text || ""); }}
-            className={`w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors ${!task.notes ? "border-b border-slate-200 dark:border-slate-800/60" : ""}`}
-          >
-            {copiedType === "title" ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-500 dark:text-slate-400" />}
-            <span>{copiedType === "title" ? "Copied!" : "Copy Title"}</span>
-          </button>
+          />
           {task.notes && (
-            <button
-              onClick={(e) => { e.stopPropagation(); handleCopy("description", task.notes || ""); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors"
-            >
-              {copiedType === "description" ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-500 dark:text-slate-400" />}
-              <span>{copiedType === "description" ? "Copied!" : "Copy Description"}</span>
-            </button>
-          )}
-          {task.notes && (
-            <button
+            <MenuItem
+              icon={copyIcon("both")}
+              label={copiedType === "both" ? "Copied" : "Copy title and notes"}
               onClick={(e) => { e.stopPropagation(); handleCopy("both", `${task.text}\n\n${task.notes}`); }}
-              className="w-full text-left px-3 py-1.5 text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-slate-800 dark:hover:text-white flex items-center gap-2 transition-colors border-b border-slate-200 dark:border-slate-800/60"
-            >
-              {copiedType === "both" ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} className="text-slate-500 dark:text-slate-400" />}
-              <span>{copiedType === "both" ? "Copied!" : "Copy Title & Description"}</span>
-            </button>
+            />
           )}
-          <button
-            onClick={(e) => { e.stopPropagation(); deleteTask(task.id); setActiveMenuTaskId(null); }}
-            className="w-full text-left px-3 py-1.5 text-xs text-rose-400 hover:bg-rose-950/20 hover:text-rose-300 flex items-center gap-2 transition-colors"
-          >
-            <Trash2 size={12} className="text-rose-500" />
-            <span>Delete Task</span>
-          </button>
+          <MenuDivider />
+          <MenuItem icon={<Trash2 size={14} />} label="Delete task" danger onClick={run(() => deleteTask(task.id))} />
         </div>,
         document.body
       )}
     </>
   );
 };
-

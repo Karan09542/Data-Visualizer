@@ -2,14 +2,17 @@ import React, { useState, useEffect } from "react";
 import { resolveAssetUrl } from "../utils/assetManager";
 import { Image as ImageIcon, PlayCircle, Music, X } from "lucide-react";
 
-export function TaskImagePreview({ 
-  imageHashes = [], 
+export function TaskImagePreview({
+  imageHashes = [],
   compact = true,
+  strip = false,
   onDelete,
   onPreview
-}: { 
-  imageHashes?: string[], 
+}: {
+  imageHashes?: string[],
   compact?: boolean,
+  /** Small square thumbnails in a row, even for a single image (tight rows). */
+  strip?: boolean,
   onDelete?: (index: number) => void,
   onPreview?: (index: number) => void
 }) {
@@ -88,6 +91,27 @@ export function TaskImagePreview({
       </div>
     );
   };
+
+  if (compact && strip) {
+    const previewUrls = urls.slice(0, 4);
+    return (
+      <div className="mt-1 flex items-center gap-1">
+        {imageHashes.slice(0, 4).map((_, i) => (
+          <div
+            key={i}
+            className="relative w-9 h-9 rounded-md overflow-hidden shrink-0 border border-slate-200 dark:border-slate-700/60 bg-slate-100 dark:bg-slate-800"
+          >
+            {previewUrls[i] ? renderMedia(previewUrls[i], i, true) : <div className="w-full h-full animate-pulse" />}
+            {i === 3 && imageHashes.length > 4 && (
+              <div className="absolute inset-0 bg-black/55 flex items-center justify-center text-white text-[11px] font-semibold">
+                +{imageHashes.length - 4}
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    );
+  }
 
   if (compact) {
     if (imageHashes.length === 1) {

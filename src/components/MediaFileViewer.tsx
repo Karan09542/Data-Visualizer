@@ -6,8 +6,9 @@
  * fit/actual-size switch, video and sound with their controls, PDFs in a frame.
  */
 import React, { useEffect, useMemo, useState } from "react";
-import { Download, ExternalLink, FileQuestion, Maximize2, Minimize2, Pencil } from "lucide-react";
+import { Download, ExternalLink, FileQuestion, Pencil } from "lucide-react";
 import CustomAudioPlayer from "./CustomAudioPlayer";
+import { InteractiveZoomImage } from "./InteractiveZoomImage";
 import { resolveAssetUrl } from "../utils/assetManager";
 import { mediaKindLabel, type MediaFile } from "../utils/mediaFiles";
 
@@ -33,7 +34,6 @@ export default function MediaFileViewer({ name, media, onOpenEditor }: MediaFile
   const [state, setState] = useState<"loading" | "ready" | "missing">("loading");
   const [dimensions, setDimensions] = useState<{ width: number; height: number } | null>(null);
   const [size, setSize] = useState<number | null>(null);
-  const [actualSize, setActualSize] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -89,12 +89,6 @@ export default function MediaFileViewer({ name, media, onOpenEditor }: MediaFile
           {details}
         </span>
         <div className="flex items-center gap-0.5 shrink-0">
-          {media.kind === "image" && state === "ready" && (
-            <button type="button" className={toolbarButton} onClick={() => setActualSize(!actualSize)}>
-              {actualSize ? <Minimize2 size={12} /> : <Maximize2 size={12} />}
-              {actualSize ? "Fit" : "Actual size"}
-            </button>
-          )}
           {onOpenEditor && (
             <button type="button" className={toolbarButton} onClick={onOpenEditor} title="Open this image in the editor">
               <Pencil size={12} />
@@ -133,25 +127,21 @@ export default function MediaFileViewer({ name, media, onOpenEditor }: MediaFile
         )}
 
         {state === "ready" && url && media.kind === "image" && (
-          <div
-            className="max-w-full max-h-full rounded-[3px]"
-            style={{
+          // Zoom from 10% to 32×, pan, and the point tool for reading pixel coordinates.
+          <InteractiveZoomImage
+            src={url}
+            alt={name}
+            enableCoordinates
+            onNaturalSize={(width, height) => setDimensions({ width, height })}
+            className="shadow-none"
+            containerClassName="rounded-[3px]"
+            containerStyle={{
               backgroundImage:
                 "linear-gradient(45deg, rgba(128,128,128,0.18) 25%, transparent 25%), linear-gradient(-45deg, rgba(128,128,128,0.18) 25%, transparent 25%), linear-gradient(45deg, transparent 75%, rgba(128,128,128,0.18) 75%), linear-gradient(-45deg, transparent 75%, rgba(128,128,128,0.18) 75%)",
               backgroundSize: "16px 16px",
               backgroundPosition: "0 0, 0 8px, 8px -8px, -8px 0px",
             }}
-          >
-            <img
-              src={url}
-              alt={name}
-              onLoad={(e) => {
-                const img = e.currentTarget;
-                setDimensions({ width: img.naturalWidth, height: img.naturalHeight });
-              }}
-              className={actualSize ? "max-w-none" : "max-w-full max-h-[calc(100vh-14rem)] object-contain"}
-            />
-          </div>
+          />
         )}
 
         {state === "ready" && url && media.kind === "video" && (

@@ -1,16 +1,11 @@
-import React, { useState, useRef, useEffect, useMemo, forwardRef } from "react";
+import React, { useState, useRef, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import {
   Search,
   X,
-  Circle,
-  CheckCircle2,
-  AlertCircle,
-  Eye,
   Check,
   Hash,
-  Command,
   ChevronDown,
   Trash2,
   Calendar as CalendarIcon,
@@ -21,34 +16,48 @@ import {
   Folder,
   FileText,
   Sparkles,
-  Layers,
-  ListTodo,
-  ArrowLeft,
-  CornerDownLeft,
-  Edit2,
+  ListTree,
+  List,
   ExternalLink,
   Plus,
   Camera,
   Upload,
-  Video,
-  Music,
   Image as ImageIcon,
-  ChevronLeft,
-  Star
+  Star,
+  CornerDownLeft,
+  CheckCircle2,
+  Paperclip,
+  AlignLeft,
+  Eye,
+  Pencil,
+  Layers,
 } from "lucide-react";
 import Markdown from "react-markdown";
 import { SmartDatePicker } from "./SmartDatePicker";
 import { CameraCaptureModal } from "./CameraCaptureModal";
+import { ConfirmModal } from "./ConfirmModal";
 import { format, parseISO } from "date-fns";
 import { useStore } from "../store/useStore";
-import { getValueAtPath, setValueAtPath } from "../utils/pathUtils";
-import { STATUS_OPTIONS, PRIORITY_OPTIONS, PREDEFINED_TAGS, getTagColorClass } from "./TodoWorkspace";
 import { JavaScriptIcon, TypeScriptIcon, PythonIcon, JsonIcon, MarkdownIcon, TextIcon } from "./FileIcons";
 import { TaskImagePreview } from "./TaskImagePreview";
 import { cn } from "@/lib/utils";
 import { importFile } from "../utils/assetManager";
+import * as todo from "./todo/todoModel";
+import type { TodoTask } from "./todo/todoModel";
+import { createTodoList, findTodoLists, prepareTodoSerializer, writeTasks } from "./todo/todoStorage";
+import {
+  LengthHint,
+  MENU_CLASS,
+  PREDEFINED_TAGS,
+  PriorityBadge,
+  PriorityPicker,
+  STATUS_OPTIONS,
+  TaskCheckbox,
+  getTagColorClass,
+} from "./todo/TodoUI";
 
-// --- Types ---
+// ─── Types ─────────────────────────────────────────────────────────────────────
+
 export interface FlatFileItem {
   id: string; // "root.dataSources.transform_users_js_node"
   name: string; // "transform_users.js"
@@ -57,25 +66,16 @@ export interface FlatFileItem {
   realKey: string; // "transform_users_js_node"
 }
 
-export interface FlatTodoItem {
-  id: string;
-  text: string;
-  completed: boolean;
-  status?: string;
-  priority?: string;
-  dueDate?: string;
-  tags?: string[];
-  notes?: string;
-  tasks?: any[];
-  imageHashes?: string[];
+/** A task together with the list it lives in, for views across all lists. */
+export interface FlatTodoItem extends TodoTask {
   nodePath: string; // The .todo node path
   nodeName: string; // Friendly file name of the .todo node
   parentTaskId?: string;
-  assignee?: string;
-  depth?: number;
+  depth: number;
 }
 
-// --- Helper: scan all files in the virtual workspace ---
+// ─── Workspace scanning ────────────────────────────────────────────────────────
+
 export function getAllFiles(data: any, path: string = "root"): FlatFileItem[] {
   if (!data || typeof data !== "object") return [];
   const items: FlatFileItem[] = [];
@@ -96,264 +96,44 @@ export function getAllFiles(data: any, path: string = "root"): FlatFileItem[] {
       }
     }
 
-    if (keyLower.endsWith("_js_node")) {
-      items.push({ id: currentPath, name: key.replace(/_js_node$/i, ".js"), type: "js_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_py_node")) {
-      items.push({ id: currentPath, name: key.replace(/_py_node$/i, ".py"), type: "py_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_ts_node")) {
-      items.push({ id: currentPath, name: key.replace(/_ts_node$/i, ".ts"), type: "ts_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_api_node")) {
-      items.push({ id: currentPath, name: key.replace(/_api_node$/i, ".api"), type: "api_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_todo_node") || keyLower.endsWith(".todo")) {
-      items.push({ id: currentPath, name: keyLower.endsWith(".todo") ? key : key.replace(/_todo_node$/i, ".todo"), type: "todo_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_transfer_node") || keyLower.endsWith(".transfer")) {
-      items.push({ id: currentPath, name: keyLower.endsWith(".transfer") ? key : key.replace(/_transfer_node$/i, ".transfer"), type: "transfer_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_math_node") || keyLower.endsWith(".math")) {
-      items.push({ id: currentPath, name: keyLower.endsWith(".math") ? key : key.replace(/_math_node$/i, ".math"), type: "math_node", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_json")) {
-      items.push({ id: currentPath, name: key.replace(/_json$/i, ".json"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_yaml")) {
-      items.push({ id: currentPath, name: key.replace(/_yaml$/i, ".yaml"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_yml")) {
-      items.push({ id: currentPath, name: key.replace(/_yml$/i, ".yml"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_csv")) {
-      items.push({ id: currentPath, name: key.replace(/_csv$/i, ".csv"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_xml")) {
-      items.push({ id: currentPath, name: key.replace(/_xml$/i, ".xml"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_md")) {
-      items.push({ id: currentPath, name: key.replace(/_md$/i, ".md"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (keyLower.endsWith("_txt")) {
-      items.push({ id: currentPath, name: key.replace(/_txt$/i, ".txt"), type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    } else if (typeof value === "object" && value !== null) {
-      items.push({ id: currentPath, name: displayName, type: "folder", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
+    const item = (name: string, type: string) =>
+      items.push({ id: currentPath, name, type, pathStr: currentPath.replace(/^root\./, ""), realKey: key });
+
+    if (keyLower.endsWith("_js_node")) item(key.replace(/_js_node$/i, ".js"), "js_node");
+    else if (keyLower.endsWith("_py_node")) item(key.replace(/_py_node$/i, ".py"), "py_node");
+    else if (keyLower.endsWith("_ts_node")) item(key.replace(/_ts_node$/i, ".ts"), "ts_node");
+    else if (keyLower.endsWith("_api_node")) item(key.replace(/_api_node$/i, ".api"), "api_node");
+    else if (keyLower.endsWith("_todo_node") || keyLower.endsWith(".todo"))
+      item(keyLower.endsWith(".todo") ? key : key.replace(/_todo_node$/i, ".todo"), "todo_node");
+    else if (keyLower.endsWith("_transfer_node") || keyLower.endsWith(".transfer"))
+      item(keyLower.endsWith(".transfer") ? key : key.replace(/_transfer_node$/i, ".transfer"), "transfer_node");
+    else if (keyLower.endsWith("_math_node") || keyLower.endsWith(".math"))
+      item(keyLower.endsWith(".math") ? key : key.replace(/_math_node$/i, ".math"), "math_node");
+    else if (/_(json|yaml|yml|csv|xml|md|txt)$/i.test(keyLower))
+      item(key.replace(/_(json|yaml|yml|csv|xml|md|txt)$/i, ".$1"), "primitive");
+    else if (typeof value === "object" && value !== null) {
+      item(displayName, "folder");
       items.push(...getAllFiles(value, currentPath));
-    } else {
-      items.push({ id: currentPath, name: displayName, type: "primitive", pathStr: currentPath.replace(/^root\./, ""), realKey: key });
-    }
+    } else item(displayName, "primitive");
   }
   return items;
 }
 
-// --- Helper: scan todos across all .todo files recursively ---
-export function scanAllTodos(data: any, path: string = "root"): FlatTodoItem[] {
-  if (!data || typeof data !== "object") return [];
-  const todos: FlatTodoItem[] = [];
-  const isParentArray = Array.isArray(data);
-
-  for (const [key, value] of Object.entries(data)) {
-    if (typeof value === "function") continue;
-    const currentPath = path === "root" ? `root.${key}` : `${path}.${key}`;
-    const keyLower = key.toLowerCase();
-
-    if (keyLower.endsWith("_todo_node") || keyLower.endsWith(".todo")) {
-      const displayName = keyLower.endsWith(".todo") ? key : key.replace(/_todo_node$/i, ".todo");
-      try {
-        let nodeData: any = value;
-        if (typeof value === "string") {
-          nodeData = JSON.parse(value);
-        }
-
-        if (nodeData && Array.isArray(nodeData.tasks)) {
-          const processTasks = (tasksList: any[], parentId?: string, depth = 0) => {
-            tasksList.forEach(task => {
-              if (task && typeof task === "object") {
-                todos.push({
-                  ...task,
-                  nodePath: currentPath,
-                  nodeName: displayName,
-                  parentTaskId: parentId,
-                  depth,
-                });
-                if (Array.isArray(task.tasks)) {
-                  processTasks(task.tasks, task.id, depth + 1);
-                }
-              }
-            });
-          };
-          processTasks(nodeData.tasks);
-        }
-      } catch (e) {
-        console.error("Failed to parse todo data for path", currentPath, e);
-      }
-    } else if (typeof value === "object" && value !== null) {
-      todos.push(...scanAllTodos(value, currentPath));
-    }
-  }
-  return todos;
+/** Every task in every list, in tree order, with its list and depth. */
+export function scanAllTodos(data: any): FlatTodoItem[] {
+  return findTodoLists(data).flatMap(({ path, name, list }) =>
+    todo.flattenTasks(list.tasks).map(({ task, depth, parentId }) => ({
+      ...task,
+      nodePath: path,
+      nodeName: name,
+      parentTaskId: parentId,
+      depth,
+    })),
+  );
 }
 
-// --- Helper: write back todo update to specific node ---
-export async function saveTodoChangesToWorkspace(
-  _ignoredParsedData: any, // kept for signature compatibility from previous usage
-  nodePath: string,
-  taskId: string,
-  updates: any | null // null means delete
-) {
-  const { parsedData, setCode, codeFormat } = useStore.getState();
-  const updatedData = JSON.parse(JSON.stringify(parsedData));
-  const val = getValueAtPath(updatedData, nodePath);
-  if (!val) return parsedData;
+// ─── Helpers ───────────────────────────────────────────────────────────────────
 
-  let nodeObj: any = val;
-  let wasString = false;
-  if (typeof val === "string") {
-    try {
-      nodeObj = JSON.parse(val);
-      wasString = true;
-    } catch {
-      return parsedData;
-    }
-  }
-
-  if (nodeObj && Array.isArray(nodeObj.tasks)) {
-    const syncTaskCompletionState = (tList: any[]): any[] => {
-      return tList.map((t) => {
-        let updatedTasks = t.tasks;
-        if (t.tasks && t.tasks.length > 0) {
-          updatedTasks = syncTaskCompletionState(t.tasks);
-        }
-        const hasChildren = updatedTasks && updatedTasks.length > 0;
-        const hasIncomplete = hasChildren && updatedTasks.some((child: any) => !child.completed && child.status !== "Completed");
-        return {
-          ...t,
-          tasks: updatedTasks,
-          completed: hasChildren ? !hasIncomplete : t.completed,
-          status: hasChildren ? (hasIncomplete ? "Todo" : "Completed") : t.status,
-        };
-      });
-    };
-
-    if (updates === null) {
-      // Delete task
-      const walk = (tList: any[]): any[] => {
-        return tList
-          .filter(t => t.id !== taskId)
-          .map(t => {
-            if (t.tasks && t.tasks.length > 0) {
-              return { ...t, tasks: walk(t.tasks) };
-            }
-            return t;
-          });
-      };
-      nodeObj.tasks = syncTaskCompletionState(walk(nodeObj.tasks));
-    } else {
-      // Update task
-      const walk = (tList: any[]): any[] => {
-        return tList.map(t => {
-          if (t.id === taskId) {
-            const merged = { ...t, ...updates };
-            if (updates.status === "Completed") {
-              merged.completed = true;
-            } else if (updates.status && updates.status !== "Completed") {
-              merged.completed = false;
-            }
-            if (updates.completed === true) {
-              merged.status = "Completed";
-            } else if (updates.completed === false) {
-              if (t.status === "Completed") merged.status = "Todo";
-            }
-            return merged;
-          }
-          if (t.tasks && t.tasks.length > 0) {
-            return { ...t, tasks: walk(t.tasks) };
-          }
-          return t;
-        });
-      };
-      nodeObj.tasks = syncTaskCompletionState(walk(nodeObj.tasks));
-    }
-  }
-
-  const finalVal = wasString ? JSON.stringify(nodeObj, null, 2) : nodeObj;
-  const nextUpdatedData = setValueAtPath(updatedData, nodePath, finalVal);
-
-  let newCode = "";
-  if (codeFormat === "yaml") {
-    try {
-      const yaml = (await import("js-yaml")).default;
-      newCode = yaml.dump(nextUpdatedData);
-    } catch {
-      newCode = JSON.stringify(nextUpdatedData, null, 2);
-    }
-  } else {
-    newCode = JSON.stringify(nextUpdatedData, null, 2);
-  }
-  setCode(newCode);
-  return nextUpdatedData;
-}
-
-export async function addNewTodoToWorkspace(
-  _ignoredParsedData: any, // kept for signature compatibility
-  nodePath: string,
-  newTaskText: string,
-  parentTaskId?: string
-) {
-  const { parsedData, setCode, codeFormat } = useStore.getState();
-  const updatedData = JSON.parse(JSON.stringify(parsedData));
-  const val = getValueAtPath(updatedData, nodePath);
-  if (!val) return parsedData;
-
-  let nodeObj: any = val;
-  let wasString = false;
-  if (typeof val === "string") {
-    try {
-      nodeObj = JSON.parse(val);
-      wasString = true;
-    } catch {
-      return parsedData;
-    }
-  }
-
-  const newId = Math.random().toString(36).substring(2, 9);
-  const newTask: any = {
-    id: newId,
-    text: newTaskText.trim(),
-    completed: false,
-    status: "Todo",
-    priority: "Normal",
-    tasks: []
-  };
-
-  if (nodeObj && Array.isArray(nodeObj.tasks)) {
-    if (!parentTaskId) {
-      nodeObj.tasks.push(newTask);
-    } else {
-      const walk = (tList: any[]): boolean => {
-        for (let i = 0; i < tList.length; i++) {
-          if (tList[i].id === parentTaskId) {
-            if (!tList[i].tasks) tList[i].tasks = [];
-            tList[i].tasks.push(newTask);
-            return true;
-          }
-          if (tList[i].tasks && tList[i].tasks.length > 0) {
-            if (walk(tList[i].tasks)) return true;
-          }
-        }
-        return false;
-      };
-      walk(nodeObj.tasks);
-    }
-  }
-
-  const finalVal = wasString ? JSON.stringify(nodeObj, null, 2) : nodeObj;
-  const nextUpdatedData = setValueAtPath(updatedData, nodePath, finalVal);
-
-  let newCode = "";
-  if (codeFormat === "yaml") {
-    try {
-      const yaml = (await import("js-yaml")).default;
-      newCode = yaml.dump(nextUpdatedData);
-    } catch {
-      newCode = JSON.stringify(nextUpdatedData, null, 2);
-    }
-  } else {
-    newCode = JSON.stringify(nextUpdatedData, null, 2);
-  }
-  setCode(newCode);
-  return nextUpdatedData;
-}
-
-// --- Helper: fuzzy match algorithm ---
 function scoreFuzzy(str: string, query: string): number {
   if (!query) return 1;
   const s = str.toLowerCase();
@@ -376,261 +156,301 @@ function scoreFuzzy(str: string, query: string): number {
   return matches === q.length ? 1 : 0;
 }
 
-// --- Dynamic File Icon Renderer Helper ---
 function renderOverlayFileIcon(type: string, name: string) {
-  const iconClass = "w-4 h-4 text-slate-400 dark:text-slate-500 shrink-0";
-  if (type === "js_node" || name.endsWith(".js")) {
-    return <JavaScriptIcon />;
-  } else if (type === "py_node" || name.endsWith(".py")) {
-    return <PythonIcon />;
-  } else if (type === "ts_node" || name.endsWith(".ts")) {
-    return <TypeScriptIcon />;
-  } else if (type === "api_node" || name.endsWith(".api")) {
-    return <Globe className="w-4 h-4 text-sky-500 dark:text-sky-400 shrink-0" />;
-  } else if (type === "todo_node" || name.endsWith(".todo")) {
-    return <CheckCircle2 className="w-4 h-4 text-blue-500 dark:text-blue-400 shrink-0" />;
-  } else if (type === "transfer_node" || name.endsWith(".transfer")) {
-    return <Globe className="w-4 h-4 text-emerald-500 dark:text-emerald-400 shrink-0" />;
-  } else if (type === "math_node" || name.endsWith(".math")) {
-    return <Sparkles className="w-4 h-4 text-fuchsia-500 dark:text-fuchsia-400 shrink-0" />;
-  } else if (type === "folder") {
-    return <Folder className="w-4 h-4 text-amber-500 dark:text-amber-400 shrink-0" />;
-  } else {
-    if (name.endsWith(".json")) return <JsonIcon />;
-    if (name.endsWith(".md")) return <MarkdownIcon />;
-    if (name.endsWith(".txt")) return <TextIcon />;
-    return <FileText className={iconClass} />;
-  }
+  const cls = "w-4 h-4 shrink-0";
+  if (type === "js_node" || name.endsWith(".js")) return <JavaScriptIcon />;
+  if (type === "py_node" || name.endsWith(".py")) return <PythonIcon />;
+  if (type === "ts_node" || name.endsWith(".ts")) return <TypeScriptIcon />;
+  if (type === "api_node" || name.endsWith(".api")) return <Globe className={`${cls} text-sky-500`} />;
+  if (type === "todo_node" || name.endsWith(".todo")) return <CheckCircle2 className={`${cls} text-blue-500`} />;
+  if (type === "transfer_node" || name.endsWith(".transfer")) return <Globe className={`${cls} text-emerald-500`} />;
+  if (type === "math_node" || name.endsWith(".math")) return <Sparkles className={`${cls} text-fuchsia-500`} />;
+  if (type === "folder") return <Folder className={`${cls} text-amber-500`} />;
+  if (name.endsWith(".json")) return <JsonIcon />;
+  if (name.endsWith(".md")) return <MarkdownIcon />;
+  if (name.endsWith(".txt")) return <TextIcon />;
+  return <FileText className={`${cls} text-slate-400`} />;
 }
 
-// ==================== MAIN COMPONENT ====================
-function InlineDropdown({ value, options, onChange, icon: Icon, defaultLabel = "Select", variant = "default" }: any) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
+const readLocal = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
 
-  useEffect(() => {
-    const handle = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) {
-        setOpen(false);
-      }
-    };
-    if (open) document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, [open]);
+const writeLocal = (key: string, value: unknown) => {
+  try {
+    if (value === null || value === undefined) localStorage.removeItem(key);
+    else localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* storage unavailable: preferences just don't persist */
+  }
+};
 
-  const activeOption = options.find((o: any) => o.value === value) || options[0];
-  const ActiveIcon = activeOption?.icon || Icon;
+// Stored as a plain string by earlier versions; read both shapes.
+const readDefaultList = (): string | null => {
+  try {
+    const raw = localStorage.getItem("productivity_default_todo_node");
+    if (!raw) return null;
+    return raw.startsWith('"') ? JSON.parse(raw) : raw;
+  } catch {
+    return null;
+  }
+};
 
+const formatDue = (date: string) => {
+  try {
+    return format(parseISO(date), "MMM d");
+  } catch {
+    return date;
+  }
+};
+
+const isOverdue = (task: TodoTask) => {
+  if (!task.dueDate || todo.isTaskDone(task)) return false;
+  const [y, m, d] = task.dueDate.split("-").map(Number);
+  if (!y || !m || !d) return false;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return new Date(y, m - 1, d) < today;
+};
+
+const MEDIA_ACCEPT = "image/*,video/*,audio/*";
+
+// ─── Small UI pieces ───────────────────────────────────────────────────────────
+
+function Kbd({ children }: { children: React.ReactNode }) {
   return (
-    <div className="relative" ref={ref}>
-      <button
-        onClick={() => setOpen(!open)}
-        className={cn(
-          "flex items-center gap-1.5 px-2.5 py-1 font-semibold rounded-md transition-colors border",
-          variant === "priority" 
-            ? cn("uppercase tracking-wider text-[10px]", activeOption?.bgColor || "bg-white border-slate-200 dark:bg-[#151a23] dark:border-slate-800")
-            : "text-xs bg-white hover:bg-slate-50 border-slate-200 text-slate-700 dark:bg-[#151a23] dark:hover:bg-[#1a212d] dark:border-slate-800 dark:text-slate-300"
-        )}
+    <kbd className="inline-flex items-center justify-center h-5 min-w-5 px-1.5 rounded border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-white/5 font-sans text-[10px] font-medium text-slate-500 dark:text-slate-400">
+      {children}
+    </kbd>
+  );
+}
+
+/** Backdrop plus a panel near the top of the screen, like a command palette. */
+function PaletteShell({
+  label,
+  width,
+  zIndex,
+  onClose,
+  children,
+  onPaste,
+  takeFocus = false,
+}: {
+  label: string;
+  width: number;
+  zIndex: number;
+  onClose: () => void;
+  children: React.ReactNode;
+  onPaste?: (e: React.ClipboardEvent) => void;
+  /** Move keyboard focus into the panel on open (for panels without an autofocused input). */
+  takeFocus?: boolean;
+}) {
+  const panelRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (takeFocus) panelRef.current?.focus();
+  }, [takeFocus]);
+  return (
+    <motion.div
+      className="fixed inset-0 flex items-start justify-center px-3 sm:px-4 pt-[8vh] sm:pt-[10vh] pb-6 bg-slate-950/40 dark:bg-black/60 backdrop-blur-[2px]"
+      style={{ zIndex }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      transition={{ duration: 0.12 }}
+      onMouseDown={(e) => {
+        if (e.target === e.currentTarget) onClose();
+      }}
+    >
+      <motion.div
+        ref={panelRef}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        aria-label={label}
+        initial={{ opacity: 0, y: -8, scale: 0.985 }}
+        animate={{ opacity: 1, y: 0, scale: 1 }}
+        exit={{ opacity: 0, y: -8, scale: 0.985 }}
+        transition={{ duration: 0.14, ease: "easeOut" }}
+        className="w-full flex flex-col max-h-[80vh] overflow-hidden outline-none rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f131b] text-slate-800 dark:text-slate-100 shadow-2xl shadow-slate-900/20 dark:shadow-black/60"
+        style={{ maxWidth: width }}
+        onPaste={onPaste}
       >
-        {variant !== "priority" && ActiveIcon && <ActiveIcon size={12} className={activeOption?.color || "text-slate-500"} />}
-        <span className={variant === "priority" ? activeOption?.color : ""}>{activeOption ? activeOption.label : defaultLabel}</span>
-        <ChevronDown size={12} className={variant === "priority" ? cn(activeOption?.color, "opacity-70") : "text-slate-400 ml-0.5"} />
-      </button>
-      
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            key="inline-dropdown"
-            initial={{ opacity: 0, y: 4, scale: 0.95 }}
-            animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 4, scale: 0.95 }}
-            transition={{ duration: 0.1 }}
-            className="absolute left-0 top-full mt-1.5 w-max min-w-[140px] z-[12000] bg-white dark:bg-[#0f141d] border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl overflow-hidden py-1"
-          >
-            {options.map((opt: any) => {
-              const OptIcon = opt.icon;
-              return (
-                <button
-                  key={opt.value}
-                  onClick={() => {
-                    onChange(opt.value);
-                    setOpen(false);
-                  }}
-                  className={cn(
-                    "w-full flex items-center gap-2 px-3 py-1.5 text-xs font-medium transition-colors hover:bg-slate-100 dark:hover:bg-slate-800",
-                    value === opt.value ? "text-slate-900 dark:text-slate-100 bg-slate-50 dark:bg-slate-800/50" : "text-slate-600 dark:text-slate-400"
-                  )}
-                >
-                  {variant !== "priority" && OptIcon && <OptIcon size={12} className={opt.color || "text-slate-400"} />}
-                  <span className={variant === "priority" ? cn("uppercase tracking-wider font-bold text-[10px]", opt.color) : ""}>
-                    {opt.label}
-                  </span>
-                  {value === opt.value && <Check size={12} className={variant === "priority" ? cn(opt.color, "ml-auto") : "ml-auto text-blue-500"} />}
-                </button>
-              );
-            })}
-          </motion.div>
-        )}
-      </AnimatePresence>
+        {children}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+function PaletteFooter({ hints, right }: { hints: [React.ReactNode, string][]; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-3 px-3.5 h-9 border-t border-slate-200/80 dark:border-slate-800 bg-slate-50/70 dark:bg-white/[0.02] text-[11px] text-slate-500 dark:text-slate-400 shrink-0 select-none">
+      <div className="flex items-center gap-3 min-w-0 overflow-hidden">
+        {hints.map(([keys, label]) => (
+          <span key={label} className="flex items-center gap-1.5 whitespace-nowrap">
+            {keys}
+            <span>{label}</span>
+          </span>
+        ))}
+      </div>
+      {right && <span className="shrink-0 tabular-nums">{right}</span>}
     </div>
   );
 }
 
-function LabelInput({ tags, onAdd }: { tags: string[], onAdd: (tag: string) => void }) {
-  const [val, setVal] = useState("");
+function SectionLabel({ icon, children, right }: { icon?: React.ReactNode; children: React.ReactNode; right?: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-2 mb-2">
+      <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-slate-400">
+        {icon}
+        {children}
+      </span>
+      {right}
+    </div>
+  );
+}
+
+const GHOST_BUTTON =
+  "inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[12px] text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer disabled:opacity-50 disabled:pointer-events-none";
+const ICON_BUTTON =
+  "h-7 w-7 inline-flex items-center justify-center rounded-md text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer";
+const INPUT =
+  "h-8 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/60 px-2.5 text-[13px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 transition-colors";
+
+/** Status select for the detail popup. */
+function StatusSelect({ value, onChange }: { value: string; onChange: (v: todo.TodoStatus) => void }) {
   const [open, setOpen] = useState(false);
-  const [coords, setCoords] = useState({ top: 0, left: 0, isAbove: false });
-  const inputRef = useRef<HTMLInputElement>(null);
-  const dropdownRef = useRef<HTMLDivElement>(null);
-  const popupRef = useRef<HTMLDivElement>(null);
-
-  const updatePosition = () => {
-    if (dropdownRef.current) {
-      const rect = dropdownRef.current.getBoundingClientRect();
-      const popupHeight = 220; // safe estimate
-      const spaceBelow = window.innerHeight - rect.bottom;
-      const spaceAbove = rect.top;
-      
-      const isAbove = spaceBelow < popupHeight && spaceAbove > spaceBelow;
-      
-      setCoords({
-        top: isAbove ? rect.top - 8 : rect.bottom + 8, // add spacing
-        left: rect.left,
-        isAbove
-      });
-    }
-  };
+  const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open) {
-      updatePosition();
-      // use capture phase for scroll to catch inner scrolls
-      window.addEventListener("scroll", updatePosition, true);
-      window.addEventListener("resize", updatePosition);
-    }
-    return () => {
-      window.removeEventListener("scroll", updatePosition, true);
-      window.removeEventListener("resize", updatePosition);
-    };
-  }, [open]);
-
-  useEffect(() => {
+    if (!open) return;
     const handle = (e: MouseEvent) => {
-      if (
-        dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
-        popupRef.current && !popupRef.current.contains(e.target as Node)
-      ) {
-        setOpen(false);
-      }
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
     };
-    if (open) document.addEventListener("mousedown", handle);
+    document.addEventListener("mousedown", handle);
     return () => document.removeEventListener("mousedown", handle);
   }, [open]);
 
-  const handleAdd = (tagToAdd: string) => {
-    const trimmed = tagToAdd.trim().toLowerCase();
-    if (trimmed && !tags.includes(trimmed)) {
-      onAdd(trimmed);
-    }
-    setVal("");
-    setOpen(false);
-    inputRef.current?.focus();
-  };
-
-  const suggestions = PREDEFINED_TAGS.filter((t) => !tags.includes(t) && t.includes(val.toLowerCase().trim()));
+  const active = STATUS_OPTIONS.find((o) => o.value === value) || STATUS_OPTIONS[0];
+  const ActiveIcon = active.icon;
 
   return (
-    <div className="relative group" ref={dropdownRef}>
-      <div className="flex items-center relative w-[130px]">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="ADD LABEL..."
-          value={val}
-          onChange={(e) => {
-            setVal(e.target.value);
-            setOpen(true);
-          }}
-          onFocus={() => {
-            setOpen(true);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") {
-              e.preventDefault();
-              handleAdd(val);
-            }
-          }}
-          className="w-full text-[10px] items-center font-bold uppercase tracking-wider bg-transparent border border-dashed border-slate-400 dark:border-slate-700 px-2.5 pl-6 py-1.5 pr-7 rounded-lg outline-none text-slate-700 dark:text-slate-300 focus:border-blue-500 focus:bg-blue-500/5 transition-colors placeholder:text-slate-500/70"
-        />
-        <div className="absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none">
-          <Hash size={10} className="text-slate-400" />
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        className="inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[12px] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors cursor-pointer"
+      >
+        <ActiveIcon size={13} className={active.color} />
+        {active.label}
+        <ChevronDown size={12} className="text-slate-400" />
+      </button>
+      {open && (
+        <div role="listbox" className={cn(MENU_CLASS, "absolute right-0 top-full mt-1 z-10 w-44")}>
+          {STATUS_OPTIONS.map((opt) => {
+            const Icon = opt.icon;
+            return (
+              <button
+                key={opt.value}
+                type="button"
+                role="option"
+                aria-selected={opt.value === value}
+                onClick={() => {
+                  onChange(opt.value);
+                  setOpen(false);
+                }}
+                className="w-full flex items-center gap-2.5 px-3 h-8 text-[12px] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+              >
+                <Icon size={13} className={opt.color} />
+                <span className="flex-1 text-left">{opt.label}</span>
+                {opt.value === value && <Check size={13} className="text-blue-500" />}
+              </button>
+            );
+          })}
         </div>
-        <button
-          onClick={() => handleAdd(val)}
-          className="absolute right-1.5 top-1/2 -translate-y-1/2 p-1 text-slate-400 hover:text-blue-500 cursor-pointer"
-        >
-          <CornerDownLeft size={12} />
-        </button>
-      </div>
-
-      {typeof document !== "undefined" && createPortal(
-        <AnimatePresence>
-          {open && suggestions.length > 0 && (
-            <motion.div
-              key="label-popup"
-              ref={popupRef}
-              initial={{ opacity: 0, y: coords.isAbove ? 4 : -4, scale: 0.95 }}
-              animate={{ opacity: 1, y: 0, scale: 1 }}
-              exit={{ opacity: 0, scale: 0.95, transition: { duration: 0.1 } }}
-              transition={{ duration: 0.15, ease: "easeOut" }}
-              style={{
-                position: "fixed",
-                top: coords.isAbove ? "auto" : coords.top,
-                bottom: coords.isAbove ? window.innerHeight - coords.top : "auto",
-                left: coords.left,
-              }}
-              className="w-48 z-[13000] bg-white dark:bg-[#11151d] border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl p-2 flex flex-col gap-1.5 origin-top"
-            >
-              {suggestions.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => handleAdd(s)}
-                  className="flex items-center gap-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 p-1.5 rounded-md transition-colors w-full text-left cursor-pointer"
-                >
-                  <Hash size={12} className="text-slate-400 shrink-0" />
-                  <span
-                    className={cn(
-                      "text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded border leading-none",
-                      getTagColorClass(s)
-                    )}
-                  >
-                    {s}
-                  </span>
-                </button>
-              ))}
-            </motion.div>
-          )}
-        </AnimatePresence>,
-        document.body
       )}
     </div>
   );
 }
 
-const checkHasIncompleteChildren = (tasks?: any[]): boolean => {
-  if (!tasks || tasks.length === 0) return false;
-  return tasks.some((t: any) => {
-    const isComp = t.completed || t.status === "Completed";
-    if (!isComp) return true;
-    return checkHasIncompleteChildren(t.tasks);
-  });
-};
+/** Label input with suggestions for the common labels. */
+function LabelInput({ tags, onAdd }: { tags: string[]; onAdd: (tag: string) => void }) {
+  const [val, setVal] = useState("");
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
 
-const CustomDateInput = forwardRef<HTMLDivElement, any>(({ value, onClick, className, children }, ref) => (
-  <div onClick={onClick} ref={ref} className={className}>
-    {children}
-  </div>
-));
+  useEffect(() => {
+    if (!open) return;
+    const handle = (e: MouseEvent) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [open]);
+
+  const add = (raw: string) => {
+    const tag = raw.trim().toLowerCase().replace(/^#/, "");
+    if (tag && !tags.includes(tag)) onAdd(tag);
+    setVal("");
+  };
+
+  const suggestions = PREDEFINED_TAGS.filter((t) => !tags.includes(t) && t.includes(val.toLowerCase().trim()));
+
+  return (
+    <div className="relative" ref={wrapRef}>
+      <div className="relative flex items-center w-36">
+        <Hash size={11} className="absolute left-2 text-slate-400 pointer-events-none" />
+        <input
+          type="text"
+          placeholder="Add label"
+          value={val}
+          onChange={(e) => {
+            setVal(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === ",") {
+              e.preventDefault();
+              add(val);
+            } else if (e.key === "Escape" && (val || open)) {
+              e.stopPropagation();
+              setVal("");
+              setOpen(false);
+            }
+          }}
+          className="h-7 w-full rounded-md border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/60 pl-6 pr-2 text-[12px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20"
+        />
+      </div>
+      {open && suggestions.length > 0 && (
+        <div className={cn(MENU_CLASS, "absolute left-0 bottom-full mb-1 z-10 w-40")}>
+          {suggestions.map((s) => (
+            <button
+              key={s}
+              type="button"
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => add(s)}
+              className="w-full flex items-center gap-2 px-3 h-8 hover:bg-slate-100 dark:hover:bg-white/5 transition-colors"
+            >
+              <span className={cn("inline-flex items-center h-5 px-1.5 rounded-md border text-[11px] font-medium", getTagColorClass(s))}>
+                {s}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ────────────────────────────────────────────────────────────
+
+type TaskKey = { id: string; nodePath: string };
 
 export default function ProductivityLayer() {
   const parsedData = useStore((s) => s.parsedData);
@@ -638,110 +458,116 @@ export default function ProductivityLayer() {
   const openWorkspaceTab = useStore((state) => state.openWorkspaceTab);
   const setExpandedJsNodeId = useStore((state) => state.setExpandedJsNodeId);
 
-  // Dialog opened states
-  const [isTodoOpen, setIsTodoOpen] = useState(false);
-  const wasTodoOpenRef = useRef(false);
-  const [isFileOpen, setIsFileOpen] = useState(false);
+  const notify = (message: string, type: "success" | "info" | "error" = "success") =>
+    useStore.getState().setNotification?.({ message, type });
 
-  // Search input state
+  // Which overlay is open
+  const [isTodoOpen, setIsTodoOpen] = useState(false);
+  const [isFileOpen, setIsFileOpen] = useState(false);
+  const wasTodoOpenRef = useRef(false);
+
+  // Search and keyboard selection
   const [todoSearch, setTodoSearch] = useState("");
   const [fileSearch, setFileSearch] = useState("");
-
-  // Keyboard pointer selection
   const [selectedTodoIdx, setSelectedTodoIdx] = useState(0);
   const [selectedFileIdx, setSelectedFileIdx] = useState(0);
 
-  // Todo Detail state
-  const [activeTodo, setActiveTodo] = useState<FlatTodoItem | null>(null);
-  const [todoViewMode, setTodoViewMode] = useState<"flat" | "tree">("flat");
-  const [isEditingNotes, setIsEditingNotes] = useState(false);
-  const [isCameraOpen, setIsCameraOpen] = useState(false);
-  const [isUploading, setIsUploading] = useState(false);
-  const [isConfirmingDeleteAll, setIsConfirmingDeleteAll] = useState(false);
-
-  // New task creation states
-  const [isCreatingTodo, setIsCreatingTodo] = useState(false);
-  const [newTodoText, setNewTodoText] = useState("");
-  const [isNewTodoFocused, setIsNewTodoFocused] = useState(false);
-  const [isDetailTitleFocused, setIsDetailTitleFocused] = useState(false);
-  const [selectedNodePath, setSelectedNodePath] = useState("");
-  const [targetParentTaskId, setTargetParentTaskId] = useState("");
-
-  // List/Todo Node Navigation & Default Selection states
-  const [todoCenterMode, setTodoCenterMode] = useState<"nodes_list" | "tasks_list">("tasks_list");
-  const [defaultTodoNodeId, setDefaultTodoNodeIdState] = useState<string | null>(() => 
-    localStorage.getItem("productivity_default_todo_node")
+  // Todo center
+  const [selectedListPath, setSelectedListPath] = useState(""); // "" = all lists
+  const [defaultListPath, setDefaultListPathState] = useState<string | null>(readDefaultList);
+  const [todoViewMode, setTodoViewMode] = useState<"flat" | "tree">(() =>
+    readLocal("productivity_todo_view", "tree"),
   );
-
-  const setDefaultTodoNodeId = (id: string | null) => {
-    setDefaultTodoNodeIdState(id);
-    if (id) {
-      localStorage.setItem("productivity_default_todo_node", id);
-    } else {
-      localStorage.removeItem("productivity_default_todo_node");
-    }
-  };
-
-  // Create new .todo node (list) states
-  const [isCreatingTodoNode, setIsCreatingTodoNode] = useState(false);
-  const [newTodoNodeName, setNewTodoNodeName] = useState("");
-
-  // Dropdown open states
-  const [isDefaultDropdownOpen, setIsDefaultDropdownOpen] = useState(false);
-  const [isDetailDefaultDropdownOpen, setIsDetailDefaultDropdownOpen] = useState(false);
-
-  // Inline subtask states
+  const [showDone, setShowDone] = useState(true);
+  const [isListMenuOpen, setIsListMenuOpen] = useState(false);
+  const [isCreatingList, setIsCreatingList] = useState(false);
+  const [newListName, setNewListName] = useState("");
+  const [newTodoText, setNewTodoText] = useState("");
   const [inlineSubParentId, setInlineSubParentId] = useState<string | null>(null);
   const [inlineSubText, setInlineSubText] = useState("");
+  const listMenuRef = useRef<HTMLDivElement>(null);
 
-  // Saved / Pinned Files and chronological swap logs in LocalStorage
-  const [recentFiles, setRecentFiles] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem("productivity_recent_files");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
+  // Task detail popup: only the task's identity is kept; its content is read live
+  // from the document, so edits from the node or the workspace show up here too.
+  const [activeTaskKey, setActiveTaskKey] = useState<TaskKey | null>(null);
+  const [isEditingNotes, setIsEditingNotes] = useState(false);
+  const [detailSubText, setDetailSubText] = useState("");
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [pendingConfirm, setPendingConfirm] = useState<
+    { kind: "deleteTask"; task: FlatTodoItem } | { kind: "clearMedia" } | null
+  >(null);
 
+  // Files: pinned and recently opened, kept in localStorage
+  const [recentFiles, setRecentFiles] = useState<string[]>(() => readLocal("productivity_recent_files", []));
+  const [pinnedFiles, setPinnedFiles] = useState<string[]>(() => readLocal("productivity_pinned_files", []));
+
+  const setDefaultListPath = (path: string | null) => {
+    setDefaultListPathState(path);
+    writeLocal("productivity_default_todo_node", path);
+  };
+
+  useEffect(() => writeLocal("productivity_todo_view", todoViewMode), [todoViewMode]);
+
+  // Get the YAML serializer ready so the first edit saves immediately.
   useEffect(() => {
-    if (activeTodo) {
-      setIsEditingNotes(false);
-    }
-  }, [activeTodo?.id]);
+    if (isTodoOpen) void prepareTodoSerializer();
+  }, [isTodoOpen]);
 
-  const [pinnedFiles, setPinnedFiles] = useState<string[]>(() => {
-    try {
-      const saved = localStorage.getItem("productivity_pinned_files");
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
-  });
-
-  // Track file list
   const allWorkspaceFiles = useMemo(() => getAllFiles(parsedData), [parsedData]);
+  const todoLists = useMemo(() => findTodoLists(parsedData), [parsedData]);
+  const allWorkspaceTodos = useMemo(() => scanAllTodos(parsedData), [parsedData]);
 
-  // Sync opened file to chronological history list
+  const listStats = useMemo(() => {
+    const stats = new Map<string, { total: number; completed: number }>();
+    for (const l of todoLists) stats.set(l.path, todo.countTasks(l.list.tasks));
+    return stats;
+  }, [todoLists]);
+
+  const listName = (path: string) => todoLists.find((l) => l.path === path)?.name || "Tasks";
+
+  // Where "Add a task" puts new tasks.
+  const addTargetPath =
+    selectedListPath ||
+    (defaultListPath && todoLists.some((l) => l.path === defaultListPath) ? defaultListPath : "") ||
+    todoLists[0]?.path ||
+    "";
+
+  const activeTodo = useMemo(
+    () =>
+      activeTaskKey
+        ? allWorkspaceTodos.find((t) => t.id === activeTaskKey.id && t.nodePath === activeTaskKey.nodePath) || null
+        : null,
+    [activeTaskKey, allWorkspaceTodos],
+  );
+
+  // The open task was deleted (here or elsewhere): close its popup.
   useEffect(() => {
-    if (activeExplorerFile && allWorkspaceFiles.some(f => f.id === activeExplorerFile)) {
+    if (activeTaskKey && !activeTodo) setActiveTaskKey(null);
+  }, [activeTaskKey, activeTodo]);
+
+  useEffect(() => {
+    setIsEditingNotes(false);
+    setDetailSubText("");
+  }, [activeTaskKey?.id]);
+
+  // Remember opened files, most recent first.
+  useEffect(() => {
+    if (activeExplorerFile && allWorkspaceFiles.some((f) => f.id === activeExplorerFile)) {
       setRecentFiles((prev) => {
-        const filtered = prev.filter((p) => p !== activeExplorerFile);
-        const next = [activeExplorerFile, ...filtered].slice(0, 50);
-        localStorage.setItem("productivity_recent_files", JSON.stringify(next));
+        const next = [activeExplorerFile, ...prev.filter((p) => p !== activeExplorerFile)].slice(0, 50);
+        writeLocal("productivity_recent_files", next);
         return next;
       });
     }
   }, [activeExplorerFile, allWorkspaceFiles]);
 
-  // Global Key Shortcut Listener
+  // Global shortcuts: Alt+T (or Ctrl+Shift+T) for tasks, Ctrl+` for files.
   useEffect(() => {
     const handleGlobalShortcuts = (e: KeyboardEvent) => {
-      // 1. Check Todo Center triggers: Alt + T or Ctrl + Shift + T
       const isTodoHotkey =
         (e.altKey && e.key.toLowerCase() === "t") ||
         (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === "t");
-
       if (isTodoHotkey) {
         e.preventDefault();
         e.stopPropagation();
@@ -752,128 +578,278 @@ export default function ProductivityLayer() {
         return;
       }
 
-      // 2. Check File switcher / Quick explorer: Ctrl + ` (backtick)
       const isFileHotkey = (e.key === "`" || e.code === "Backquote") && e.ctrlKey;
-
       if (isFileHotkey) {
         e.preventDefault();
         e.stopPropagation();
-
         setIsFileOpen((prev) => !prev);
         setIsTodoOpen(false);
         setFileSearch("");
         setSelectedFileIdx(0);
-        return;
       }
     };
-
     window.addEventListener("keydown", handleGlobalShortcuts, true);
     return () => window.removeEventListener("keydown", handleGlobalShortcuts, true);
   }, []);
 
-  // --- Filtering & Sorting: FILE LISTS ---
+  // On opening the task center: show the default list, the only list, or all lists.
+  useEffect(() => {
+    if (isTodoOpen && !wasTodoOpenRef.current) {
+      const hasDefault = defaultListPath && todoLists.some((l) => l.path === defaultListPath);
+      setSelectedListPath(hasDefault ? defaultListPath! : todoLists.length === 1 ? todoLists[0].path : "");
+      setIsListMenuOpen(false);
+      setIsCreatingList(false);
+      setInlineSubParentId(null);
+    }
+    wasTodoOpenRef.current = isTodoOpen;
+  }, [isTodoOpen, todoLists, defaultListPath]);
+
+  // Close the list menu on outside click.
+  useEffect(() => {
+    if (!isListMenuOpen) return;
+    const handle = (e: MouseEvent) => {
+      if (listMenuRef.current && !listMenuRef.current.contains(e.target as Node)) {
+        setIsListMenuOpen(false);
+        setIsCreatingList(false);
+      }
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, [isListMenuOpen]);
+
+  // Esc closes the task popup (its footer says so). Nested dialogs close first.
+  useEffect(() => {
+    if (!activeTaskKey) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape" || pendingConfirm || isCameraOpen) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setActiveTaskKey(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeTaskKey, pendingConfirm, isCameraOpen]);
+
+  // ─── Files: filtering ────────────────────────────────────────────────────────
+
   const filteredFiles = useMemo(() => {
-    const list = allWorkspaceFiles.filter(f => f.type !== "folder"); // don't list empty directories, only openables
+    const list = allWorkspaceFiles.filter((f) => f.type !== "folder"); // only openable files
     if (!fileSearch.trim()) {
-      // chronological swap + pinned files first
-      const sorted = [...list].sort((a, b) => {
+      // Pinned first, then most recently opened, then by name.
+      return [...list].sort((a, b) => {
         const aPinned = pinnedFiles.includes(a.id);
         const bPinned = pinnedFiles.includes(b.id);
-        if (aPinned && !bPinned) return -1;
-        if (!aPinned && bPinned) return 1;
-
-        const aRecentIdx = recentFiles.indexOf(a.id);
-        const bRecentIdx = recentFiles.indexOf(b.id);
-
-        if (aRecentIdx !== -1 && bRecentIdx === -1) return -1;
-        if (aRecentIdx === -1 && bRecentIdx !== -1) return 1;
-        if (aRecentIdx !== -1 && bRecentIdx !== -1) return aRecentIdx - bRecentIdx;
-
+        if (aPinned !== bPinned) return aPinned ? -1 : 1;
+        const aRecent = recentFiles.indexOf(a.id);
+        const bRecent = recentFiles.indexOf(b.id);
+        if (aRecent !== -1 && bRecent === -1) return -1;
+        if (aRecent === -1 && bRecent !== -1) return 1;
+        if (aRecent !== -1 && bRecent !== -1) return aRecent - bRecent;
         return a.name.localeCompare(b.name);
       });
-      return sorted;
     }
 
-    const matched = list
-      .map(f => {
+    return list
+      .map((f) => {
         let isGlobMatch = false;
-        if (fileSearch.includes('*') || fileSearch.includes('?')) {
+        if (fileSearch.includes("*") || fileSearch.includes("?")) {
           try {
-            const escapeRegex = (s: string) => s.replace(/[-[\]{}()+.,\\^$|#\s]/g, '\\$&');
-            // If the user doesn't start with *, we assume they mean "starts with" or we can just allow substring glob by doing '.*' + regex + '.*' 
-            // Standard glob: * means anything.
-            const regexStr = '^' + escapeRegex(fileSearch).replace(/\\\*/g, '.*').replace(/\\\?/g, '.') + '$';
-            const regex = new RegExp(regexStr, 'i');
-            isGlobMatch = regex.test(f.name) || regex.test(f.pathStr) || regex.test('/' + f.pathStr);
-          } catch(e) {}
+            const escapeRegex = (s: string) => s.replace(/[-[\]{}()+.,\\^$|#\s]/g, "\\$&");
+            const regexStr = "^" + escapeRegex(fileSearch).replace(/\\\*/g, ".*").replace(/\\\?/g, ".") + "$";
+            const regex = new RegExp(regexStr, "i");
+            isGlobMatch = regex.test(f.name) || regex.test(f.pathStr) || regex.test("/" + f.pathStr);
+          } catch {
+            /* not a valid pattern; fuzzy match only */
+          }
         }
-
-        const scoreName = scoreFuzzy(f.name, fileSearch);
-        const scorePath = scoreFuzzy(f.pathStr, fileSearch);
-        let finalScore = Math.max(scoreName, scorePath);
-
-        if (isGlobMatch) {
-          finalScore = finalScore > 0 ? finalScore + 500 : 500;
-        }
-
-        return { file: f, score: finalScore };
+        let score = Math.max(scoreFuzzy(f.name, fileSearch), scoreFuzzy(f.pathStr, fileSearch));
+        if (isGlobMatch) score = score > 0 ? score + 500 : 500;
+        return { file: f, score };
       })
-      .filter(item => item.score > 0)
+      .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
-      .map(item => item.file);
-
-    return matched;
+      .map((x) => x.file);
   }, [allWorkspaceFiles, fileSearch, pinnedFiles, recentFiles]);
 
-  // --- Filtering & Sorting: TODOS ---
-  const allWorkspaceTodos = useMemo(() => scanAllTodos(parsedData), [parsedData]);
+  // ─── Tasks: filtering ────────────────────────────────────────────────────────
+
+  const isSearching = !!todoSearch.trim();
 
   const filteredTodos = useMemo(() => {
-    const todosForNode = selectedNodePath
-      ? allWorkspaceTodos.filter(t => t.nodePath === selectedNodePath)
+    let scope = selectedListPath
+      ? allWorkspaceTodos.filter((t) => t.nodePath === selectedListPath)
       : allWorkspaceTodos;
+    if (!showDone) scope = scope.filter((t) => !todo.isTaskDone(t));
 
-    if (!todoSearch.trim()) {
-      // Default grouping order: Overdue first, then High priority, then Pinned, then Chronological Active
-      return todosForNode;
-    }
+    if (!isSearching) return scope;
 
     const q = todoSearch.toLowerCase().trim();
-    const matched = todosForNode
-      .map(t => {
-        const scText = scoreFuzzy(t.text || "", q);
-        const scNotes = scoreFuzzy(t.notes || "", q);
-        const scNode = scoreFuzzy(t.nodeName || "", q);
-        const scStatus = scoreFuzzy(t.status || "", q);
-        const scPriority = scoreFuzzy(t.priority || "", q);
-        const scAssignee = scoreFuzzy(t.assignee || "", q);
-        const scTags = (t.tags || []).some(tag => scoreFuzzy(tag, q) > 0) ? 50 : 0;
-
-        const maxScore = Math.max(scText, scNotes, scNode, scStatus, scPriority, scAssignee, scTags);
-        return { item: t, score: maxScore };
+    return scope
+      .map((t) => {
+        const score = Math.max(
+          scoreFuzzy(t.text || "", q),
+          scoreFuzzy(t.notes || "", q),
+          scoreFuzzy(t.nodeName || "", q),
+          scoreFuzzy(t.status || "", q),
+          scoreFuzzy(t.priority || "", q),
+          (t.tags || []).some((tag) => scoreFuzzy(tag, q) > 0) ? 50 : 0,
+        );
+        return { item: t, score };
       })
-      .filter(x => x.score > 0)
+      .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
-      .map(x => x.item);
+      .map((x) => x.item);
+  }, [allWorkspaceTodos, todoSearch, isSearching, selectedListPath, showDone]);
 
-    return matched;
-  }, [allWorkspaceTodos, todoSearch, selectedNodePath]);
-
-  // Auto bounds selector checks
+  // Keep the keyboard selection in range.
   useEffect(() => {
-    if (selectedTodoIdx >= filteredTodos.length) {
-      setSelectedTodoIdx(Math.max(0, filteredTodos.length - 1));
-    }
+    if (selectedTodoIdx >= filteredTodos.length) setSelectedTodoIdx(Math.max(0, filteredTodos.length - 1));
   }, [filteredTodos.length, selectedTodoIdx]);
 
   useEffect(() => {
-    if (selectedFileIdx >= filteredFiles.length) {
-      setSelectedFileIdx(Math.max(0, filteredFiles.length - 1));
-    }
+    if (selectedFileIdx >= filteredFiles.length) setSelectedFileIdx(Math.max(0, filteredFiles.length - 1));
   }, [filteredFiles.length, selectedFileIdx]);
 
-  // Keyboard navigation for File navigation overlays
+  // ─── Task actions (all through the shared todo store) ────────────────────────
+
+  const updateTask = (task: TaskKey, patch: Partial<TodoTask>) =>
+    writeTasks(task.nodePath, (tasks) => todo.editTask(tasks, task.id, patch));
+
+  const toggleDone = (task: FlatTodoItem) => {
+    const done = todo.isTaskDone(task);
+    if (!done && todo.hasIncompleteChildren(task.tasks)) {
+      notify("Complete its subtasks first", "info");
+      return;
+    }
+    updateTask(task, { completed: !done });
+  };
+
+  const deleteTaskNow = (task: FlatTodoItem) => {
+    writeTasks(task.nodePath, (tasks) => todo.removeTask(tasks, task.id));
+    notify(`Deleted "${task.text || "Untitled task"}"`);
+  };
+
+  // A task with subtasks takes them with it, so that asks first.
+  const requestDeleteTask = (task: FlatTodoItem) => {
+    if (task.tasks?.length) setPendingConfirm({ kind: "deleteTask", task });
+    else deleteTaskNow(task);
+  };
+
+  const addTask = (text: string, nodePath: string, parentId?: string) => {
+    if (!text.trim() || !nodePath) return;
+    writeTasks(nodePath, (tasks) => todo.addTask(tasks, todo.createTask(text), parentId));
+  };
+
+  const handleCreateList = async () => {
+    const name = newListName.trim();
+    const path = await createTodoList(name);
+    if (!path) return;
+    setSelectedListPath(path);
+    setNewListName("");
+    setIsCreatingList(false);
+    setIsListMenuOpen(false);
+    notify(`Created list "${name}"`);
+  };
+
+  const openTaskInWorkspace = (nodePath: string) => {
+    openWorkspaceTab(nodePath, true);
+    setExpandedJsNodeId(nodePath);
+    setIsTodoOpen(false);
+    setActiveTaskKey(null);
+  };
+
+  const openFile = (file: FlatFileItem) => {
+    openWorkspaceTab(file.id, false);
+    setExpandedJsNodeId(file.id);
+    setIsFileOpen(false);
+  };
+
+  const togglePin = (fileId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    setPinnedFiles((prev) => {
+      const next = prev.includes(fileId) ? prev.filter((p) => p !== fileId) : [...prev, fileId];
+      writeLocal("productivity_pinned_files", next);
+      return next;
+    });
+  };
+
+  // ─── Attachments ─────────────────────────────────────────────────────────────
+
+  const handleMediaUpload = async (files: FileList | File[]) => {
+    if (!activeTodo) return;
+    const target: TaskKey = { id: activeTodo.id, nodePath: activeTodo.nodePath };
+    setIsUploading(true);
+    try {
+      const added: string[] = [];
+      for (const file of Array.from(files)) {
+        if (/^(image|video|audio)\//.test(file.type)) {
+          const { assetId } = await importFile(file);
+          added.push(assetId);
+        }
+      }
+      if (added.length) {
+        // Merge into the latest list of attachments, not the one from before the upload.
+        writeTasks(target.nodePath, (tasks) => {
+          const current = todo.findTask(tasks, target.id);
+          if (!current) return null;
+          const hashes = [...(current.imageHashes || [])];
+          for (const id of added) if (!hashes.includes(id)) hashes.push(id);
+          return todo.updateTask(tasks, target.id, { imageHashes: hashes });
+        });
+      }
+    } catch (err) {
+      console.error("Upload failed", err);
+      notify("Couldn't attach that file", "error");
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const pickMedia = () => {
+    const input = document.createElement("input");
+    input.type = "file";
+    input.multiple = true;
+    input.accept = MEDIA_ACCEPT;
+    input.onchange = (e: any) => {
+      if (e.target.files) handleMediaUpload(e.target.files);
+    };
+    input.click();
+  };
+
+  const handleDeleteMedia = (index: number) => {
+    if (!activeTodo?.imageHashes) return;
+    const hashes = activeTodo.imageHashes.filter((_, i) => i !== index);
+    updateTask(activeTodo, { imageHashes: hashes });
+  };
+
+  const handlePreviewMedia = (index: number) => {
+    const hash = activeTodo?.imageHashes?.[index];
+    if (!hash) return;
+    const lower = hash.toLowerCase();
+    let type: "image" | "video" | "audio" | "smart" = "smart";
+    if (/\.(mp4|mov|webm)$/.test(lower)) type = "video";
+    else if (/\.(mp3|wav|ogg)$/.test(lower)) type = "audio";
+    else if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lower) || hash.startsWith("img_")) type = "image";
+    useStore.getState().setActivePreviewMedia({ url: hash, type });
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    if (!activeTodo) return;
+    const files = Array.from(e.clipboardData?.items || [])
+      .filter((item) => item.kind === "file")
+      .map((item) => item.getAsFile())
+      .filter((f): f is File => !!f);
+    if (files.length) {
+      e.preventDefault();
+      handleMediaUpload(files);
+    }
+  };
+
+  // ─── Keyboard navigation ─────────────────────────────────────────────────────
+
   const handleFileKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if ((e.ctrlKey || e.metaKey) && /^[zy]$/i.test(e.key)) e.stopPropagation(); // keep undo local
     if (e.key === "ArrowDown") {
       e.preventDefault();
       setSelectedFileIdx((prev) => (prev + 1) % Math.max(1, filteredFiles.length));
@@ -883,1572 +859,919 @@ export default function ProductivityLayer() {
     } else if (e.key === "Enter") {
       e.preventDefault();
       const target = filteredFiles[selectedFileIdx];
-      if (target) {
-        openWorkspaceTab(target.id, false);
-        setExpandedJsNodeId(target.id);
-        setIsFileOpen(false);
-      }
+      if (target) openFile(target);
     } else if (e.key === "Escape") {
       e.preventDefault();
       setIsFileOpen(false);
     }
   };
 
-  // Keyboard navigation for Todo Center overlays
   const handleTodoKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (todoCenterMode === "nodes_list") {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedTodoIdx((prev) => (prev + 1) % Math.max(1, allTodoFiles.length));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedTodoIdx((prev) => (prev - 1 + allTodoFiles.length) % Math.max(1, allTodoFiles.length));
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const target = allTodoFiles[selectedTodoIdx];
-        if (target) {
-          setSelectedNodePath(target.id);
-          setTodoCenterMode("tasks_list");
-          setSelectedTodoIdx(0);
-        }
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        setIsTodoOpen(false);
-      }
-    } else {
-      if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setSelectedTodoIdx((prev) => (prev + 1) % Math.max(1, filteredTodos.length));
-      } else if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setSelectedTodoIdx((prev) => (prev - 1 + filteredTodos.length) % Math.max(1, filteredTodos.length));
-      } else if (e.key === "Enter") {
-        e.preventDefault();
-        const target = filteredTodos[selectedTodoIdx];
-        if (target) {
-          setActiveTodo(target);
-        }
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        setIsTodoOpen(false);
-      }
-    }
-  };
-
-  // State handlers inside Todo Details
-  const handleToggleTodoPin = (fileId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    e.preventDefault();
-    setPinnedFiles((prev) => {
-      const next = prev.includes(fileId) ? prev.filter((p) => p !== fileId) : [...prev, fileId];
-      localStorage.setItem("productivity_pinned_files", JSON.stringify(next));
-      return next;
-    });
-  };
-
-  const handleUpdateTodoField = async (taskId: string, nodePath: string, field: string, value: any) => {
-    const updated = await saveTodoChangesToWorkspace(parsedData, nodePath, taskId, { [field]: value });
-    // Update local details popup references
-    if (activeTodo && activeTodo.id === taskId) {
-      setActiveTodo((prev) => (prev ? { ...prev, [field]: value } : null));
-    }
-  };
-
-  const handleToggleTodoStatus = async (task: FlatTodoItem) => {
-    const isCompleted = task.completed || task.status === "Completed";
-    const hasIncompleteChildren = checkHasIncompleteChildren(task.tasks);
-
-    if (!isCompleted && hasIncompleteChildren) {
-      useStore.getState().setNotification?.({
-        message: "Complete subtasks first",
-        type: "info",
-      });
-      return;
-    }
-
-    const nextStatus = isCompleted ? "Todo" : "Completed";
-    await handleUpdateTodoField(task.id, task.nodePath, "status", nextStatus);
-  };
-
-  const handleDeleteTodo = async (task: FlatTodoItem) => {
-    await saveTodoChangesToWorkspace(parsedData, task.nodePath, task.id, null);
-    setActiveTodo(null);
-    useStore.getState().setNotification?.({
-      message: `Deleted task "${task.text || "unlabeled task"}"`,
-      type: "success"
-    });
-  };
-
-  const handleMediaUpload = async (files: FileList | File[]) => {
-    if (!activeTodo) return;
-    setIsUploading(true);
-    try {
-      const hashes = [...(activeTodo.imageHashes || [])];
-      for (let i = 0; i < files.length; i++) {
-        const file = files[i];
-        if (file.type.startsWith('image/') || file.type.startsWith('video/') || file.type.startsWith('audio/')) {
-          const { assetId } = await importFile(file);
-          if (!hashes.includes(assetId)) {
-            hashes.push(assetId);
-          }
-        }
-      }
-      if (hashes.length !== (activeTodo.imageHashes || []).length) {
-        await handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "imageHashes", hashes);
-      }
-    } catch (err) {
-      console.error("Paste/Upload failed", err);
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
-  const handleDeleteMedia = async (index: number) => {
-    if (!activeTodo || !activeTodo.imageHashes) return;
-    const hashes = [...activeTodo.imageHashes];
-    hashes.splice(index, 1);
-    await handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "imageHashes", hashes);
-  };
-
-  const handleDeleteAllMedia = async () => {
-    if (!activeTodo) return;
-    await handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "imageHashes", []);
-    setIsConfirmingDeleteAll(false);
-  };
-
-  const handlePreviewMedia = async (index: number) => {
-    if (!activeTodo || !activeTodo.imageHashes) return;
-    const hash = activeTodo.imageHashes[index];
-    
-    let type: "image" | "video" | "audio" | "smart" = "smart";
-    const lowerHash = hash.toLowerCase();
-    if (lowerHash.endsWith('.mp4') || lowerHash.endsWith('.mov') || lowerHash.endsWith('.webm')) type = "video";
-    else if (lowerHash.endsWith('.mp3') || lowerHash.endsWith('.wav') || lowerHash.endsWith('.ogg')) type = "audio";
-    else if (lowerHash.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) type = "image";
-    else if (hash.startsWith('img_')) type = "image"; // Assets starting with img_ are usually images
-
-    useStore.getState().setActivePreviewMedia({ url: hash, type });
-  };
-
-  const handlePaste = (e: React.ClipboardEvent) => {
-    if (!activeTodo) return;
-    const items = e.clipboardData?.items;
-    if (!items) return;
-
-    const files: File[] = [];
-    for (let i = 0; i < items.length; i++) {
-      if (items[i].kind === 'file') {
-        const file = items[i].getAsFile();
-        if (file) files.push(file);
-      }
-    }
-
-    if (files.length > 0) {
+    if ((e.ctrlKey || e.metaKey) && /^[zy]$/i.test(e.key)) e.stopPropagation(); // keep undo local
+    const n = Math.max(1, filteredTodos.length);
+    if (e.key === "ArrowDown") {
       e.preventDefault();
-      handleMediaUpload(files);
+      setSelectedTodoIdx((prev) => (prev + 1) % n);
+    } else if (e.key === "ArrowUp") {
+      e.preventDefault();
+      setSelectedTodoIdx((prev) => (prev - 1 + n) % n);
+    } else if (e.key === "Enter") {
+      e.preventDefault();
+      const target = filteredTodos[selectedTodoIdx];
+      if (!target) return;
+      if (e.ctrlKey || e.metaKey) toggleDone(target);
+      else setActiveTaskKey({ id: target.id, nodePath: target.nodePath });
+    } else if (e.key === "Escape") {
+      e.preventDefault();
+      if (isListMenuOpen) setIsListMenuOpen(false);
+      else if (todoSearch) setTodoSearch("");
+      else setIsTodoOpen(false);
     }
   };
 
-  const allTodoFiles = useMemo(() => {
-    return allWorkspaceFiles.filter(f => f.type === "todo_node" || f.name.endsWith(".todo"));
-  }, [allWorkspaceFiles]);
-
+  // Keep the keyboard selection scrolled into view.
+  const todoListEl = useRef<HTMLDivElement>(null);
+  const todoSearchRef = useRef<HTMLInputElement>(null);
+  const hadDetailRef = useRef(false);
   useEffect(() => {
-    if (isTodoOpen && !wasTodoOpenRef.current) {
-      if (allTodoFiles.length === 0) {
-        setTodoCenterMode("tasks_list");
-      } else if (allTodoFiles.length === 1) {
-        setSelectedNodePath(allTodoFiles[0].id);
-        setTodoCenterMode("tasks_list");
-      } else {
-        const foundDefault = allTodoFiles.find(f => f.id === defaultTodoNodeId);
-        if (foundDefault) {
-          setSelectedNodePath(foundDefault.id);
-          setTodoCenterMode("tasks_list");
-        } else {
-          setTodoCenterMode("nodes_list");
-          setSelectedTodoIdx(0);
-        }
-      }
-    }
-    wasTodoOpenRef.current = isTodoOpen;
-  }, [isTodoOpen, allTodoFiles, defaultTodoNodeId]);
-
-  const handleCreateTodoNodeSubmit = async () => {
-    if (!newTodoNodeName.trim()) return;
-    try {
-      const cleanName = newTodoNodeName.trim();
-      const finalKey = cleanName.replace(/\s+/g, "_") + "_todo_node";
-      const initialValue = JSON.stringify({ title: cleanName, tasks: [] }, null, 2);
-      
-      const { parsedData, setCode, codeFormat } = useStore.getState();
-      const updatedData = JSON.parse(JSON.stringify(parsedData));
-      
-      const nextUpdatedData = setValueAtPath(updatedData, `root.${finalKey}`, initialValue);
-      
-      let newCode = "";
-      if (codeFormat === "yaml") {
-        try {
-          const yaml = (await import("js-yaml")).default;
-          newCode = yaml.dump(nextUpdatedData);
-        } catch {
-          newCode = JSON.stringify(nextUpdatedData, null, 2);
-        }
-      } else {
-        newCode = JSON.stringify(nextUpdatedData, null, 2);
-      }
-      setCode(newCode);
-      
-      const newPathId = `root.${finalKey}`;
-      setSelectedNodePath(newPathId);
-      setNewTodoNodeName("");
-      setIsCreatingTodoNode(false);
-      setTodoCenterMode("tasks_list");
-    } catch (err) {
-      console.error(err);
-    }
-  };
-
-  const handleCreateTodoSubmit = async () => {
-    if (!newTodoText.trim() || !selectedNodePath) return;
-    await addNewTodoToWorkspace(
-      parsedData,
-      selectedNodePath,
-      newTodoText,
-      targetParentTaskId || undefined
-    );
-    setNewTodoText("");
-    setIsCreatingTodo(false);
-  };
-
-  const todoCenterListEl = useRef<HTMLDivElement>(null);
+    if (hadDetailRef.current && !activeTaskKey && isTodoOpen) todoSearchRef.current?.focus();
+    hadDetailRef.current = !!activeTaskKey;
+  }, [activeTaskKey, isTodoOpen]);
   useEffect(() => {
-    const el = todoCenterListEl.current;
-    if (el) {
-      const selectedEl = el.querySelector(".is-selected-todo");
-      if (selectedEl) {
-        selectedEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    }
+    todoListEl.current?.querySelector(".is-selected-todo")?.scrollIntoView({ block: "nearest" });
   }, [selectedTodoIdx]);
 
-  const fileExplorerListEl = useRef<HTMLDivElement>(null);
+  const fileListEl = useRef<HTMLDivElement>(null);
   useEffect(() => {
-    const el = fileExplorerListEl.current;
-    if (el) {
-      const selectedEl = el.querySelector(".is-selected-file");
-      if (selectedEl) {
-        selectedEl.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    }
+    fileListEl.current?.querySelector(".is-selected-file")?.scrollIntoView({ block: "nearest" });
   }, [selectedFileIdx]);
 
-  // Render Portal Node to root document layer
-  const renderPortalContent = () => {
-    return (
-      <div className="text-sans">
-        <AnimatePresence>
-          {/* 1. KEYBOARD SWAP: QUICK FILE PALETTE OVERLAY */}
-          {isFileOpen && (
-            <motion.div
-              key="file-palette"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[11000] w-screen h-screen flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-[3px] p-4 md:p-6"
-              onClick={() => setIsFileOpen(false)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                transition={{ duration: 0.15 }}
-                className="w-full max-w-[650px] bg-white dark:bg-[#0c1017] rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden max-h-[480px] select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Search Bar */}
-                <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 dark:border-slate-800/80">
-                  <Search size={17} className="text-slate-400 dark:text-slate-500 shrink-0" />
-                  <input
-                    autoFocus
-                    type="text"
-                    value={fileSearch}
-                    onChange={(e) => {
-                      setFileSearch(e.target.value.replace(/^~/, ''));
-                      setSelectedFileIdx(0);
-                    }}
-                    onKeyDown={(e) => {
-                      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
-                        e.stopPropagation();
-                      }
-                      handleFileKeyDown(e);
-                    }}
-                    placeholder="Search files fuzzy matching (glob pattern search allowed here, Shift+~ to close)..."
-                    className="w-full text-sm font-mono bg-transparent border-none outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-550"
-                  />
-                  <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-500 font-bold font-mono">
-                    <Command size={10} className="mr-0.5" />P
-                  </div>
-                </div>
+  // ─── Render: file palette ────────────────────────────────────────────────────
 
-                {/* File List */}
-                <div
-                  ref={fileExplorerListEl}
-                  className="flex-1 overflow-y-auto py-2 text-xs divide-y divide-slate-50/50 dark:divide-slate-900/40"
-                >
-                  {filteredFiles.length === 0 ? (
-                    <div className="p-8 text-center text-slate-400 dark:text-slate-500 select-none flex flex-col items-center gap-2">
-                      <FolderOpen size={24} className="text-slate-300 dark:text-slate-700" />
-                      <span>No matching files found</span>
-                    </div>
-                  ) : (
-                    filteredFiles.map((file, idx) => {
-                      const isSelected = idx === selectedFileIdx;
-                      const isOpen = activeExplorerFile === file.id;
-                      const isPinned = pinnedFiles.includes(file.id);
-
-                      return (
-                        <div
-                          key={`${file.id}-${idx}`}
-                          className={cn(
-                            "is-selected-file group flex items-center justify-between px-3 py-2 cursor-pointer transition-colors relative font-mono select-none mx-2 my-0.5 rounded-md",
-                            isSelected
-                              ? "bg-blue-600 text-white shadow-sm"
-                              : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80"
-                          )}
-                          onClick={() => {
-                            openWorkspaceTab(file.id, false);
-                            setExpandedJsNodeId(file.id);
-                            setIsFileOpen(false);
-                          }}
-                        >
-                          <div className="flex items-center gap-3 min-w-0 pr-6">
-                            <span>{renderOverlayFileIcon(file.type, file.name)}</span>
-                            <div className="min-w-0 flex flex-col md:flex-row md:items-baseline md:gap-3 leading-none md:leading-normal">
-                              <span className={cn("text-xs font-semibold tracking-tight truncate", isOpen && !isSelected && "text-blue-600 dark:text-blue-400")}>
-                                {file.name}
-                              </span>
-                              <span className={cn("text-[10px] truncate mt-0.5 md:mt-0", isSelected ? "text-blue-200" : "text-slate-450 dark:text-slate-500")}>
-                                {file.pathStr}
-                              </span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            {isOpen && (
-                              <span className={cn("text-[9px] uppercase font-bold px-1 py-0.5 rounded tracking-wider shrink-0 select-none", isSelected ? "bg-white/20 text-white" : "text-blue-500 bg-blue-500/10 dark:bg-blue-500/20")}>
-                                active
-                              </span>
-                            )}
-                            <button
-                              onClick={(e) => handleToggleTodoPin(file.id, e)}
-                              className={cn("p-1 rounded opacity-0 group-hover:opacity-100 transition shrink-0", isSelected ? "text-white/70 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-amber-500 hover:bg-slate-150 dark:hover:bg-slate-750")}
-                            >
-                              <Pin size={11} className={cn(isPinned ? (isSelected ? "fill-white text-white opacity-100" : "fill-amber-500 text-amber-500 opacity-100") : "")} />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Footer bar */}
-                <div className="p-2 border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-[#090d14] flex items-center justify-between font-mono text-[9px] text-slate-400 select-none shrink-0 uppercase tracking-widest pl-4 pr-3.5">
-                  <div className="flex items-center gap-4">
-                    <span>↑↓ to navigate</span>
-                    <span>⏎ select</span>
-                    <span>⎋ escape</span>
-                  </div>
-                  <div>
-                    <span>{filteredFiles.length} files total</span>
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-
-          {/* 2. KEYBOARD SWAP: GLOBAL TODO CENTER */}
-          {isTodoOpen && (
-            <motion.div
-              key="global-todo-center"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[11000] w-screen h-screen flex items-center justify-center bg-black/60 dark:bg-black/80 backdrop-blur-[3px] p-4 md:p-6"
-              onClick={() => setIsTodoOpen(false)}
-            >
-              <motion.div
-                initial={{ opacity: 0, scale: 0.95, y: -10 }}
-                animate={{ opacity: 1, scale: 1, y: 0 }}
-                exit={{ opacity: 0, scale: 0.95, y: -10 }}
-                transition={{ duration: 0.15 }}
-                className="w-full max-w-[700px] bg-white dark:bg-[#0c1017] rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl flex flex-col overflow-hidden max-h-[500px] select-none"
-                onClick={(e) => e.stopPropagation()}
-              >
-                {/* Search Header */}
-                <div className="flex items-center gap-3 px-4 py-3.5 border-b border-slate-100 dark:border-slate-800/80">
-                  <ListTodo size={17} className="text-blue-500 dark:text-blue-400 shrink-0 animate-pulse" />
-                  <input
-                    autoFocus
-                    type="text"
-                    value={todoSearch}
-                    onChange={(e) => {
-                      setTodoSearch(e.target.value);
-                      setSelectedTodoIdx(0);
-                    }}
-                    onKeyDown={(e) => {
-                      if ((e.ctrlKey || e.metaKey) && (e.key === "z" || e.key === "Z" || e.key === "y" || e.key === "Y")) {
-                        e.stopPropagation();
-                      }
-                      handleTodoKeyDown(e);
-                    }}
-                    placeholder={
-                      todoCenterMode === "nodes_list"
-                        ? "Navigate through lists (arrow keys)..."
-                        : "Search tasks, filter by Priority, Status, Label (Alt + T to close)..."
-                    }
-                    className="w-full text-sm font-sans bg-transparent border-none outline-none text-slate-800 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-550"
-                  />
-                  <div className="flex items-center gap-1.5 shrink-0">
-                    <button
-                      onClick={() => {
-                        setIsCreatingTodoNode(prev => !prev);
-                        setIsCreatingTodo(false);
-                      }}
-                      className={cn(
-                        "px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors flex items-center gap-1",
-                        isCreatingTodoNode
-                          ? "bg-amber-600 text-white"
-                          : "bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 hover:bg-amber-100 dark:hover:bg-amber-900/40"
-                      )}
-                    >
-                      + New List
-                    </button>
-                    {todoCenterMode === "tasks_list" && allTodoFiles.length > 0 && (
-                      <button
-                        onClick={() => {
-                          setIsCreatingTodo(prev => !prev);
-                          setIsCreatingTodoNode(false);
-                        }}
-                        className={cn(
-                          "px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors flex items-center gap-1",
-                          isCreatingTodo
-                            ? "bg-emerald-600 text-white"
-                            : "bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40"
-                        )}
-                      >
-                        + Create
-                      </button>
-                    )}
-                    {todoCenterMode === "tasks_list" && allTodoFiles.length > 0 && (
-                      <button
-                        onClick={() => setTodoViewMode(prev => prev === "tree" ? "flat" : "tree")}
-                        className={cn("px-2 py-1 text-[10px] font-bold rounded font-mono uppercase tracking-wider transition-colors", todoViewMode === "tree" ? "bg-blue-500 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500")}
-                      >
-                        {todoViewMode === "tree" ? "Tree View" : "Flat List"}
-                      </button>
-                    )}
-                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800 px-1.5 py-0.5 rounded text-[10px] text-slate-500 font-bold font-mono ml-2">
-                      Alt + T
-                    </div>
-                  </div>
-                </div>
-
-                {isCreatingTodoNode && (
-                  <div className="px-4 py-3.5 bg-slate-50 dark:bg-[#111622] border-b border-slate-100 dark:border-slate-800/80 flex flex-col gap-3 select-none animate-in slide-in-from-top-2 duration-150">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-500 flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-amber-500 animate-ping shrink-0" />
-                        Create New Todo List
-                      </span>
-                      <button 
-                        onClick={() => setIsCreatingTodoNode(false)} 
-                        className="text-slate-450 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-
-                    <div className="flex items-center gap-2 w-full">
-                      <input
-                        type="text"
-                        autoFocus
-                        value={newTodoNodeName}
-                        onChange={(e) => setNewTodoNodeName(e.target.value)}
-                        placeholder="Type list name (e.g. Work, Personal)..."
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") {
-                            handleCreateTodoNodeSubmit();
-                          }
-                        }}
-                        className="flex-1 text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 focus:border-amber-500 transition-colors"
-                      />
-                      <button
-                        onClick={handleCreateTodoNodeSubmit}
-                        disabled={!newTodoNodeName.trim()}
-                        className="p-2.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer bg-amber-600 hover:bg-amber-500"
-                      >
-                        Create
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Subheader for current todo list in tasks_list mode */}
-                {todoCenterMode === "tasks_list" && allTodoFiles.length > 0 && (
-                  <div className="flex items-center justify-between px-4 py-2 bg-slate-50 dark:bg-[#0c1017] border-b border-slate-100 dark:border-slate-800/80 text-[11px]">
-                    <div className="flex items-center gap-2 text-slate-650 dark:text-slate-400">
-                      {allTodoFiles.length > 1 && (
-                        <button
-                          onClick={() => setTodoCenterMode("nodes_list")}
-                          className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-150 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-750 font-bold text-[9px] text-slate-600 dark:text-slate-300 transition cursor-pointer"
-                        >
-                          <ChevronLeft size={10} />
-                          All Lists
-                        </button>
-                      )}
-                      <span className="font-bold text-slate-800 dark:text-slate-200">
-                        {allTodoFiles.find(f => f.id === selectedNodePath)?.name || "Task List"}
-                      </span>
-                      {allTodoFiles.length > 1 && (
-                        <button
-                          onClick={() => {
-                            if (selectedNodePath) {
-                              setDefaultTodoNodeId(defaultTodoNodeId === selectedNodePath ? null : selectedNodePath);
-                            }
-                          }}
-                          className="text-amber-500 hover:scale-110 active:scale-95 transition-transform"
-                          title={defaultTodoNodeId === selectedNodePath ? "Remove as default list" : "Set as default list"}
-                        >
-                          <Star 
-                            size={12} 
-                            fill={defaultTodoNodeId === selectedNodePath ? "currentColor" : "none"} 
-                            className={cn(defaultTodoNodeId === selectedNodePath ? "text-amber-500 animate-pulse" : "text-slate-300 dark:text-slate-600")}
-                          />
-                        </button>
-                      )}
-                    </div>
-                    
-                    {allTodoFiles.length > 1 && (
-                      <div className="flex items-center gap-1.5 font-mono text-[9px] text-slate-400 relative">
-                        <span>Default:</span>
-                        <div className="relative">
-                          <button
-                            onClick={() => setIsDefaultDropdownOpen(prev => !prev)}
-                            className="flex items-center gap-1 px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-350 hover:border-amber-500/50 hover:text-slate-800 dark:hover:text-slate-200 transition-colors font-sans text-[10px] font-semibold cursor-pointer shrink-0"
-                          >
-                            <span className="truncate max-w-[80px]">
-                              {allTodoFiles.find(f => f.id === defaultTodoNodeId)?.name || "(None)"}
-                            </span>
-                            <ChevronDown size={10} className="text-slate-400" />
-                          </button>
-                          
-                          <AnimatePresence>
-                            {isDefaultDropdownOpen && (
-                              <>
-                                {/* Backdrop click listener */}
-                                <div className="fixed inset-0 z-40" onClick={() => setIsDefaultDropdownOpen(false)} />
-                                
-                                <motion.div
-                                  initial={{ opacity: 0, y: -4, scale: 0.95 }}
-                                  animate={{ opacity: 1, y: 0, scale: 1 }}
-                                  exit={{ opacity: 0, y: -4, scale: 0.95 }}
-                                  transition={{ duration: 0.1 }}
-                                  className="absolute right-0 mt-1.5 w-36 bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 text-[10px] font-sans text-slate-750 dark:text-slate-300 overflow-hidden"
-                                >
-                                  <button
-                                    onClick={() => {
-                                      setDefaultTodoNodeId(null);
-                                      setIsDefaultDropdownOpen(false);
-                                    }}
-                                    className={cn(
-                                      "w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors font-medium",
-                                      !defaultTodoNodeId && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
-                                    )}
-                                  >
-                                    <span>(None)</span>
-                                    {!defaultTodoNodeId && <Check size={11} className="text-amber-500 shrink-0" />}
-                                  </button>
-                                  {allTodoFiles.map(f => {
-                                    const isSelected = f.id === defaultTodoNodeId;
-                                    return (
-                                      <button
-                                        key={f.id}
-                                        onClick={() => {
-                                          setDefaultTodoNodeId(f.id);
-                                          setIsDefaultDropdownOpen(false);
-                                        }}
-                                        className={cn(
-                                          "w-full text-left px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors truncate font-medium",
-                                          isSelected && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
-                                        )}
-                                      >
-                                        <span className="truncate mr-2">{f.name}</span>
-                                        {isSelected && <Check size={11} className="text-amber-500 shrink-0" />}
-                                      </button>
-                                    );
-                                  })}
-                                </motion.div>
-                              </>
-                            )}
-                          </AnimatePresence>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-
-                {isCreatingTodo && (
-                  <div className="px-4 py-3.5 bg-slate-50 dark:bg-[#111622] border-b border-slate-100 dark:border-slate-800/80 flex flex-col gap-3 select-none">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-[#10b981] flex items-center gap-1.5">
-                        <span className="w-1.5 h-1.5 rounded-full bg-[#10b981] animate-ping shrink-0" />
-                        Create New Task (supports nesting)
-                      </span>
-                      <button 
-                        onClick={() => setIsCreatingTodo(false)} 
-                        className="text-slate-450 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
-                      >
-                        <X size={14} />
-                      </button>
-                    </div>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      {/* Destination .todo file select */}
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                          Destination File
-                        </label>
-                        <select
-                          value={selectedNodePath}
-                          onChange={(e) => {
-                            setSelectedNodePath(e.target.value);
-                            setTargetParentTaskId(""); // reset parent
-                          }}
-                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2 outline-none text-slate-850 dark:text-slate-200 cursor-pointer"
-                        >
-                          {allTodoFiles.map((file) => (
-                            <option key={file.id} value={file.id} className="bg-white dark:bg-[#161d2b] text-slate-800 dark:text-slate-100">
-                              {file.name}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Parent Task Selector (Nesting!) */}
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[9px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 block">
-                          Nesting / Parent Task (Optional)
-                        </label>
-                        <select
-                          value={targetParentTaskId}
-                          onChange={(e) => setTargetParentTaskId(e.target.value)}
-                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2 outline-none text-slate-850 dark:text-slate-200 cursor-pointer"
-                        >
-                          <option value="" className="bg-white dark:bg-[#161d2b] text-slate-800 dark:text-slate-100">None (Top Level Root Task)</option>
-                          {allWorkspaceTodos
-                            .filter((t) => t.nodePath === selectedNodePath)
-                            .map((t) => (
-                              <option key={t.id} value={t.id} className="bg-white dark:bg-[#161d2b] text-slate-800 dark:text-slate-100">
-                                {"— ".repeat(t.depth || 0)}{t.text}
-                              </option>
-                            ))}
-                        </select>
-                      </div>
-                    </div>
-
-                    {/* Task text bar and Submit button */}
-                    <div className="flex items-center gap-2 w-full">
-                      <div className="relative flex-1 flex items-center">
-                        <input
-                          type="text"
-                          maxLength={100}
-                          value={newTodoText}
-                          onChange={(e) => setNewTodoText(e.target.value)}
-                          onFocus={() => setIsNewTodoFocused(true)}
-                          onBlur={() => setIsNewTodoFocused(false)}
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleCreateTodoSubmit();
-                            }
-                          }}
-                          placeholder="Type task details and press Enter to save..."
-                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 focus:border-blue-500 transition-colors pr-16"
-                        />
-                        {isNewTodoFocused && (
-                          <span className="absolute right-3 text-[9px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 py-0.5 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10 animate-in fade-in duration-100 animate-out fade-out">
-                            Max: 100 | Remaining: {100 - newTodoText.length}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        onClick={handleCreateTodoSubmit}
-                        disabled={!newTodoText.trim() || !selectedNodePath}
-                        className="p-2.5 px-4 disabled:opacity-40 disabled:cursor-not-allowed text-white text-xs font-bold rounded-lg transition-colors shrink-0 cursor-pointer bg-blue-600 hover:bg-blue-500"
-                      >
-                        Create
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                {/* Todo List Content */}
-                <div
-                  ref={todoCenterListEl}
-                  className="flex-1 overflow-y-auto py-1.5 divide-y divide-slate-50 dark:divide-slate-900/40"
-                >
-                  {allTodoFiles.length === 0 ? (
-                    <div className="p-10 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center gap-3">
-                      <ClipboardList size={32} className="text-slate-300 dark:text-slate-700 animate-bounce" />
-                      <div className="text-sm font-bold text-slate-700 dark:text-slate-300">No Todo Lists Found</div>
-                      <span className="text-xs max-w-[320px] leading-relaxed">
-                        Create your first todo list below to start adding tasks and organizing your workspace.
-                      </span>
-                      <div className="flex flex-col gap-2 w-full max-w-[320px] mt-2">
-                        <input
-                          type="text"
-                          value={newTodoNodeName}
-                          onChange={(e) => setNewTodoNodeName(e.target.value)}
-                          placeholder="Type list name (e.g. Tasks, Work)..."
-                          onKeyDown={(e) => {
-                            if (e.key === "Enter") {
-                              handleCreateTodoNodeSubmit();
-                            }
-                          }}
-                          className="w-full text-xs bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-lg p-2.5 outline-none text-slate-850 dark:text-slate-200 placeholder-slate-400 text-center"
-                        />
-                        <button
-                          onClick={handleCreateTodoNodeSubmit}
-                          disabled={!newTodoNodeName.trim()}
-                          className="w-full p-2.5 text-white text-xs font-bold rounded-lg bg-amber-600 hover:bg-amber-500 transition-colors disabled:opacity-40"
-                        >
-                          Create First Todo List
-                        </button>
-                      </div>
-                    </div>
-                  ) : todoCenterMode === "nodes_list" ? (
-                    <div className="px-2.5 py-1.5 space-y-1">
-                      <div className="px-3.5 py-2 text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                        Select a Todo List to view tasks
-                      </div>
-                      {allTodoFiles.map((file, idx) => {
-                        const isSelected = idx === selectedTodoIdx;
-                        const isDefault = file.id === defaultTodoNodeId;
-                        
-                        // Count tasks in this list
-                        const listTasks = allWorkspaceTodos.filter(t => t.nodePath === file.id);
-                        const completedCount = listTasks.filter(t => t.completed || t.status === "Completed").length;
-                        
-                        return (
-                          <motion.div
-                            key={file.id}
-                            initial={{ opacity: 0, y: 5 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            className={cn(
-                              "is-selected-todo flex items-center justify-between px-4 py-3 cursor-pointer transition-all relative select-none mx-1 my-0.5 rounded-xl border group",
-                              isSelected
-                                ? "bg-amber-600/15 border-amber-500/30 dark:bg-amber-600/20 dark:border-amber-500/40 shadow-[0_0_15px_-5px_rgba(245,158,11,0.3)]"
-                                : "bg-white dark:bg-[#0d1117]/50 border-slate-200/60 dark:border-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/40"
-                            )}
-                            onClick={() => {
-                              setSelectedNodePath(file.id);
-                              setTodoCenterMode("tasks_list");
-                              setSelectedTodoIdx(0);
-                            }}
-                          >
-                            {isSelected && (
-                              <div className="absolute left-0 top-3 bottom-3 w-1 bg-amber-500 rounded-r-full shadow-[0_0_8px_rgba(245,158,11,0.5)]" />
-                            )}
-                            
-                            <div className="flex items-center gap-3.5 min-w-0">
-                              <ClipboardList size={16} className={cn(isSelected ? "text-amber-500" : "text-slate-400")} />
-                              <div className="flex flex-col min-w-0 leading-tight">
-                                <span className={cn(
-                                  "text-xs font-semibold truncate",
-                                  isSelected ? "text-slate-900 dark:text-white" : "text-slate-700 dark:text-slate-300"
-                                )}>
-                                  {file.name}
-                                </span>
-                                <span className="text-[10px] text-slate-400 mt-0.5 font-mono">
-                                  {listTasks.length === 0 ? "No tasks" : `${completedCount}/${listTasks.length} tasks completed`}
-                                </span>
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2">
-                              {isDefault && (
-                                <span className="text-[9px] font-bold font-mono px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20 flex items-center gap-1">
-                                  <Star size={10} fill="currentColor" />
-                                  Default
-                                </span>
-                              )}
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDefaultTodoNodeId(isDefault ? null : file.id);
-                                }}
-                                className={cn(
-                                  "p-1.5 rounded-lg opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity hover:bg-slate-100 dark:hover:bg-slate-800",
-                                  isDefault ? "opacity-100 text-amber-500" : "text-slate-400 hover:text-amber-500"
-                                )}
-                                title={isDefault ? "Remove as default" : "Set as default"}
-                              >
-                                <Star size={13} fill={isDefault ? "currentColor" : "none"} />
-                              </button>
-                            </div>
-                          </motion.div>
-                        );
-                      })}
-                    </div>
-                  ) : filteredTodos.length === 0 ? (
-                    <div className="p-10 text-center text-slate-400 dark:text-slate-500 flex flex-col items-center gap-2">
-                      <ClipboardList size={28} className="text-slate-300 dark:text-slate-700" />
-                      <span className="text-xs font-semibold">No tasks match your search criteria</span>
-                    </div>
-                  ) : (
-                    filteredTodos.map((todo, idx) => {
-                      const isSelected = idx === selectedTodoIdx;
-                      const isCompleted = todo.completed || todo.status === "Completed";
-                      
-                      let priorityBg = "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-350";
-                      if (todo.priority === "High" || todo.priority === "Critical") {
-                        priorityBg = "bg-red-500/10 text-red-600 dark:text-red-400 border border-red-500/20";
-                      } else if (todo.priority === "Medium") {
-                        priorityBg = "bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/20";
-                      } else if (todo.priority === "Low") {
-                        priorityBg = "bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20";
-                      }
-
-                      return (
-                        <React.Fragment key={`${todo.nodePath}-${todo.id}-${idx}`}>
-                          <motion.div
-                            initial={{ opacity: 0, y: 10 }}
-                            animate={{ opacity: 1, y: 0 }}
-                            transition={{ delay: idx * 0.02 }}
-                            className={cn(
-                              "is-selected-todo flex items-center justify-between px-4 py-3 cursor-pointer transition-all relative select-none mx-2.5 my-1 rounded-xl border group",
-                              isSelected
-                                ? "bg-blue-600/15 border-blue-500/30 dark:bg-blue-600/20 dark:border-blue-500/40 shadow-[0_0_15px_-5px_rgba(59,130,246,0.3)]"
-                                : "bg-white dark:bg-[#0d1117]/50 border-slate-200/60 dark:border-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/40"
-                            )}
-                            style={todoViewMode === "tree" && !todoSearch.trim() ? { marginLeft: `${Math.max(0.6, (todo.depth || 0) * 1.5 + 0.6)}rem` } : {}}
-                            onClick={() => {
-                              setActiveTodo(todo);
-                            }}
-                          >
-                            {isSelected && (
-                              <div className="absolute left-0 top-3 bottom-3 w-1 bg-blue-500 rounded-r-full shadow-[0_0_8px_rgba(59,130,246,0.5)]" />
-                            )}
-                            
-                            <div className="flex items-center gap-4 min-w-0 pr-4">
-                              <button
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  handleToggleTodoStatus(todo);
-                                }}
-                                className={cn(
-                                  "transition-all duration-300 shrink-0", 
-                                  (!isCompleted && checkHasIncompleteChildren(todo.tasks))
-                                    ? "opacity-30 cursor-not-allowed"
-                                    : "hover:scale-110 active:scale-95"
-                                )}
-                                title={!isCompleted && checkHasIncompleteChildren(todo.tasks) ? "Complete subtasks first" : isCompleted ? "Mark Pending" : "Mark Completed"}
-                              >
-                                {isCompleted ? (
-                                  <CheckCircle2 size={18} className="text-emerald-500 drop-shadow-sm" />
-                                ) : (
-                                  <Circle size={18} className={cn(isSelected ? "text-blue-500" : "text-slate-300 dark:text-slate-600")} />
-                                )}
-                              </button>
-                              
-                              <div className="flex flex-col min-w-0">
-                                <span className={cn(
-                                  "text-[13px] font-semibold truncate tracking-tight transition-all",
-                                  isSelected ? "text-slate-900 dark:text-white" : "text-slate-700 dark:text-slate-300",
-                                  isCompleted && "line-through opacity-40 font-normal"
-                                )}>
-                                  {todo.text || <em className="font-mono text-[10px] opacity-50">unlabeled task</em>}
-                                </span>
-                                
-                                <div className="flex items-center gap-2.5 mt-1.5 flex-wrap">
-                                  <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400 dark:text-slate-500 uppercase tracking-tight">
-                                    <span className="w-1 h-1 rounded-full bg-slate-300 dark:bg-slate-700" />
-                                    {todo.nodeName}
-                                  </div>
-                                  
-                                  {todo.priority && todo.priority !== "Normal" && (
-                                    <span className={cn(
-                                      "text-[9px] uppercase tracking-wider font-bold px-1.5 py-0.5 rounded-md leading-none",
-                                      priorityBg
-                                    )}>
-                                      {todo.priority}
-                                    </span>
-                                  )}
-                                  
-                                  {todo.dueDate && (
-                                    <span className="text-[9px] px-1.5 py-0.5 rounded-md font-mono shrink-0 flex items-center gap-1 bg-rose-500/10 text-rose-500 border border-rose-500/20">
-                                      <CalendarIcon size={10} />
-                                      {todo.dueDate}
-                                    </span>
-                                  )}
-                                </div>
-                                
-                                {todo.imageHashes && todo.imageHashes.length > 0 && (
-                                  <div className="mt-2.5 rounded-lg overflow-hidden border border-slate-200/50 dark:border-slate-800/50 shadow-sm">
-                                    <TaskImagePreview imageHashes={todo.imageHashes} compact={true} />
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-
-                            <div className="flex items-center gap-2 flex-wrap shrink-0">
-                              <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity gap-1 mr-1">
-                                <button
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    if (inlineSubParentId === todo.id) {
-                                      setInlineSubParentId(null);
-                                    } else {
-                                      setInlineSubParentId(todo.id);
-                                      setInlineSubText("");
-                                    }
-                                  }}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all active:scale-90"
-                                  title="Add Subtask"
-                                >
-                                  <Plus size={14} />
-                                </button>
-                                <button
-                                  onClick={async (e) => {
-                                    e.stopPropagation();
-                                    await handleDeleteTodo(todo);
-                                  }}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/20 transition-all active:scale-90"
-                                  title="Delete Task"
-                                >
-                                  <Trash2 size={14} />
-                                </button>
-                              </div>
-
-                              {(todo.tags || []).slice(0, 2).map((tag, tagIdx) => (
-                                <span key={`${tag}-${tagIdx}`} className="text-[9px] font-bold uppercase tracking-widest px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800/80 text-slate-500 dark:text-slate-400 border border-slate-200/50 dark:border-slate-800/50 select-none font-mono">
-                                  {tag}
-                                </span>
-                              ))}
-                              
-                              {isSelected && (
-                                <div className="flex items-center gap-1.5 ml-2 px-2 py-1 rounded-md bg-blue-500 text-white shadow-sm ring-1 ring-blue-400 animate-in fade-in zoom-in duration-200">
-                                  <span className="text-[9px] font-bold uppercase tracking-tighter font-mono">view</span>
-                                  <ExternalLink size={10} />
-                                </div>
-                              )}
-                            </div>
-                          </motion.div>
-
-                          <AnimatePresence>
-                            {inlineSubParentId === todo.id && (
-                              <motion.div 
-                                initial={{ opacity: 0, height: 0, marginTop: 0 }}
-                                animate={{ opacity: 1, height: 'auto', marginTop: 4 }}
-                                exit={{ opacity: 0, height: 0, marginTop: 0 }}
-                                className="overflow-hidden"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <div className="px-3 sm:px-8 pb-4">
-                                  <div className="bg-slate-50/50 dark:bg-slate-900/20 border border-slate-200/80 dark:border-slate-800/60 rounded-2xl p-4 shadow-inner">
-                                    <div className="border border-slate-200 dark:border-slate-700/50 rounded-xl overflow-hidden bg-white dark:bg-[#0d1117] flex flex-col shadow-[0_2px_10px_-4px_rgba(0,0,0,0.1)] focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/50 transition-all">
-                                      <textarea
-                                        maxLength={100}
-                                        autoFocus
-                                        rows={1}
-                                        value={inlineSubText}
-                                        onChange={(e) => setInlineSubText(e.target.value)}
-                                        onInput={(e) => {
-                                          const target = e.target as HTMLTextAreaElement;
-                                          target.style.height = 'auto';
-                                          target.style.height = `${target.scrollHeight}px`;
-                                        }}
-                                        onKeyDown={async (e) => {
-                                          if (e.key === "Enter" && !e.shiftKey) {
-                                            e.preventDefault();
-                                            if (inlineSubText.trim()) {
-                                              await addNewTodoToWorkspace(
-                                                parsedData,
-                                                todo.nodePath,
-                                                inlineSubText,
-                                                todo.id
-                                              );
-                                              setInlineSubText("");
-                                              setInlineSubParentId(null);
-                                            }
-                                          } else if (e.key === "Escape") {
-                                            setInlineSubParentId(null);
-                                            setInlineSubText("");
-                                          }
-                                        }}
-                                        placeholder="What needs to be done?"
-                                        className="w-full bg-transparent p-4 text-[13px] text-slate-800 dark:text-slate-200 placeholder-slate-400 dark:placeholder-slate-600 outline-none resize-none min-h-[50px] transition-height duration-200 font-medium pr-16"
-                                      />
-                                      <div className="flex justify-between items-center px-3 py-2 bg-slate-50 dark:bg-slate-800/40 border-t border-slate-100 dark:border-slate-800/50">
-                                        <div className="flex items-center gap-3 text-[10px] text-slate-400 font-mono pl-1">
-                                          <div className="flex items-center gap-1.5">
-                                            <span className="px-1 py-0.5 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 uppercase tracking-tighter">Esc</span>
-                                            <span>to cancel</span>
-                                          </div>
-                                          <div className="w-px h-3 bg-slate-200 dark:bg-slate-700" />
-                                          <div className="text-blue-500 font-bold">
-                                            {inlineSubText.length}/100
-                                          </div>
-                                        </div>
-                                        <div className="flex items-center gap-2">
-                                          <button
-                                            onClick={() => {
-                                              setInlineSubParentId(null);
-                                              setInlineSubText("");
-                                            }}
-                                            className="px-4 py-1.5 rounded-lg text-[11px] font-bold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-all uppercase tracking-wider"
-                                          >
-                                            Cancel
-                                          </button>
-                                          <button
-                                            onClick={async () => {
-                                              if (inlineSubText.trim()) {
-                                                await addNewTodoToWorkspace(
-                                                  parsedData,
-                                                  todo.nodePath,
-                                                  inlineSubText,
-                                                  todo.id
-                                                );
-                                                setInlineSubText("");
-                                                setInlineSubParentId(null);
-                                              }
-                                            }}
-                                            className="flex items-center gap-2 px-5 py-2 rounded-lg text-[11px] font-extrabold bg-blue-600 hover:bg-blue-500 active:scale-95 text-white transition-all shadow-md shadow-blue-500/20 uppercase tracking-widest ring-1 ring-blue-400/50"
-                                          >
-                                            <Check size={14} strokeWidth={3} />
-                                            Add Subtask
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
-                                  </div>
-                                </div>
-                              </motion.div>
-                            )}
-                          </AnimatePresence>
-                        </React.Fragment>
-                      );
-                    })
-                  )}
-                </div>
-
-                {/* Footer bar */}
-                <div className="p-2 border-t border-slate-100 dark:border-slate-850 bg-slate-50/50 dark:bg-[#090d14] flex items-center justify-between font-mono text-[9px] text-slate-400 select-none shrink-0 uppercase tracking-widest pl-4 pr-3.5">
-                  <div className="flex items-center gap-4">
-                    <span>↑↓ to select</span>
-                    <span>⏎ open detail popup</span>
-                    <span>⎋ escape</span>
-                  </div>
-                  <div>
-                    <span>{filteredTodos.length} tasks total</span>
-                  </div>
-                </div>
-              </motion.div>
-            </motion.div>
-          )}
-
-          {/* 3. TODO DETAIL POPUP */}
-          {activeTodo && (
-            <motion.div
-              key="todo-detail-popup"
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
-              className="fixed inset-0 z-[11500] w-screen h-screen flex items-center justify-center bg-slate-950/60 dark:bg-black/90 backdrop-blur-md p-4 text-slate-800 dark:text-slate-200"
-              onClick={() => setActiveTodo(null)}
-            >
-              <motion.div
-                initial={{ scale: 0.9, opacity: 0, y: 30 }}
-                animate={{ scale: 1, opacity: 1, y: 0 }}
-                exit={{ scale: 0.9, opacity: 0, y: 30 }}
-                transition={{ type: "spring", damping: 25, stiffness: 300 }}
-                className="w-full max-w-[680px] bg-white/95 dark:bg-[#0d1117]/95 backdrop-blur-2xl rounded-3xl border border-slate-200/50 dark:border-slate-800/50 shadow-[0_30px_60px_-15px_rgba(0,0,0,0.3)] flex flex-col overflow-hidden max-h-[90vh]"
-                onClick={(e) => e.stopPropagation()}
-                onPaste={handlePaste}
-              >
-                {/* Header controls layout */}
-                <div className="px-5 py-4 bg-slate-50/50 dark:bg-[#0f141d]/50 border-b border-slate-100 dark:border-slate-800/50 flex items-center justify-between shrink-0 select-none">
-                  <div className="flex items-center text-[11px] font-bold text-slate-400 dark:text-slate-500 tracking-widest font-mono uppercase truncate mr-4">
-                    <button
-                      onClick={() => setActiveTodo(null)}
-                      className="p-2 mr-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:text-blue-500 shadow-sm transition-all"
-                    >
-                      <ArrowLeft size={14} strokeWidth={2.5} />
-                    </button>
-                    <div className="flex items-center gap-1.5 truncate">
-                      <ClipboardList size={14} className="text-blue-500" />
-                      <span className="truncate">{activeTodo.nodeName}</span>
-                      <span className="opacity-30">/</span>
-                      <span className="text-slate-500 dark:text-slate-400">Detail</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => {
-                        openWorkspaceTab(activeTodo.nodePath, true);
-                        setExpandedJsNodeId(activeTodo.nodePath);
-                        setIsTodoOpen(false);
-                        setActiveTodo(null);
-                      }}
-                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:text-blue-500 shadow-sm transition-all"
-                      title="Open in Workspace"
-                    >
-                      <ExternalLink size={14} strokeWidth={2.5} />
-                    </button>
-                    <button
-                      onClick={() => handleToggleTodoStatus(activeTodo)}
-                      className={cn(
-                        "px-4 py-2 rounded-xl border-2 font-bold text-[11px] uppercase tracking-widest flex items-center gap-2 transition-all shadow-sm active:scale-95",
-                        activeTodo.completed || activeTodo.status === "Completed"
-                          ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/20 hover:bg-emerald-500/15"
-                          : "bg-blue-600 text-white border-transparent hover:bg-blue-500 shadow-blue-500/20"
-                      )}
-                    >
-                      {activeTodo.completed || activeTodo.status === "Completed" ? (
-                        <>
-                          <CheckCircle2 size={14} strokeWidth={3} />
-                          <span>Done</span>
-                        </>
-                      ) : (
-                        <>
-                          <Circle size={14} strokeWidth={3} />
-                          <span>Mark Complete</span>
-                        </>
-                      )}
-                    </button>
-                    <button
-                      onClick={() => handleDeleteTodo(activeTodo)}
-                      className="p-2 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:bg-rose-500/10 hover:border-rose-500 hover:text-rose-500 shadow-sm transition-all"
-                    >
-                      <Trash2 size={14} strokeWidth={2.5} />
-                    </button>
-                  </div>
-                </div>
-
-                {/* Body Content Editor */}
-                <div className="flex-1 overflow-y-auto p-6 sm:p-8 space-y-8 custom-scrollbar">
-                  {/* Title editor */}
-                  <div className="space-y-2 relative">
-                    <div className="flex items-center justify-between">
-                      <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none px-1">
-                        Task Title
-                      </label>
-                      {isDetailTitleFocused && (
-                        <span className="text-[10px] font-mono font-bold text-blue-500 bg-blue-100/60 dark:bg-blue-950/40 px-1.5 py-0.5 rounded shadow-sm border border-blue-200/55 dark:border-blue-900/60 pointer-events-none select-none animate-in fade-in duration-100">
-                          Max: 100 | Remaining: {100 - (activeTodo.text || "").length}
-                        </span>
-                      )}
-                    </div>
-                    <textarea
-                      maxLength={100}
-                      rows={1}
-                      autoFocus
-                      value={activeTodo.text || ""}
-                      onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "text", e.target.value)}
-                      onFocus={() => setIsDetailTitleFocused(true)}
-                      onBlur={() => setIsDetailTitleFocused(false)}
-                      ref={(el) => {
-                        if (el) {
-                          el.style.height = 'auto';
-                          el.style.height = `${el.scrollHeight}px`;
-                        }
-                      }}
-                      onInput={(e) => {
-                        const target = e.target as HTMLTextAreaElement;
-                        target.style.height = 'auto';
-                        target.style.height = `${target.scrollHeight}px`;
-                      }}
-                      placeholder="Task Headline..."
-                      className="w-full text-2xl sm:text-3xl font-black bg-transparent border-none outline-none text-slate-900 dark:text-white py-1 focus:ring-0 resize-none placeholder-slate-200 dark:placeholder-slate-800 leading-[1.1] transition-all px-1 overflow-hidden"
-                    />
-                  </div>
-
-                  {/* Attributes Box Grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50/50 dark:bg-slate-900/30 p-5 rounded-2xl border border-slate-100 dark:border-slate-800/50">
-                    <div className="space-y-3">
-                      {/* Priority */}
-                      <div className="flex items-center justify-between group">
-                        <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                          <AlertCircle size={13} className="text-blue-500" />
-                          <span>Priority</span>
-                        </div>
-                        <InlineDropdown
-                          value={activeTodo.priority || "Normal"}
-                          onChange={(val: string) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "priority", val)}
-                          options={PRIORITY_OPTIONS}
-                          defaultLabel="Normal"
-                          variant="priority"
-                        />
-                      </div>
-
-                      {/* Status */}
-                      <div className="flex items-center justify-between group">
-                        <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                          <Layers size={13} className="text-indigo-500" />
-                          <span>Status</span>
-                        </div>
-                        <InlineDropdown
-                          value={activeTodo.status || "Todo"}
-                          onChange={(val: string) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "status", val)}
-                          options={STATUS_OPTIONS}
-                          defaultLabel="Todo"
-                        />
-                      </div>
-                    </div>
-
-                    <div className="space-y-3 pt-3 sm:pt-0 sm:border-l border-slate-200 dark:border-slate-800 sm:pl-4">
-                      {/* Target Date */}
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                          <CalendarIcon size={13} className="text-rose-500" />
-                          <span>Deadline</span>
-                        </div>
-                        <div className="relative group">
-                          <SmartDatePicker
-                            selected={activeTodo.dueDate ? parseISO(activeTodo.dueDate) : null}
-                            onChange={(date: Date | null) => {
-                              const dateString = date ? format(date, "yyyy-MM-dd") : null;
-                              handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "dueDate", dateString);
-                            }}
-                          >
-                            <button className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-700 dark:text-slate-300 hover:border-blue-500/50 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all">
-                              {activeTodo.dueDate ? format(parseISO(activeTodo.dueDate), "MMM dd, yyyy") : "dd / mm / yyyy"}
-                            </button>
-                          </SmartDatePicker>
-                        </div>
-                      </div>
-
-                      {/* Last Modified (Placeholder for context) */}
-                      <div className="flex items-center justify-between opacity-50">
-                        <div className="flex items-center gap-2.5 text-[11px] font-medium text-slate-400 uppercase tracking-wider">
-                          <Sparkles size={13} />
-                          <span>Auto-save</span>
-                        </div>
-                        <span className="text-[10px] font-mono font-bold text-slate-400">ACTIVE</span>
-                      </div>
-
-                      {/* Default Todo Node / List selector (when multiple exist) */}
-                      {allTodoFiles.length > 1 && (
-                        <div className="flex items-center justify-between pt-2 border-t border-slate-150 dark:border-slate-800/80 relative">
-                          <div className="flex items-center gap-2.5 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
-                            <Star size={13} className="text-amber-500" fill={defaultTodoNodeId === activeTodo.nodePath ? "currentColor" : "none"} />
-                            <span>Default List</span>
-                          </div>
-                          <div className="relative">
-                            <button
-                              onClick={() => setIsDetailDefaultDropdownOpen(prev => !prev)}
-                              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-amber-500/50 hover:text-slate-900 dark:hover:text-slate-100 transition-colors font-sans text-[11px] font-bold cursor-pointer"
-                            >
-                              <span className="truncate max-w-[120px]">
-                                {allTodoFiles.find(f => f.id === defaultTodoNodeId)?.name || "None (Always Select)"}
-                              </span>
-                              <ChevronDown size={11} className="text-slate-400" />
-                            </button>
-                            
-                            <AnimatePresence>
-                              {isDetailDefaultDropdownOpen && (
-                                <>
-                                  {/* Backdrop click listener */}
-                                  <div className="fixed inset-0 z-40" onClick={() => setIsDetailDefaultDropdownOpen(false)} />
-                                  
-                                  <motion.div
-                                    initial={{ opacity: 0, y: 4, scale: 0.95 }}
-                                    animate={{ opacity: 1, y: 0, scale: 1 }}
-                                    exit={{ opacity: 0, y: 4, scale: 0.95 }}
-                                    transition={{ duration: 0.1 }}
-                                    className="absolute right-0 bottom-full mb-1.5 w-44 bg-white dark:bg-[#161d2b] border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 z-50 text-[11px] font-sans text-slate-750 dark:text-slate-300 overflow-hidden"
-                                  >
-                                    <button
-                                      onClick={() => {
-                                        setDefaultTodoNodeId(null);
-                                        setIsDetailDefaultDropdownOpen(false);
-                                      }}
-                                      className={cn(
-                                        "w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors font-medium",
-                                        !defaultTodoNodeId && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
-                                      )}
-                                    >
-                                      <span>None (Always Select)</span>
-                                      {!defaultTodoNodeId && <Check size={12} className="text-amber-500 shrink-0" />}
-                                    </button>
-                                    {allTodoFiles.map(f => {
-                                      const isSelected = f.id === defaultTodoNodeId;
-                                      return (
-                                        <button
-                                          key={f.id}
-                                          onClick={() => {
-                                            setDefaultTodoNodeId(f.id);
-                                            setIsDetailDefaultDropdownOpen(false);
-                                          }}
-                                          className={cn(
-                                            "w-full text-left px-3 py-2 hover:bg-slate-50 dark:hover:bg-slate-800/50 flex items-center justify-between cursor-pointer transition-colors truncate font-medium",
-                                            isSelected && "text-amber-500 font-bold bg-amber-500/5 dark:bg-amber-500/10"
-                                          )}
-                                        >
-                                          <span className="truncate mr-2">{f.name}</span>
-                                          {isSelected && <Check size={12} className="text-amber-500 shrink-0" />}
-                                        </button>
-                                      );
-                                    })}
-                                  </motion.div>
-                                </>
-                              )}
-                            </AnimatePresence>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Attached Media Section */}
-                  <div className="space-y-4">
-                    <div className="flex items-center gap-2">
-                      <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
-                      <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.2em] select-none flex items-center gap-2 shrink-0">
-                        <Hash size={12} strokeWidth={3} className="text-emerald-500" />
-                        Attached Media
-                      </label>
-                      <div className="h-px flex-1 bg-slate-100 dark:bg-slate-800" />
-                      {activeTodo.imageHashes && activeTodo.imageHashes.length > 0 && (
-                        <div className="flex items-center gap-1">
-                          {isConfirmingDeleteAll ? (
-                            <div className="flex items-center gap-1 bg-rose-500/10 rounded-lg p-0.5 animate-in slide-in-from-right-2">
-                               <button 
-                                 onClick={handleDeleteAllMedia}
-                                 className="px-2 py-1 text-[9px] font-bold text-rose-500 hover:bg-rose-500 hover:text-white rounded transition-colors"
-                               >
-                                 Confirm Delete All
-                               </button>
-                               <button 
-                                 onClick={() => setIsConfirmingDeleteAll(false)}
-                                 className="px-2 py-1 text-[9px] font-bold text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                               >
-                                 Cancel
-                               </button>
-                            </div>
-                          ) : (
-                            <button 
-                              onClick={() => setIsConfirmingDeleteAll(true)}
-                              className="p-1.5 text-slate-400 hover:text-rose-500 hover:bg-rose-500/10 rounded-lg transition-all"
-                              title="Delete all media"
-                            >
-                              <Trash2 size={12} />
-                            </button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="bg-slate-50/50 dark:bg-slate-900/30 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 p-4">
-                      {activeTodo.imageHashes && activeTodo.imageHashes.length > 0 ? (
-                        <div className="space-y-4">
-                           <TaskImagePreview 
-                             imageHashes={activeTodo.imageHashes} 
-                             compact={false} 
-                             onDelete={handleDeleteMedia}
-                             onPreview={handlePreviewMedia}
-                           />
-                           <div className="flex items-center gap-2">
-                             <button 
-                               onClick={() => {
-                                 const input = document.createElement('input');
-                                 input.type = 'file';
-                                 input.multiple = true;
-                                 input.accept = 'image/*,video/*,audio/*';
-                                 input.onchange = (e: any) => {
-                                   if (e.target.files) handleMediaUpload(e.target.files);
-                                 };
-                                 input.click();
-                               }}
-                               disabled={isUploading}
-                               className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:text-blue-500 hover:border-blue-500/50 transition-all shadow-sm"
-                             >
-                                <Upload size={14} strokeWidth={2.5} />
-                                {isUploading ? "Uploading..." : "Add More Media"}
-                             </button>
-                             <button 
-                               onClick={() => setIsCameraOpen(true)}
-                               className="px-4 py-2.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-emerald-500 hover:border-emerald-500/50 transition-all shadow-sm"
-                             >
-                                <Camera size={16} strokeWidth={2.5} />
-                             </button>
-                           </div>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center justify-center py-8 gap-4">
-                          <div className="flex gap-4">
-                            <div className="w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-500">
-                              <ImageIcon size={24} />
-                            </div>
-                            <div className="w-12 h-12 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-500">
-                              <Video size={24} />
-                            </div>
-                            <div className="w-12 h-12 rounded-full bg-amber-500/10 flex items-center justify-center text-amber-500">
-                              <Music size={24} />
-                            </div>
-                          </div>
-                          <div className="text-center space-y-1">
-                            <h4 className="text-[13px] font-bold text-slate-700 dark:text-slate-200">No media attached</h4>
-                            <p className="text-[11px] text-slate-500 dark:text-slate-500">Upload images, videos, or record a clip</p>
-                          </div>
-                          <div className="flex items-center gap-2 w-full max-w-[280px]">
-                            <button 
-                              onClick={() => {
-                                const input = document.createElement('input');
-                                input.type = 'file';
-                                input.multiple = true;
-                                input.accept = 'image/*,video/*,audio/*';
-                                input.onchange = (e: any) => {
-                                  if (e.target.files) handleMediaUpload(e.target.files);
-                                };
-                                input.click();
-                              }}
-                              disabled={isUploading}
-                              className="flex-1 flex items-center justify-center gap-2 py-2.5 rounded-xl bg-blue-600 text-white font-bold text-[11px] hover:bg-blue-700 transition-all shadow-lg shadow-blue-600/20 disabled:opacity-50"
-                            >
-                               <Upload size={14} strokeWidth={2.5} />
-                               {isUploading ? "Uploading..." : "Upload File"}
-                            </button>
-                            <button 
-                              onClick={() => setIsCameraOpen(true)}
-                              className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px] font-bold text-slate-600 dark:text-slate-400 hover:text-emerald-500 hover:border-emerald-500/50 transition-all shadow-sm"
-                            >
-                               <Camera size={16} strokeWidth={2.5} />
-                            </button>
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Notes / Description */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between px-1">
-                      <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none flex items-center gap-2">
-                        Notes & Description
-                      </label>
-                      <button
-                        onClick={() => setIsEditingNotes(!isEditingNotes)}
-                        className={cn(
-                          "px-3 py-1.5 rounded-lg text-[10px] font-black uppercase tracking-widest transition-all flex items-center gap-2 border shadow-sm",
-                          isEditingNotes 
-                            ? "bg-blue-600 text-white border-transparent" 
-                            : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:text-blue-500"
-                        )}
-                      >
-                        {isEditingNotes ? (
-                          <><Eye size={12} strokeWidth={3} /> Save View</>
-                        ) : (
-                          <><Edit2 size={12} strokeWidth={3} /> Write Mode</>
-                        )}
-                      </button>
-                    </div>
-                    
-                    <div className="relative group" onPaste={handlePaste}>
-                      {isEditingNotes ? (
-                        <textarea
-                          rows={6}
-                          value={activeTodo.notes || ""}
-                          onChange={(e) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "notes", e.target.value)}
-                          onPaste={handlePaste}
-                          placeholder="Strategize, plan, and document..."
-                          className="w-full text-sm font-medium bg-white dark:bg-[#090c12] border-2 border-slate-200 dark:border-slate-800 rounded-2xl p-5 focus:border-blue-500 focus:ring-4 focus:ring-blue-500/10 placeholder-slate-300 dark:placeholder-slate-700 outline-none leading-relaxed transition-all shadow-sm"
-                        />
-                      ) : (
-                        <div 
-                          className={cn(
-                           "w-full text-[14px] bg-slate-50/30 dark:bg-slate-900/10 border border-slate-100 dark:border-slate-850 rounded-2xl p-6 min-h-[140px] leading-relaxed transition-all",
-                            !activeTodo.notes ? "flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 italic gap-2 hover:bg-slate-50 dark:hover:bg-slate-900/20 cursor-pointer border-dashed" : "cursor-text hover:border-slate-300 dark:hover:border-slate-700 shadow-sm"
-                          )}
-                          onClick={() => setIsEditingNotes(true)}
-                        >
-                          {activeTodo.notes ? (
-                            <div className="prose dark:prose-invert prose-slate max-w-none prose-p:my-2 prose-headings:font-black prose-a:text-blue-500 prose-img:rounded-xl">
-                              <Markdown>{activeTodo.notes}</Markdown>
-                            </div>
-                          ) : (
-                            <>
-                              <Edit2 size={24} className="opacity-20 mb-1" />
-                              <span className="text-[13px] font-bold tracking-tight">Click to compose notes...</span>
-                            </>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Labels Section */}
-                  <div className="space-y-4 pt-2">
-                    <label className="text-[10px] uppercase font-black text-slate-400 dark:text-slate-500 tracking-[0.15em] select-none flex items-center gap-2 px-1">
-                      <Hash size={12} strokeWidth={3} className="text-blue-500" />
-                      Dynamic Labels
-                    </label>
-                    <div className="flex items-center gap-2 flex-wrap px-1">
-                      {(activeTodo.tags || []).map((tag: string, tagIdx: number) => (
-                        <span
-                          key={`${tag}-${tagIdx}`}
-                          className={cn(
-                            "group text-[10px] font-black uppercase tracking-widest px-3 py-1.5 rounded-xl border flex items-center gap-2 select-none shadow-sm transition-all", 
-                            getTagColorClass(tag)
-                          )}
-                        >
-                          {tag}
-                          <button
-                            onClick={() => {
-                              const nextTags = (activeTodo.tags || []).filter((t: string) => t !== tag);
-                              handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "tags", nextTags);
-                            }}
-                            className="opacity-40 hover:opacity-100 hover:text-rose-500 transition-all p-0.5 rounded-full hover:bg-white/40"
-                          >
-                            <X size={10} strokeWidth={4} />
-                          </button>
-                        </span>
-                      ))}
-                      <LabelInput
-                        tags={activeTodo.tags || []}
-                        onAdd={(newTag: string) => handleUpdateTodoField(activeTodo.id, activeTodo.nodePath, "tags", [...(activeTodo.tags || []), newTag])}
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                {/* Footer status bar */}
-                <div className="px-6 py-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-[#090d14] flex items-center justify-between">
-                  <div className="flex items-center gap-2 text-[10px] font-black text-blue-500 uppercase tracking-widest">
-                    <div className="w-1.5 h-1.5 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)] animate-pulse" />
-                    Secure Local Storage Active
-                  </div>
-                  <div className="text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest opacity-60">
-                    Esc to Close
-                  </div>
-                </div>
-
-                {isCameraOpen && (
-                  <CameraCaptureModal 
-                    onClose={() => setIsCameraOpen(false)}
-                    onCapture={(file) => handleMediaUpload([file])}
-                  />
-                )}
-              </motion.div>
-            </motion.div>
-          )}
-        </AnimatePresence>
+  const renderFilePalette = () => (
+    <PaletteShell key="file-palette" label="Open file" width={640} zIndex={11000} onClose={() => setIsFileOpen(false)}>
+      <div className="flex items-center gap-2.5 px-4 h-12 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
+        <Search size={16} className="text-slate-400 shrink-0" />
+        <input
+          autoFocus
+          type="text"
+          value={fileSearch}
+          onChange={(e) => {
+            setFileSearch(e.target.value.replace(/^~/, ""));
+            setSelectedFileIdx(0);
+          }}
+          onKeyDown={handleFileKeyDown}
+          placeholder="Search files by name or path (* and ? work too)"
+          aria-label="Search files"
+          className="flex-1 min-w-0 bg-transparent outline-none text-[14px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+        />
+        <span className="hidden sm:flex items-center gap-1">
+          <Kbd>Ctrl</Kbd>
+          <Kbd>`</Kbd>
+        </span>
       </div>
+
+      <div ref={fileListEl} role="listbox" className="flex-1 overflow-y-auto py-1.5 min-h-[120px]">
+        {filteredFiles.length === 0 ? (
+          <div className="py-12 flex flex-col items-center gap-2 text-center text-slate-500 dark:text-slate-400">
+            <FolderOpen size={22} className="text-slate-300 dark:text-slate-600" />
+            <span className="text-[13px]">No files match "{fileSearch}"</span>
+          </div>
+        ) : (
+          <>
+            {!fileSearch.trim() && (
+              <div className="px-4 pt-1 pb-1.5 text-[11px] font-semibold uppercase tracking-wide text-slate-400 dark:text-slate-500">
+                Pinned and recent
+              </div>
+            )}
+            {filteredFiles.map((file, idx) => {
+              const isSelected = idx === selectedFileIdx;
+              const isOpen = activeExplorerFile === file.id;
+              const isPinned = pinnedFiles.includes(file.id);
+              return (
+                <div
+                  key={`${file.id}-${idx}`}
+                  role="option"
+                  aria-selected={isSelected}
+                  className={cn(
+                    "is-selected-file group relative flex items-center gap-3 mx-1.5 px-2.5 h-10 rounded-lg cursor-pointer",
+                    isSelected ? "is-selected-file bg-slate-100 dark:bg-white/[0.06]" : "hover:bg-slate-50 dark:hover:bg-white/[0.03]",
+                  )}
+                  onMouseMove={() => selectedFileIdx !== idx && setSelectedFileIdx(idx)}
+                  onClick={() => openFile(file)}
+                >
+                  {isSelected && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-blue-500" />}
+                  <span className="shrink-0">{renderOverlayFileIcon(file.type, file.name)}</span>
+                  <div className="min-w-0 flex-1 flex items-baseline gap-2">
+                    <span className="text-[13px] font-medium truncate text-slate-800 dark:text-slate-100">{file.name}</span>
+                    <span className="text-[11px] truncate text-slate-400 dark:text-slate-500">{file.pathStr}</span>
+                  </div>
+                  {isOpen && (
+                    <span className="shrink-0 h-5 px-1.5 inline-flex items-center rounded-md text-[10px] font-medium bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                      Open
+                    </span>
+                  )}
+                  <button
+                    type="button"
+                    onClick={(e) => togglePin(file.id, e)}
+                    title={isPinned ? "Unpin" : "Pin to top"}
+                    className={cn(
+                      "shrink-0 h-6 w-6 inline-flex items-center justify-center rounded-md transition-opacity hover:bg-slate-200/70 dark:hover:bg-white/10",
+                      isPinned ? "text-amber-500 opacity-100" : "text-slate-400 opacity-0 group-hover:opacity-100",
+                    )}
+                  >
+                    <Pin size={12} className={isPinned ? "fill-current" : ""} />
+                  </button>
+                </div>
+              );
+            })}
+          </>
+        )}
+      </div>
+
+      <PaletteFooter
+        hints={[
+          [<><Kbd>↑</Kbd><Kbd>↓</Kbd></>, "Navigate"],
+          [<Kbd>↵</Kbd>, "Open"],
+          [<Kbd>Esc</Kbd>, "Close"],
+        ]}
+        right={`${filteredFiles.length} ${filteredFiles.length === 1 ? "file" : "files"}`}
+      />
+    </PaletteShell>
+  );
+
+  // ─── Render: task center ─────────────────────────────────────────────────────
+
+  const renderListMenu = () => (
+    <div ref={listMenuRef} className="relative">
+      <button
+        type="button"
+        onClick={() => setIsListMenuOpen((v) => !v)}
+        aria-haspopup="menu"
+        aria-expanded={isListMenuOpen}
+        className="inline-flex items-center gap-1.5 h-7 max-w-[200px] pl-2 pr-1.5 rounded-md border border-slate-200 dark:border-slate-700 text-[12px] font-medium text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/5 transition-colors cursor-pointer"
+      >
+        {selectedListPath ? <ClipboardList size={13} className="text-blue-500 shrink-0" /> : <Layers size={13} className="text-slate-400 shrink-0" />}
+        <span className="truncate">{selectedListPath ? listName(selectedListPath) : "All lists"}</span>
+        <ChevronDown size={12} className="text-slate-400 shrink-0" />
+      </button>
+
+      {isListMenuOpen && (
+        <div className={cn(MENU_CLASS, "absolute right-0 top-full mt-1 z-20 w-64")} role="menu">
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedListPath("");
+              setIsListMenuOpen(false);
+            }}
+            className="w-full flex items-center gap-2.5 px-3 h-9 text-[12px] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5"
+          >
+            <Layers size={14} className="text-slate-400" />
+            <span className="flex-1 text-left">All lists</span>
+            <span className="tabular-nums text-[11px] text-slate-400">{allWorkspaceTodos.length}</span>
+            {!selectedListPath && <Check size={13} className="text-blue-500" />}
+          </button>
+          <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
+          {todoLists.map((l) => {
+            const stats = listStats.get(l.path) || { total: 0, completed: 0 };
+            const isDefault = l.path === defaultListPath;
+            return (
+              <div
+                key={l.path}
+                className="group flex items-center gap-2.5 px-3 h-9 text-[12px] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/5 cursor-pointer"
+                onClick={() => {
+                  setSelectedListPath(l.path);
+                  setIsListMenuOpen(false);
+                }}
+              >
+                <ClipboardList size={14} className="text-slate-400 shrink-0" />
+                <span className="flex-1 truncate">{l.name}</span>
+                <span className="tabular-nums text-[11px] text-slate-400">
+                  {stats.completed}/{stats.total}
+                </span>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setDefaultListPath(isDefault ? null : l.path);
+                  }}
+                  title={isDefault ? "Default list (opens first) — click to unset" : "Open this list first with Alt+T"}
+                  className={cn(
+                    "h-6 w-6 inline-flex items-center justify-center rounded-md hover:bg-slate-200/70 dark:hover:bg-white/10",
+                    isDefault ? "text-amber-500" : "text-slate-400 opacity-0 group-hover:opacity-100",
+                  )}
+                >
+                  <Star size={12} className={isDefault ? "fill-current" : ""} />
+                </button>
+                {selectedListPath === l.path && <Check size={13} className="text-blue-500" />}
+              </div>
+            );
+          })}
+          <div className="my-1 h-px bg-slate-100 dark:bg-slate-800" />
+          {isCreatingList ? (
+            <div className="px-2 py-1.5 flex items-center gap-1.5">
+              <input
+                autoFocus
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") handleCreateList();
+                  if (e.key === "Escape") {
+                    e.stopPropagation();
+                    setIsCreatingList(false);
+                  }
+                }}
+                placeholder="List name, e.g. Work"
+                maxLength={todo.MAX_LIST_TITLE}
+                className={cn(INPUT, "h-7 text-[12px]")}
+              />
+              <button
+                type="button"
+                onClick={handleCreateList}
+                disabled={!newListName.trim()}
+                className="h-7 px-2.5 shrink-0 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium disabled:opacity-40"
+              >
+                Create
+              </button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setIsCreatingList(true)}
+              className="w-full flex items-center gap-2.5 px-3 h-9 text-[12px] text-blue-600 dark:text-blue-400 hover:bg-slate-100 dark:hover:bg-white/5"
+            >
+              <Plus size={14} />
+              New list…
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+
+  const renderTaskRow = (item: FlatTodoItem, idx: number) => {
+    const isSelected = idx === selectedTodoIdx;
+    const done = todo.isTaskDone(item);
+    const blocked = !done && todo.hasIncompleteChildren(item.tasks);
+    const priority = todo.priorityOf(item);
+    const subtasks = item.tasks?.length ? todo.countTasks(item.tasks) : null;
+    const indent = todoViewMode === "tree" && !isSearching ? item.depth * 18 : 0;
+    const overdue = isOverdue(item);
+    const showListName = !selectedListPath && todoLists.length > 1;
+
+    return (
+      <React.Fragment key={`${item.nodePath}-${item.id}`}>
+        <div
+          role="option"
+          aria-selected={isSelected}
+          className={cn(
+            "group relative flex items-start gap-2.5 mx-1.5 pr-2 py-2 rounded-lg cursor-pointer",
+            isSelected ? "is-selected-todo bg-slate-100 dark:bg-white/[0.06]" : "hover:bg-slate-50 dark:hover:bg-white/[0.03]",
+          )}
+          style={{ paddingLeft: 10 + indent }}
+          onMouseMove={() => selectedTodoIdx !== idx && setSelectedTodoIdx(idx)}
+          onClick={() => setActiveTaskKey({ id: item.id, nodePath: item.nodePath })}
+        >
+          {isSelected && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-blue-500" />}
+          <TaskCheckbox
+            done={done}
+            blocked={blocked}
+            onToggle={() => toggleDone(item)}
+            onBlocked={() => notify("Complete its subtasks first", "info")}
+            className="mt-0.5"
+          />
+          <div className="flex-1 min-w-0">
+            <div
+              className={cn(
+                "text-[13px] leading-5 truncate",
+                done ? "line-through text-slate-400 dark:text-slate-500" : "text-slate-800 dark:text-slate-100",
+              )}
+            >
+              {item.text || <span className="italic text-slate-400">Untitled task</span>}
+            </div>
+            {(showListName || priority !== todo.DEFAULT_PRIORITY || item.dueDate || subtasks || item.notes || item.imageHashes?.length || item.tags?.length) && (
+              <div className="mt-1 flex items-center gap-2 flex-wrap text-[11px] text-slate-500 dark:text-slate-400">
+                {showListName && (
+                  <span className="inline-flex items-center gap-1">
+                    <ClipboardList size={11} />
+                    {item.nodeName}
+                  </span>
+                )}
+                {!done && priority !== todo.DEFAULT_PRIORITY && <PriorityBadge priority={priority} />}
+                {item.dueDate && (
+                  <span className={cn("inline-flex items-center gap-1", overdue && "text-red-500 font-medium")}>
+                    <CalendarIcon size={11} />
+                    {overdue ? `Overdue · ${formatDue(item.dueDate)}` : formatDue(item.dueDate)}
+                  </span>
+                )}
+                {subtasks && (
+                  <span className="inline-flex items-center gap-1 tabular-nums" title="Subtasks done">
+                    <ListTree size={11} />
+                    {subtasks.completed}/{subtasks.total}
+                  </span>
+                )}
+                {item.notes && <AlignLeft size={11} aria-label="Has notes" />}
+                {!!item.imageHashes?.length && (
+                  <span className="inline-flex items-center gap-1 tabular-nums">
+                    <Paperclip size={11} />
+                    {item.imageHashes.length}
+                  </span>
+                )}
+                {(item.tags || []).slice(0, 3).map((tag) => (
+                  <span key={tag} className={cn("inline-flex items-center h-4 px-1 rounded border text-[10px] font-medium", getTagColorClass(tag))}>
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+          <div
+            className={cn(
+              "flex items-center gap-0.5 shrink-0 transition-opacity",
+              isSelected ? "opacity-100" : "opacity-0 group-hover:opacity-100 [@media(hover:none)]:opacity-100",
+            )}
+          >
+            <button
+              type="button"
+              title="Add subtask"
+              onClick={(e) => {
+                e.stopPropagation();
+                setInlineSubText("");
+                setInlineSubParentId(inlineSubParentId === item.id ? null : item.id);
+              }}
+              className={ICON_BUTTON}
+            >
+              <Plus size={14} />
+            </button>
+            <button
+              type="button"
+              title="Delete task"
+              onClick={(e) => {
+                e.stopPropagation();
+                requestDeleteTask(item);
+              }}
+              className={cn(ICON_BUTTON, "hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-500/10")}
+            >
+              <Trash2 size={13} />
+            </button>
+          </div>
+        </div>
+
+        {inlineSubParentId === item.id && (
+          <div className="mx-1.5 mb-1 flex items-center gap-2" style={{ paddingLeft: 10 + indent + 26 }}>
+            <CornerDownLeft size={13} className="text-slate-400 -scale-x-100 shrink-0" />
+            <input
+              autoFocus
+              value={inlineSubText}
+              maxLength={todo.MAX_TASK_TEXT}
+              onChange={(e) => setInlineSubText(e.target.value)}
+              onKeyDown={(e) => {
+                e.stopPropagation();
+                if (e.key === "Enter" && inlineSubText.trim()) {
+                  addTask(inlineSubText, item.nodePath, item.id);
+                  setInlineSubText("");
+                  setInlineSubParentId(null);
+                } else if (e.key === "Escape") {
+                  setInlineSubParentId(null);
+                }
+              }}
+              onBlur={() => !inlineSubText.trim() && setInlineSubParentId(null)}
+              placeholder={`Subtask of "${item.text || "Untitled task"}" — Enter to add`}
+              className={cn(INPUT, "h-7 text-[12px]")}
+            />
+          </div>
+        )}
+      </React.Fragment>
     );
   };
+
+  const renderTodoCenter = () => (
+    <PaletteShell key="todo-center" label="Tasks" width={680} zIndex={11000} onClose={() => setIsTodoOpen(false)}>
+      <div className="flex items-center gap-2.5 pl-4 pr-2.5 h-12 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
+        <Search size={16} className="text-slate-400 shrink-0" />
+        <input
+          autoFocus
+          type="text"
+          ref={todoSearchRef}
+          value={todoSearch}
+          onChange={(e) => {
+            setTodoSearch(e.target.value);
+            setSelectedTodoIdx(0);
+          }}
+          onKeyDown={handleTodoKeyDown}
+          placeholder="Search tasks, notes, labels, status or priority"
+          aria-label="Search tasks"
+          className="flex-1 min-w-0 bg-transparent outline-none text-[14px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+        />
+        {todoLists.length > 0 && renderListMenu()}
+      </div>
+
+      {todoLists.length > 0 && (
+        <div className="flex items-center justify-between gap-2 px-3 h-9 border-b border-slate-200/80 dark:border-slate-800 shrink-0 text-[12px]">
+          <span className="text-slate-500 dark:text-slate-400 tabular-nums truncate">
+            {isSearching
+              ? `${filteredTodos.length} ${filteredTodos.length === 1 ? "match" : "matches"}`
+              : (() => {
+                  const scope = selectedListPath
+                    ? listStats.get(selectedListPath) || { total: 0, completed: 0 }
+                    : todoLists.reduce(
+                        (acc, l) => {
+                          const s = listStats.get(l.path);
+                          return { total: acc.total + (s?.total || 0), completed: acc.completed + (s?.completed || 0) };
+                        },
+                        { total: 0, completed: 0 },
+                      );
+                  return scope.total === 0 ? "No tasks yet" : `${scope.completed} of ${scope.total} done`;
+                })()}
+          </span>
+          <div className="flex items-center gap-0.5">
+            <button
+              type="button"
+              onClick={() => setShowDone((v) => !v)}
+              aria-pressed={!showDone}
+              className={cn(GHOST_BUTTON, "h-6 text-[11px]", !showDone && "bg-slate-100 dark:bg-white/10 text-slate-900 dark:text-white")}
+              title={showDone ? "Hide finished tasks" : "Show finished tasks"}
+            >
+              <CheckCircle2 size={12} />
+              {showDone ? "Hide done" : "Showing open only"}
+            </button>
+            <div className="flex items-center p-0.5 rounded-md bg-slate-100 dark:bg-white/5" role="group" aria-label="View">
+              {(
+                [
+                  ["tree", ListTree, "Tree view"],
+                  ["flat", List, "Flat list"],
+                ] as const
+              ).map(([mode, Icon, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  title={label}
+                  aria-pressed={todoViewMode === mode}
+                  onClick={() => setTodoViewMode(mode)}
+                  className={cn(
+                    "h-5 w-6 inline-flex items-center justify-center rounded-[5px] transition-colors",
+                    todoViewMode === mode
+                      ? "bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200",
+                  )}
+                >
+                  <Icon size={12} />
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div ref={todoListEl} role="listbox" aria-label="Tasks" className="flex-1 overflow-y-auto py-1.5 min-h-[160px]">
+        {todoLists.length === 0 ? (
+          <div className="py-10 px-6 flex flex-col items-center gap-3 text-center">
+            <div className="w-11 h-11 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+              <ClipboardList size={20} />
+            </div>
+            <div>
+              <p className="text-[14px] font-medium text-slate-800 dark:text-slate-100">Create your first task list</p>
+              <p className="text-[12px] text-slate-500 dark:text-slate-400 mt-0.5">
+                Lists are saved in your workspace and appear on the canvas as a Todo node.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 w-full max-w-xs">
+              <input
+                value={newListName}
+                onChange={(e) => setNewListName(e.target.value)}
+                onKeyDown={(e) => e.key === "Enter" && handleCreateList()}
+                placeholder="List name, e.g. Work"
+                maxLength={todo.MAX_LIST_TITLE}
+                className={INPUT}
+              />
+              <button
+                type="button"
+                onClick={handleCreateList}
+                disabled={!newListName.trim()}
+                className="h-8 px-3 shrink-0 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[12px] font-medium disabled:opacity-40"
+              >
+                Create
+              </button>
+            </div>
+          </div>
+        ) : filteredTodos.length === 0 ? (
+          <div className="py-12 flex flex-col items-center gap-2 text-center text-slate-500 dark:text-slate-400">
+            <ClipboardList size={22} className="text-slate-300 dark:text-slate-600" />
+            <span className="text-[13px]">
+              {isSearching ? `No tasks match "${todoSearch}"` : showDone ? "No tasks yet — add one below" : "Everything here is done"}
+            </span>
+          </div>
+        ) : (
+          filteredTodos.map(renderTaskRow)
+        )}
+      </div>
+
+      {todoLists.length > 0 && (
+        <div className="flex items-center gap-2 px-3.5 h-11 border-t border-slate-200/80 dark:border-slate-800 shrink-0">
+          <Plus size={15} className="text-slate-400 shrink-0" />
+          <input
+            value={newTodoText}
+            maxLength={todo.MAX_TASK_TEXT}
+            onChange={(e) => setNewTodoText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newTodoText.trim()) {
+                addTask(newTodoText, addTargetPath);
+                setNewTodoText("");
+              } else if (e.key === "Escape") {
+                e.preventDefault();
+                (e.target as HTMLInputElement).blur();
+              }
+            }}
+            placeholder={`Add a task to ${listName(addTargetPath)}…`}
+            aria-label="New task"
+            className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+          />
+          <LengthHint length={newTodoText.length} max={todo.MAX_TASK_TEXT} className="shrink-0" />
+          {newTodoText.trim() ? (
+            <button
+              type="button"
+              onClick={() => {
+                addTask(newTodoText, addTargetPath);
+                setNewTodoText("");
+              }}
+              className="h-6 px-2.5 shrink-0 rounded-md bg-blue-600 hover:bg-blue-500 text-white text-[11px] font-medium"
+            >
+              Add
+            </button>
+          ) : (
+            <Kbd>↵</Kbd>
+          )}
+        </div>
+      )}
+
+      <PaletteFooter
+        hints={[
+          [<><Kbd>↑</Kbd><Kbd>↓</Kbd></>, "Navigate"],
+          [<Kbd>↵</Kbd>, "Open"],
+          [<><Kbd>Ctrl</Kbd><Kbd>↵</Kbd></>, "Toggle done"],
+          [<Kbd>Esc</Kbd>, "Close"],
+        ]}
+        right={<span className="flex items-center gap-1"><Kbd>Alt</Kbd><Kbd>T</Kbd></span>}
+      />
+    </PaletteShell>
+  );
+
+  // ─── Render: task detail ─────────────────────────────────────────────────────
+
+  const renderTaskDetail = (task: FlatTodoItem) => {
+    const done = todo.isTaskDone(task);
+    const blocked = !done && todo.hasIncompleteChildren(task.tasks);
+    const subtasks = task.tasks || [];
+    const media = task.imageHashes || [];
+
+    return (
+      <PaletteShell
+        key="todo-detail"
+        label="Task details"
+        width={600}
+        zIndex={11500}
+        onClose={() => setActiveTaskKey(null)}
+        onPaste={handlePaste}
+        takeFocus
+      >
+        <div className="flex items-center justify-between gap-3 pl-4 pr-2 h-11 border-b border-slate-200/80 dark:border-slate-800 shrink-0">
+          <div className="flex items-center gap-1.5 min-w-0 text-[12px] text-slate-500 dark:text-slate-400">
+            <ClipboardList size={13} className="shrink-0" />
+            <span className="truncate">{task.nodeName}</span>
+            {task.parentTaskId && (
+              <>
+                <span className="text-slate-300 dark:text-slate-600">/</span>
+                <span className="truncate">
+                  {allWorkspaceTodos.find((t) => t.id === task.parentTaskId && t.nodePath === task.nodePath)?.text || "Parent task"}
+                </span>
+              </>
+            )}
+          </div>
+          <div className="flex items-center gap-0.5 shrink-0">
+            <button type="button" onClick={() => openTaskInWorkspace(task.nodePath)} className={ICON_BUTTON} title="Open list in workspace">
+              <ExternalLink size={14} />
+            </button>
+            <button
+              type="button"
+              onClick={() => requestDeleteTask(task)}
+              className={cn(ICON_BUTTON, "hover:text-rose-500 dark:hover:text-rose-400 hover:bg-rose-500/10")}
+              title="Delete task"
+            >
+              <Trash2 size={14} />
+            </button>
+            <div className="w-px h-4 mx-1 bg-slate-200 dark:bg-slate-800" />
+            <button type="button" onClick={() => setActiveTaskKey(null)} className={ICON_BUTTON} title="Close (Esc)">
+              <X size={15} />
+            </button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 flex flex-col gap-5">
+          {/* Title */}
+          <div className="flex items-start gap-3">
+            <TaskCheckbox
+              done={done}
+              blocked={blocked}
+              size="lg"
+              onToggle={() => toggleDone(task)}
+              onBlocked={() => notify("Complete its subtasks first", "info")}
+              className="mt-1"
+            />
+            <div className="flex-1 min-w-0 relative">
+              <textarea
+                rows={1}
+                maxLength={todo.MAX_TASK_TEXT}
+                value={task.text || ""}
+                onChange={(e) => updateTask(task, { text: e.target.value })}
+                ref={(el) => {
+                  if (el) {
+                    el.style.height = "auto";
+                    el.style.height = `${el.scrollHeight}px`;
+                  }
+                }}
+                placeholder="Task name"
+                aria-label="Task name"
+                className={cn(
+                  "w-full resize-none overflow-hidden bg-transparent outline-none text-[18px] font-semibold leading-snug placeholder:text-slate-300 dark:placeholder:text-slate-600 rounded-md -mx-1 px-1 focus:bg-slate-50 dark:focus:bg-white/[0.03]",
+                  done ? "text-slate-400 dark:text-slate-500 line-through" : "text-slate-900 dark:text-white",
+                )}
+              />
+              <LengthHint length={(task.text || "").length} max={todo.MAX_TASK_TEXT} className="absolute right-1 -bottom-3.5" />
+            </div>
+          </div>
+
+          {/* Properties */}
+          <div className="rounded-lg border border-slate-200 dark:border-slate-800 divide-y divide-slate-200 dark:divide-slate-800">
+            <div className="flex items-center justify-between gap-3 pl-3 pr-1.5 min-h-10">
+              <span className="text-[12px] text-slate-500 dark:text-slate-400">Status</span>
+              <StatusSelect value={task.status || "Todo"} onChange={(status) => updateTask(task, { status })} />
+            </div>
+            <div className="flex items-center justify-between gap-3 pl-3 pr-1.5 py-2">
+              <span className="text-[12px] text-slate-500 dark:text-slate-400 shrink-0">Priority</span>
+              <PriorityPicker value={todo.priorityOf(task)} onChange={(priority) => updateTask(task, { priority })} className="justify-end" />
+            </div>
+            <div className="flex items-center justify-between gap-3 pl-3 pr-1.5 min-h-10">
+              <span className="text-[12px] text-slate-500 dark:text-slate-400">Due date</span>
+              <div className="flex items-center gap-1">
+                <SmartDatePicker
+                  selected={task.dueDate ? parseISO(task.dueDate) : null}
+                  onChange={(date: Date | null) =>
+                    updateTask(task, { dueDate: date ? format(date, "yyyy-MM-dd") : undefined })
+                  }
+                >
+                  <button
+                    type="button"
+                    className={cn(
+                      "inline-flex items-center gap-1.5 h-7 px-2 rounded-md text-[12px] hover:bg-slate-100 dark:hover:bg-white/5 transition-colors",
+                      task.dueDate
+                        ? isOverdue(task)
+                          ? "text-red-500 font-medium"
+                          : "text-slate-700 dark:text-slate-200"
+                        : "text-slate-400",
+                    )}
+                  >
+                    <CalendarIcon size={13} />
+                    {task.dueDate ? `${isOverdue(task) ? "Overdue · " : ""}${format(parseISO(task.dueDate), "EEE, MMM d, yyyy")}` : "Set a date"}
+                  </button>
+                </SmartDatePicker>
+                {task.dueDate && (
+                  <button
+                    type="button"
+                    onClick={() => updateTask(task, { dueDate: undefined })}
+                    className={cn(ICON_BUTTON, "h-6 w-6")}
+                    title="Clear due date"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Subtasks */}
+          <section>
+            <SectionLabel
+              icon={<ListTree size={12} />}
+              right={
+                subtasks.length > 0 && (
+                  <span className="text-[11px] tabular-nums text-slate-400">
+                    {todo.countTasks(subtasks).completed}/{todo.countTasks(subtasks).total}
+                  </span>
+                )
+              }
+            >
+              Subtasks
+            </SectionLabel>
+            <div className="flex flex-col">
+              {subtasks.map((sub) => {
+                const subDone = todo.isTaskDone(sub);
+                return (
+                  <div
+                    key={sub.id}
+                    className="group flex items-center gap-2.5 px-2 h-8 -mx-2 rounded-md hover:bg-slate-50 dark:hover:bg-white/[0.03] cursor-pointer"
+                    onClick={() => setActiveTaskKey({ id: sub.id, nodePath: task.nodePath })}
+                    title="Open subtask"
+                  >
+                    <TaskCheckbox
+                      done={subDone}
+                      blocked={!subDone && todo.hasIncompleteChildren(sub.tasks)}
+                      size="sm"
+                      onToggle={() => updateTask({ id: sub.id, nodePath: task.nodePath }, { completed: !subDone })}
+                      onBlocked={() => notify("Complete its subtasks first", "info")}
+                    />
+                    <span className={cn("flex-1 truncate text-[13px]", subDone ? "line-through text-slate-400" : "text-slate-700 dark:text-slate-200")}>
+                      {sub.text || "Untitled task"}
+                    </span>
+                    {!!sub.tasks?.length && (
+                      <span className="text-[11px] tabular-nums text-slate-400">
+                        {todo.countTasks(sub.tasks).completed}/{todo.countTasks(sub.tasks).total}
+                      </span>
+                    )}
+                  </div>
+                );
+              })}
+              <div className="flex items-center gap-2.5 px-2 h-8 -mx-2">
+                <Plus size={13} className="text-slate-400 shrink-0 ml-0.5" />
+                <input
+                  value={detailSubText}
+                  maxLength={todo.MAX_TASK_TEXT}
+                  onChange={(e) => setDetailSubText(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && detailSubText.trim()) {
+                      addTask(detailSubText, task.nodePath, task.id);
+                      setDetailSubText("");
+                    }
+                  }}
+                  placeholder="Add a subtask"
+                  aria-label="New subtask"
+                  className="flex-1 min-w-0 bg-transparent outline-none text-[13px] text-slate-800 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                />
+              </div>
+            </div>
+          </section>
+
+          {/* Notes */}
+          <section>
+            <SectionLabel
+              icon={<AlignLeft size={12} />}
+              right={
+                <button type="button" onClick={() => setIsEditingNotes((v) => !v)} className={cn(GHOST_BUTTON, "h-6 text-[11px]")}>
+                  {isEditingNotes ? <Eye size={12} /> : <Pencil size={12} />}
+                  {isEditingNotes ? "Preview" : "Edit"}
+                </button>
+              }
+            >
+              Notes
+            </SectionLabel>
+            {isEditingNotes ? (
+              <textarea
+                rows={6}
+                autoFocus
+                value={task.notes || ""}
+                onChange={(e) => updateTask(task, { notes: e.target.value })}
+                placeholder="Details, links, checklists… Markdown is supported."
+                className="w-full rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950/60 p-3 text-[13px] leading-relaxed text-slate-800 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 resize-y"
+              />
+            ) : task.notes ? (
+              <div
+                className="rounded-lg border border-slate-200 dark:border-slate-800 p-3 cursor-text hover:border-slate-300 dark:hover:border-slate-700 transition-colors prose prose-sm dark:prose-invert max-w-none prose-p:my-1.5 prose-a:text-blue-500"
+                onClick={() => setIsEditingNotes(true)}
+              >
+                <Markdown>{task.notes}</Markdown>
+              </div>
+            ) : (
+              <button
+                type="button"
+                onClick={() => setIsEditingNotes(true)}
+                className="w-full rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-3 py-4 text-[12px] text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:border-slate-300 dark:hover:border-slate-600 transition-colors text-left"
+              >
+                Add notes…
+              </button>
+            )}
+          </section>
+
+          {/* Labels */}
+          <section>
+            <SectionLabel icon={<Hash size={12} />}>Labels</SectionLabel>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {(task.tags || []).map((tag) => (
+                <span
+                  key={tag}
+                  className={cn("inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-md border text-[12px] font-medium", getTagColorClass(tag))}
+                >
+                  {tag}
+                  <button
+                    type="button"
+                    onClick={() => updateTask(task, { tags: (task.tags || []).filter((t) => t !== tag) })}
+                    className="h-4 w-4 inline-flex items-center justify-center rounded opacity-60 hover:opacity-100 hover:bg-black/10 dark:hover:bg-white/10"
+                    title={`Remove ${tag}`}
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+              <LabelInput tags={task.tags || []} onAdd={(tag) => updateTask(task, { tags: [...(task.tags || []), tag] })} />
+            </div>
+          </section>
+
+          {/* Attachments */}
+          <section>
+            <SectionLabel
+              icon={<Paperclip size={12} />}
+              right={
+                media.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setPendingConfirm({ kind: "clearMedia" })}
+                    className={cn(GHOST_BUTTON, "h-6 text-[11px] hover:text-rose-500 hover:bg-rose-500/10")}
+                  >
+                    <Trash2 size={12} />
+                    Remove all
+                  </button>
+                )
+              }
+            >
+              Attachments
+            </SectionLabel>
+            {media.length > 0 && (
+              <TaskImagePreview imageHashes={media} compact={false} onDelete={handleDeleteMedia} onPreview={handlePreviewMedia} />
+            )}
+            <div
+              className={cn(
+                "flex items-center gap-2",
+                media.length > 0 ? "mt-2" : "rounded-lg border border-dashed border-slate-200 dark:border-slate-700 px-3 py-3",
+              )}
+            >
+              {media.length === 0 && (
+                <span className="flex-1 flex items-center gap-2 text-[12px] text-slate-400">
+                  <ImageIcon size={14} />
+                  Images, video or audio — or paste one here
+                </span>
+              )}
+              <button type="button" onClick={pickMedia} disabled={isUploading} className={cn(GHOST_BUTTON, "border border-slate-200 dark:border-slate-700")}>
+                <Upload size={13} />
+                {isUploading ? "Uploading…" : "Upload"}
+              </button>
+              <button type="button" onClick={() => setIsCameraOpen(true)} className={cn(GHOST_BUTTON, "border border-slate-200 dark:border-slate-700")}>
+                <Camera size={13} />
+                Camera
+              </button>
+            </div>
+          </section>
+        </div>
+
+        <PaletteFooter
+          hints={[[<Kbd>Esc</Kbd>, "Close"]]}
+          right={<span className="text-slate-400">Changes save automatically</span>}
+        />
+
+        {isCameraOpen && (
+          <CameraCaptureModal onClose={() => setIsCameraOpen(false)} onCapture={(file) => handleMediaUpload([file])} />
+        )}
+      </PaletteShell>
+    );
+  };
+
+  const confirmDetails =
+    pendingConfirm?.kind === "deleteTask"
+      ? {
+          title: "Delete this task?",
+          message: `"${pendingConfirm.task.text || "Untitled task"}" and its ${todo.countTasks(pendingConfirm.task.tasks).total} subtask${
+            todo.countTasks(pendingConfirm.task.tasks).total === 1 ? "" : "s"
+          } will be deleted. This can't be undone.`,
+          confirmText: "Delete",
+          run: () => deleteTaskNow(pendingConfirm.task),
+        }
+      : pendingConfirm?.kind === "clearMedia"
+        ? {
+            title: "Remove all attachments?",
+            message: "Every attachment on this task will be removed. This can't be undone.",
+            confirmText: "Remove all",
+            run: () => activeTodo && updateTask(activeTodo, { imageHashes: [] }),
+          }
+        : null;
 
   if (typeof window === "undefined") return null;
 
-  return createPortal(renderPortalContent(), document.body);
+  return createPortal(
+    <div className="font-sans">
+      <AnimatePresence>
+        {isFileOpen && renderFilePalette()}
+        {isTodoOpen && renderTodoCenter()}
+        {activeTodo && renderTaskDetail(activeTodo)}
+      </AnimatePresence>
+      {confirmDetails && (
+        <ConfirmModal
+          isOpen
+          title={confirmDetails.title}
+          message={confirmDetails.message}
+          confirmText={confirmDetails.confirmText}
+          variant="danger"
+          onConfirm={confirmDetails.run}
+          onClose={() => setPendingConfirm(null)}
+        />
+      )}
+    </div>,
+    document.body,
+  );
 }

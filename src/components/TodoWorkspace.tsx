@@ -35,12 +35,24 @@ import {
   ArrowUp,
   ArrowDown,
   Minus,
+  ListChecks,
 } from "lucide-react";
-import { TodoNodeData, TodoTask } from "./TodoNodeRenderer";
+import * as todo from "./todo/todoModel";
+import type { TodoTask } from "./todo/todoModel";
+import { useTodoList, writeTasks } from "./todo/todoStorage";
+import {
+  LengthHint,
+  PREDEFINED_TAGS,
+  PRIORITY_OPTIONS,
+  STATUS_OPTIONS,
+  TaskCheckbox,
+  getTagColorClass,
+} from "./todo/TodoUI";
 import { format } from "date-fns";
 import { parseISO } from "date-fns";
 import { SmartDatePicker } from "./SmartDatePicker";
 import { TodoSearchBar } from "./TodoSearchBar";
+import { ConfirmModal } from "./ConfirmModal";
 
 import { cn } from "@/lib/utils";
 import Markdown from "react-markdown";
@@ -126,7 +138,7 @@ export function LatexMarkdownRenderer({ content }: { content: string }) {
   }
 
   return (
-    <div className="text-[13px] leading-relaxed break-words text-slate-700 dark:text-slate-300 space-y-1 focus:outline-none">
+    <div className="text-[13px] leading-relaxed break-words text-[var(--vsc-fg)] space-y-1 focus:outline-none">
       {parts.map((part, index) => {
         if (part.type === "block-math") {
           try {
@@ -137,7 +149,7 @@ export function LatexMarkdownRenderer({ content }: { content: string }) {
             return (
               <div
                 key={index}
-                className="my-2 py-1.5 px-2.5 overflow-x-auto text-center font-mono text-xs bg-slate-50 dark:bg-slate-900/40 rounded-lg border border-slate-200 dark:border-slate-800"
+                className="my-2 py-1.5 px-2.5 overflow-x-auto text-center font-mono text-xs bg-[var(--vsc-hover)] rounded-lg border border-[var(--vsc-border)]"
                 dangerouslySetInnerHTML={{ __html: html }}
               />
             );
@@ -145,7 +157,7 @@ export function LatexMarkdownRenderer({ content }: { content: string }) {
             return (
               <pre
                 key={index}
-                className="text-red-500 text-xs font-mono my-1 p-1.5 bg-red-50 dark:bg-red-950/20 rounded"
+                className="text-red-500 text-xs font-mono my-1 p-1.5 bg-red-500/10 rounded"
               >
                 Syntax Error (Block Math): {part.text}
               </pre>
@@ -160,7 +172,7 @@ export function LatexMarkdownRenderer({ content }: { content: string }) {
             return (
               <span
                 key={index}
-                className="px-1 py-0.5 mx-0.5 font-mono text-[11.5px] bg-slate-100 dark:bg-slate-800 rounded"
+                className="px-1 py-0.5 mx-0.5 font-mono text-[11.5px] bg-[var(--vsc-hover)] rounded"
                 dangerouslySetInnerHTML={{ __html: html }}
               />
             );
@@ -168,7 +180,7 @@ export function LatexMarkdownRenderer({ content }: { content: string }) {
             return (
               <code
                 key={index}
-                className="text-red-500 text-xs font-mono px-1 bg-red-50 dark:bg-red-950/20 rounded"
+                className="text-red-500 text-xs font-mono px-1 bg-red-500/10 rounded"
               >
                 ${part.text}$
               </code>
@@ -180,42 +192,42 @@ export function LatexMarkdownRenderer({ content }: { content: string }) {
               <Markdown
                 components={{
                   p: ({ children }) => (
-                    <p className="text-[13px] leading-relaxed my-1.5 font-medium text-slate-800 dark:text-slate-200">
+                    <p className="text-[13px] leading-relaxed my-1.5 font-medium text-[var(--vsc-fg)]">
                       {children}
                     </p>
                   ),
                   h1: ({ children }) => (
-                    <h1 className="text-lg font-bold text-slate-900 dark:text-white mt-3 mb-1.5 tracking-tight block leading-tight">
+                    <h1 className="text-lg font-bold text-[var(--vsc-fg)] mt-3 mb-1.5 tracking-tight block leading-tight">
                       {children}
                     </h1>
                   ),
                   h2: ({ children }) => (
-                    <h2 className="text-base font-bold text-slate-800 dark:text-slate-100 mt-2 mb-1 block leading-tight">
+                    <h2 className="text-base font-bold text-[var(--vsc-fg)] mt-2 mb-1 block leading-tight">
                       {children}
                     </h2>
                   ),
                   h3: ({ children }) => (
-                    <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200 mt-2 mb-1 block">
+                    <h3 className="text-base font-semibold text-[var(--vsc-fg)] mt-2 mb-1 block">
                       {children}
                     </h3>
                   ),
                   ul: ({ children }) => (
-                    <ul className="list-disc pl-5 space-y-1.5 my-2 block text-[13px] text-slate-700 dark:text-slate-300">
+                    <ul className="list-disc pl-5 space-y-1.5 my-2 block text-[13px] text-[var(--vsc-fg)]">
                       {children}
                     </ul>
                   ),
                   ol: ({ children }) => (
-                    <ol className="list-decimal pl-5 space-y-1.5 my-2 block text-[13px] text-slate-700 dark:text-slate-300">
+                    <ol className="list-decimal pl-5 space-y-1.5 my-2 block text-[13px] text-[var(--vsc-fg)]">
                       {children}
                     </ol>
                   ),
                   li: ({ children }) => (
-                    <li className="text-[13px] leading-relaxed text-slate-700 dark:text-slate-300">
+                    <li className="text-[13px] leading-relaxed text-[var(--vsc-fg)]">
                       {children}
                     </li>
                   ),
                   code: ({ children }) => (
-                    <code className="text-[11px] bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded font-mono border border-slate-200/50 dark:border-slate-700/50">
+                    <code className="text-[11px] bg-[var(--vsc-hover)] px-1 py-0.5 rounded font-mono border border-[var(--vsc-border)]">
                       {children}
                     </code>
                   ),
@@ -282,7 +294,7 @@ function CustomDropdown({
         <div
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "absolute top-full mt-1 z-50 min-w-[150px] bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-slate-800 rounded-lg shadow-xl",
+            "absolute top-full mt-1 z-50 min-w-[150px] bg-[var(--vsc-widget)] text-[var(--vsc-fg)] border border-[var(--vsc-border-strong)] rounded-md shadow-[0_8px_24px_var(--vsc-widget-shadow)]",
             contentClassName.includes("right-0") ||
               contentClassName.includes("right-aligned")
               ? "right-0"
@@ -299,83 +311,13 @@ function CustomDropdown({
   );
 }
 
-export const PREDEFINED_TAGS = ["bug", "urgent", "api", "backend", "security"];
+// One size and shape for every badge on a task row (status, priority, date).
+const BADGE_CLASS =
+  "inline-flex items-center gap-1 h-5 px-1.5 rounded-[4px] text-[11px] font-medium leading-none transition-colors";
 
-export const getTagColorClass = (tag: string) => {
-  const t = tag.toLowerCase();
-  if (t === "bug")
-    return "bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-900/60";
-  if (t === "urgent")
-    return "bg-orange-100 dark:bg-orange-900/30 text-orange-600 dark:text-orange-400 border-orange-200 dark:border-orange-900/60";
-  if (t === "api")
-    return "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-900/60";
-  if (t === "backend")
-    return "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-900/60";
-  if (t === "security")
-    return "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-900/60";
-  return "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700";
-};
-
-export const STATUS_OPTIONS = [
-  { value: "Todo", label: "Todo", icon: Circle, color: "text-slate-400" },
-  {
-    value: "In Progress",
-    label: "In Progress",
-    icon: Clock,
-    color: "text-amber-500",
-  },
-  { value: "Review", label: "Review", icon: Eye, color: "text-blue-500" },
-  {
-    value: "Blocked",
-    label: "Blocked",
-    icon: AlertCircle,
-    color: "text-red-500 font-semibold",
-  },
-  {
-    value: "Completed",
-    label: "Completed",
-    icon: CheckCircle2,
-    color: "text-emerald-500",
-  },
-];
-
-export const PRIORITY_OPTIONS = [
-  {
-    value: "Normal",
-    label: "Normal",
-    icon: Minus,
-    color: "text-slate-500",
-    bgColor: "bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300",
-  },
-  {
-    value: "Low",
-    label: "Low",
-    icon: ArrowDown,
-    color: "text-blue-500",
-    bgColor: "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400",
-  },
-  {
-    value: "Medium",
-    label: "Medium",
-    icon: ArrowRight,
-    color: "text-amber-500",
-    bgColor: "bg-amber-100 text-amber-700 dark:bg-amber-905/30 dark:text-amber-400",
-  },
-  {
-    value: "High",
-    label: "High",
-    icon: ArrowUp,
-    color: "text-orange-500",
-    bgColor: "bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400",
-  },
-  {
-    value: "Critical",
-    label: "Critical",
-    icon: AlertCircle,
-    color: "text-red-500",
-    bgColor: "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400 font-bold",
-  },
-];
+// Shared with the canvas node and the productivity layer (see ./todo/TodoUI);
+// re-exported so existing imports from this file keep working.
+export { PREDEFINED_TAGS, getTagColorClass, STATUS_OPTIONS, PRIORITY_OPTIONS };
 
 export function isTaskOverdue(
   dueDateStr?: string,
@@ -542,6 +484,7 @@ export function TodoWorkspace({ path }: { path: string }) {
   // Resizer width & global toast feedback
   const [detailsWidth, setDetailsWidth] = useState(380);
   const [toast, setToast] = useState<string | null>(null);
+  const [isClearAllConfirmOpen, setIsClearAllConfirmOpen] = useState(false);
   const [collapsedTaskIds, setCollapsedTaskIds] = useState<string[]>([]);
   const [draggedId, setDraggedId] = useState<string | null>(null);
 
@@ -578,511 +521,129 @@ export function TodoWorkspace({ path }: { path: string }) {
     document.removeEventListener("mouseup", stopResize);
   };
 
-  // Safely extract todoData from generic parsed object
-  const getTodoData = (): TodoNodeData => {
-    let current = getValueAtPath(parsedData, path);
-    try {
-      if (typeof current === "string") return JSON.parse(current);
-      if (typeof current === "object" && current !== null)
-        return current as TodoNodeData;
-    } catch {}
-    return { title: "Tasks", tasks: [] };
-  };
+  // The list lives in the document. The canvas node and the productivity layer
+  // (Alt+T) read and write the same data through the shared todo store, so a
+  // change made in any of them shows up here immediately.
+  const todoData = useTodoList(path);
 
-  const todoData = getTodoData();
-
-  const getStats = (tasks: TodoTask[]) => {
-    let total = 0;
-    let completed = 0;
-    const walk = (tList: TodoTask[]) => {
-      for (const t of tList) {
-        total++;
-        if (t.completed || t.status === "Completed") completed++;
-        if (t.tasks) walk(t.tasks);
-      }
-    };
-    walk(tasks);
-    return { total, completed };
-  };
-
-  const stats = getStats(todoData.tasks || []);
+  const stats = todo.countTasks(todoData.tasks);
   const progress =
     stats.total === 0 ? 0 : Math.round((stats.completed / stats.total) * 100);
 
-  const syncTaskCompletionState = (tList: TodoTask[]): TodoTask[] => {
-    return tList.map((t) => {
-      let updatedTasks = t.tasks;
-      if (t.tasks && t.tasks.length > 0) {
-        updatedTasks = syncTaskCompletionState(t.tasks);
+  /**
+   * Saves a change to the tasks. Each change is applied to the latest saved list,
+   * so quick successive edits never overwrite each other. In flat list view,
+   * parents don't follow their subtasks' completion.
+   */
+  const saveTasks = (
+    update: (tasks: TodoTask[]) => TodoTask[] | null,
+    forceSync = false,
+  ) => writeTasks(path, update, { sync: forceSync || !isFlatList });
+
+  const focusTaskInput = (id: string, delay = 80) =>
+    setTimeout(() => {
+      const el = document.getElementById(`input-${id}`);
+      if (el) {
+        (el as HTMLInputElement).focus();
+        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
       }
+    }, delay);
 
-      const hasChildren = updatedTasks && updatedTasks.length > 0;
-      const hasIncomplete =
-        hasChildren &&
-        updatedTasks.some(
-          (sub) => !sub.completed && sub.status !== "Completed",
-        );
-
-      let completed = t.completed;
-      let status = t.status;
-      if (hasChildren) {
-        if (hasIncomplete) {
-          completed = false;
-          if (status === "Completed") {
-            status = "Todo";
-          }
-        } else {
-          // All children are checked complete, automatically check the parent
-          completed = true;
-          status = "Completed";
-        }
-      }
-
-      return {
-        ...t,
-        tasks: updatedTasks,
-        completed,
-        status,
-      };
-    });
+  const selectOnDesktop = (id: string) => {
+    if (window.innerWidth >= 768) setSelectedTaskId(id);
   };
 
-  const saveTodoData = async (newData: TodoNodeData, forceSync = false) => {
-    if (newData.tasks && (!isFlatList || forceSync)) {
-      newData.tasks = syncTaskCompletionState(newData.tasks);
-    }
-    const updated = setValueAtPath(parsedData, path, newData);
-    let newCode = "";
-    if (codeFormat === "yaml") {
-      try {
-        const yaml = (await import("js-yaml")).default;
-        newCode = yaml.dump(updated);
-      } catch (e) {
-        newCode = JSON.stringify(updated, null, 2);
-      }
-    } else {
-      newCode = JSON.stringify(updated, null, 2);
-    }
-    setCode(newCode);
-  };
+  const expandTask = (id: string) =>
+    setCollapsedTaskIds((prev) => prev.filter((x) => x !== id));
 
-  // High quality CRUD Operations for Tasks Tree
-  const updateTask = (id: string, updates: Partial<TodoTask>) => {
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map((t) => {
-        if (t.id === id) {
-          const merged = { ...t, ...updates };
-          if ((updates.status as any) === "Completed") {
-            merged.completed = true;
-          } else if (
-            updates.status &&
-            (updates.status as any) !== "Completed"
-          ) {
-            merged.completed = false;
-          }
-          if (updates.completed === true) {
-            merged.status = "Completed";
-          } else if (updates.completed === false) {
-            if (t.status === "Completed") merged.status = "Todo";
-          }
-          return merged;
-        }
-        if (t.tasks) return { ...t, tasks: walk(t.tasks) };
-        return t;
-      });
-    };
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
-  };
+  const updateTask = (id: string, updates: Partial<TodoTask>) =>
+    saveTasks((tasks) => todo.editTask(tasks, id, updates, !isFlatList));
 
   const removeTask = (id: string) => {
-    const findTask = (tList: TodoTask[]): TodoTask | null => {
-      for (const t of tList) {
-        if (t.id === id) return t;
-        if (t.tasks) {
-          const found = findTask(t.tasks);
-          if (found) return found;
-        }
-      }
-      return null;
-    };
-
-    const target = findTask(todoData.tasks || []);
-    // Ensure we don't block via window.confirm in iframe. Just delete or use toast.
-    // If it has children, we'll still just delete it directly to unblock users.
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList
-        .filter((t) => t.id !== id)
-        .map((t) => {
-          if (t.tasks) return { ...t, tasks: walk(t.tasks) };
-          return t;
-        });
-    };
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
+    saveTasks((tasks) => todo.removeTask(tasks, id));
     if (selectedTaskId === id) setSelectedTaskId(null);
-    showToast("Task deleted successfully");
+    showToast("Task deleted");
   };
 
   const addTask = () => {
-    const newTask: TodoTask = {
-      id: Math.random().toString(36).substring(2, 9),
-      text: "",
-      completed: false,
-      status: "Todo",
-      priority: "Normal",
-    };
-    saveTodoData({
-      ...todoData,
-      tasks: [...(todoData.tasks || []), newTask],
-    });
-    if (window.innerWidth >= 768) {
-      setSelectedTaskId(newTask.id);
-    }
-    setTimeout(() => {
-      const el = document.getElementById(`input-${newTask.id}`);
-      if (el) (el as HTMLInputElement).focus();
-    }, 80);
+    const task = todo.createTask("");
+    saveTasks((tasks) => todo.addTask(tasks, task));
+    selectOnDesktop(task.id);
+    focusTaskInput(task.id);
   };
 
   const addTaskBelow = (id: string) => {
-    const newId = Math.random().toString(36).substring(2, 9);
-    const newTask: TodoTask = {
-      id: newId,
-      text: "",
-      completed: false,
-      status: "Todo",
-      priority: "Normal",
-    };
-
-    const walk = (
-      tList: TodoTask[],
-    ): { list: TodoTask[]; inserted: boolean } => {
-      const newList: TodoTask[] = [];
-      let inserted = false;
-      for (const t of tList) {
-        newList.push(t);
-        if (t.id === id) {
-          newList.push(newTask);
-          inserted = true;
-        } else if (t.tasks && t.tasks.length > 0) {
-          const subResult = walk(t.tasks);
-          t.tasks = subResult.list;
-          if (subResult.inserted) inserted = true;
-        }
-      }
-      return { list: newList, inserted };
-    };
-
-    const { list } = walk(todoData.tasks || []);
-    saveTodoData({ ...todoData, tasks: list });
-    if (window.innerWidth >= 768) {
-      setSelectedTaskId(newId);
-    }
-    setTimeout(() => {
-      const el = document.getElementById(`input-${newId}`);
-      if (el) {
-        (el as HTMLInputElement).focus();
-        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    }, 80);
+    const task = todo.createTask("");
+    saveTasks((tasks) => todo.insertAfter(tasks, id, task));
+    selectOnDesktop(task.id);
+    focusTaskInput(task.id);
   };
 
   const addNestedSubtask = (parentId: string) => {
-    const newId = Math.random().toString(36).substring(2, 9);
-    const newTask: TodoTask = {
-      id: newId,
-      text: "",
-      completed: false,
-      status: "Todo",
-      priority: "Normal",
-    };
-
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      return tList.map((t) => {
-        if (t.id === parentId) {
-          return {
-            ...t,
-            tasks: [...(t.tasks || []), newTask],
-          };
-        }
-        if (t.tasks) return { ...t, tasks: walk(t.tasks) };
-        return t;
-      });
-    };
-
-    // Auto expand the parent item so they see the added nested subtask
-    setCollapsedTaskIds((prev) => prev.filter((x) => x !== parentId));
-    saveTodoData({ ...todoData, tasks: walk(todoData.tasks || []) });
-    if (window.innerWidth >= 768) {
-      setSelectedTaskId(newId);
-    }
-    setTimeout(() => {
-      const el = document.getElementById(`input-${newId}`);
-      if (el) {
-        (el as HTMLInputElement).focus();
-        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    }, 80);
+    const task = todo.createTask("");
+    // Expand the parent so the new subtask is visible.
+    expandTask(parentId);
+    saveTasks((tasks) => todo.addTask(tasks, task, parentId));
+    selectOnDesktop(task.id);
+    focusTaskInput(task.id);
   };
 
   const indentTask = (id: string) => {
-    let success = false;
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      if (success) return tList;
-      const index = tList.findIndex((t) => t.id === id);
-      if (index > 0) {
-        const targetTask = tList[index];
-        const prevSibling = tList[index - 1];
-        const updatedList = tList.filter((t) => t.id !== id);
-        prevSibling.tasks = [...(prevSibling.tasks || []), targetTask];
-        success = true;
-
-        // Auto expand new parent as well
-        setCollapsedTaskIds((prev) => prev.filter((x) => x !== prevSibling.id));
-        return updatedList;
-      }
-      return tList.map((t) => {
-        if (t.tasks && t.tasks.length > 0) {
-          return { ...t, tasks: walk(t.tasks) };
-        }
-        return t;
-      });
-    };
-
-    const updatedTasks = walk(todoData.tasks || []);
-    if (success) {
-      saveTodoData({ ...todoData, tasks: updatedTasks });
-      showToast("Nested task inward");
-      setTimeout(() => {
-        const el = document.getElementById(`input-${id}`);
-        if (el) (el as HTMLInputElement).focus();
-      }, 50);
-    } else {
-      showToast("No preceding sibling task to nest under");
+    const preview = todo.indentTask(todoData.tasks, id);
+    if (!preview) {
+      showToast("There's no task above to nest it under");
+      return;
     }
+    expandTask(preview.parentId);
+    saveTasks((tasks) => todo.indentTask(tasks, id)?.tasks ?? null);
+    showToast("Nested under the task above");
+    focusTaskInput(id, 50);
   };
 
   const outdentTask = (id: string) => {
-    let taskToMove: TodoTask | null = null;
-
-    const removeAndExtract = (
-      tList: TodoTask[],
-      parentId: string | null = null,
-    ): { list: TodoTask[]; parentOfTarget: string | null } => {
-      let foundParentId: string | null = null;
-      const filtered = tList.filter((t) => {
-        if (t.id === id) {
-          taskToMove = t;
-          foundParentId = parentId;
-          return false;
-        }
-        return true;
-      });
-
-      const mapped = filtered.map((t) => {
-        if (t.tasks && t.tasks.length > 0) {
-          const res = removeAndExtract(t.tasks, t.id);
-          if (res.parentOfTarget) foundParentId = res.parentOfTarget;
-          return { ...t, tasks: res.list };
-        }
-        return t;
-      });
-
-      return { list: mapped, parentOfTarget: foundParentId };
-    };
-
-    const { list: cleanList, parentOfTarget } = removeAndExtract(
-      todoData.tasks || [],
-    );
-    if (!taskToMove || !parentOfTarget) {
-      showToast("Task is already at top level");
+    if (!todo.outdentTask(todoData.tasks, id)) {
+      showToast("Already at the top level");
       return;
     }
-
-    const insertAfterParent = (tList: TodoTask[]): TodoTask[] => {
-      const newList: TodoTask[] = [];
-      for (const t of tList) {
-        newList.push(t);
-        if (t.id === parentOfTarget && taskToMove) {
-          newList.push(taskToMove);
-        } else if (t.tasks && t.tasks.length > 0) {
-          t.tasks = insertAfterParent(t.tasks);
-        }
-      }
-      return newList;
-    };
-
-    const updatedTasks = insertAfterParent(cleanList);
-    saveTodoData({ ...todoData, tasks: updatedTasks });
-    showToast("Shifted task outward");
-    setTimeout(() => {
-      const el = document.getElementById(`input-${id}`);
-      if (el) (el as HTMLInputElement).focus();
-    }, 50);
+    saveTasks((tasks) => todo.outdentTask(tasks, id));
+    showToast("Moved out one level");
+    focusTaskInput(id, 50);
   };
 
   const moveTaskInTree = (id: string, direction: "up" | "down") => {
-    let success = false;
-    const walk = (tList: TodoTask[]): TodoTask[] => {
-      if (success) return tList;
-      const index = tList.findIndex((t) => t.id === id);
-      if (index !== -1) {
-        const newList = [...tList];
-        if (direction === "up" && index > 0) {
-          const temp = newList[index];
-          newList[index] = newList[index - 1];
-          newList[index - 1] = temp;
-          success = true;
-          return newList;
-        } else if (direction === "down" && index < newList.length - 1) {
-          const temp = newList[index];
-          newList[index] = newList[index + 1];
-          newList[index + 1] = temp;
-          success = true;
-          return newList;
-        }
-      }
-      return tList.map((t) => {
-        if (t.tasks && t.tasks.length > 0) {
-          return { ...t, tasks: walk(t.tasks) };
-        }
-        return t;
-      });
-    };
-
-    const updated = walk(todoData.tasks || []);
-    if (success) {
-      saveTodoData({ ...todoData, tasks: updated });
-      showToast(`Shuffled task ${direction}`);
-      setTimeout(() => {
-        const el = document.getElementById(`input-${id}`);
-        if (el) (el as HTMLInputElement).focus();
-      }, 50);
-    }
+    if (!todo.moveTask(todoData.tasks, id, direction)) return;
+    saveTasks((tasks) => todo.moveTask(tasks, id, direction));
+    showToast(`Moved ${direction}`);
+    focusTaskInput(id, 50);
   };
 
-  const handleMoveTask = (draggedId: string, targetId: string, position: "before" | "after" | "inside" | null) => {
+  const handleMoveTask = (
+    draggedId: string,
+    targetId: string,
+    position: "before" | "after" | "inside" | null,
+  ) => {
     if (!draggedId || !targetId || !position || draggedId === targetId) return;
-
-    if (isDescendant(draggedId, targetId, todoData.tasks || [])) {
-      showToast("Cannot move a task into its own subtasks");
+    if (todo.isDescendantOf(draggedId, targetId, todoData.tasks)) {
+      showToast("A task can't be moved into its own subtasks");
       return;
     }
-
-    let draggedItem: TodoTask | null = null;
-
-    // Remove first
-    const removeAndExtract = (tList: TodoTask[]): TodoTask[] => {
-      const result: TodoTask[] = [];
-      for (const t of tList) {
-        if (t.id === draggedId) {
-          draggedItem = t;
-          continue;
-        }
-        if (t.tasks && t.tasks.length > 0) {
-          result.push({
-            ...t,
-            tasks: removeAndExtract(t.tasks)
-          });
-        } else {
-          result.push(t);
-        }
-      }
-      return result;
-    };
-
-    const cleanTree = removeAndExtract(todoData.tasks || []);
-
-    if (!draggedItem) return;
-
-    // Insert next
-    const insertAfterBeforeInside = (tList: TodoTask[]): TodoTask[] => {
-      const result: TodoTask[] = [];
-      for (const t of tList) {
-        if (t.id === targetId) {
-          if (position === "before") {
-            result.push(draggedItem!);
-            result.push(t);
-          } else if (position === "after") {
-            result.push(t);
-            result.push(draggedItem!);
-          } else if (position === "inside") {
-            result.push({
-              ...t,
-              tasks: [...(t.tasks || []), draggedItem!]
-            });
-            // Auto-expand target parent
-            setCollapsedTaskIds((prev) => prev.filter((x) => x !== t.id));
-          }
-        } else {
-          if (t.tasks && t.tasks.length > 0) {
-            result.push({
-              ...t,
-              tasks: insertAfterBeforeInside(t.tasks)
-            });
-          } else {
-            result.push(t);
-          }
-        }
-      }
-      return result;
-    };
-
-    const finalTree = insertAfterBeforeInside(cleanTree);
-    saveTodoData({ ...todoData, tasks: finalTree });
-    showToast("Task reordered");
-  };
-
-  const duplicateTaskDeep = (task: TodoTask): TodoTask => {
-    const newId = Math.random().toString(36).substring(2, 9);
-    return {
-      ...task,
-      id: newId,
-      text: task.text ? `${task.text} (Copy)` : "Copy Task",
-      tasks: task.tasks ? task.tasks.map((t) => duplicateTaskDeep(t)) : [],
-    };
+    if (position === "inside") expandTask(targetId);
+    saveTasks((tasks) => todo.moveTaskTo(tasks, draggedId, targetId, position));
+    showToast("Task moved");
   };
 
   const duplicateTask = (id: string) => {
-    let taskToDuplicate: TodoTask | null = null;
-
-    const find = (tList: TodoTask[]) => {
-      for (const t of tList) {
-        if (t.id === id) {
-          taskToDuplicate = t;
-          return;
-        }
-        if (t.tasks) find(t.tasks);
-      }
-    };
-    find(todoData.tasks || []);
-
-    if (!taskToDuplicate) return;
-    const copy = duplicateTaskDeep(taskToDuplicate);
-
-    const insert = (tList: TodoTask[]): TodoTask[] => {
-      const newList: TodoTask[] = [];
-      for (const t of tList) {
-        newList.push(t);
-        if (t.id === id) {
-          newList.push(copy);
-        } else if (t.tasks && t.tasks.length > 0) {
-          t.tasks = insert(t.tasks);
-        }
-      }
-      return newList;
-    };
-
-    const updated = insert(todoData.tasks || []);
-    saveTodoData({ ...todoData, tasks: updated });
-    setSelectedTaskId(copy.id);
-    showToast("Task duplicated");
-    setTimeout(() => {
-      const el = document.getElementById(`input-${copy.id}`);
-      if (el) {
-        (el as HTMLInputElement).focus();
-        el.scrollIntoView({ block: "nearest", behavior: "smooth" });
-      }
-    }, 85);
+    let copyId: string | null = null;
+    saveTasks((tasks) => {
+      const result = todo.duplicateTask(tasks, id);
+      copyId = result?.copyId ?? null;
+      return result?.tasks ?? null;
+    }).then(() => {
+      if (!copyId) return;
+      setSelectedTaskId(copyId);
+      showToast("Task duplicated");
+      focusTaskInput(copyId, 85);
+    });
   };
 
   const toggleCollapseTask = (id: string) => {
@@ -1332,60 +893,75 @@ export function TodoWorkspace({ path }: { path: string }) {
   return (
     <div
       className={cn(
-        "flex w-full h-full bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-200 overflow-hidden relative font-sans",
+        "flex w-full h-full bg-[var(--vsc-editor)] text-[var(--vsc-fg)] overflow-hidden relative font-sans",
         isDraggingSplitter && "select-none cursor-col-resize",
       )}
     >
+      <ConfirmModal
+        isOpen={isClearAllConfirmOpen}
+        title="Clear all tasks?"
+        message={
+          <>
+            This permanently deletes all {stats.total} task{stats.total === 1 ? "" : "s"},
+            including subtasks, notes and attachments. This can't be undone.
+          </>
+        }
+        confirmText="Clear all"
+        variant="danger"
+        onConfirm={() => {
+          saveTasks(() => []);
+          setSelectedTaskId(null);
+          showToast("Cleared all tasks");
+        }}
+        onClose={() => setIsClearAllConfirmOpen(false)}
+      />
+
       {/* Toast Feedback Banners */}
       {toast && (
-        <div className="absolute bottom-5 right-5 z-50 bg-slate-900 dark:bg-[#161b22] text-white py-2 px-4 rounded-xl border border-slate-800 shadow-2xl flex items-center gap-2 transform transition-all animate-bounce">
-          <Info size={16} className="text-blue-400" />
-          <span className="text-xs font-semibold tracking-wide">{toast}</span>
+        <div
+          role="status"
+          className="absolute bottom-4 right-4 z-50 flex items-center gap-2 px-3 py-2 rounded-md bg-[var(--vsc-widget)] text-[var(--vsc-fg)] border border-[var(--vsc-border-strong)] shadow-[0_8px_24px_var(--vsc-widget-shadow)] animate-in fade-in slide-in-from-bottom-2 duration-200"
+        >
+          <Info size={14} className="shrink-0 text-[var(--vsc-accent)]" />
+          <span className="text-[12px]">{toast}</span>
         </div>
       )}
 
       <div className="flex-1 flex flex-col min-w-0 h-full">
         {/* Header */}
-        <div className="px-3 py-2 md:px-5 md:py-3 border-b border-slate-200 dark:border-[#1e2329] bg-white dark:bg-[#0d1117] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 md:gap-3 shrink-0 z-10 shadow-sm relative">
-          <div className="flex flex-col xs:flex-row xs:items-center gap-2 sm:gap-4 md:gap-6 min-w-0">
-            <h2 className="font-extrabold text-base md:text-lg tracking-tight text-slate-900 dark:text-white uppercase font-sans whitespace-nowrap select-none">
-              {todoData.title || "Project Tasks"}
-            </h2>
-            <div className="flex items-center gap-1.5 sm:gap-3 text-[10px] md:text-[11px] text-slate-500 dark:text-slate-400 font-semibold bg-slate-100/50 dark:bg-slate-800/30 px-2 py-1 md:px-3 md:py-1.5 rounded-lg border border-slate-200/50 dark:border-slate-800/50 w-full xs:w-auto overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
-              <span className="flex items-center gap-1 md:gap-1.5 whitespace-nowrap shrink-0">
-                <span className="text-slate-700 dark:text-slate-300">
-                  {stats.total}
-                </span>{" "}
-                Tasks
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 px-3 md:px-4 py-2 border-b border-[var(--vsc-border)] bg-[var(--vsc-editor)] shrink-0 z-10">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex items-center gap-2 min-w-0">
+              <ListChecks size={16} className="shrink-0 text-[var(--vsc-accent)]" />
+              <h2 className="text-[13px] font-semibold text-[var(--vsc-fg)] truncate select-none">
+                {todoData.title || "Tasks"}
+              </h2>
+            </div>
+            <div className="flex items-center gap-2.5 text-[11px] text-[var(--vsc-fg-muted)] tabular-nums whitespace-nowrap">
+              <span title="All tasks">
+                <span className="font-semibold text-[var(--vsc-fg)]">{stats.total}</span> tasks
               </span>
-              <div className="w-px h-3 bg-slate-300 dark:bg-slate-700 shrink-0"></div>
-              <span className="flex items-center gap-1 md:gap-1.5 whitespace-nowrap shrink-0">
-                <span className="text-emerald-600 dark:text-emerald-400">
-                  {stats.completed}
-                </span>{" "}
-                <span className="hidden sm:inline">Completed</span>
+              <span className="text-[var(--vsc-border-strong)]">·</span>
+              <span title="Completed">
+                <span className="font-semibold text-emerald-500">{stats.completed}</span> done
               </span>
-              <div className="w-px h-3 bg-slate-300 dark:bg-slate-700 shrink-0"></div>
-              <span className="flex items-center gap-1 md:gap-1.5 whitespace-nowrap shrink-0">
-                <span className="text-blue-600 dark:text-blue-400">
-                  {stats.total - stats.completed}
-                </span>{" "}
-                <span className="hidden sm:inline">Remaining</span>
+              <span className="hidden xs:inline text-[var(--vsc-border-strong)]">·</span>
+              <span className="hidden xs:inline" title="Still open">
+                <span className="font-semibold text-[var(--vsc-fg)]">{stats.total - stats.completed}</span> open
               </span>
-              <div className="flex items-center gap-1.5 md:gap-2 sm:ml-1 shrink-0">
-                <div className="w-12 md:w-16 h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden shadow-inner hidden sm:block">
+              <div className="hidden sm:flex items-center gap-1.5 pl-1" title={`${progress}% complete`}>
+                <div className="w-16 h-1 rounded-full bg-[var(--vsc-active)] overflow-hidden">
                   <div
-                    className="h-full bg-blue-500 transition-all duration-300"
+                    className="h-full rounded-full bg-[var(--vsc-accent)] transition-[width] duration-300"
                     style={{ width: `${progress}%` }}
-                  ></div>
+                  />
                 </div>
-                <span className="font-bold text-slate-700 dark:text-slate-300 tracking-tight">
-                  {progress}%
-                </span>
+                <span className="font-semibold text-[var(--vsc-fg)]">{progress}%</span>
               </div>
             </div>
           </div>
-          <div className="flex items-center justify-between sm:justify-start gap-2 shrink-0">
+
+          <div className="flex items-center gap-1 shrink-0">
             <button
               onClick={() => {
                 if (collapsedTaskIds.length > 0) {
@@ -1394,96 +970,104 @@ export function TodoWorkspace({ path }: { path: string }) {
                   collapseAllSubtasks();
                 }
               }}
-              title={
-                collapsedTaskIds.length > 0
-                  ? "Expand All Trees"
-                  : "Collapse All Trees"
-              }
-              className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-2 md:px-2.5 h-7 md:h-7 bg-slate-50 hover:bg-slate-100 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md text-[10px] md:text-[11px] font-semibold border border-slate-200 dark:border-slate-700/80 hover:border-slate-300 dark:hover:border-slate-600 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer active:scale-95"
+              title={collapsedTaskIds.length > 0 ? "Expand all" : "Collapse all"}
+              className="flex items-center gap-1.5 h-7 px-2 rounded-[4px] text-[12px] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer"
             >
-              {collapsedTaskIds.length > 0 ? (
-                <>
-                  <Maximize2 size={11.5} />
-                  <span className="hidden sm:inline">Expand All</span>
-                </>
-              ) : (
-                <>
-                  <Minimize2 size={11.5} />
-                  <span className="hidden sm:inline">Collapse All</span>
-                </>
-              )}
+              {collapsedTaskIds.length > 0 ? <Maximize2 size={13} /> : <Minimize2 size={13} />}
+              <span className="hidden md:inline">
+                {collapsedTaskIds.length > 0 ? "Expand all" : "Collapse all"}
+              </span>
             </button>
             <button
-              onClick={() => {
-                saveTodoData({ ...todoData, tasks: [] });
-                showToast("Cleared all tasks");
-              }}
-              className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-2 md:px-2.5 h-7 md:h-7 bg-slate-50 hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/30 text-slate-600 hover:text-rose-600 dark:text-slate-300 dark:hover:text-rose-400 rounded-md text-[10px] md:text-[11px] font-semibold border border-slate-200 dark:border-slate-700/80 hover:border-rose-200 dark:hover:border-rose-900/50 transition-all shadow-sm shrink-0 whitespace-nowrap cursor-pointer active:scale-95"
-              title="Clear All Tasks"
+              onClick={() => setIsClearAllConfirmOpen(true)}
+              disabled={stats.total === 0}
+              title={stats.total === 0 ? "No tasks to clear" : "Clear all tasks"}
+              className="flex items-center gap-1.5 h-7 px-2 rounded-[4px] text-[12px] text-[var(--vsc-fg-muted)] hover:text-rose-500 hover:bg-rose-500/10 transition-colors cursor-pointer disabled:opacity-40 disabled:pointer-events-none"
             >
-              <Trash2 size={11.5} />
-              <span className="hidden sm:inline">Clear All</span>
+              <Trash2 size={13} />
+              <span className="hidden md:inline">Clear all</span>
             </button>
+            <div className="w-px h-4 mx-1 bg-[var(--vsc-border)]" />
             <button
               onClick={addTask}
-              className="flex items-center justify-center gap-1.5 flex-1 sm:flex-none px-2 md:px-2.5 h-7 md:h-7 bg-blue-600 hover:bg-blue-700 text-white text-[10px] md:text-[11px] font-bold uppercase tracking-wider rounded-md shadow-sm active:scale-95 transition-all outline-none shrink-0 whitespace-nowrap cursor-pointer"
+              className="flex items-center gap-1.5 h-7 pl-2 pr-2.5 rounded-[4px] text-[12px] font-medium bg-[var(--vsc-accent)] text-[var(--vsc-accent-fg)] hover:brightness-110 active:brightness-95 transition-[filter] cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-[var(--vsc-accent)] focus-visible:ring-offset-1 focus-visible:ring-offset-[var(--vsc-editor)]"
             >
-              <Plus size={12.5} />{" "}
-              <span className="hidden sm:inline">New Task</span>
+              <Plus size={14} />
+              <span>New task</span>
             </button>
           </div>
         </div>
 
-        {/* Search, filters, tools overview */}
-        <div className="px-3 py-2 md:px-5 md:py-3 border-b border-slate-200 dark:border-[#1e2329] flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 md:gap-4 shrink-0 bg-slate-50/50 dark:bg-[#161b22]/50 relative z-30">
-          <div className="flex w-full sm:w-auto shrink-0 flex-1 min-w-[200px]">
+        {/* Search, filters, view mode */}
+        <div className="flex flex-col sm:flex-row sm:items-center gap-2 px-3 md:px-4 py-2 border-b border-[var(--vsc-border)] bg-[var(--vsc-editor)] shrink-0 relative z-30">
+          <div className="flex-1 min-w-0 sm:max-w-md">
             <TodoSearchBar
               searchTerm={searchTerm}
               setSearchTerm={setSearchTerm}
               allTasks={todoData.tasks || []}
             />
           </div>
-          <div className="flex items-center gap-1 bg-white dark:bg-[#0d1117] border border-slate-200 dark:border-slate-800 p-0.5 rounded-lg shadow-sm w-full sm:w-auto justify-between sm:justify-start overflow-hidden">
-            <div className="flex items-center gap-0.5 overflow-x-auto [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]">
+          <div className="flex items-center gap-1 sm:ml-auto min-w-0">
+            <div
+              role="tablist"
+              aria-label="Filter tasks"
+              className="flex items-center gap-0.5 p-0.5 rounded-[5px] bg-[var(--vsc-hover)] overflow-x-auto [&::-webkit-scrollbar]:hidden [scrollbar-width:none] min-w-0"
+            >
               {(
-                ["all", "active", "completed", "high", "outdated"] as const
-              ).map((f) => (
+                [
+                  ["all", "All"],
+                  ["active", "Active"],
+                  ["completed", "Done"],
+                  ["high", "High"],
+                  ["outdated", "Overdue"],
+                ] as const
+              ).map(([f, label]) => (
                 <button
                   key={f}
+                  role="tab"
+                  aria-selected={filter === f}
                   onClick={() => setFilter(f)}
-                  className={`px-2 py-1.5 md:px-3 md:py-1.5 text-[10px] md:text-[11px] uppercase tracking-wider font-extrabold rounded-md transition-all whitespace-nowrap ${filter === f ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white shadow-inner font-black" : "text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                  className={cn(
+                    "h-6 px-2.5 rounded-[4px] text-[12px] whitespace-nowrap transition-colors cursor-pointer",
+                    filter === f
+                      ? "bg-[var(--vsc-editor)] text-[var(--vsc-fg)] font-medium shadow-[0_0_0_1px_var(--vsc-border-strong)]"
+                      : "text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)]",
+                  )}
                 >
-                  {f}
+                  {label}
                 </button>
               ))}
             </div>
-
-            <div className="flex items-center shrink-0 border-l border-slate-100 dark:border-slate-800 pl-1 ml-1">
-              <button
-                onClick={() => {
-                  const nextFlat = !isFlatList;
-                  setIsFlatList(nextFlat);
-                  if (!nextFlat) {
-                    // Force complete states synchronization when returning to Tree View
-                    saveTodoData({ ...todoData }, true);
-                  }
-                }}
-                title={isFlatList ? "Show Tree View" : "Show Flat List"}
-                className={`p-1.5 rounded-md transition-all shrink-0 ${isFlatList ? "bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400" : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"}`}
-              >
-                {isFlatList ? <List size={14} /> : <Layers size={14} />}
-              </button>
-            </div>
+            <button
+              onClick={() => {
+                const nextFlat = !isFlatList;
+                setIsFlatList(nextFlat);
+                if (!nextFlat) {
+                  // Back in tree view, re-derive parents from their subtasks.
+                  saveTasks((tasks) => tasks, true);
+                }
+              }}
+              title={isFlatList ? "Show as tree" : "Show as flat list"}
+              aria-pressed={isFlatList}
+              className={cn(
+                "h-7 w-7 flex items-center justify-center rounded-[4px] transition-colors shrink-0 cursor-pointer",
+                isFlatList
+                  ? "bg-[var(--vsc-active)] text-[var(--vsc-fg)]"
+                  : "text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)]",
+              )}
+            >
+              {isFlatList ? <List size={14} /> : <Layers size={14} />}
+            </button>
           </div>
         </div>
 
         {/* Scrollable list viewport wrapper */}
-        <div className="flex-1 overflow-y-auto w-full custom-scrollbar bg-slate-50/30 dark:bg-[#090d12]/20" onClick={(e) => {
+        <div className="flex-1 overflow-y-auto w-full custom-scrollbar bg-[var(--vsc-editor)]" onClick={(e) => {
           if (e.target === e.currentTarget || (e.target as Element).closest && !(e.target as Element).closest('.task-list-item')) {
             setSelectedTaskId(null);
           }
         }}>
-          <div className="p-5 max-w-6xl mx-auto min-h-full flex flex-col pointer-events-none">
+          <div className="px-2 py-2 md:px-4 md:py-3 max-w-6xl mx-auto min-h-full flex flex-col pointer-events-none">
             <div className="pointer-events-auto flex flex-col flex-1">
               <TodoWorkspaceList
               tasks={todoData.tasks || []}
@@ -1518,17 +1102,19 @@ export function TodoWorkspace({ path }: { path: string }) {
           {/* Desktop Resizer */}
           <div
             className={cn(
-              "hidden md:block transition-all cursor-col-resize z-20 shrink-0 border-l border-slate-200 dark:border-slate-800/50",
+              // A hairline that lights up in the accent colour, like VS Code's sash;
+              // the pseudo-element widens the grab area without widening the line.
+              "hidden md:block relative w-px shrink-0 z-20 cursor-col-resize transition-colors before:absolute before:inset-y-0 before:-left-1 before:-right-1 before:content-['']",
               isDraggingSplitter
-                ? "w-1.5 bg-blue-500"
-                : "w-1 bg-slate-200 dark:bg-[#1e2329] hover:bg-blue-400 hover:w-1.5",
+                ? "bg-[var(--vsc-accent)]"
+                : "bg-[var(--vsc-border)] hover:bg-[var(--vsc-accent)]",
             )}
             onMouseDown={startResize}
           />
 
           {/* Mobile Overlay */}
           <div
-            className="md:hidden fixed inset-0 z-40 bg-black/10 dark:bg-black/40 backdrop-blur-sm transition-opacity"
+            className="md:hidden fixed inset-0 z-40 bg-black/40 transition-opacity"
             onClick={() => setSelectedTaskId(null)}
           />
 
@@ -1538,7 +1124,7 @@ export function TodoWorkspace({ path }: { path: string }) {
                 ? { width: `${detailsWidth}px` }
                 : {}
             }
-            className="fixed inset-0 sm:inset-y-0 sm:left-auto sm:right-0 z-50 md:relative md:z-10 flex flex-col bg-white dark:bg-[#0d1117] min-w-0 shadow-2xl md:shadow-[-10px_0_25px_-10px_rgba(0,0,0,0.06)] shrink-0 h-full md:border-l border-slate-200 dark:border-slate-800/80 w-full sm:w-[420px] md:w-auto animate-in slide-in-from-right-8 md:animate-none"
+            className="fixed inset-0 sm:inset-y-0 sm:left-auto sm:right-0 z-50 md:relative md:z-10 flex flex-col bg-[var(--vsc-sidebar)] text-[var(--vsc-fg)] min-w-0 shadow-2xl md:shadow-none shrink-0 h-full w-full sm:w-[420px] md:w-auto animate-in slide-in-from-right-8 md:animate-none"
           >
             <TodoTaskDetails
               taskId={selectedTaskId}
@@ -1651,15 +1237,15 @@ function TodoWorkspaceList({
   return (
     <div className="flex flex-col gap-1 flex-1">
       {filteredTasks.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-24 text-slate-400 flex-grow">
+        <div className="flex flex-col items-center justify-center py-24 text-[var(--vsc-fg-muted)] flex-grow">
           <SearchX
             size={44}
-            className="text-slate-300 dark:text-slate-700 mb-3"
+            className="text-[var(--vsc-fg-muted)] mb-3"
           />
-          <p className="text-sm font-semibold text-slate-500">
+          <p className="text-sm font-semibold text-[var(--vsc-fg-muted)]">
             No matching tasks found
           </p>
-          <p className="text-xs text-slate-400 mt-1">
+          <p className="text-xs text-[var(--vsc-fg-muted)] mt-1">
             Refine your search tags, status filters, or create a new task.
           </p>
         </div>
@@ -1824,13 +1410,13 @@ function TodoWorkspaceItem({
       {/* Drop Indicator Lines */}
       {dropIndicator === "before" && (
         <div 
-          className="absolute top-0 left-0 right-0 h-[3px] bg-blue-500 dark:bg-blue-400 rounded-full z-45 animate-pulse"
+          className="absolute top-0 left-0 right-0 h-0.5 bg-[var(--vsc-accent)] rounded-full z-45"
           style={{ marginLeft: `${level * 1.5}rem` }}
         />
       )}
       {dropIndicator === "after" && (
         <div 
-          className="absolute bottom-0 left-0 right-0 h-[3px] bg-blue-500 dark:bg-blue-400 rounded-full z-45 animate-pulse"
+          className="absolute bottom-0 left-0 right-0 h-0.5 bg-[var(--vsc-accent)] rounded-full z-45"
           style={{ marginLeft: `${level * 1.5}rem` }}
         />
       )}
@@ -1838,11 +1424,11 @@ function TodoWorkspaceItem({
       <div
         draggable={isDraggable}
         className={cn(
-          "flex items-center gap-2 px-3 py-2 rounded-lg cursor-pointer transition-all border border-transparent relative",
+          "flex items-center gap-2 px-2 py-1.5 rounded-[5px] cursor-pointer transition-colors border border-transparent relative",
           isSelected
-            ? "bg-blue-50/70 dark:bg-blue-950/20 border-blue-200/50 dark:border-blue-900/40 ring-1 ring-blue-500/10 dark:ring-blue-500/20 shadow-xs"
-            : "hover:bg-slate-100/50 dark:hover:bg-slate-800/40",
-          dropIndicator === "inside" && "bg-blue-50/40 dark:bg-blue-950/20 border-blue-400 dark:border-blue-800 text-blue-900 dark:text-blue-100 ring-2 ring-blue-500/15"
+            ? "bg-[var(--vsc-selection)] before:absolute before:left-0 before:top-1.5 before:bottom-1.5 before:w-0.5 before:rounded-full before:bg-[var(--vsc-accent)]"
+            : "hover:bg-[var(--vsc-hover)]",
+          dropIndicator === "inside" && "bg-[var(--vsc-selection)] border-[var(--vsc-accent)]"
         )}
         style={{ marginLeft: `${level * 1.5}rem` }}
         onClick={() => onSelectTask(task.id)}
@@ -1861,7 +1447,7 @@ function TodoWorkspaceItem({
         {!isFlatList && (
           <div
             className={cn(
-              "w-5 h-5 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing text-slate-350 dark:text-slate-600 hover:text-blue-500 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-all",
+              "w-5 h-5 flex items-center justify-center shrink-0 cursor-grab active:cursor-grabbing text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-accent)] hover:bg-[var(--vsc-hover)] rounded transition-all",
               isHovered ? "opacity-100 pointer-events-auto" : "opacity-100 md:opacity-0 md:pointer-events-none"
             )}
             onMouseDown={() => {
@@ -1888,7 +1474,7 @@ function TodoWorkspaceItem({
               e.stopPropagation();
               onToggleCollapse(task.id);
             }}
-            className="p-1 -ml-1 rounded hover:bg-slate-250 dark:hover:bg-slate-800 text-slate-400 dark:text-slate-500 transition-colors shrink-0 outline-none"
+            className="p-1 -ml-1 rounded hover:bg-[var(--vsc-active)] text-[var(--vsc-fg-muted)] transition-colors shrink-0 outline-none"
           >
             <ChevronDown
               size={14}
@@ -1902,36 +1488,14 @@ function TodoWorkspaceItem({
           <div className="w-5 shrink-0" />
         )}
 
-        {/* Task Complete Check Circle button */}
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!isCompleted && hasIncompleteChildren) {
-              showToast("Unfinished subtasks remaining");
-              return;
-            }
-            onUpdate(task.id, {
-              completed: !isCompleted,
-              status: !isCompleted ? "Completed" : "Todo",
-            });
-          }}
-          className={cn(
-            "shrink-0 flex items-center justify-center mt-0.5 transition-colors duration-150 outline-none relative",
-            isCompleted
-              ? "text-emerald-500"
-              : "text-slate-300 dark:text-slate-600 hover:text-slate-505",
-            hasIncompleteChildren &&
-              !isCompleted &&
-              "opacity-40 cursor-not-allowed hover:text-slate-300 dark:hover:text-slate-600",
-          )}
-          title={
-            hasIncompleteChildren && !isCompleted
-              ? "Complete subtasks first"
-              : "Toggle completed"
-          }
-        >
-          {isCompleted ? <CheckCircle2 size={16} /> : <Circle size={16} />}
-        </button>
+        {/* Done toggle (shared with the canvas node and Alt+T) */}
+        <TaskCheckbox
+          done={isCompleted}
+          blocked={hasIncompleteChildren}
+          onToggle={() => onUpdate(task.id, { completed: !isCompleted })}
+          onBlocked={() => showToast("Complete its subtasks first")}
+          className="mt-0.5"
+        />
 
         {/* Core title editor */}
         <div className="flex-1 flex flex-col min-w-0 gap-1">
@@ -1939,12 +1503,12 @@ function TodoWorkspaceItem({
             <div className="relative w-full flex flex-col">
               <textarea
                 id={`input-${task.id}`}
-                maxLength={100}
+                maxLength={todo.MAX_TASK_TEXT}
                 className={cn(
-                  "w-full bg-slate-150/40 dark:bg-[#161b22]/50 border border-slate-200/50 dark:border-[#21262d] rounded-md outline-none text-[13px] font-semibold pl-2 pr-14 py-1 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/60 min-h-[38px] resize-none overflow-hidden transition-all",
+                  "w-full bg-[var(--vsc-input)] border border-[var(--vsc-accent)] rounded-[4px] outline-none text-[13px] font-medium pl-2 pr-14 py-1 focus:ring-1 focus:ring-blue-500/30 focus:border-blue-500/60 min-h-[38px] resize-none overflow-hidden transition-all",
                   isCompleted
-                    ? "line-through text-slate-400 dark:text-slate-600"
-                    : "text-slate-800 dark:text-slate-100",
+                    ? "line-through text-[var(--vsc-fg-muted)]"
+                    : "text-[var(--vsc-fg)]",
                 )}
                 value={task.text}
                 placeholder="New Task... (Press Enter)"
@@ -1968,8 +1532,8 @@ function TodoWorkspaceItem({
                   e.target.setSelectionRange(len, len);
                 }}
               />
-              <span className="absolute right-1.5 bottom-1 text-[8.5px] font-mono font-bold text-blue-500 bg-blue-50 dark:bg-blue-950/60 px-1 rounded border border-blue-150 dark:border-blue-900 pointer-events-none select-none z-10">
-                {task.text.length}/100
+              <span className="absolute right-1.5 bottom-1 text-[10px] font-mono text-[var(--vsc-fg-muted)] bg-[var(--vsc-hover)] px-1 rounded-[3px] pointer-events-none select-none z-10">
+                {task.text.length}/{todo.MAX_TASK_TEXT}
               </span>
             </div>
           ) : (
@@ -1979,8 +1543,8 @@ function TodoWorkspaceItem({
               className={cn(
                 "w-full bg-transparent border-none outline-none text-[13px] font-semibold truncate transition-all focus:ring-0 p-0 focus:border-none cursor-text",
                 isCompleted
-                  ? "line-through text-slate-400 dark:text-slate-600"
-                  : "text-slate-800 dark:text-slate-100",
+                  ? "line-through text-[var(--vsc-fg-muted)]"
+                  : "text-[var(--vsc-fg)]",
               )}
               value={task.text}
               placeholder="New Task... (Press Enter)"
@@ -2023,12 +1587,12 @@ function TodoWorkspaceItem({
                     <button className="p-0 border-none outline-none bg-transparent block cursor-pointer">
                       <span
                         className={cn(
-                          "flex items-center gap-1.5 px-2 py-0.5 rounded text-[10px] font-bold tracking-tight hover:brightness-95 hover:scale-95 transition-all bg-slate-50 dark:bg-[#12161a]",
+                          BADGE_CLASS, "bg-[var(--vsc-hover)] hover:bg-[var(--vsc-active)]",
                           statusInfo.color,
                         )}
                       >
                         <statusInfo.icon size={10} />
-                        <span className="uppercase">{statusInfo.label}</span>
+                        <span>{statusInfo.label}</span>
                       </span>
                     </button>
                   }
@@ -2045,14 +1609,14 @@ function TodoWorkspaceItem({
                               onUpdate(task.id, { status: opt.value as any });
                               close();
                             }}
-                            className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+                            className="w-full flex items-center gap-2 px-2 h-7 text-[12px] rounded-[4px] hover:bg-[var(--vsc-hover)] transition-colors text-left font-medium text-[var(--vsc-fg)] cursor-pointer"
                           >
                             <OptIcon size={12} className={opt.color} />
                             {opt.label}
                             {opt.value === task.status && (
                               <Check
                                 size={12}
-                                className="ml-auto opacity-50 text-blue-500"
+                                className="ml-auto text-[var(--vsc-accent)]"
                               />
                             )}
                           </button>
@@ -2070,7 +1634,7 @@ function TodoWorkspaceItem({
                     <button className="p-0 border-none outline-none bg-transparent block cursor-pointer">
                       <span
                         className={cn(
-                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider hover:scale-95 transition-all block",
+                          BADGE_CLASS, "hover:brightness-110",
                           priorityInfo.bgColor,
                         )}
                       >
@@ -2089,11 +1653,11 @@ function TodoWorkspaceItem({
                             onUpdate(task.id, { priority: opt.value as any });
                             close();
                           }}
-                          className="w-full flex items-center gap-2 px-2 py-1.5 text-xs rounded hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left cursor-pointer"
+                          className="w-full flex items-center gap-2 px-2 h-7 text-[12px] rounded-[4px] hover:bg-[var(--vsc-hover)] transition-colors text-left cursor-pointer"
                         >
                           <span
                             className={cn(
-                              "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
+                              "text-[12px] font-medium",
                               opt.color,
                             )}
                           >
@@ -2102,7 +1666,7 @@ function TodoWorkspaceItem({
                           {opt.value === task.priority && (
                             <Check
                               size={12}
-                              className="ml-auto opacity-50 text-blue-500"
+                              className="ml-auto text-[var(--vsc-accent)]"
                             />
                           )}
                         </button>
@@ -2119,10 +1683,10 @@ function TodoWorkspaceItem({
                     <button className="p-0 border-none outline-none bg-transparent block cursor-pointer">
                       <span
                         className={cn(
-                          "flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-semibold bg-slate-50 hover:bg-slate-100 dark:bg-slate-900 transition-colors",
+                          BADGE_CLASS,
                           isOverdue
-                            ? "text-red-500 bg-red-50 dark:bg-red-950/20 font-bold"
-                            : "text-slate-500 dark:text-slate-400",
+                            ? "text-red-500 bg-red-500/10 hover:bg-red-500/20"
+                            : "text-[var(--vsc-fg-muted)] bg-[var(--vsc-hover)] hover:bg-[var(--vsc-active)]",
                         )}
                       >
                         <CalendarIcon size={10} />
@@ -2134,7 +1698,7 @@ function TodoWorkspaceItem({
                 >
                   {({ close }: any) => (
                     <>
-                      <div className="flex flex-col gap-0.5 pb-2 border-b border-slate-100 dark:border-slate-800/80 mb-2">
+                      <div className="flex flex-col gap-0.5 pb-2 border-b border-[var(--vsc-border)] mb-2">
                         <button
                           onClick={(e) => {
                             const utcDate = new Date();
@@ -2143,9 +1707,9 @@ function TodoWorkspaceItem({
                             });
                             close();
                           }}
-                          className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
+                          className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
                         >
-                          <CalendarIcon size={12} className="text-blue-500" />
+                          <CalendarIcon size={12} className="text-[var(--vsc-accent)]" />
                           <span>Schedule Today</span>
                         </button>
                         <button
@@ -2157,7 +1721,7 @@ function TodoWorkspaceItem({
                             });
                             close();
                           }}
-                          className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
+                          className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
                         >
                           <Sun size={12} className="text-amber-500" />
                           <span>Schedule Tomorrow</span>
@@ -2171,7 +1735,7 @@ function TodoWorkspaceItem({
                             });
                             close();
                           }}
-                          className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
+                          className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
                         >
                           <Rocket size={12} className="text-purple-500" />
                           <span>Schedule Next Week</span>
@@ -2182,7 +1746,7 @@ function TodoWorkspaceItem({
                               onUpdate(task.id, { dueDate: undefined });
                               close();
                             }}
-                            className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-extrabold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded transition-all cursor-pointer mt-1 border-t border-slate-100 dark:border-slate-800/80 pt-2"
+                            className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-red-500 hover:bg-red-500/10 rounded-[4px] transition-colors cursor-pointer mt-1 border-t border-[var(--vsc-border)] pt-2"
                           >
                             <X size={12} />
                             <span>Clear Target Date</span>
@@ -2190,7 +1754,7 @@ function TodoWorkspaceItem({
                         )}
                       </div>
                       <div className="px-2 py-1 flex items-center gap-3 justify-between mt-1">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">
+                        <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vsc-fg-muted)] pl-1">
                           Custom
                         </span>
                         <div className="relative group w-[110px]">
@@ -2202,8 +1766,8 @@ function TodoWorkspaceItem({
                               close();
                             }}
                           >
-                            <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
-                                <span className={cn(!task.dueDate && "text-slate-400 group-hover:text-slate-500")}>
+                            <CustomDateInput className="bg-[var(--vsc-input)] border border-[var(--vsc-border-strong)] rounded-[4px] px-2 h-7 text-[12px] text-[var(--vsc-fg)] w-[110px] flex items-center group-hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer relative z-0">
+                                <span className={cn(!task.dueDate && "text-[var(--vsc-fg-muted)] group-hover:text-[var(--vsc-fg-muted)]")}>
                                   {task.dueDate ? format(parseISO(task.dueDate), "MM/dd/yyyy") : "mm/dd/yyyy"}
                                 </span>
                             </CustomDateInput>
@@ -2222,7 +1786,7 @@ function TodoWorkspaceItem({
                     <span
                       key={`${tag}-${i}`}
                       className={cn(
-                        "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
+                        "inline-flex items-center h-5 px-1.5 rounded-[4px] text-[11px] font-medium border",
                         getTagColorClass(tag),
                       )}
                     >
@@ -2259,8 +1823,8 @@ function TodoWorkspaceItem({
               title={isCopied ? "Copied!" : "Copy Task text"}
               className={`p-1 rounded transition-colors outline-none cursor-pointer ${
                 isCopied 
-                  ? "text-emerald-500 bg-emerald-50 dark:bg-emerald-500/10" 
-                  : "hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-blue-500"
+                  ? "text-emerald-500 bg-emerald-500/10" 
+                  : "hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-accent)]"
               }`}
             >
               {isCopied ? <Check size={13} /> : <Copy size={13} />}
@@ -2271,12 +1835,12 @@ function TodoWorkspaceItem({
               onClick={() => setIsNotesExpanded(!isNotesExpanded)}
               title={isNotesExpanded ? "Hide Description" : "Show Description"}
               className={cn(
-                "p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors outline-none cursor-pointer",
+                "p-1 hover:bg-[var(--vsc-hover)] rounded transition-colors outline-none cursor-pointer",
                 isNotesExpanded
-                  ? "text-blue-500 bg-blue-100/45 dark:bg-blue-950/30"
+                  ? "text-[var(--vsc-accent)] bg-[var(--vsc-active)]"
                   : task.notes
-                    ? "text-amber-500 bg-amber-50/50 dark:bg-amber-950/10"
-                    : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300",
+                    ? "text-amber-500"
+                    : "text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)]",
               )}
             >
               <AlignLeft size={13} />
@@ -2290,7 +1854,7 @@ function TodoWorkspaceItem({
                 onAddNested(task.id);
               }}
               title="Create nested subtask"
-              className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors text-slate-400 hover:text-blue-550 outline-none cursor-pointer"
+              className="p-1 hover:bg-[var(--vsc-hover)] rounded transition-colors text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-accent)] outline-none cursor-pointer"
             >
               <Plus size={13} />
             </button>
@@ -2303,7 +1867,7 @@ function TodoWorkspaceItem({
                 onRemove(task.id);
               }}
               title="Delete task line"
-              className="p-1 hover:bg-red-50 dark:hover:bg-red-950/20 rounded transition-colors text-slate-400 hover:text-red-500 outline-none cursor-pointer"
+              className="p-1 hover:bg-red-500/10 rounded transition-colors text-[var(--vsc-fg-muted)] hover:text-red-500 outline-none cursor-pointer"
             >
               <Trash2 size={13} />
             </button>
@@ -2315,16 +1879,16 @@ function TodoWorkspaceItem({
               trigger={
                 <button
                   className={cn(
-                    "p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors outline-none cursor-pointer text-slate-400",
+                    "p-1 hover:bg-[var(--vsc-hover)] rounded transition-colors outline-none cursor-pointer text-[var(--vsc-fg-muted)]",
                     isMenuOpen
-                      ? "bg-slate-100 dark:bg-slate-800 text-slate-900 dark:text-white"
+                      ? "bg-[var(--vsc-hover)] text-[var(--vsc-fg)]"
                       : "",
                   )}
                 >
                   <MoreHorizontal size={14} />
                 </button>
               }
-              contentClassName="w-48 p-1.5 border border-slate-200 dark:border-slate-800 shadow-2xl z-50 flex flex-col right-0 origin-top-right overflow-hidden"
+              contentClassName="w-48 p-1.5 border border-[var(--vsc-border)] shadow-2xl z-50 flex flex-col right-0 origin-top-right overflow-hidden"
               isOpen={isMenuOpen}
               setIsOpen={setIsMenuOpen}
             >
@@ -2342,7 +1906,7 @@ function TodoWorkspaceItem({
                       // I'll close it here because the user's focus is on the main list item's copy button mostly
                       close();
                     }}
-                    className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer"
+                    className="w-full flex items-center gap-2 text-left px-2 h-8 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
                   >
                     <Copy size={13} />
                     <span>{isCopied ? "Copied!" : "Copy Task"}</span>
@@ -2354,10 +1918,10 @@ function TodoWorkspaceItem({
                       close();
                     }}
                     className={cn(
-                      "w-full flex items-center gap-2 text-left px-2 py-1.5 text-xs font-semibold rounded transition-colors cursor-pointer",
+                      "w-full flex items-center gap-2 text-left px-2 h-8 text-[12px] rounded-[4px] transition-colors cursor-pointer",
                       isNotesExpanded
-                        ? "text-blue-600 bg-blue-50 dark:bg-blue-900/20"
-                        : "text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800",
+                        ? "text-[var(--vsc-accent)] bg-[var(--vsc-active)]"
+                        : "text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)]",
                     )}
                   >
                     <AlignLeft size={13} />
@@ -2374,7 +1938,7 @@ function TodoWorkspaceItem({
                       onAddNested(task.id);
                       close();
                     }}
-                    className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-colors cursor-pointer mt-0.5"
+                    className="w-full flex items-center gap-2 text-left px-2 h-8 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer mt-0.5"
                   >
                     <Plus size={13} />
                     <span>Add Subtask</span>
@@ -2386,7 +1950,7 @@ function TodoWorkspaceItem({
                       onRemove(task.id);
                       close();
                     }}
-                    className="w-full flex items-center gap-2 text-left px-2 py-1.5 text-xs font-semibold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded transition-colors cursor-pointer mt-0.5"
+                    className="w-full flex items-center gap-2 text-left px-2 h-8 text-[12px] text-red-500 hover:bg-red-500/10 rounded-[4px] transition-colors cursor-pointer mt-0.5"
                   >
                     <Trash2 size={13} />
                     <span>Delete Task</span>
@@ -2401,17 +1965,17 @@ function TodoWorkspaceItem({
       {/* Expanded Notes/Description Area nested elegantly underneath */}
       {isNotesExpanded && (
         <div
-          className="border border-slate-200 dark:border-slate-800 bg-slate-50/40 dark:bg-[#11141a]/30 rounded-xl p-4 my-1.5 transition-all outline-none"
+          className="border border-[var(--vsc-border)] bg-[var(--vsc-hover)] rounded-md p-3 my-1 outline-none"
           style={{ marginLeft: `${level * 1.5 + 1.25}rem` }}
           onClick={(e) => {
             // Prevent task selection on clicking notes container
             e.stopPropagation();
           }}
         >
-          <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-slate-200/50 dark:border-slate-800/50">
-            <div className="flex items-center gap-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-widest leading-none">
-              <AlignLeft size={11} className="text-blue-500" />
-              <span>Inline Description & Specs</span>
+          <div className="flex items-center justify-between mb-2 pb-1.5 border-b border-[var(--vsc-border)]">
+            <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--vsc-fg-muted)] leading-none">
+              <AlignLeft size={11} />
+              <span>Notes</span>
             </div>
             <div className="flex items-center gap-1.5">
               {task.notes && (
@@ -2422,34 +1986,34 @@ function TodoWorkspaceItem({
                     setTimeout(() => setIsDescCopied(false), 2000);
                   }}
                   className={cn(
-                    "flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded transition-all border",
+                    "flex items-center gap-1.5 h-6 px-2 rounded-[4px] text-[11px] transition-colors border",
                     isDescCopied 
-                      ? "bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20"
-                      : "bg-slate-100/50 hover:bg-slate-200/50 dark:bg-slate-800/40 dark:hover:bg-slate-700/50 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 border-slate-200/50 dark:border-slate-700/50"
+                      ? "bg-emerald-500/10 text-emerald-500 border-emerald-500/30"
+                      : "bg-[var(--vsc-hover)] hover:bg-[var(--vsc-active)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] border-[var(--vsc-border)]"
                   )}
                 >
                   {isDescCopied ? (
                     <>
-                      <Check size={11} /> COPIED
+                      <Check size={11} /> Copied
                     </>
                   ) : (
                     <>
-                      <Copy size={11} /> COPY
+                      <Copy size={11} /> Copy
                     </>
                   )}
                 </button>
               )}
               <button
                 onClick={() => setIsEditingNotesInline(!isEditingNotesInline)}
-                className="flex items-center gap-1.5 text-[10px] font-semibold px-2 py-1 rounded bg-slate-100/50 hover:bg-slate-200/50 dark:bg-slate-800/40 dark:hover:bg-slate-700/50 text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-all border border-slate-200/50 dark:border-slate-700/50"
+                className="flex items-center gap-1.5 h-6 px-2 rounded-[4px] text-[11px] bg-[var(--vsc-hover)] hover:bg-[var(--vsc-active)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] transition-all border border-[var(--vsc-border)]"
               >
                 {isEditingNotesInline ? (
                   <>
-                    <Eye size={11} /> PREVIEW SPECS
+                    <Eye size={11} /> Preview
                   </>
                 ) : (
                   <>
-                    <Pencil size={11} /> EDIT SPECS
+                    <Pencil size={11} /> Edit
                   </>
                 )}
               </button>
@@ -2461,7 +2025,7 @@ function TodoWorkspaceItem({
               value={task.notes || ""}
               onChange={(e) => onUpdate(task.id, { notes: e.target.value })}
               placeholder="Add formulas ($$x^2 + y^2 = z^2$$) or markdown text..."
-              className="w-full min-h-[125px] bg-transparent border-none outline-none text-xs text-slate-800 dark:text-slate-200 resize-y leading-relaxed font-sans placeholder:text-slate-400 dark:placeholder:text-slate-700 focus:ring-0 p-0"
+              className="w-full min-h-[125px] bg-transparent border-none outline-none text-xs text-[var(--vsc-fg)] resize-y leading-relaxed font-sans placeholder:text-[var(--vsc-fg-muted)] focus:ring-0 p-0"
               autoFocus
             />
           ) : (
@@ -2471,7 +2035,7 @@ function TodoWorkspaceItem({
               ) : (
                 <button
                   onClick={() => setIsEditingNotesInline(true)}
-                  className="text-xs text-slate-400 hover:text-slate-500 dark:text-slate-500 dark:hover:text-slate-400 italic text-left w-full block transition-colors py-1 pl-1"
+                  className="text-xs text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg-muted)] italic text-left w-full block transition-colors py-1 pl-1"
                 >
                   Click to write detailed notes (LaTeX equations and Markdown
                   formatted specs supported)...
@@ -2484,7 +2048,7 @@ function TodoWorkspaceItem({
 
       {/* Subtasks levels tree loops */}
       {task.tasks && task.tasks.length > 0 && !isCollapsed && (
-        <div className="flex flex-col gap-0.5 border-l-2 border-slate-100 dark:border-slate-800/60 ml-[1.65rem] pl-1 relative">
+        <div className="flex flex-col gap-px border-l border-[var(--vsc-border)] ml-[1.65rem] pl-1 relative">
           {task.tasks.map((subtask: TodoTask, i) => (
             <TodoWorkspaceItem
               key={`${subtask.id}-${i}`}
@@ -2604,13 +2168,13 @@ function TodoTaskDetails({
   }, [todoData]);
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-white dark:bg-[#0d1117] relative">
+    <div className="flex-1 flex flex-col h-full overflow-hidden bg-[var(--vsc-sidebar)] relative">
       {/* Header Actions Panel */}
-      <div className="flex items-center justify-between px-3 md:px-4 py-2 md:py-3 shrink-0 border-b border-slate-100 dark:border-slate-800/60 sticky top-0 bg-white/95 dark:bg-[#0d1117]/95 backdrop-blur-sm z-10 shadow-sm relative">
-        <div className="flex items-center gap-1.5 md:gap-1 text-[11px] font-extrabold text-slate-500 dark:text-slate-400 uppercase tracking-widest">
+      <div className="flex items-center justify-between h-[35px] pl-2 pr-1.5 md:pl-4 shrink-0 border-b border-[var(--vsc-border)] bg-[var(--vsc-sidebar)] sticky top-0 z-10">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--vsc-fg-muted)]">
           <button
             onClick={onClose}
-            className="md:hidden p-1.5 -ml-1 rounded-md text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="md:hidden p-1 rounded-[4px] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] transition-colors"
             title="Back"
           >
             <ArrowLeft size={16} />
@@ -2618,13 +2182,13 @@ function TodoTaskDetails({
           <div className="flex items-center gap-1.5 pl-0.5">
             <Sliders
               size={12}
-              className="text-blue-500 opacity-90 hidden sm:block"
+              className="hidden sm:block"
             />
-            <span className="hidden sm:inline">Task Properties</span>
+            <span className="hidden sm:inline">Task</span>
             <span className="md:hidden">Details</span>
           </div>
         </div>
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-0.5">
           <button
             onClick={() => {
               if (
@@ -2640,12 +2204,12 @@ function TodoTaskDetails({
               });
             }}
             className={cn(
-              "px-2 h-7 rounded-md text-[10px] font-bold tracking-wider uppercase transition-all flex items-center gap-1 border cursor-pointer",
+              "flex items-center gap-1.5 h-6 px-2 rounded-[4px] text-[12px] transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-[var(--vsc-accent)]",
               (!hasIncompleteChildren || isCompleted) &&
                 "active:scale-95",
               isCompleted
-                ? "text-emerald-500 bg-emerald-500/10 border-emerald-500/20 hover:bg-emerald-500/20 dark:text-emerald-400 dark:bg-emerald-400/10 dark:border-emerald-400/20 dark:hover:bg-emerald-400/20"
-                : "text-slate-700 bg-slate-100/60 border-slate-200 hover:bg-slate-200/60 dark:text-slate-300 dark:bg-slate-800/50 dark:border-slate-700 hover:dark:bg-slate-800 dark:hover:border-slate-600",
+                ? "text-emerald-500 bg-emerald-500/10 hover:bg-emerald-500/20"
+                : "text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)]",
               hasIncompleteChildren &&
                 !isCompleted &&
                 "opacity-40 cursor-not-allowed",
@@ -2657,46 +2221,47 @@ function TodoTaskDetails({
             }
           >
             {isCompleted ? (
-              <CheckCircle2 size={11.5} className="text-emerald-500" />
+              <CheckCircle2 size={13} className="text-emerald-500" />
             ) : (
               <Circle
                 size={11.5}
-                className="text-slate-450 dark:text-slate-400"
+                className="text-[var(--vsc-fg-muted)]"
               />
             )}
-            <span>{isCompleted ? "Completed" : "Mark Complete"}</span>
+            <span>{isCompleted ? "Completed" : "Mark complete"}</span>
           </button>
           <button
             onClick={() => {
               onRemove(foundTask!.id);
               onClose();
             }}
-            className="px-2 h-7 rounded-md text-[10px] font-bold tracking-wider uppercase transition-all flex items-center gap-1 border cursor-pointer border-rose-200 hover:bg-rose-500/10 hover:border-rose-500 hover:text-rose-600 dark:border-rose-900/40 dark:hover:text-rose-455 hover:scale-95 text-slate-500 dark:text-slate-400"
+            className="flex items-center gap-1.5 h-6 px-2 rounded-[4px] text-[12px] transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-[var(--vsc-accent)] text-[var(--vsc-fg-muted)] hover:text-rose-500 hover:bg-rose-500/10"
             title="Delete active task"
           >
             <Trash2 size={11.5} />
             <span>Delete</span>
           </button>
-          <div className="w-px h-4 bg-slate-200 dark:bg-slate-800 mx-1"></div>
+          <div className="w-px h-4 bg-[var(--vsc-border)] mx-1"></div>
           <button
             onClick={onClose}
-            className="hidden md:flex p-1 min-w-8 h-8 items-center justify-center rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors outline-none cursor-pointer"
+            className="hidden md:flex h-6 w-6 items-center justify-center rounded-[4px] hover:bg-[var(--vsc-hover)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] transition-colors outline-none cursor-pointer"
+            title="Close"
           >
             <X size={16} />
           </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-5 pb-12 pt-5 custom-scrollbar flex flex-col gap-6">
+      <div className="flex-1 overflow-y-auto px-4 pb-10 pt-4 custom-scrollbar flex flex-col gap-5">
         {/* Title input field auto growers */}
         <div className="flex flex-col -ml-1 relative">
           <textarea
-            maxLength={100}
+            maxLength={todo.MAX_TASK_TEXT}
             value={foundTask.text || ""}
             onChange={(e) => onUpdate(foundTask!.id, { text: e.target.value })}
             onFocus={() => setIsDetailTitleFocused(true)}
             onBlur={() => setIsDetailTitleFocused(false)}
-            className="w-full bg-transparent border-transparent text-2xl font-bold tracking-tight text-slate-900 dark:text-white outline-none placeholder:text-slate-300 dark:placeholder:text-slate-700 focus:ring-0 resize-none overflow-hidden leading-tight p-1 focus:border-transparent pr-16"
+            className="w-full bg-transparent border-transparent text-[18px] font-semibold text-[var(--vsc-fg)] outline-none placeholder:text-[var(--vsc-fg-muted)] focus:ring-0 resize-none overflow-hidden leading-tight p-1 focus:border-transparent pr-16"
             placeholder="Untitled Task"
             rows={1}
             onInput={(e) => {
@@ -2712,27 +2277,27 @@ function TodoTaskDetails({
             }}
           />
           {isDetailTitleFocused && (
-            <span className="absolute right-2 top-2 text-[10px] font-mono font-bold text-blue-500 bg-blue-100 dark:bg-blue-950/40 px-1.5 py-0.5 rounded shadow-sm border border-blue-200 dark:border-blue-900 pointer-events-none select-none z-10 animate-in fade-in duration-100">
-              {(foundTask.text || "").length}/100
+            <span className="absolute right-1 top-1.5 text-[10px] font-mono text-[var(--vsc-fg-muted)] bg-[var(--vsc-hover)] px-1.5 py-0.5 rounded-[3px] pointer-events-none select-none z-10 animate-in fade-in duration-100">
+              {(foundTask.text || "").length}/{todo.MAX_TASK_TEXT}
             </span>
           )}
         </div>
 
         {/* Metadatas select list */}
         <div
-          className="flex flex-col gap-3 py-2 bg-slate-50/40 dark:bg-[#11141a]/40 rounded-xl p-3 border border-slate-100 dark:border-slate-800"
+          className="flex flex-col rounded-md border border-[var(--vsc-border)] bg-[var(--vsc-editor)] divide-y divide-[var(--vsc-border)]"
           onClick={(e) => e.stopPropagation()}
         >
           {/* Status Workflow select popovers */}
-          <div className="flex items-center justify-between">
-            <div className="shrink-0 text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+          <div className="flex items-center justify-between gap-3 pl-3 pr-1 h-10">
+            <div className="shrink-0 text-[12px] text-[var(--vsc-fg-muted)] flex items-center gap-2">
               <Layers size={12} /> Status
             </div>
             <CustomDropdown
               isOpen={isStatusOpen}
               setIsOpen={setIsStatusOpen}
               trigger={
-                <button className="h-8 px-2 py-1 text-xs flex items-center justify-start rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none hover:scale-95 transition-all font-semibold uppercase gap-1.5 cursor-pointer">
+                <button className="h-7 px-2 flex items-center gap-1.5 rounded-[4px] text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--vsc-accent)] transition-colors cursor-pointer">
                   <StatusIcon size={13} className={cn(currentStatus.color)} />
                   <span>{currentStatus.label}</span>
                   <ChevronDown size={12} className="opacity-50" />
@@ -2751,14 +2316,14 @@ function TodoTaskDetails({
                           onUpdate(foundTask!.id, { status: opt.value as any });
                           close();
                         }}
-                        className="w-full flex items-center gap-2.5 px-2.5 py-1.5 text-xs rounded hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors text-left font-semibold text-slate-700 dark:text-slate-200 cursor-pointer"
+                        className="w-full flex items-center gap-2.5 px-2 h-7 text-[12px] rounded-[4px] hover:bg-[var(--vsc-hover)] transition-colors text-left font-medium text-[var(--vsc-fg)] cursor-pointer"
                       >
                         <OptIcon size={12} className={opt.color} />
                         {opt.label}
                         {opt.value === foundTask!.status && (
                           <Check
                             size={12}
-                            className="ml-auto opacity-50 text-blue-500"
+                            className="ml-auto text-[var(--vsc-accent)]"
                           />
                         )}
                       </button>
@@ -2770,18 +2335,18 @@ function TodoTaskDetails({
           </div>
 
           {/* Priority workflow selectors popover */}
-          <div className="flex items-center justify-between">
-            <div className="shrink-0 text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+          <div className="flex items-center justify-between gap-3 pl-3 pr-1 h-10">
+            <div className="shrink-0 text-[12px] text-[var(--vsc-fg-muted)] flex items-center gap-2">
               <AlertCircle size={12} /> Priority
             </div>
             <CustomDropdown
               isOpen={isPriorityOpen}
               setIsOpen={setIsPriorityOpen}
               trigger={
-                <button className="h-8 px-2 py-1 text-xs flex items-center justify-start rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 outline-none hover:scale-95 transition-all font-semibold uppercase gap-1.5 cursor-pointer">
+                <button className="h-7 px-2 flex items-center gap-1.5 rounded-[4px] text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--vsc-accent)] transition-colors cursor-pointer">
                   <span
                     className={cn(
-                      "px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider shadow-sm",
+                      BADGE_CLASS,
                       priorityInfo.bgColor,
                     )}
                   >
@@ -2801,11 +2366,11 @@ function TodoTaskDetails({
                         onUpdate(foundTask!.id, { priority: opt.value as any });
                         close();
                       }}
-                      className="w-full flex items-center gap-2 px-2.5 py-2 text-xs rounded hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors text-left font-semibold cursor-pointer text-slate-700 dark:text-slate-200"
+                      className="w-full flex items-center gap-2 px-2 h-7 text-[12px] rounded-[4px] hover:bg-[var(--vsc-hover)] transition-colors text-left font-medium cursor-pointer text-[var(--vsc-fg)]"
                     >
                       <span
                         className={cn(
-                          "px-2 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider",
+                          "text-[12px] font-medium",
                           opt.color,
                         )}
                       >
@@ -2814,7 +2379,7 @@ function TodoTaskDetails({
                       {opt.value === (foundTask!.priority || "Normal") && (
                         <Check
                           size={12}
-                          className="ml-auto opacity-50 text-blue-500"
+                          className="ml-auto text-[var(--vsc-accent)]"
                         />
                       )}
                     </button>
@@ -2825,8 +2390,8 @@ function TodoTaskDetails({
           </div>
 
           {/* Date Picker customized options (Today/Tomorrow/NextWeek/Clear) */}
-          <div className="flex items-center justify-between">
-            <div className="shrink-0 text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5">
+          <div className="flex items-center justify-between gap-3 pl-3 pr-1 h-10">
+            <div className="shrink-0 text-[12px] text-[var(--vsc-fg-muted)] flex items-center gap-2">
               <CalendarIcon size={12} /> Target Date
             </div>
             <CustomDropdown
@@ -2835,29 +2400,29 @@ function TodoTaskDetails({
               trigger={
                 <button
                   className={cn(
-                    "h-8 px-2 py-1 text-xs flex items-center gap-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 outline-none hover:scale-95 transition-all font-semibold text-slate-700 dark:text-slate-300 cursor-pointer",
+                    "h-7 px-2 flex items-center gap-1.5 rounded-[4px] text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] outline-none focus-visible:ring-1 focus-visible:ring-[var(--vsc-accent)] transition-colors cursor-pointer",
                     !foundTask.dueDate &&
-                      "text-slate-400 font-normal normal-case",
+                      "text-[var(--vsc-fg-muted)] font-normal normal-case",
                   )}
                 >
-                  <span className={cn(isOverdue && "text-red-500 font-black")}>
+                  <span className={cn(isOverdue && "text-red-500 font-medium")}>
                     {foundTask.dueDate
                       ? getFormatDate(foundTask.dueDate)
                       : "Add target date..."}
                   </span>
                   {isOverdue && (
-                    <span className="ml-1 px-1 py-0.2 text-[8px] bg-red-400/10 text-red-500 uppercase tracking-widest rounded">
+                    <span className="ml-1 inline-flex items-center h-4 px-1 rounded-[3px] text-[10px] font-medium bg-red-500/10 text-red-500">
                       Overdue
                     </span>
                   )}
                   <ChevronDown size={12} className="opacity-50" />
                 </button>
               }
-              contentClassName="w-auto p-2 border border-slate-200 dark:border-slate-800 shadow-2xl z-30 flex flex-col right-0"
+              contentClassName="w-auto p-2 border border-[var(--vsc-border)] shadow-2xl z-30 flex flex-col right-0"
             >
               {({ close }: any) => (
                 <>
-                  <div className="flex flex-col gap-0.5 pb-2 border-b border-slate-100 dark:border-slate-800/80 mb-2">
+                  <div className="flex flex-col gap-0.5 pb-2 border-b border-[var(--vsc-border)] mb-2">
                     <button
                       onClick={(e) => {
                         const utcDate = new Date();
@@ -2866,9 +2431,9 @@ function TodoTaskDetails({
                         });
                         close();
                       }}
-                      className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
+                      className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
                     >
-                      <CalendarIcon size={12} className="text-blue-500" />
+                      <CalendarIcon size={12} className="text-[var(--vsc-accent)]" />
                       <span>Schedule Today</span>
                     </button>
                     <button
@@ -2880,7 +2445,7 @@ function TodoTaskDetails({
                         });
                         close();
                       }}
-                      className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
+                      className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
                     >
                       <Sun size={12} className="text-amber-500" />
                       <span>Schedule Tomorrow</span>
@@ -2894,7 +2459,7 @@ function TodoTaskDetails({
                         });
                         close();
                       }}
-                      className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white hover:bg-slate-50 dark:hover:bg-slate-800 rounded transition-all cursor-pointer"
+                      className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
                     >
                       <Rocket size={12} className="text-purple-500" />
                       <span>Schedule Next Week</span>
@@ -2905,7 +2470,7 @@ function TodoTaskDetails({
                           onUpdate(foundTask!.id, { dueDate: undefined });
                           close();
                         }}
-                        className="w-full flex items-center gap-2 text-left px-2.5 py-1.5 text-[11px] font-extrabold text-red-500 hover:bg-red-50 dark:hover:bg-red-950/20 rounded transition-all cursor-pointer mt-1 border-t border-slate-100 dark:border-slate-800/80 pt-2"
+                        className="w-full flex items-center gap-2 text-left px-2 h-7 text-[12px] text-red-500 hover:bg-red-500/10 rounded-[4px] transition-colors cursor-pointer mt-1 border-t border-[var(--vsc-border)] pt-2"
                       >
                         <X size={12} />
                         <span>Clear Target Date</span>
@@ -2913,7 +2478,7 @@ function TodoTaskDetails({
                     )}
                   </div>
                   <div className="px-2 py-1 flex items-center gap-3 justify-between mt-1">
-                    <span className="text-[10px] font-bold text-slate-500 uppercase tracking-widest pl-1">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-[var(--vsc-fg-muted)] pl-1">
                       Custom
                     </span>
                     <div className="relative group w-[110px]">
@@ -2925,8 +2490,8 @@ function TodoTaskDetails({
                           close();
                         }}
                       >
-                        <CustomDateInput className="bg-white dark:bg-[#151a23] border border-slate-200 dark:border-slate-800 rounded-md px-2.5 py-1 text-xs font-semibold text-slate-700 dark:text-slate-300 w-[110px] flex items-center group-hover:bg-slate-50 dark:group-hover:bg-[#1a212d] transition-colors cursor-pointer relative z-0">
-                            <span className={cn(!foundTask.dueDate && "text-slate-400 group-hover:text-slate-500")}>
+                        <CustomDateInput className="bg-[var(--vsc-input)] border border-[var(--vsc-border-strong)] rounded-[4px] px-2 h-7 text-[12px] text-[var(--vsc-fg)] w-[110px] flex items-center group-hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer relative z-0">
+                            <span className={cn(!foundTask.dueDate && "text-[var(--vsc-fg-muted)] group-hover:text-[var(--vsc-fg-muted)]")}>
                               {foundTask.dueDate ? format(parseISO(foundTask.dueDate), "MM/dd/yyyy") : "mm/dd/yyyy"}
                             </span>
                         </CustomDateInput>
@@ -2940,8 +2505,8 @@ function TodoTaskDetails({
         </div>
 
         {/* Labels / Tags workflow */}
-        <div className="flex items-start justify-between flex-col gap-2 relative z-10 pt-2 border-t border-slate-100 dark:border-slate-800/60 mt-3">
-          <div className="shrink-0 text-xs font-bold text-slate-400 uppercase tracking-widest flex items-center gap-1.5 pt-1">
+        <div className="flex flex-col gap-2 relative z-10">
+          <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--vsc-fg-muted)]">
             <Hash size={12} /> Labels
           </div>
           <div className="flex flex-wrap gap-1.5 w-full">
@@ -2949,7 +2514,7 @@ function TodoTaskDetails({
               <div
                 key={`${tag}-${i}`}
                 className={cn(
-                  "flex items-center gap-1 border px-2.5 py-1 rounded-md text-[10px] font-extrabold uppercase tracking-wider group",
+                  "inline-flex items-center gap-1 h-6 pl-2 pr-1 rounded-[4px] border text-[12px] font-medium group",
                   getTagColorClass(tag),
                 )}
               >
@@ -2970,7 +2535,7 @@ function TodoTaskDetails({
             ))}
             {/* Tag search container */}
             <div className="relative">
-              <div className="flex items-stretch h-[26px]">
+              <div className="flex items-stretch h-6">
                 <input
                   type="text"
                   value={tagInput}
@@ -2978,7 +2543,7 @@ function TodoTaskDetails({
                   onFocus={() => setIsTagFocused(true)}
                   onBlur={() => setTimeout(() => setIsTagFocused(false), 200)}
                   placeholder="Add label..."
-                  className="bg-transparent h-full border border-dashed border-slate-300 dark:border-slate-700 hover:border-slate-400 dark:hover:border-slate-500 px-2.5 rounded-l-md text-[10px] font-extrabold uppercase tracking-wider text-slate-600 dark:text-slate-300 outline-none w-[110px] focus:w-[130px] transition-all focus:border-blue-500 focus:bg-slate-50 dark:focus:bg-slate-800/50"
+                  className="bg-[var(--vsc-input)] h-full border border-[var(--vsc-border-strong)] focus:border-[var(--vsc-accent)] px-2 rounded-l-[4px] text-[12px] text-[var(--vsc-fg)] placeholder:text-[var(--vsc-fg-muted)] outline-none w-[120px] focus:w-[150px] transition-[width]"
                   onKeyDown={(e) => {
                     if (e.key === "Enter" || e.key === ",") {
                       e.preventDefault();
@@ -2996,7 +2561,7 @@ function TodoTaskDetails({
                   }}
                 />
                 <button
-                  className="bg-transparent h-full border border-l-0 border-dashed border-slate-300 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 px-2 rounded-r-md text-[10px] text-slate-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-all outline-none flex items-center justify-center shrink-0"
+                  className="bg-[var(--vsc-input)] h-full border border-l-0 border-[var(--vsc-border-strong)] px-1.5 rounded-r-[4px] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-accent)] hover:bg-[var(--vsc-hover)] transition-colors outline-none flex items-center justify-center shrink-0"
                   onClick={() => {
                     const val = tagInput.trim().toLowerCase();
                     if (val) {
@@ -3017,7 +2582,7 @@ function TodoTaskDetails({
 
               {/* Tag suggestions dropdown */}
               {isTagFocused && (
-                <div className="absolute top-full left-0 mt-1 max-h-48 overflow-y-auto w-[180px] bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-700 rounded-lg shadow-xl z-50 flex flex-col py-1">
+                <div className="absolute top-full left-0 mt-1 max-h-48 overflow-y-auto w-[180px] bg-[var(--vsc-widget)] border border-[var(--vsc-border-strong)] rounded-md shadow-[0_8px_24px_var(--vsc-widget-shadow)] z-50 flex flex-col py-1">
                   {allTags
                     .filter(
                       (t) =>
@@ -3037,12 +2602,12 @@ function TodoTaskDetails({
                           setTagInput("");
                           setIsTagFocused(false);
                         }}
-                        className="text-left flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors group"
+                        className="text-left flex items-center gap-2 px-3 py-1.5 hover:bg-[var(--vsc-hover)] transition-colors group"
                       >
                         <Hash size={10} className="opacity-40" />
                         <span
                           className={cn(
-                            "px-1.5 py-0.5 rounded text-[9px] font-bold uppercase tracking-wider border",
+                            "inline-flex items-center h-5 px-1.5 rounded-[4px] text-[11px] font-medium border",
                             getTagColorClass(t),
                           )}
                         >
@@ -3067,7 +2632,7 @@ function TodoTaskDetails({
                           setTagInput("");
                           setIsTagFocused(false);
                         }}
-                        className="text-left px-3 py-1.5 hover:bg-blue-50 dark:hover:bg-blue-900/30 text-[11px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400 transition-colors"
+                        className="text-left px-3 py-1.5 hover:bg-[var(--vsc-hover)] text-[12px] text-[var(--vsc-accent)] transition-colors"
                       >
                         + Create "{tagInput.trim()}"
                       </button>
@@ -3084,32 +2649,32 @@ function TodoTaskDetails({
           onChange={(newHashes) => onUpdate(foundTask!.id, { imageHashes: newHashes })} 
         />
 
-        <div className="h-px w-full bg-slate-100 dark:bg-slate-800/60 my-2 font-sans"></div>
+        <div className="h-px w-full bg-[var(--vsc-hover)] my-2 font-sans"></div>
 
         {/* Elevated separate Description/Notes workflow Card */}
-        <div className="flex flex-col gap-2 relative mt-4">
-          <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-widest pl-1">
-            <span className="flex items-center gap-1.5">
-              <FileText size={12} className="opacity-70" /> Notes & Specs
+        <div className="flex flex-col gap-2 relative">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-[var(--vsc-fg-muted)]">
+              <FileText size={12} /> Notes
             </span>
             <button
               onClick={() =>
                 setIsEditingNotesInDetails(!isEditingNotesInDetails)
               }
-              className="flex items-center gap-2 text-[10px] font-bold px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 transition-all border border-slate-200 dark:border-slate-700 outline-none shadow-sm active:scale-95"
+              className="flex items-center gap-1.5 h-6 px-2 rounded-[4px] text-[12px] transition-colors cursor-pointer outline-none focus-visible:ring-1 focus-visible:ring-[var(--vsc-accent)] text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)]"
             >
               {isEditingNotesInDetails ? (
                 <>
-                  <Eye size={12} className="text-blue-500" /> PREVIEW
+                  <Eye size={13} /> Preview
                 </>
               ) : (
                 <>
-                  <Pencil size={12} className="opacity-70" /> WRITE / EDIT
+                  <Pencil size={13} /> Edit
                 </>
               )}
             </button>
           </div>
-          <div className="bg-slate-50/40 dark:bg-[#11141a]/40 border border-slate-200/85 dark:border-slate-800 rounded-xl p-4 shadow-inner ring-offset-background transition-all hover:bg-slate-50/60 focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500 flex flex-col min-h-[250px] relative">
+          <div className="bg-[var(--vsc-editor)] border border-[var(--vsc-border)] rounded-md p-3 transition-colors focus-within:border-[var(--vsc-accent)] flex flex-col min-h-[250px] relative">
             {isEditingNotesInDetails ? (
               <textarea
                 value={foundTask.notes || ""}
@@ -3117,7 +2682,7 @@ function TodoTaskDetails({
                   onUpdate(foundTask!.id, { notes: e.target.value })
                 }
                 placeholder="Add math equations inside $$...$$ or $...$, lists, code fragments or links..."
-                className="w-full min-h-[250px] bg-transparent border-none outline-none text-xs sm:text-[13px] text-slate-800 dark:text-slate-200 resize-none overflow-hidden placeholder:text-slate-400 dark:placeholder:text-slate-700 leading-relaxed custom-scrollbar p-0 focus:ring-0 focus:border-none focus:outline-none"
+                className="w-full min-h-[250px] bg-transparent border-none outline-none text-xs sm:text-[13px] text-[var(--vsc-fg)] resize-none overflow-hidden placeholder:text-[var(--vsc-fg-muted)] leading-relaxed custom-scrollbar p-0 focus:ring-0 focus:border-none focus:outline-none"
                 onInput={(e) => {
                   const target = e.target as HTMLTextAreaElement;
                   target.style.height = "auto";
@@ -3138,7 +2703,7 @@ function TodoTaskDetails({
                 ) : (
                   <button
                     onClick={() => setIsEditingNotesInDetails(true)}
-                    className="text-xs text-slate-400 hover:text-slate-500 dark:text-slate-500 dark:hover:text-slate-400 italic text-left w-full h-full min-h-[200px]"
+                    className="text-xs text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-fg-muted)] italic text-left w-full h-full min-h-[200px]"
                   >
                     Write custom description / specs. Full Markdown and LaTeX
                     rendering supported.

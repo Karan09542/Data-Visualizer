@@ -111,7 +111,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
     return (
       <div className="w-full mt-4 flex flex-col gap-2">
         <div 
-          className="w-full flex flex-col items-center justify-center border-2 border-dashed border-slate-300 dark:border-slate-700/50 rounded-xl p-6 bg-slate-50/50 dark:bg-slate-900/20 text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/80 transition-colors cursor-pointer"
+          className="w-full flex flex-col items-center justify-center border-2 border-dashed border-[var(--vsc-border-strong)] rounded-md p-6 bg-[var(--vsc-hover)] text-[var(--vsc-fg-muted)] hover:bg-[var(--vsc-hover)] transition-colors cursor-pointer"
           onDragOver={e => e.preventDefault()}
           onDrop={handleDrop}
           onClick={() => document.getElementById("hidden-file-input")?.click()}
@@ -123,7 +123,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
         </div>
         {hasCamera && (
           <button 
-            className="w-full flex items-center justify-center gap-2 py-3 border border-slate-300 dark:border-slate-700/50 rounded-xl bg-white dark:bg-slate-800 text-sm font-medium hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
+            className="w-full flex items-center justify-center gap-2 py-3 border border-[var(--vsc-border-strong)] rounded-md bg-[var(--vsc-editor)] text-sm font-medium hover:bg-[var(--vsc-hover)] transition-colors"
             onClick={() => setShowCamera(true)}
           >
             <Camera size={16} />
@@ -176,7 +176,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
   return (
     <div className="w-full mt-4 flex flex-col gap-3">
        
-       <div className="flex items-center justify-between text-[10px] font-bold text-slate-400 uppercase tracking-widest pl-1">
+       <div className="flex items-center justify-between text-[11px] font-semibold text-[var(--vsc-fg-muted)] uppercase tracking-wide pl-1">
          <span className="flex items-center gap-1.5"><ImageIcon size={12} className="opacity-70" /> Attachments</span>
        </div>
 
@@ -187,7 +187,7 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
        >
          {urls.map((url, i) => (
             url ? (
-              <div key={i} className="relative aspect-square rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700/50 shadow-sm group bg-slate-100 dark:bg-slate-800">
+              <div key={i} className="relative aspect-square rounded-md overflow-hidden border border-[var(--vsc-border)] shadow-sm group bg-[var(--vsc-hover)]">
                 {renderThumb(url, i)}
                 {!readOnly && (
                   <button onClick={(e) => { e.stopPropagation(); removeImage(i); }} className="absolute top-1 right-1 p-1.5 bg-black/50 hover:bg-red-500 rounded-lg text-white opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity backdrop-blur-sm z-10">
@@ -196,17 +196,17 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
                 )}
               </div>
             ) : (
-              <div key={i} className="aspect-square bg-slate-100 dark:bg-slate-800 animate-pulse rounded-xl" />
+              <div key={i} className="aspect-square bg-[var(--vsc-hover)] animate-pulse rounded-md" />
             )
          ))}
          
          {!readOnly && (
            <>
              <div 
-               className="aspect-square rounded-xl overflow-hidden border-2 border-dashed border-slate-300 dark:border-slate-700/50 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/80 transition-colors flex items-center justify-center flex-col text-slate-500"
+               className="aspect-square rounded-md overflow-hidden border-2 border-dashed border-[var(--vsc-border-strong)] cursor-pointer hover:bg-[var(--vsc-hover)] transition-colors flex items-center justify-center flex-col text-[var(--vsc-fg-muted)]"
                onClick={() => document.getElementById("hidden-file-input-add")?.click()}
              >
-                <div className="p-3 bg-slate-100 dark:bg-slate-800 rounded-full mb-1">
+                <div className="p-3 bg-[var(--vsc-hover)] rounded-full mb-1">
                    <ImageIcon size={16} />
                 </div>
                 <span className="text-[10px] font-semibold uppercase tracking-wider">Add Media</span>
@@ -214,10 +214,10 @@ export function TodoImageGallery({ imageHashes = [], onChange, readOnly }: TodoT
              </div>
              {hasCamera && (
                <div 
-                 className="aspect-square rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700/50 cursor-pointer bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors flex items-center justify-center flex-col text-slate-500 shadow-sm"
+                 className="aspect-square rounded-md overflow-hidden border border-[var(--vsc-border-strong)] cursor-pointer bg-[var(--vsc-editor)] hover:bg-[var(--vsc-hover)] transition-colors flex items-center justify-center flex-col text-[var(--vsc-fg-muted)] shadow-sm"
                  onClick={() => setShowCamera(true)}
                >
-                  <div className="p-3 bg-slate-100 dark:bg-slate-700/50 rounded-full mb-1">
+                  <div className="p-3 bg-[var(--vsc-hover)] rounded-full mb-1">
                      <Camera size={16} />
                   </div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider">Take Photo</span>
