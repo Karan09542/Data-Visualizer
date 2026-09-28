@@ -22,6 +22,7 @@ export * from "./PointImage";
 export * from "./examples";
 export * from "./TraceOverlay";
 export * from "./traceGeometry";
+export * from "./InterceptsReadout";
 
 export * from "./VariableManager";
 export * from "./Timeline";

@@ -1,10 +1,10 @@
-import React, { useMemo, useEffect } from "react";
+import React, { useContext, useMemo, useEffect } from "react";
 import { usePaneContext, useTransformContext } from "mafs";
 import { det } from "mathjs";
 import { getStrokeDasharray } from "./mathTypes";
 import type { FillPatternType } from "./mathTypes";
 import { useStableRange } from "./useStableRange";
-import { deleteTraceShape, setTraceShape } from "./traceGeometry";
+import { TraceScopeContext, deleteTraceShape, scopedTraceKey, setTraceShape } from "./traceGeometry";
 
 interface InequalityPlotProps {
   compiledLHS: any;
@@ -248,6 +248,7 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
     tx, ty, px, py, rot, scaleX, scaleY,
   ]);
 
+  const traceScope = useContext(TraceScopeContext);
   // Publish the boundary so the tracer can snap to it. Marching squares emits loose
   // segments, so it's traced as a segment soup, and hits are polished onto the exact
   // curve with Newton steps on lhs - rhs.
@@ -255,7 +256,7 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
     if (!id || !paths.boundary) return;
     const xs: number[] = [];
     const ys: number[] = [];
-    const cmd = /([ML])s*(-?[d.]+(?:e[-+]?d+)?)[,s]+(-?[d.]+(?:e[-+]?d+)?)/gi;
+    const cmd = /([ML])\s*(-?[\d.]+(?:e[-+]?\d+)?)[,\s]+(-?[\d.]+(?:e[-+]?\d+)?)/gi;
     for (let m = cmd.exec(paths.boundary); m; m = cmd.exec(paths.boundary)) {
       if (m[1].toUpperCase() === "M" && xs.length > 0) {
         xs.push(NaN);
@@ -289,12 +290,12 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
       }
     };
 
-    const key = `${id}:boundary`;
-    setTraceShape(key, { fnId: id, color, kind: "curve", xs, ys, residual, soup: true });
+    const key = scopedTraceKey(traceScope, `${id}:boundary`);
+    setTraceShape(key, { scope: traceScope, fnId: id, color, kind: "curve", xs, ys, residual, soup: true });
     return () => deleteTraceShape(key);
     // The boundary string changes whenever anything the residual reads does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paths, id, color]);
+  }, [paths, id, color, traceScope]);
 
   useEffect(() => {
     if (onNoSolution && id) {

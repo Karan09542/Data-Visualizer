@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useContext, useEffect, useMemo } from "react";
 import { Point } from "mafs";
 import { sampleOdeAt, type OdeSolution } from "../../lib/math/odeSolver";
 import {
@@ -11,7 +11,7 @@ import {
   solveCompiledOdeCached,
 } from "../../lib/math/odeCurveData";
 import { DEFAULT_IMAGE_WIDTH, PointImage } from "./PointImage";
-import { deleteTraceShape, setTraceShape } from "./traceGeometry";
+import { TraceScopeContext, deleteTraceShape, scopedTraceKey, setTraceShape } from "./traceGeometry";
 import type { CompiledOde } from "./mathTypes";
 
 type Vec2 = [number, number];
@@ -119,12 +119,14 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
   }, [id, solution, system, axisX, axisY]);
 
   // Publish the drawn solution so the tracer can snap to it and slide along it.
+  const traceScope = useContext(TraceScopeContext);
   useEffect(() => {
     if (!id || !solution || !system || !d) return;
     const geometry = odeTraceGeometry(solution, system, axisX, axisY, transform);
     if (!geometry) return;
-    const key = `${id}:ode`;
+    const key = scopedTraceKey(traceScope, `${id}:ode`);
     setTraceShape(key, {
+      scope: traceScope,
       fnId: id,
       color: color || "var(--mafs-fg)",
       kind: "curve",
@@ -135,7 +137,7 @@ export const OdeCurve: React.FC<OdeCurveProps> = ({
     return () => deleteTraceShape(key);
     // `transform` is a fresh closure each render; `d` changes whenever its output does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [id, solution, system, axisX, axisY, d, color]);
+  }, [id, solution, system, axisX, axisY, d, color, traceScope]);
 
   const marker = useMemo<Vec2 | null>(() => {
     if (!animate || !solution || !system) return null;

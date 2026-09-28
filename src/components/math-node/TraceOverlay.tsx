@@ -1,13 +1,21 @@
-import React, { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useCallback, useContext, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { useTransformContext, vec } from "mafs";
 import {
+  TraceScopeContext,
+  deferTracePin,
   deleteTraceShape,
   formatTraceNumber,
   getTraceShape,
   hitTestTrace,
+  interceptAxesAt,
+  onTracePinRequest,
   projectOntoShape,
   relocateOnShape,
+  requestTraceReveal,
+  scopedTraceKey,
   setTraceShape,
+  shapeIntercepts,
+  snapToIntercept,
   subscribeTraceShapes,
   traceShapesVersion,
   type TraceHit,
@@ -22,6 +30,8 @@ const isOverOverlayUI = (e: PointerEvent) =>
 /** Pick radius around the pointer, in on-screen pixels. */
 const MOUSE_PICK_PX = 20;
 const TOUCH_PICK_PX = 28;
+/** How close to an axis crossing the point snaps onto it, in on-screen pixels. */
+const SNAP_PX = 12;
 /** Movement that turns a tap/click into a pan. */
 const TAP_SLOP_PX = 10;
 
@@ -43,13 +53,15 @@ export const TraceShapeRegistrar: React.FC<{
     : "";
   const shapeRef = useRef(shape);
   shapeRef.current = shape;
+  const scope = useContext(TraceScopeContext);
 
   useEffect(() => {
     const current = shapeRef.current;
     if (!current) return;
-    setTraceShape(shapeKey, current);
-    return () => deleteTraceShape(shapeKey);
-  }, [shapeKey, signature]);
+    const key = scopedTraceKey(scope, shapeKey);
+    setTraceShape(key, { ...current, scope });
+    return () => deleteTraceShape(key);
+  }, [shapeKey, signature, scope]);
 
   return null;
 };
@@ -70,6 +82,7 @@ interface TraceOverlayProps {
  */
 export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
   const { viewTransform } = useTransformContext();
+  const scope = useContext(TraceScopeContext);
   const anchorRef = useRef<SVGGElement>(null);
   const handleRef = useRef<SVGCircleElement>(null);
   // Re-render when any shape is redrawn, so the point rides along with animation.
@@ -118,9 +131,53 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
     (clientX: number, clientY: number, radiusPx: number) => {
       const w = toWorld(clientX, clientY);
       if (!w) return null;
-      return hitTestTrace(w.x, w.y, live.current.scale, radiusPx / w.zoom);
+      const hit = hitTestTrace(w.x, w.y, live.current.scale, radiusPx / w.zoom, scope);
+      return hit ? snapToIntercept(hit, live.current.scale, SNAP_PX / w.zoom) : null;
     },
-    [toWorld],
+    [toWorld, scope],
+  );
+
+  // The visible part of the graph, in graph coordinates, read off the SVG's viewBox.
+  const visibleView = useCallback(() => {
+    const svg = anchorRef.current?.ownerSVGElement;
+    const box = svg?.viewBox?.baseVal;
+    const [a, , , , d] = live.current.viewTransform;
+    if (!box || !a || !d) return null;
+    const x0 = box.x / a;
+    const x1 = (box.x + box.width) / a;
+    const y0 = box.y / d;
+    const y1 = (box.y + box.height) / d;
+    return {
+      x: [Math.min(x0, x1), Math.max(x0, x1)] as [number, number],
+      y: [Math.min(y0, y1), Math.max(y0, y1)] as [number, number],
+    };
+  }, []);
+
+  // The equations panel can place the point too (clicking a root). If it's out of
+  // view, the graph first pans to centre it, keeping the zoom; the pin waits for
+  // the remounted graph's tracer.
+  useEffect(
+    () =>
+      onTracePinRequest((hit) => {
+        const view = visibleView();
+        if (view) {
+          const w = view.x[1] - view.x[0];
+          const h = view.y[1] - view.y[0];
+          const inside =
+            hit.x >= view.x[0] + w * 0.05 && hit.x <= view.x[1] - w * 0.05 &&
+            hit.y >= view.y[0] + h * 0.05 && hit.y <= view.y[1] - h * 0.05;
+          if (!inside) {
+            deferTracePin(hit, scope);
+            const moved = requestTraceReveal(
+              { x: [hit.x - w / 2, hit.x + w / 2], y: [hit.y - h / 2, hit.y + h / 2] },
+              scope,
+            );
+            if (moved) return;
+          }
+        }
+        setPin(hit);
+      }, scope),
+    [scope, visibleView],
   );
 
   // Hover, tap and click on the graph.
@@ -199,7 +256,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
         const w = toWorld(ev.clientX, ev.clientY);
         if (!current || !w) return;
         const hit = projectOntoShape(current.key, w.x, w.y, live.current.scale, current);
-        if (hit) setPin(hit);
+        if (hit) setPin(snapToIntercept(hit, live.current.scale, SNAP_PX / w.zoom));
       };
       const onEnd = (ev: PointerEvent) => {
         if (ev.pointerId !== pointerId) return;
@@ -231,14 +288,38 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
       const LABEL_W = 260;
       const LABEL_H = 40;
 
-      const xText = formatTraceNumber(shown.x, scale.sx);
-      const yText = formatTraceNumber(shown.y, scale.sy);
+      const onAxis = interceptAxesAt(shown.key, shown.x, shown.y, scale);
+      // On a root y is 0 by definition, and on a y-axis crossing x is; show that
+      // rather than whatever rounding the curve's evaluation left (-6.7e-16).
+      const xText = onAxis.y ? "0" : formatTraceNumber(shown.x, scale.sx);
+      const yText = onAxis.x ? "0" : formatTraceNumber(shown.y, scale.sy);
+      const badge =
+        onAxis.x && onAxis.y ? "Root · y-intercept" : onAxis.x ? "Root" : onAxis.y ? "y-intercept" : null;
       const paramText =
         shape.paramName && shown.t !== undefined && Number.isFinite(shown.t)
           ? `${shape.paramName} = ${formatTraceNumber(shown.t, 1000)}`
           : null;
 
+      // Every axis crossing of the selected shape, as hollow dots the point snaps to.
+      const crossings = shapeIntercepts(shown.key).map((p, i) => {
+        const [cx, cy] = vec.transform([p.x, p.y], viewTransform);
+        return Number.isFinite(cx) && Number.isFinite(cy) ? (
+          <circle
+            key={i}
+            cx={cx}
+            cy={cy}
+            r={4}
+            fill="var(--mafs-bg, #fff)"
+            stroke={color}
+            strokeWidth={2}
+            style={{ pointerEvents: "none" }}
+          />
+        ) : null;
+      });
+
       content = (
+        <React.Fragment>
+        {crossings}
         <g transform={`translate(${ux} ${uy})`}>
           <circle
             r={dragging ? 13 : 10}
@@ -246,6 +327,15 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
             fillOpacity={0.18}
             style={{ pointerEvents: "none" }}
           />
+          {badge && (
+            <circle
+              r={9}
+              fill="none"
+              stroke="#10b981"
+              strokeWidth={2}
+              style={{ pointerEvents: "none" }}
+            />
+          )}
           <circle
             r={dragging ? 6.5 : 5.5}
             fill={color}
@@ -288,6 +378,11 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
                   className="size-2 shrink-0 rounded-full"
                   style={{ background: color }}
                 />
+                {badge && (
+                  <span className="rounded bg-emerald-500/15 px-1 py-0.5 font-sans text-[10px] font-semibold uppercase tracking-wide text-emerald-600 dark:text-emerald-400">
+                    {badge}
+                  </span>
+                )}
                 <span>
                   ({xText}, {yText})
                 </span>
@@ -298,6 +393,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
             </div>
           </foreignObject>
         </g>
+        </React.Fragment>
       );
     }
   }

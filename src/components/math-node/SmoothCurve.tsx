@@ -1,6 +1,6 @@
-import React, { useEffect, useMemo } from "react";
+import React, { useContext, useEffect, useMemo } from "react";
 import { usePaneContext, useTransformContext } from "mafs";
-import { deleteTraceShape, setTraceShape } from "./traceGeometry";
+import { TraceScopeContext, deleteTraceShape, scopedTraceKey, setTraceShape } from "./traceGeometry";
 
 type Vec2 = [number, number];
 
@@ -247,10 +247,13 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
   }, [sampleKey, t[0], t[1], minSamplingDepth, maxSamplingDepth, scaleX, scaleY, xp0, xp1, yp0, yp1, traceKey]);
 
   const { d, trace } = sampled;
+  const traceScope = useContext(TraceScopeContext);
 
   useEffect(() => {
     if (!traceKey || !trace || trace.xs.length === 0) return;
-    setTraceShape(traceKey, {
+    const key = scopedTraceKey(traceScope, traceKey);
+    setTraceShape(key, {
+      scope: traceScope,
       fnId: traceFnId ?? traceKey,
       color: color || "var(--mafs-fg)",
       kind: "curve",
@@ -260,8 +263,8 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
       at: sampled.xy,
       paramName: traceParamName,
     });
-    return () => deleteTraceShape(traceKey);
-  }, [sampled, traceKey, traceFnId, traceParamName, color]);
+    return () => deleteTraceShape(key);
+  }, [sampled, traceKey, traceFnId, traceParamName, color, traceScope]);
 
   if (!d) return null;
 

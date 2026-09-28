@@ -119,6 +119,9 @@ import {
   EXAMPLE_GALLERY,
   TraceOverlay,
   TraceShapeRegistrar,
+  InterceptsReadout,
+  TraceScopeContext,
+  onTraceReveal,
   runsShape,
   VariableManager,
   Timeline,
@@ -551,6 +554,23 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [tracePoints, setTracePoints] = useState(false);
   // Where the graph opens and where Reset View returns to.
   const [homeView, setHomeView] = useState<GraphView>(initialGridSettings.view);
+  // A temporary view that centres something the user asked to see (e.g. a root
+  // clicked in the panel). Not saved; Reset View and a new home view clear it.
+  const [focusView, setFocusView] = useState<(GraphView & { padding?: number }) | null>(null);
+  // This graph's own namespace for traceable shapes, so several math nodes on the
+  // canvas never trace each other's curves.
+  const traceScope = useMemo(
+    () => `math-${Math.random().toString(36).slice(2, 10)}`,
+    [],
+  );
+  useEffect(
+    () =>
+      onTraceReveal((view) => {
+        setFocusView({ ...view, padding: 0 });
+        setViewResetKey((k) => k + 1);
+      }, traceScope),
+    [traceScope],
+  );
   // Mafs only reads its viewBox on mount, so a new home view remounts the graph.
   const isFirstHomeViewRef = useRef(true);
   useEffect(() => {
@@ -558,6 +578,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       isFirstHomeViewRef.current = false;
       return;
     }
+    setFocusView(null);
     setViewResetKey((k) => k + 1);
   }, [homeView]);
 
@@ -1605,6 +1626,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     setTime(timeline.min);
     setIsPlaying(timeline.autoplay ?? timeline.mode !== "once");
     setHomeView(view);
+    setFocusView(null);
     setViewResetKey((k) => k + 1);
   };
 
@@ -1938,7 +1960,10 @@ export const MathNodeRenderer: React.FC<any> = ({
               <Settings size={15} />
             </button>
             <button
-              onClick={() => setViewResetKey((k) => k + 1)}
+              onClick={() => {
+                setFocusView(null);
+                setViewResetKey((k) => k + 1);
+              }}
               className={headerIconBtn}
               title="Back to the starting view"
             >
@@ -2865,6 +2890,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                               </span>
                             </div>
                           )}
+                          {/* Roots and y-axis crossings of what this row draws. */}
+                          {f.visible && <InterceptsReadout fnId={f.id} scope={traceScope} />}
                           {/* Sliders for just this equation's parameters. They edit the
                               same variables as the Variables Manager, not copies. */}
                           <InlineVariableSliders
@@ -6318,7 +6345,10 @@ export const MathNodeRenderer: React.FC<any> = ({
               <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />
               <button
                 type="button"
-                onClick={() => setViewResetKey((k) => k + 1)}
+                onClick={() => {
+                setFocusView(null);
+                setViewResetKey((k) => k + 1);
+              }}
                 title="Back to the starting view"
                 className="flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
@@ -6363,12 +6393,13 @@ export const MathNodeRenderer: React.FC<any> = ({
             />
           )}
 
+          <TraceScopeContext.Provider value={traceScope}>
           <Mafs
             key={viewResetKey}
             width={graphSize.width}
             height={graphSize.height}
             zoom={{ min: 0.1, max: 20 }}
-            viewBox={homeView}
+            viewBox={focusView ?? homeView}
             preserveAspectRatio="contain"
             pan={true}
           >
@@ -8329,6 +8360,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               );
             })()}
           </Mafs>
+          </TraceScopeContext.Provider>
 
           {isFullscreen && (
             <div
