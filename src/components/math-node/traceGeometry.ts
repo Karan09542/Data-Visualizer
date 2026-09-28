@@ -49,12 +49,52 @@ export interface TraceShape {
 // ─── Registry ──────────────────────────────────────────────────────────────────
 
 const shapes = new Map<string, TraceShape>();
-const listeners = new Set<() => void>();
-let version = 0;
+
+/*
+ * Every animated curve republishes its geometry each frame. Telling listeners
+ * about each of those synchronously re-rendered them once per curve per frame,
+ * which made animation stutter. Instead there are two channels:
+ *  - "frame": at most once per animation frame, for the trace point, which has
+ *    to ride along with a moving curve;
+ *  - "slow": at most a few times a second (and once more after changes stop),
+ *    for readouts like the roots panel, which nobody can read at 60 Hz anyway.
+ */
+const frameListeners = new Set<() => void>();
+const slowListeners = new Set<() => void>();
+let frameVersion = 0;
+let slowVersion = 0;
+let frameScheduled = false;
+let slowTimer: ReturnType<typeof setTimeout> | null = null;
+let lastSlowNotify = 0;
+const SLOW_INTERVAL_MS = 300;
+
+const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
+
+const flushFrame = () => {
+  frameScheduled = false;
+  frameVersion++;
+  frameListeners.forEach((l) => l());
+};
+
+const flushSlow = () => {
+  slowTimer = null;
+  lastSlowNotify = now();
+  slowVersion++;
+  slowListeners.forEach((l) => l());
+};
 
 const notify = () => {
-  version++;
-  listeners.forEach((l) => l());
+  if (!frameScheduled) {
+    frameScheduled = true;
+    if (typeof requestAnimationFrame === "function") requestAnimationFrame(flushFrame);
+    else setTimeout(flushFrame, 16);
+  }
+  if (!slowTimer) {
+    // Leading and trailing: the first change shows promptly, and the last one is
+    // never lost because the timer always fires after it.
+    const wait = Math.max(0, SLOW_INTERVAL_MS - (now() - lastSlowNotify));
+    slowTimer = setTimeout(flushSlow, wait);
+  }
 };
 
 export function setTraceShape(key: string, shape: TraceShape) {
@@ -67,13 +107,24 @@ export function deleteTraceShape(key: string) {
 }
 
 export const getTraceShape = (key: string) => shapes.get(key);
+
+/** Changes to the drawn geometry, at most once per animation frame. */
 export const subscribeTraceShapes = (listener: () => void) => {
-  listeners.add(listener);
+  frameListeners.add(listener);
   return () => {
-    listeners.delete(listener);
+    frameListeners.delete(listener);
   };
 };
-export const traceShapesVersion = () => version;
+export const traceShapesVersion = () => frameVersion;
+
+/** Changes to the drawn geometry, at most every few hundred milliseconds. */
+export const subscribeTraceShapesSlow = (listener: () => void) => {
+  slowListeners.add(listener);
+  return () => {
+    slowListeners.delete(listener);
+  };
+};
+export const traceShapesSlowVersion = () => slowVersion;
 
 // ─── Search ────────────────────────────────────────────────────────────────────
 
@@ -572,7 +623,12 @@ function computeIntercepts(key: string, shape: TraceShape): TraceIntercept[] {
         if (
           finite(prev) && finite(ts[i - 1]) && finite(ts[i + 1]) &&
           (prev < 0) === (a < 0) && (b < 0) === (a < 0) &&
-          Math.abs(a) <= Math.abs(prev) && Math.abs(a) <= Math.abs(b)
+          Math.abs(a) <= Math.abs(prev) && Math.abs(a) <= Math.abs(b) &&
+          // Only near the axis: at a touching root the dip's depth is small next
+          // to how much the neighbours differ (at most a quarter for a parabola
+          // sampled anywhere near its vertex). A curve that stays well away from
+          // zero, like sin(x) + 2 at its troughs, fails this and skips the search.
+          Math.abs(a) <= 0.25 * (Math.abs(prev - a) + Math.abs(b - a))
         ) {
           const tol = 1e-9 * (1 + Math.abs(prev) + Math.abs(b));
           const t = touchRoot((s) => at(s)[comp], ts[i - 1], ts[i + 1], tol);
@@ -594,16 +650,29 @@ function computeIntercepts(key: string, shape: TraceShape): TraceIntercept[] {
 }
 
 const interceptCache = new WeakMap<TraceShape, TraceIntercept[]>();
+const lastIntercepts = new Map<string, { at: number; list: TraceIntercept[] }>();
+/**
+ * A shape that keeps changing (an animated curve gets new geometry every frame)
+ * has its crossings recomputed at most this often; in between, the latest result
+ * is reused. Root-finding every frame was what made animation stutter.
+ */
+const INTERCEPT_MAX_AGE_MS = 250;
 
-/** Axis crossings of one drawn shape, computed once per version of its geometry. */
+/** Axis crossings of one drawn shape, cached per version of its geometry. */
 export function shapeIntercepts(key: string): TraceIntercept[] {
   const shape = shapes.get(key);
   if (!shape) return [];
-  let list = interceptCache.get(shape);
-  if (!list) {
-    list = computeIntercepts(key, shape);
-    interceptCache.set(shape, list);
-  }
+  const cached = interceptCache.get(shape);
+  if (cached) return cached;
+
+  const t = now();
+  const recent = lastIntercepts.get(key);
+  if (recent && t - recent.at < INTERCEPT_MAX_AGE_MS) return recent.list;
+
+  const list = computeIntercepts(key, shape);
+  interceptCache.set(shape, list);
+  if (lastIntercepts.size > 500) lastIntercepts.clear();
+  lastIntercepts.set(key, { at: t, list });
   return list;
 }
 

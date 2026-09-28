@@ -4,8 +4,8 @@ import {
   formatTraceNumber,
   interceptsForFunction,
   requestTracePin,
-  subscribeTraceShapes,
-  traceShapesVersion,
+  subscribeTraceShapesSlow,
+  traceShapesSlowVersion,
   type TraceIntercept,
 } from "./traceGeometry";
 
@@ -57,8 +57,9 @@ export const InterceptsReadout: React.FC<{ fnId: string; scope?: string }> = ({
   fnId,
   scope = "",
 }) => {
-  // Recomputed whenever the drawn geometry changes (a slider, a pan, animation).
-  useSyncExternalStore(subscribeTraceShapes, traceShapesVersion, traceShapesVersion);
+  // Refreshed a few times a second while the graph changes (a slider, a pan,
+  // animation) and once more when it settles — never every frame.
+  useSyncExternalStore(subscribeTraceShapesSlow, traceShapesSlowVersion, traceShapesSlowVersion);
   const { roots, yIntercepts } = interceptsForFunction(fnId, scope);
   if (roots.length === 0 && yIntercepts.length === 0) return null;
 

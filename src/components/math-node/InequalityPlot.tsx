@@ -252,8 +252,23 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
   // Publish the boundary so the tracer can snap to it. Marching squares emits loose
   // segments, so it's traced as a segment soup, and hits are polished onto the exact
   // curve with Newton steps on lhs - rhs.
+  //
+  // Parsing a large boundary takes a few milliseconds, so it waits until the
+  // boundary has held still briefly: an animated region would otherwise pay for
+  // it every frame. A still region becomes traceable almost at once.
   useEffect(() => {
     if (!id || !paths.boundary) return;
+    const key = scopedTraceKey(traceScope, `${id}:boundary`);
+    const timer = setTimeout(() => publishBoundary(key), 120);
+    return () => {
+      clearTimeout(timer);
+      deleteTraceShape(key);
+    };
+    // The boundary string changes whenever anything the residual reads does.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paths, id, color, traceScope]);
+
+  const publishBoundary = (key: string) => {
     const xs: number[] = [];
     const ys: number[] = [];
     const cmd = /([ML])\s*(-?[\d.]+(?:e[-+]?\d+)?)[,\s]+(-?[\d.]+(?:e[-+]?\d+)?)/gi;
@@ -290,12 +305,8 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
       }
     };
 
-    const key = scopedTraceKey(traceScope, `${id}:boundary`);
-    setTraceShape(key, { scope: traceScope, fnId: id, color, kind: "curve", xs, ys, residual, soup: true });
-    return () => deleteTraceShape(key);
-    // The boundary string changes whenever anything the residual reads does.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paths, id, color, traceScope]);
+    setTraceShape(key, { scope: traceScope, fnId: id!, color, kind: "curve", xs, ys, residual, soup: true });
+  };
 
   useEffect(() => {
     if (onNoSolution && id) {

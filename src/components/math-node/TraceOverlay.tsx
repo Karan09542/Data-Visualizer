@@ -17,6 +17,8 @@ import {
   shapeIntercepts,
   snapToIntercept,
   subscribeTraceShapes,
+  subscribeTraceShapesSlow,
+  traceShapesSlowVersion,
   traceShapesVersion,
   type TraceHit,
   type TraceShape,
@@ -85,11 +87,24 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
   const scope = useContext(TraceScopeContext);
   const anchorRef = useRef<SVGGElement>(null);
   const handleRef = useRef<SVGCircleElement>(null);
-  // Re-render when any shape is redrawn, so the point rides along with animation.
-  useSyncExternalStore(subscribeTraceShapes, traceShapesVersion, traceShapesVersion);
-
   const [pin, setPin] = useState<TraceHit | null>(null);
   const [dragging, setDragging] = useState(false);
+
+  // While a point is shown, re-render when shapes are redrawn (at most once a
+  // frame) so it rides along with animation, and once more after changes settle
+  // so its crossing markers are current. With no point there is nothing to
+  // update: hovering and tapping read the shapes directly when they happen.
+  const hasPin = !!pin;
+  const subscribeFrame = useCallback(
+    (listener: () => void) => (hasPin ? subscribeTraceShapes(listener) : () => {}),
+    [hasPin],
+  );
+  const subscribeSlow = useCallback(
+    (listener: () => void) => (hasPin ? subscribeTraceShapesSlow(listener) : () => {}),
+    [hasPin],
+  );
+  useSyncExternalStore(subscribeFrame, traceShapesVersion, traceShapesVersion);
+  useSyncExternalStore(subscribeSlow, traceShapesSlowVersion, traceShapesSlowVersion);
 
   const scale = {
     sx: Math.abs(viewTransform[0]) || 1,
