@@ -23,8 +23,8 @@ import SmartMediaRenderer from './SmartMediaRenderer';
 import { SmartFallbackMedia } from './SmartFallbackMedia';
 import { PdfViewer } from './PdfViewer';
 import { SafeModelViewer } from './SafeModelViewer';
-import { resolveAssetUrl } from '../utils/assetManager';
-import { downloadImage } from '../utils/downloadUtils';
+import { getAssetBlob, getOriginalAsset, resolveAssetUrl, resolveOriginalAssetId } from '../utils/assetManager';
+import { downloadBlob, downloadImage, withImageExtension } from '../utils/downloadUtils';
 import { MediaStore } from './notes/storage/MediaStore';
 
 const getFileName = (url: string) => {
@@ -92,9 +92,12 @@ const MediaPreviewPopup: React.FC = () => {
 
     if (cleanUrl.startsWith('img_') || cleanUrl.startsWith('thumb_')) {
       setResolvedAssetUrl(null);
-      resolveAssetUrl(url).then((resolved) => {
-        if (!cancelled) setResolvedAssetUrl(resolved);
-      });
+      // Canvas nodes show a small thumbnail: preview (and copy, and save) the original it came from.
+      resolveOriginalAssetId(cleanUrl)
+        .then((id) => resolveAssetUrl(id))
+        .then((resolved) => {
+          if (!cancelled) setResolvedAssetUrl(resolved || null);
+        });
     } else if (uuidRegex.test(cleanUrl)) {
       setResolvedAssetUrl(null);
       MediaStore.getMediaUrl(cleanUrl).then((resolved) => {
@@ -195,7 +198,18 @@ const MediaPreviewPopup: React.FC = () => {
 
     setIsDownloading(true);
     try {
-      const success = await downloadImage(resolvedUrl, fileName);
+      let success = false;
+      const cleanId = originalUrl.split('?')[0].split('#')[0];
+      if (cleanId.startsWith('img_') || cleanId.startsWith('thumb_')) {
+        // A stored image: save the original file exactly as it was added, never the thumbnail.
+        const original = await getOriginalAsset(cleanId);
+        const blob = original ? await getAssetBlob(original.assetId) : null;
+        if (blob) {
+          downloadBlob(blob, withImageExtension(original?.filename || fileName, blob.type || original?.mimeType));
+          success = true;
+        }
+      }
+      if (!success) success = await downloadImage(resolvedUrl, fileName);
       setNotification({
         message: success ? 'Image downloaded' : 'Failed to download image',
         type: success ? 'success' : 'error',

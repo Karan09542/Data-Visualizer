@@ -166,6 +166,30 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
 }
 
 /**
+ * The full-size asset behind an id. Canvas nodes show a small thumbnail
+ * (thumb_…), so an id taken from one may point at it: this finds the original
+ * it was made from. Null if neither is stored.
+ */
+export async function getOriginalAsset(assetId: string): Promise<Asset | null> {
+  if (!assetId) return null;
+  try {
+    if (assetId.startsWith("thumb_")) {
+      const original = await db.assets.where("thumbnailId").equals(assetId).first();
+      if (original) return original;
+    }
+    return (await db.assets.get(assetId)) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** The id of the full-size original for an asset or thumbnail id. */
+export async function resolveOriginalAssetId(assetId: string): Promise<string> {
+  const original = await getOriginalAsset(assetId);
+  return original?.assetId ?? assetId;
+}
+
+/**
  * Retrieves the Blob for an given assetId.
  */
 export async function getAssetBlob(assetId: string): Promise<Blob | null> {
