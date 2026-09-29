@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { AddToCanvasButton, canvasToBlob } from "./AddToCanvasButton";
 import {
   X,
   Sparkles,
@@ -501,6 +502,20 @@ export function ImageUpscalerUtil() {
             <button type="button" onClick={handleDownload}
               className="flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-xs bg-slate-900 dark:bg-white text-white dark:text-slate-900 hover:bg-slate-800 dark:hover:bg-slate-100 shadow-sm transition-all"
             ><Download size={13} /><span className="hidden sm:inline">Download</span></button>
+          )}
+
+          {/* Add to canvas */}
+          {upscaledCanvas && (
+            <AddToCanvasButton
+              getImages={async () => {
+                const mime = exportFormat === "jpeg" ? "image/jpeg" : exportFormat === "webp" ? "image/webp" : "image/png";
+                const blob = await canvasToBlob(upscaledCanvas, mime, exportFormat === "png" ? undefined : 0.95);
+                return blob && { blob, name: `${sourceFileName}_upscaled_${scaleFactor}x` };
+              }}
+              iconSize={13}
+              compactLabel
+              className="flex items-center gap-1 px-2 sm:px-3 py-1.5 rounded-lg font-semibold text-xs bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-all disabled:opacity-50"
+            />
           )}
 
           {/* Replace image */}

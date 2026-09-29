@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { AddToCanvasButton, canvasToBlob } from "../../../../utilities/AddToCanvasButton";
 import { createPortal } from 'react-dom';
 import { Eye, Frame, Image as ImageIcon, LayoutGrid, SlidersHorizontal, Wand2 } from 'lucide-react';
 import { useStore } from '../../../../../store/useStore';
@@ -28,6 +29,8 @@ interface PassportPrintModalProps {
   sourceImage: string; // Data URL of the generated passport photo
   onClose: () => void;
   initialAutoAdjust?: boolean;
+  /** Offer to put the finished sheet on the canvas as an image node. */
+  showAddToCanvas?: boolean;
 }
 
 type SidebarTab = 'photo' | 'adjust' | 'layout' | 'output';
@@ -39,7 +42,7 @@ const SIDEBAR_TABS: { value: SidebarTab; label: React.ReactNode }[] = [
   { value: 'output', label: <><Frame size={13} />Output</> },
 ];
 
-export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceImage, onClose, initialAutoAdjust = false }) => {
+export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceImage, onClose, initialAutoAdjust = false, showAddToCanvas = false }) => {
   const appTheme = useStore((state) => state.appTheme);
   const setAppTheme = useStore((state) => state.setAppTheme);
   const isDark = appTheme === 'dark';
@@ -327,6 +330,22 @@ export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceIm
         onExport={handleExportImage}
         onPrint={handleExportPDF}
         onClose={onClose}
+        extraActions={showAddToCanvas && (
+          <AddToCanvasButton
+            getImages={async () => {
+              const canvas = generatePrintCanvas();
+              if (!canvas) return null;
+              const mime = exportFormat === "jpeg" ? "image/jpeg" : exportFormat === "webp" ? "image/webp" : "image/png";
+              const blob = await canvasToBlob(canvas, mime, 0.95);
+              const docLabel = docPreset === "custom" ? `${layout.phWidth}x${layout.phHeight}mm` : DOCUMENT_PRESETS[docPreset].name.split(" ")[0];
+              return blob && { blob, name: `passport_${docLabel}_${layout.activePhotoCount}photos` };
+            }}
+            label="Canvas"
+            compactLabel
+            iconSize={15}
+            className="inline-flex items-center gap-1.5 h-9 px-2.5 sm:px-3 rounded-lg border text-xs font-medium transition-colors bg-emerald-600 text-white border-emerald-600 hover:bg-emerald-500 disabled:opacity-50"
+          />
+        )}
       />
 
       {/* Mobile: switch between preview and controls */}

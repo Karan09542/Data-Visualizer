@@ -143,6 +143,7 @@ import {
   SimulationGallery,
   GEOMETRY_LESSONS,
   GeometryLessonsGallery,
+  GraphScreenshotMenu,
   CalculatorResult,
   SavedScenesLibrary,
   type SceneSnapshot,
@@ -2009,6 +2010,12 @@ export const MathNodeRenderer: React.FC<any> = ({
             >
               <Crosshair size={15} />
             </button>
+            <GraphScreenshotMenu
+              targetRef={graphContainerRef}
+              name={String(data?.path ?? "graph").split(".").pop() || "graph"}
+              background={appTheme === "dark" ? "#020617" : "#ffffff"}
+              buttonClassName={headerIconBtn}
+            />
             {!isCompact && (
             <button
               onClick={() => setShowHelp(true)}
@@ -6460,6 +6467,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           {isCompact && hasAnyAnimationRows && (
             <div
               data-no-trace
+              data-capture-exclude
               className="absolute bottom-2 left-2 z-30 pointer-events-none px-2 py-0.5 rounded-md bg-white/85 dark:bg-slate-900/85 border border-slate-200/80 dark:border-slate-700/60 text-[10px] font-mono tabular-nums text-slate-600 dark:text-slate-300 shadow-sm"
             >
               t = {Number.isFinite(time) ? time.toFixed(2) : "∞"}
@@ -6470,6 +6478,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           {(isExpanded || isFullscreen) && (
             <div
               data-no-trace
+              data-capture-exclude
               className={`absolute top-2 left-2 right-2 md:top-3 md:left-3 md:right-auto z-40 flex items-center gap-1 p-1 rounded-xl bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 pointer-events-auto overflow-x-auto no-scrollbar transition-all duration-300 ${showGridControls || showAdvancedAxisControls
                 ? "opacity-100 translate-y-0"
                 : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
@@ -8652,6 +8661,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           {isFullscreen && (
             <div
               data-no-trace
+              data-capture-exclude
               className={`absolute bottom-3 right-3 md:bottom-auto md:top-3 z-30 overflow-hidden rounded-xl border border-slate-200/80 dark:border-slate-700/60 bg-white/85 dark:bg-slate-900/85 backdrop-blur-md shadow-lg shadow-slate-900/5 dark:shadow-black/30 ${isInspectorOpen ? "min-w-[10rem] max-w-[16rem]" : ""}`}
             >
               <button

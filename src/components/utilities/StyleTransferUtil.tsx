@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { AddToCanvasButton, canvasToBlob } from "./AddToCanvasButton";
 import {
   X,
   Palette,
@@ -1033,6 +1034,20 @@ export function StyleTransferUtil() {
                 <Download size={14} />
                 <span className="hidden sm:inline">Save</span>
               </button>
+              <AddToCanvasButton
+                getImages={async () => {
+                  const fullSize = compose();
+                  if (!fullSize) return null;
+                  const mime = exportFormat === "png" ? "image/png" : exportFormat === "jpeg" ? "image/jpeg" : "image/webp";
+                  const styleTag =
+                    selectedStyleId === "custom" ? "custom-style" : currentStylePreset?.name.toLowerCase().replace(/\s+/g, "-") || "style";
+                  const blob = await canvasToBlob(fullSize, mime, 0.95);
+                  return blob && { blob, name: `${sourceFileName}-${styleTag}` };
+                }}
+                label="Canvas"
+                compactLabel
+                className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all shadow-xs shrink-0 disabled:opacity-50"
+              />
             </div>
 
             {/* Reset / New Button */}

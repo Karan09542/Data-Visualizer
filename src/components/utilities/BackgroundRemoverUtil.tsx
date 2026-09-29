@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { AddToCanvasButton, canvasToBlob } from "./AddToCanvasButton";
 import {
   Sparkles,
   Download,
@@ -1033,6 +1034,20 @@ export function BackgroundRemoverUtil({ onSelectImageForWorkspace }: BackgroundR
                 <Download size={13} />
                 <span className="hidden sm:inline">Download</span>
               </button>
+
+              {/* Add to canvas */}
+              <AddToCanvasButton
+                getImages={async () => {
+                  const exportCanvas = generateExportCanvas(false);
+                  if (!exportCanvas) return null;
+                  const baseName = imageName.replace(/\.[^/.]+$/, "");
+                  const blob = await canvasToBlob(exportCanvas, "image/png");
+                  return blob && { blob, name: bgType === "transparent" ? `${baseName}-cutout` : `${baseName}-composite` };
+                }}
+                iconSize={13}
+                compactLabel
+                className="flex items-center gap-1 px-2 sm:px-3.5 py-1 sm:py-1.5 rounded-lg font-medium text-xs bg-emerald-600 text-white hover:bg-emerald-500 shadow-sm transition-all disabled:opacity-50"
+              />
 
               {/* Replace image button */}
               <label className="flex items-center gap-1 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg font-medium text-xs text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 cursor-pointer transition-colors" title="Replace current image">

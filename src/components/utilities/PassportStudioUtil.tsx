@@ -123,6 +123,7 @@ export function PassportStudioUtil() {
           sourceImage={selectedImage}
           onClose={() => setIsModalOpen(false)}
           initialAutoAdjust={autoAdjust}
+          showAddToCanvas
         />
       )}
     </div>

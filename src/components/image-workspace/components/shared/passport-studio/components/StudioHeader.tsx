@@ -14,7 +14,9 @@ export const StudioHeader: React.FC<{
   onExport: (format: ExportFormat) => void;
   onPrint: () => void;
   onClose: () => void;
-}> = ({ isDark, printDPI, exportFormat, onToggleTheme, onOpenCamera, onUpload, onExport, onPrint, onClose }) => (
+  /** More buttons beside Export (e.g. Add to canvas). */
+  extraActions?: React.ReactNode;
+}> = ({ isDark, printDPI, exportFormat, onToggleTheme, onOpenCamera, onUpload, onExport, onPrint, onClose, extraActions }) => (
   <header className="h-14 shrink-0 z-40 relative flex items-center gap-2 px-3 sm:px-4 border-b bg-white border-slate-200 dark:bg-[#111113] dark:border-white/[0.06]">
     {/* Brand */}
     <div className="flex items-center gap-2.5 min-w-0 flex-1">
@@ -49,6 +51,7 @@ export const StudioHeader: React.FC<{
 
       <Divider vertical className="mx-0.5 hidden sm:block" />
 
+      {extraActions}
       <ExportMenu format={exportFormat} onExport={onExport} />
 
       <Button variant="primary" onClick={onPrint} title="Print or Save PDF" icon={<Printer size={15} />} className="px-2.5 sm:px-3.5">

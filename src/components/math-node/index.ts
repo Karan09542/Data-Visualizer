@@ -37,6 +37,7 @@ export * from "./simulations";
 export * from "./SimulationGallery";
 export * from "./geometryLessons";
 export * from "./GeometryLessonsGallery";
+export * from "./GraphScreenshotMenu";
 export * from "./CalculatorResult";
 export * from "./SavedScenesLibrary";
 export * from "./FormulaScanner";

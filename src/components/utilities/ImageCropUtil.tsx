@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { AddToCanvasButton, canvasToBlob } from "./AddToCanvasButton";
 import {
   Crop,
   RotateCw,
@@ -1919,6 +1920,18 @@ export function ImageCropUtil() {
               <Download size={14} />
               <span>{isExporting ? "Saving..." : `Download ${exportFormat.toUpperCase()}`}</span>
             </button>
+
+            <AddToCanvasButton
+              getImages={async () => {
+                const canvas = renderCroppedCanvas();
+                if (!canvas) return null;
+                const mimeType = exportFormat === "jpeg" ? "image/jpeg" : exportFormat === "webp" ? "image/webp" : "image/png";
+                const blob = await canvasToBlob(canvas, mimeType, exportQuality);
+                return blob && { blob, name: `${imageName}-cropped` };
+              }}
+              label="Canvas"
+              className="flex-1 py-2 px-3 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 shadow-sm active:scale-95 transition-all disabled:opacity-50"
+            />
           </div>
         </div>
       </div>

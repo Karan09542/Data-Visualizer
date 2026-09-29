@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from "react";
+import { AddToCanvasButton, canvasToBlob } from "./AddToCanvasButton";
 import { Pipette, Upload, Copy, Check, Image as ImageIcon, Camera, Code2, ImageDown, Download } from "lucide-react";
 import { getColorSync, getPaletteSync, getSwatchesSync } from "colorthief";
 import { CameraCaptureModal } from "../CameraCaptureModal";
@@ -430,6 +431,17 @@ export const ImageColorExtractor = () => {
                     {copied === "png-download" ? <Check size={14} className="text-emerald-500" /> : <Download size={14} />}
                     <span className="sr-only sm:not-sr-only">{copied === "png-download" ? "Saved" : "Download"}</span>
                   </button>
+                  <AddToCanvasButton
+                    getImages={async () => {
+                      const canvas = renderPng();
+                      if (!canvas) return null;
+                      const blob = await canvasToBlob(canvas, "image/png");
+                      return blob && { blob, name: "color_palette" };
+                    }}
+                    title="Add the palette to the canvas as an image node"
+                    label="Canvas"
+                    className={exportButtonClass}
+                  />
                 </div>
               </div>
 

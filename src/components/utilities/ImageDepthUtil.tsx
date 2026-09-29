@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { AddToCanvasButton, canvasToBlob } from "./AddToCanvasButton";
 import {
   X,
   Layers,
@@ -731,6 +732,19 @@ export function ImageDepthUtil() {
                 <Download size={14} />
                 <span className="hidden sm:inline">Save</span>
               </button>
+              <AddToCanvasButton
+                disabled={!resultCanvas}
+                getImages={async () => {
+                  const canvas = composite();
+                  if (!canvas) return null;
+                  const mime = exportFormat === "png" ? "image/png" : exportFormat === "jpeg" ? "image/jpeg" : "image/webp";
+                  const blob = await canvasToBlob(canvas, mime, 0.95);
+                  return blob && { blob, name: `${sourceFileName}-${look}` };
+                }}
+                label="Canvas"
+                compactLabel
+                className="bg-emerald-600 hover:bg-emerald-500 active:scale-95 disabled:opacity-40 text-white text-xs font-bold px-2.5 sm:px-3 py-1.5 rounded-md flex items-center gap-1.5 transition-all shadow-xs shrink-0"
+              />
             </div>
 
             <button

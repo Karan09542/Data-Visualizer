@@ -279,6 +279,7 @@ export function AreaTool({ active, containerRef, axesAsWalls, clearSignal, onCou
                   {text}
                   <button
                     type="button"
+                    data-capture-exclude
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
                       e.stopPropagation();

@@ -110,6 +110,7 @@ export const AxisSettingsPanel: React.FC<AxisSettingsPanelProps> = ({
       role="dialog"
       aria-labelledby={`${id}-title`}
       data-no-trace
+      data-capture-exclude
       className="absolute z-50 nodrag nowheel select-text cursor-default flex flex-col overflow-hidden rounded-2xl border border-slate-200/80 dark:border-slate-700/60 bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl shadow-2xl shadow-slate-900/10 dark:shadow-black/40 text-slate-800 dark:text-slate-100 inset-x-2 bottom-2 max-h-[75%] md:inset-x-auto md:bottom-auto md:left-3 md:top-[3.75rem] md:w-80 md:max-h-[calc(100%-4.75rem)] animate-in fade-in slide-in-from-bottom-2 md:slide-in-from-top-1 duration-200"
     >
       {/* Header */}

@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { AddToCanvasButton, canvasToBlob } from "./AddToCanvasButton";
 import {
   Sticker,
   ImagePlus,
@@ -2142,6 +2143,18 @@ export function StickerMakerUtil() {
                   </div>
                   <span className="text-[9px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-200/80 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-300/60 dark:border-slate-700">PNG</span>
                 </button>
+
+                {/* Add the sticker to the canvas as an image node */}
+                <AddToCanvasButton
+                  getImages={async () => {
+                    const canvas = canvasRef.current;
+                    if (!canvas) return null;
+                    const blob = await canvasToBlob(canvas, 'image/png');
+                    return blob && { blob, name: 'sticker' };
+                  }}
+                  title="Add the sticker to the canvas as an image node"
+                  className="w-full py-2 px-3.5 bg-white dark:bg-[#0c0f16] hover:bg-emerald-50 dark:hover:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300 rounded-xl text-xs font-semibold border border-emerald-300 dark:border-emerald-700/60 hover:border-emerald-400 transition-all flex items-center justify-center gap-2 active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed"
+                />
               </div>
             )}
           </>

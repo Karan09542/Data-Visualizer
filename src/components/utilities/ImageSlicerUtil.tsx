@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
+import { AddToCanvasButton, type CanvasImage } from "./AddToCanvasButton";
 import { Scissors, Upload, Download, X, MousePointerClick, LayoutGrid, RotateCcw, Info, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Check } from "lucide-react";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
@@ -951,6 +952,30 @@ export const ImageSlicerUtil: React.FC = () => {
                         ? "Download Slice"
                         : `Download ${selectedSliceCount > 0 ? `(${selectedSliceCount})` : "ZIP"}`}
                     </button>
+
+                    {/* Add the selected slices to the canvas (several go under one node) */}
+                    <AddToCanvasButton
+                      disabled={!imageEl || selectedSliceCount === 0}
+                      group={`${fileName.replace(/\.[^/.]+$/, "") || "image"}_slices`}
+                      getImages={async () => {
+                        const baseName = fileName.replace(/\.[^/.]+$/, "") || "image";
+                        const pad = Math.max(2, String(validSlices.length).length);
+                        const chosen = validSlices
+                          .map((slice, idx) => ({ slice, idx }))
+                          .filter(({ idx }) => !deselectedIndices.has(idx));
+                        const images: CanvasImage[] = [];
+                        for (const { slice, idx } of chosen) {
+                          const blob = await renderSliceBlob(slice);
+                          const num = String(idx + 1).padStart(pad, "0");
+                          images.push({ blob, name: chosen.length === 1 ? `${baseName}_slice_${num}` : `slice_${num}` });
+                        }
+                        return images;
+                      }}
+                      label="Canvas"
+                      iconSize={13}
+                      title={selectedSliceCount === 1 ? "Add this slice to the canvas as an image node" : "Add the selected slices to the canvas, grouped under one node"}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-white text-xs transition-all whitespace-nowrap bg-emerald-600 hover:bg-emerald-500 active:scale-[0.98] disabled:bg-slate-300 dark:disabled:bg-slate-700 disabled:text-slate-500 dark:disabled:text-slate-400 disabled:cursor-not-allowed"
+                    />
                   </div>
 
                   {/* Thumbnails (Horizontally Scrollable Container) */}
