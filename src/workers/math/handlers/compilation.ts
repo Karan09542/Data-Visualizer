@@ -3,15 +3,19 @@ import { parseAndAdjustForCompile } from "../utils/parse";
 import { formatMathError } from "../utils/helpers";
 import { splitRelation } from "../../../lib/math/splitRelation";
 import { odeExportName, parseOdeSystem } from "../../../lib/math/odeSystem";
+import { GEOMETRY_HELPERS, GEOMETRY_HELPER_NAMES } from "../../../lib/math/geometryHelpers";
 
-const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper"];
+const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper", ...GEOMETRY_HELPER_NAMES,
+  // Angle units, as in cos(t rad): not sliders.
+  "rad", "deg"];
 // theta/θ are only implicit (the swept angle) for polar curves; elsewhere a theta is a
 // normal variable the user should be offered as a slider.
 const POLAR_BUILTINS = ["theta", "θ"];
 
 function buildScope(context: any, payload: any) {
   // theta defaults to 0 first so a user variable named theta overrides it.
-  const tempBaseScope: any = { theta: 0 };
+  // The same helpers the graph has (angleAt, arcAt), so rows using them check out here too.
+  const tempBaseScope: any = { theta: 0, ...GEOMETRY_HELPERS };
   for (let i = 0; i < payload.variableNames.length; i++) {
     tempBaseScope[payload.variableNames[i]] = payload.variableValues[i];
   }

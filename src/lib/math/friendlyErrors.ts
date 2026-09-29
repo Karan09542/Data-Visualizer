@@ -64,6 +64,12 @@ export function friendlyMathError(errMessage: string): string {
     return `"${undefinedSymbol[1]}" isn't defined yet — add it as a variable, or check the spelling.`;
   }
 
+  // A name that isn't defined but spells a unit (A amperes, m metres, rA ronto-amperes…)
+  // is read as that unit, and the sum then fails on it.
+  if (/actual:\s*Unit\b/i.test(errMessage) || /\bUnits? do not match\b/i.test(errMessage)) {
+    return "A name here was read as a unit (A is amperes, m is metres, s seconds…). If it's meant to be a slider or a point, check it exists and is spelled right.";
+  }
+
   const parenthesis = errMessage.match(/Parenthesis\s+(\)|\])\s+expected/i);
   if (parenthesis) {
     return `Missing a closing "${parenthesis[1]}".`;

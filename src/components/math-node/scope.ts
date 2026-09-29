@@ -15,6 +15,7 @@ import { indexHelper, normalizeGeometryValue, resolveGeometryPoints } from "./ma
 import { dependencyKey } from "./dependencyKeys";
 import { objectId } from "./SmoothCurve";
 import { odeExportName, parseOdeSystemCached } from "../../lib/math/odeSystem";
+import { GEOMETRY_HELPERS } from "../../lib/math/geometryHelpers";
 import { sampleOdeAt, type OdeSolution } from "../../lib/math/odeSolver";
 import { odePlaybackTime, solveCompiledOdeCached } from "../../lib/math/odeCurveData";
 
@@ -32,6 +33,38 @@ export interface ScopeOptions {
    * for each; at the start of a run it needs none anyway (starting values are exact).
    */
   reuseOdeSolutions?: boolean;
+  /** Trig works in degrees: sin(30) = 0.5, and asin(0.5) = 30. */
+  degrees?: boolean;
+}
+
+const DEG = Math.PI / 180;
+const isList = (v: any) => Array.isArray(v) || (v && typeof v.toArray === "function" && !v.isUnit);
+
+/**
+ * Trig in degrees, for the graph's degrees mode. Numbers (and lists of them) are
+ * taken as degrees; anything with a unit (cos(t rad)) or complex keeps mathjs's
+ * meaning, so rows that say "rad" stay in radians in either mode.
+ */
+function degreeTrig(): Record<string, (...args: any[]) => any> {
+  const m = mathjs as any;
+  const forward = (name: string) => (x: any) => {
+    if (typeof x === "number") return m[name](x * DEG);
+    if (isList(x)) return m.map(x, (v: any) => (typeof v === "number" ? m[name](v * DEG) : m[name](v)));
+    return m[name](x);
+  };
+  const inverse = (name: string) => (...args: any[]) => {
+    const r = m[name](...args);
+    if (typeof r === "number") return r / DEG;
+    if (isList(r)) return m.map(r, (v: any) => (typeof v === "number" ? v / DEG : v));
+    return r;
+  };
+  const out: Record<string, (...args: any[]) => any> = {};
+  for (const f of ["sin", "cos", "tan", "sec", "csc", "cot"]) out[f] = forward(f);
+  // How dependencyKey tells the modes apart. On the function itself, so it survives
+  // the scope being copied ({ ...baseScope }) where a property of the scope would not.
+  (out.sin as any).inDegrees = true;
+  for (const f of ["asin", "acos", "atan", "atan2", "asec", "acsc", "acot"]) out[f] = inverse(f);
+  return out;
 }
 
 const lastSolution = new Map<string, OdeSolution | null>();
@@ -123,7 +156,7 @@ export function buildBaseScope(
 ): any {
   // theta defaults to 0 so non-polar expressions that mention it still evaluate, but a
   // user variable named theta must win (polar sweeps bind theta per sample anyway).
-  const baseScope: any = { theta: 0 };
+  const baseScope: any = { theta: 0, ...GEOMETRY_HELPERS, ...(options.degrees ? degreeTrig() : {}) };
   const overrides = options.overrides;
   for (const v of variables) {
     baseScope[v.name] = overrides && v.name in overrides ? overrides[v.name] : v.value;

@@ -31,6 +31,11 @@ export interface MathFunction {
     | "inequality"
     | "line"
     | "calculator";
+  /**
+   * The type follows the expression as it is typed (see inferType). New rows start
+   * this way; choosing a type from the menu turns it off for that row.
+   */
+  autoType?: boolean;
   compiled?: any;
   compiledKey?: string;
   expr2?: string; // For parametric x/y or polar r/theta

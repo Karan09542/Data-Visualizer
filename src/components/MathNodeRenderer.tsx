@@ -63,6 +63,7 @@ import {
   Text,
   Line,
   usePaneContext,
+  useTransformContext,
 } from "mafs";
 import "mafs/core.css";
 import "mafs/font.css";
@@ -144,6 +145,19 @@ import {
   GEOMETRY_LESSONS,
   GeometryLessonsGallery,
   GraphScreenshotMenu,
+  DrawTool,
+  DrawToolbar,
+  DRAW_TOOL_HINTS,
+  EmptyGraph,
+  GraphTips,
+  buildDrawnShape,
+  contentBounds,
+  fitView,
+  shapesForFunction,
+  type Bounds,
+  takenNames,
+  type DrawToolKind,
+  type DrawPick,
   CalculatorResult,
   SavedScenesLibrary,
   type SceneSnapshot,
@@ -167,6 +181,7 @@ import {
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { useNodeResize } from "../hooks/useNodeResize";
 import { splitRelation } from "../lib/math/splitRelation";
+import { inferType } from "../lib/math/inferType";
 import { parseOdeSystemCached } from "../lib/math/odeSystem";
 import { getOdeExtent } from "../lib/math/odeCurveData";
 import { odeSystemToLatex } from "../lib/math/odeLatex";
@@ -559,6 +574,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       sidebarHeight:
         typeof settings.sidebarHeight === "number" ? settings.sidebarHeight : 280,
       liveDrag: settings.liveDrag !== false,
+      angleMode: (settings.angleMode === "degrees" ? "degrees" : "radians") as "degrees" | "radians",
       timeline: readTimelineSettings(settings.timeline),
       view: readGraphView(settings.view),
     };
@@ -666,6 +682,10 @@ export const MathNodeRenderer: React.FC<any> = ({
   // everything built on it follow at once. Off, they catch up when the drag
   // pauses — lighter on graphs with many dependent shapes.
   const [liveDrag, setLiveDrag] = useState(initialGridSettings.liveDrag);
+  // Trig for the whole graph: radians, or degrees (sin(30) = 0.5).
+  const [angleMode, setAngleMode] = useState<"degrees" | "radians">(initialGridSettings.angleMode);
+  // The drawing tool in hand; null lets the graph pan as usual.
+  const [drawTool, setDrawTool] = useState<DrawToolKind | null>(null);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
   useEffect(() => {
@@ -745,6 +765,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     sidebarWidth,
     sidebarHeight,
     liveDrag,
+    angleMode,
     timeline: timelineSettings,
     view: homeView,
   });
@@ -773,6 +794,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       sidebarWidth,
       sidebarHeight,
       liveDrag,
+      angleMode,
       timeline: timelineSettings,
       view: homeView,
     };
@@ -790,6 +812,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     sidebarWidth,
     sidebarHeight,
     liveDrag,
+    angleMode,
     timelineSettings,
     homeView,
   ]);
@@ -908,6 +931,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setSidebarHeight(parsed.gridSettings.sidebarHeight);
               if (typeof parsed.gridSettings.liveDrag === "boolean")
                 setLiveDrag(parsed.gridSettings.liveDrag);
+              if (parsed.gridSettings.angleMode === "degrees" || parsed.gridSettings.angleMode === "radians")
+                setAngleMode(parsed.gridSettings.angleMode);
               if (parsed.gridSettings.timeline) {
                 const tl = readTimelineSettings(parsed.gridSettings.timeline);
                 setTimeMode(tl.mode);
@@ -1001,6 +1026,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     sidebarWidth,
     sidebarHeight,
     liveDrag,
+    angleMode,
     timelineSettings,
     homeView,
   ]);
@@ -1224,6 +1250,39 @@ export const MathNodeRenderer: React.FC<any> = ({
     functions.some((f) => !("compiledKey" in f) && !("error" in f)),
   ]);
 
+  // A handle whose slider is missing (deleted, or never made) can't be dragged and
+  // leaves its rows undefined: give it the slider back, at 1.
+  const missingDragSliders = useMemo(() => {
+    const names = new Set(variables.map((v) => v.name));
+    const missing = new Set<string>();
+    for (const f of functions) for (const n of f.dragVars ?? []) if (!names.has(n)) missing.add(n);
+    return [...missing];
+  }, [functions, variables]);
+  useEffect(() => {
+    if (!missingDragSliders.length) return;
+    setVariables((prev) => {
+      const have = new Set(prev.map((v) => v.name));
+      const add = missingDragSliders.filter((n) => !have.has(n));
+      if (!add.length) return prev;
+      return [
+        ...prev,
+        ...add.map((name) => ({
+          id: generateSafeId(),
+          name,
+          displayName: name,
+          description: "Set by dragging its point on the graph.",
+          value: 1,
+          defaultValue: 1,
+          min: 0,
+          max: 10,
+          step: 0.01,
+          groupId: "default",
+          showSlider: true,
+        })),
+      ];
+    });
+  }, [missingDragSliders.join(",")]);
+
   // Create a serialized key to watch changes to individual function timeline settings without re-running on general expression edits
   const functionsSerializedKey = functions
     .map((f) =>
@@ -1387,7 +1446,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   ]);
 
   // Sliders, time, helpers, then every row in order (definitions, solved ODE states).
-  const baseScope: any = buildBaseScope(functions, variables, time);
+  const baseScope: any = buildBaseScope(functions, variables, time, { degrees: angleMode === "degrees" });
 
   // The end of the timeline, which may be a formula such as the flight time "T".
   let effectiveTimeMax = timeBounds.max;
@@ -1440,7 +1499,11 @@ export const MathNodeRenderer: React.FC<any> = ({
     const evaluate = (values: number[]) => {
       const overrides: Record<string, number> = {};
       bound.forEach((v, i) => (overrides[v.name] = values[i]));
-      const scope = buildBaseScope(fns, vars, solveTime, { overrides, reuseOdeSolutions: true });
+      const scope = buildBaseScope(fns, vars, solveTime, {
+        overrides,
+        reuseOdeSolutions: true,
+        degrees: angleMode === "degrees",
+      });
       return handlePosition(f, scope);
     };
     const solved = solveDrag(evaluate, bound, target);
@@ -1507,7 +1570,14 @@ export const MathNodeRenderer: React.FC<any> = ({
   };
 
   const handleUpdateExpr = (id: string, expr: string) => {
-    setFunctions((prev) => prev.map((f) => (f.id === id ? { ...f, expr } : f)));
+    setFunctions((prev) =>
+      prev.map((f) => {
+        if (f.id !== id) return f;
+        // Auto rows follow what is typed; an unfinished expression keeps the type it has.
+        const inferred = f.autoType && f.type !== "calculator" ? inferType(expr) : null;
+        return inferred && inferred !== f.type ? { ...f, expr, type: inferred } : { ...f, expr };
+      }),
+    );
   };
 
   const handleAddFunction = () => {
@@ -1515,13 +1585,140 @@ export const MathNodeRenderer: React.FC<any> = ({
       ...prev,
       {
         id: generateSafeId(),
-        expr: "x",
+        expr: "",
         color: COLORS[prev.length % COLORS.length],
         visible: true,
         type: "function",
+        autoType: true,
       },
     ]);
   };
+
+  // ─── Getting started, and drawing ──────────────────────────────────────────
+  const isGraphEmpty = !functions.some((f) => f.expr && f.expr.trim());
+
+  const openPanel = () => {
+    setIsPanelVisible(true);
+    setIsMobileSidebarOpen(true);
+  };
+
+  /** "Type an equation": the panel, with a blank row to type in. */
+  const handleStartTyping = () => {
+    openPanel();
+    if (!functions.some((f) => !f.expr.trim())) handleAddFunction();
+  };
+
+  const handleOpenLessons = () => {
+    openPanel();
+    setTimeout(
+      () => document.getElementById(`math-library-${nodeId}`)?.scrollIntoView({ behavior: "smooth", block: "start" }),
+      80,
+    );
+  };
+
+  /** An example from the empty graph: fills the blank row if there is one. */
+  const handleExampleRow = (expr: string) => {
+    const type = inferType(expr) ?? "function";
+    setFunctions((prev) => {
+      const blank = prev.find((f) => !f.expr.trim());
+      if (blank) return prev.map((f) => (f === blank ? { ...f, expr, type, autoType: true } : f));
+      return [
+        ...prev,
+        { id: generateSafeId(), expr, type, autoType: true, color: COLORS[prev.length % COLORS.length], visible: true },
+      ];
+    });
+  };
+
+  /** A shape finished with the drawing tools becomes rows: its new points, then the shape. */
+  const handleDrawComplete = (tool: DrawToolKind, picks: DrawPick[]) => {
+    const current = functionsRef.current;
+    const { rows, sliders } = buildDrawnShape(tool, picks, {
+      taken: takenNames(current, variablesRef.current.map((v) => v.name)),
+      color: COLORS[current.length % COLORS.length],
+      pointColor: "#2563eb",
+      newId: generateSafeId,
+    });
+    if (!rows.length) return;
+    // A circle's radius: a slider its rim point sets when dragged.
+    if (sliders.length) {
+      setVariables((prev) => [
+        ...prev,
+        ...sliders.map((s) => ({
+          id: generateSafeId(),
+          name: s.name,
+          displayName: s.name,
+          description: s.description,
+          value: s.value,
+          defaultValue: s.value,
+          min: s.min,
+          max: s.max,
+          step: s.step,
+          groupId: "default",
+          showSlider: true,
+        })),
+      ]);
+    }
+    // Blank rows are dropped, so a drawing started from the empty graph doesn't leave one behind.
+    setFunctions((prev) => [...prev.filter((f) => f.expr.trim()), ...rows]);
+  };
+
+  // ─── Recentring ───────────────────────────────────────────────────────────
+  /** Pixels the toolbars cover along the graph's left and top edges. */
+  const graphInsets = () => {
+    const el = graphContainerRef.current;
+    if (!el) return { insetLeft: 0, insetTop: 0 };
+    const box = el.getBoundingClientRect();
+    // The canvas may be zoomed: measure in the graph's own pixels.
+    const scale = box.width / (graphSize.width || box.width || 1) || 1;
+    const edge = (selector: string, side: "left" | "top") => {
+      const node = el.querySelector(selector) as HTMLElement | null;
+      if (!node) return 0;
+      const cs = getComputedStyle(node);
+      if (cs.display === "none" || cs.visibility === "hidden" || Number(cs.opacity) < 0.5) return 0;
+      const r = node.getBoundingClientRect();
+      return Math.max(0, side === "left" ? r.right - box.left : r.bottom - box.top) / scale;
+    };
+    return { insetLeft: edge('[data-graph-inset="left"]', "left"), insetTop: edge('[data-graph-inset="top"]', "top") };
+  };
+
+  /** Shows `b` centred in the part of the graph the toolbars leave clear. */
+  const frameBounds = (b: Bounds, margin?: number) => {
+    const view = fitView(b, { width: graphSize.width, height: graphSize.height, ...graphInsets() }, margin);
+    setFocusView({ ...view, padding: 0 });
+    setViewResetKey((k) => k + 1);
+  };
+
+  /** Back to the view the graph starts in (its own padding included). */
+  const handleResetView = () => {
+    const pad = 0.5;
+    frameBounds({ x0: homeView.x[0] - pad, x1: homeView.x[1] + pad, y0: homeView.y[0] - pad, y1: homeView.y[1] + pad }, 0);
+  };
+
+  /**
+   * Frames what's drawn: points, shapes and closed curves. Lines and graphs of
+   * functions run on forever, so they don't count; with nothing else drawn this
+   * is the starting view.
+   */
+  const handleRecenter = () => {
+    const bounded = new Set(["point", "polygon", "line", "vector", "parametric", "polar", "differential", "implicit"]);
+    const shapes = functions
+      .filter((f) => f.visible !== false && bounded.has(f.type))
+      .flatMap((f) => shapesForFunction(f.id, traceScope));
+    const b = contentBounds(shapes);
+    if (b) frameBounds(b);
+    else handleResetView();
+  };
+
+  // Named points the drawing tools snap to.
+  const drawSnapPoints = drawTool
+    ? functions.flatMap((f) => {
+        if (f.type !== "point" || f.visible === false || !f.compiled) return [];
+        const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1];
+        if (!name) return [];
+        const { points } = resolveGeometryPoints(f, baseScope);
+        return points.length === 1 ? [{ name, x: points[0][0], y: points[0][1] }] : [];
+      })
+    : [];
 
   const handleInsertFunctionFromHelp = (formula: {
     type:
@@ -1567,10 +1764,11 @@ export const MathNodeRenderer: React.FC<any> = ({
 
       const newFn = {
         id: generateSafeId(),
-        expr: "x",
+        expr: "",
         color: COLORS[prev.length % COLORS.length],
         visible: true,
         type: "function" as const,
+        autoType: true,
       };
 
       const insertIndex = position === "above" ? targetIndex : targetIndex + 1;
@@ -1868,6 +2066,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (!sim) return;
     const scene = sim.build();
     setActiveExample(key);
+    setAngleMode("radians");
     setFunctions(scene.functions);
     setVariables(scene.variables);
     setGroups(scene.groups);
@@ -2001,12 +2200,9 @@ export const MathNodeRenderer: React.FC<any> = ({
               <Settings size={15} />
             </button>
             <button
-              onClick={() => {
-                setFocusView(null);
-                setViewResetKey((k) => k + 1);
-              }}
+              onClick={handleRecenter}
               className={headerIconBtn}
-              title="Back to the starting view"
+              title="Recenter on what's drawn"
             >
               <Crosshair size={15} />
             </button>
@@ -2256,15 +2452,17 @@ export const MathNodeRenderer: React.FC<any> = ({
                           />
                           <select
                             value={f.type}
-                            onChange={(e) =>
+                            onChange={(e) => {
+                              const choice = e.target.value;
                               setFunctions((prev) =>
-                                prev.map((fn) =>
-                                  fn.id === f.id
-                                    ? { ...fn, type: e.target.value as any }
-                                    : fn,
-                                ),
-                              )
-                            }
+                                prev.map((fn) => {
+                                  if (fn.id !== f.id) return fn;
+                                  // "Auto" goes back to following the expression; any other choice sticks.
+                                  if (choice === "auto") return { ...fn, autoType: true, type: inferType(fn.expr) ?? fn.type };
+                                  return { ...fn, type: choice as any, autoType: false };
+                                }),
+                              );
+                            }}
                             className="bg-slate-100 dark:bg-transparent text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 border border-slate-200 dark:border-slate-700/50 rounded outline-none p-1 mr-2 text-xs font-semibold cursor-pointer appearance-none text-center"
                             style={{
                               WebkitAppearance: "none",
@@ -2296,6 +2494,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                     : "Select function type"
                             }
                           >
+                            <option
+                              value="auto"
+                              title="Work out the type from what is typed"
+                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                            >
+                              {f.autoType ? "✓ Auto-detect" : "Auto-detect"}
+                            </option>
                             <option
                               value="function"
                               title="Function, or a named value like T = 2*v0/g"
@@ -2374,6 +2579,14 @@ export const MathNodeRenderer: React.FC<any> = ({
                               Poly =
                             </option>
                           </select>
+                          {f.autoType && f.type !== "calculator" && (
+                            <span
+                              className="-ml-1.5 mr-2 px-1 rounded text-[8px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 select-none"
+                              title="The type follows what you type. Pick one from the menu to fix it."
+                            >
+                              auto
+                            </span>
+                          )}
 
                           <div className="flex-1 md:hidden"></div>
                           {/* Mobile Toggle Button inside Header Row */}
@@ -2424,7 +2637,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                           ? "e.g. x^2 + y^2 = 4"
                                           : f.type === "inequality"
                                             ? "e.g. y < sin(x)"
-                                            : "e.g. a * sin(b*x + c)  ·  piecewise: x < 0 ? x^2 : sin(x)"
+                                            : f.autoType && !f.expr.trim()
+                                              ? "Type anything: y = x^2, x^2 + y^2 = 4, r = 1 + cos(theta), A = [1, 2]"
+                                              : "e.g. a * sin(b*x + c)  ·  piecewise: x < 0 ? x^2 : sin(x)"
                                 }
                                 variables={variables}
                                 hoveredVar={hoveredVar}
@@ -6155,7 +6370,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                 />
 
                 {/* Library: ready-made labs, examples and templates */}
-                <div className="flex flex-col gap-4 pt-4 border-t border-slate-200 dark:border-slate-800">
+                <div
+                  id={`math-library-${nodeId}`}
+                  className="flex flex-col gap-4 pt-4 border-t border-slate-200 dark:border-slate-800 scroll-mt-2"
+                >
                   <h3 className="font-semibold text-[11px] text-slate-500 dark:text-slate-400 uppercase tracking-wider flex items-center gap-2">
                     <div className="w-1.5 h-1.5 rounded-full bg-pink-500"></div>
                     Library
@@ -6479,9 +6697,10 @@ export const MathNodeRenderer: React.FC<any> = ({
             <div
               data-no-trace
               data-capture-exclude
+              data-graph-inset="top"
               className={`absolute top-2 left-2 right-2 md:top-3 md:left-3 md:right-auto z-40 flex items-center gap-1 p-1 rounded-xl bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 pointer-events-auto overflow-x-auto no-scrollbar transition-all duration-300 ${showGridControls || showAdvancedAxisControls
                 ? "opacity-100 translate-y-0"
-                : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-0 md:group-hover/graph:opacity-100"
+                : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-100"
                 }`}
             >
               <div
@@ -6522,10 +6741,16 @@ export const MathNodeRenderer: React.FC<any> = ({
               <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />
               <button
                 type="button"
-                onClick={() => {
-                setFocusView(null);
-                setViewResetKey((k) => k + 1);
-              }}
+                onClick={handleRecenter}
+                title="Recenter on what's drawn"
+                className="flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+              >
+                <Crosshair size={13} />
+                <span className="hidden sm:inline">Recenter</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleResetView}
                 title="Back to the starting view"
                 className="flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
               >
@@ -6549,7 +6774,10 @@ export const MathNodeRenderer: React.FC<any> = ({
               </button>
               <button
                 type="button"
-                onClick={() => setAreaToolActive((v) => !v)}
+                onClick={() => {
+                  setAreaToolActive((v) => !v);
+                  setDrawTool(null);
+                }}
                 aria-pressed={areaToolActive}
                 title={areaToolActive ? "Stop measuring areas" : "Measure area: click inside a closed region"}
                 className={`flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${areaToolActive
@@ -6576,6 +6804,22 @@ export const MathNodeRenderer: React.FC<any> = ({
               >
                 <Zap size={13} className={liveDrag ? "fill-current" : ""} />
                 <span className="hidden sm:inline">Live drag</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAngleMode((m) => (m === "degrees" ? "radians" : "degrees"))}
+                aria-pressed={angleMode === "degrees"}
+                title={
+                  angleMode === "degrees"
+                    ? "Trig works in degrees: sin(30) = 0.5. Click for radians."
+                    : "Trig works in radians: sin(pi/6) = 0.5. Click for degrees."
+                }
+                className={`flex items-center shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tabular-nums transition-all ${angleMode === "degrees"
+                  ? "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/40"
+                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+              >
+                {angleMode === "degrees" ? "DEG" : "RAD"}
               </button>
               {areaToolActive && (
                 <>
@@ -6662,6 +6906,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                 variables,
                 handleHandleDrag,
                 liveDrag,
+                angleMode,
               };
 
               if (
@@ -6675,12 +6920,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                   isInteractionLayer: boolean;
                 }) => {
                   const pane = usePaneContext();
+                  // One screen pixel in graph units, for offsets that should look the same at any zoom.
+                  const { viewTransform: layerView } = useTransformContext();
+                  const pxX = 1 / (Math.abs(layerView[0]) || 50);
+                  const pxY = 1 / (Math.abs(layerView[4]) || 50);
                   const xRange =
                     pane && pane.xPaneRange ? pane.xPaneRange : [-10, 10];
                   const yRange =
                     pane && pane.yPaneRange ? pane.yPaneRange : [-10, 10];
 
                   const ctx = latestContextRef.current!;
+                  // θ in the graph's unit, so r = sin(2θ) draws right in degrees mode too.
+                  const angleUnit = ctx.angleMode === "degrees" ? 180 / Math.PI : 1;
                   const {
                     functions,
                     setFunctions,
@@ -7257,15 +7508,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                         ) : null)}
                                                       {showLabel &&
                                                         !isInteractionLayer && (() => {
-                                                          let dx = f.labelPosition?.[0] ?? 0.3;
-                                                          let dy = f.labelPosition?.[1] ?? 0.3;
+                                                          // A fixed distance on screen (not in graph units), so the label stays by
+                                                          // its point however far in or out the graph is zoomed.
+                                                          let dx = f.labelPosition?.[0] ?? 12 * pxX;
+                                                          let dy = f.labelPosition?.[1] ?? 12 * pxY;
                                                           if (f.labelAlignment && f.labelAlignment !== "custom") {
-                                                            const r = 0.5;
+                                                            const rx = 18 * pxX;
+                                                            const ry = 18 * pxY;
                                                             if (f.labelAlignment === "center") { dx = 0; dy = 0; }
-                                                            else if (f.labelAlignment === "above") { dx = 0; dy = r; }
-                                                            else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
-                                                            else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
-                                                            else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                                            else if (f.labelAlignment === "above") { dx = 0; dy = ry; }
+                                                            else if (f.labelAlignment === "below") { dx = 0; dy = -ry; }
+                                                            else if (f.labelAlignment === "left") { dx = -rx; dy = 0; }
+                                                            else if (f.labelAlignment === "right") { dx = rx; dy = 0; }
                                                           }
                                                           return (
                                                             <React.Fragment>
@@ -7680,9 +7934,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                                               const tVal = fillT0 + ((fillT1 - fillT0) * i) / steps;
                                               try {
                                                 const scope = Object.create(baseScope);
-                                                if (!useThetaAsAngle) scope.t = tVal;
-                                                scope.x = tVal;
-                                                scope.theta = scope["θ"] = tVal;
+                                                const angle = tVal * angleUnit;
+                                                if (!useThetaAsAngle) scope.t = angle;
+                                                scope.x = angle;
+                                                scope.theta = scope["θ"] = angle;
                                                 const r = Number(
                                                   f.compiled.evaluate(scope),
                                                 );
@@ -7755,9 +8010,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                                         return (tVal: number): [number, number] => {
                                           try {
                                             const scope = Object.create(baseScope);
-                                            if (!useThetaAsAngle) scope.t = tVal;
-                                            scope.x = tVal;
-                                            scope.theta = scope["θ"] = tVal;
+                                            const angle = tVal * angleUnit;
+                                            if (!useThetaAsAngle) scope.t = angle;
+                                            scope.x = angle;
+                                            scope.theta = scope["θ"] = angle;
                                             const r = Number(
                                               f.compiled.evaluate(scope),
                                             );
@@ -8558,15 +8814,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       activeGizmo.id !== f.id ||
                                       activeGizmo.type === "label") &&
                                     points.map((p, i) => {
-                                      let dx = f.labelPosition?.[0] ?? 0.3;
-                                      let dy = f.labelPosition?.[1] ?? 0.3;
+                                      // A fixed distance on screen (not in graph units), so the label stays by
+                                      // its point however far in or out the graph is zoomed.
+                                      let dx = f.labelPosition?.[0] ?? 12 * pxX;
+                                      let dy = f.labelPosition?.[1] ?? 12 * pxY;
                                       if (f.labelAlignment && f.labelAlignment !== "custom") {
-                                        const r = 0.5;
+                                        const rx = 18 * pxX;
+                                        const ry = 18 * pxY;
                                         if (f.labelAlignment === "center") { dx = 0; dy = 0; }
-                                        else if (f.labelAlignment === "above") { dx = 0; dy = r; }
-                                        else if (f.labelAlignment === "below") { dx = 0; dy = -r; }
-                                        else if (f.labelAlignment === "left") { dx = -r; dy = 0; }
-                                        else if (f.labelAlignment === "right") { dx = r; dy = 0; }
+                                        else if (f.labelAlignment === "above") { dx = 0; dy = ry; }
+                                        else if (f.labelAlignment === "below") { dx = 0; dy = -ry; }
+                                        else if (f.labelAlignment === "left") { dx = -rx; dy = 0; }
+                                        else if (f.labelAlignment === "right") { dx = rx; dy = 0; }
                                       }
 
                                       const handlePt = localToGlobal(
@@ -8644,9 +8903,17 @@ export const MathNodeRenderer: React.FC<any> = ({
                     <MathNodesLayer isInteractionLayer={true} />
                   </PlotErrorBoundary>
                   {/* Last, so its drag handle sits above every curve's stroke. */}
-                  <TraceOverlay containerRef={graphContainerRef} disabled={areaToolActive} />
+                  <TraceOverlay containerRef={graphContainerRef} disabled={areaToolActive || !!drawTool} />
+                  <DrawTool
+                    tool={isCompact ? null : drawTool}
+                    containerRef={graphContainerRef}
+                    points={drawSnapPoints}
+                    color={COLORS[functions.length % COLORS.length]}
+                    onComplete={handleDrawComplete}
+                    onExit={() => setDrawTool(null)}
+                  />
                   <AreaTool
-                    active={areaToolActive}
+                    active={areaToolActive && !drawTool}
                     containerRef={graphContainerRef}
                     axesAsWalls={areaAxesAsWalls}
                     clearSignal={areaClearSignal}
@@ -8658,6 +8925,42 @@ export const MathNodeRenderer: React.FC<any> = ({
           </Mafs>
           </TraceScopeContext.Provider>
 
+          {!isCompact && (
+            <DrawToolbar
+              tool={drawTool}
+              onChange={(t) => {
+                setDrawTool(t);
+                if (t) setAreaToolActive(false);
+              }}
+            />
+          )}
+          {!isCompact && drawTool && (
+            <div
+              data-no-trace
+              data-capture-exclude
+              className="absolute top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 max-w-[calc(100%-6rem)] pl-3 pr-1 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-medium shadow-lg"
+            >
+              <span className="min-w-0">{DRAW_TOOL_HINTS[drawTool]} <span className="opacity-75">Esc to stop.</span></span>
+              <button
+                type="button"
+                onClick={() => setDrawTool(null)}
+                className="shrink-0 px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 font-semibold"
+              >
+                Done
+              </button>
+            </div>
+          )}
+          {isGraphEmpty && !drawTool && (
+            <EmptyGraph
+              compact={isCompact}
+              onType={handleStartTyping}
+              onDraw={() => setDrawTool("point")}
+              onLessons={handleOpenLessons}
+              onExample={handleExampleRow}
+              onOpen={() => setIsFullscreen(true)}
+            />
+          )}
+          {!isCompact && !isGraphEmpty && !drawTool && <GraphTips />}
           {isFullscreen && (
             <div
               data-no-trace

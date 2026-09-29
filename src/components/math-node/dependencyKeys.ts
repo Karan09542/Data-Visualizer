@@ -205,8 +205,10 @@ export function dependencyKey(
   fTime: number,
   variables: MathVariable[],
 ): string {
+  // Degrees mode changes what sin(…) means without changing any value.
+  const mode = (baseScope?.sin as any)?.inDegrees ? "deg|" : "";
   const fallback = () =>
-    `ALL|${variables.map((v) => `${v.name}:${v.value}`).join(",")}|${baseScope.time}|${fTime}`;
+    `${mode}ALL|${variables.map((v) => `${v.name}:${v.value}`).join(",")}|${baseScope.time}|${fTime}`;
 
   const definers = new Map<string, MathFunction>();
   for (const row of functions) {
@@ -260,5 +262,5 @@ export function dependencyKey(
   }
   if (usesTime) parts.push(`@${fTime}:${baseScope.time}`);
   upstreamExprs.sort();
-  return `${parts.join("|")}#${upstreamExprs.join("#")}`;
+  return `${mode}${parts.join("|")}#${upstreamExprs.join("#")}`;
 }
