@@ -5,6 +5,7 @@ import { getStrokeDasharray } from "./mathTypes";
 import type { FillPatternType } from "./mathTypes";
 import { useStableRange } from "./useStableRange";
 import { TraceScopeContext, deleteTraceShape, scopedTraceKey, setTraceShape } from "./traceGeometry";
+import { refineImplicitOutline, type EdgeVertex } from "./implicitRefine";
 
 interface InequalityPlotProps {
   compiledLHS: any;
@@ -80,7 +81,7 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
   const [computeYMin, computeYMax] = useStableRange(yRange[0], yRange[1], RANGE_PAD_FACTOR);
 
   const paths = useMemo(() => {
-    if (!compiledLHS) return { fill: "", boundary: "" };
+    if (!compiledLHS) return { fill: "", boundary: "", edges: [] as EdgeVertex[], cell: 0 };
 
     const xMin = computeXMin;
     const xMax = computeXMax;
@@ -190,6 +191,15 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
       ];
     };
 
+    // The grid edges each segment joins, per case (0 bottom, 1 right, 2 top, 3 left).
+    const CASE_EDGES: Record<number, number[]> = {
+      1: [0, 3], 2: [1, 0], 3: [1, 3], 4: [2, 1], 5: [0, 1, 2, 3], 6: [2, 0], 7: [2, 3],
+      8: [3, 2], 9: [0, 2], 10: [1, 2, 3, 0], 11: [1, 2], 12: [3, 1], 13: [0, 1], 14: [3, 0],
+    };
+    // Every vertex's grid edge, in path order, so the traced outline can be solved
+    // onto the exact curve later.
+    const edges: EdgeVertex[] = [];
+
     for (let i = 0; i < GRID_SIZE; i++) {
       const x0 = xMin + i * dx;
       const x1 = x0 + dx;
@@ -212,36 +222,25 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
         const index = (b01 << 3) | (b11 << 2) | (b10 << 1) | b00;
         if (index === 0 || index === 15) continue;
 
-        const p00 = [x0, y0];
-        const p10 = [x1, y0];
-        const p11 = [x1, y1];
-        const p01 = [x0, y1];
-
-        const e0 = lerp(p00, p10, v00, v10);
-        const e1 = lerp(p10, p11, v10, v11);
-        const e2 = lerp(p01, p11, v01, v11);
-        const e3 = lerp(p00, p01, v00, v01);
-
-        switch (index) {
-          case 1: boundaryPath += `M${e0[0]},${e0[1]} L${e3[0]},${e3[1]} `; break;
-          case 2: boundaryPath += `M${e1[0]},${e1[1]} L${e0[0]},${e0[1]} `; break;
-          case 3: boundaryPath += `M${e1[0]},${e1[1]} L${e3[0]},${e3[1]} `; break;
-          case 4: boundaryPath += `M${e2[0]},${e2[1]} L${e1[0]},${e1[1]} `; break;
-          case 5: boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `; break;
-          case 6: boundaryPath += `M${e2[0]},${e2[1]} L${e0[0]},${e0[1]} `; break;
-          case 7: boundaryPath += `M${e2[0]},${e2[1]} L${e3[0]},${e3[1]} `; break;
-          case 8: boundaryPath += `M${e3[0]},${e3[1]} L${e2[0]},${e2[1]} `; break;
-          case 9: boundaryPath += `M${e0[0]},${e0[1]} L${e2[0]},${e2[1]} `; break;
-          case 10: boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `; break;
-          case 11: boundaryPath += `M${e1[0]},${e1[1]} L${e2[0]},${e2[1]} `; break;
-          case 12: boundaryPath += `M${e3[0]},${e3[1]} L${e1[0]},${e1[1]} `; break;
-          case 13: boundaryPath += `M${e0[0]},${e0[1]} L${e1[0]},${e1[1]} `; break;
-          case 14: boundaryPath += `M${e3[0]},${e3[1]} L${e0[0]},${e0[1]} `; break;
+        const cellEdges: EdgeVertex[] = [
+          { ax: x0, ay: y0, bx: x1, by: y0, fa: v00, fb: v10 },
+          { ax: x1, ay: y0, bx: x1, by: y1, fa: v10, fb: v11 },
+          { ax: x0, ay: y1, bx: x1, by: y1, fa: v01, fb: v11 },
+          { ax: x0, ay: y0, bx: x0, by: y1, fa: v00, fb: v01 },
+        ];
+        const order = CASE_EDGES[index];
+        for (let k = 0; k < order.length; k += 2) {
+          const a = cellEdges[order[k]];
+          const b = cellEdges[order[k + 1]];
+          const pa = lerp([a.ax, a.ay], [a.bx, a.by], a.fa, a.fb);
+          const pb = lerp([b.ax, b.ay], [b.bx, b.by], b.fa, b.fb);
+          boundaryPath += `M${pa[0]},${pa[1]} L${pb[0]},${pb[1]} `;
+          edges.push(a, b);
         }
       }
     }
 
-    return { fill: fillPath, boundary: boundaryPath, dy };
+    return { fill: fillPath, boundary: boundaryPath, dy, edges, cell: Math.max(dx, dy) };
   }, [
     compiledLHS, compiledRHS, operator, dependenciesHash || baseScope, samplingDepth,
     computeXMin, computeXMax, computeYMin, computeYMax,
@@ -253,35 +252,31 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
   // segments, so it's traced as a segment soup, and hits are polished onto the exact
   // curve with Newton steps on lhs - rhs.
   //
-  // Parsing a large boundary takes a few milliseconds, so it waits until the
-  // boundary has held still briefly: an animated region would otherwise pay for
-  // it every frame. A still region becomes traceable almost at once.
+  // Solving the outline onto the curve takes a few milliseconds, so it waits until
+  // the boundary has held still briefly: an animated region would otherwise pay
+  // for it every frame. A still region becomes traceable almost at once.
+  //
+  // The previous outline stays published until the new one replaces it: removing
+  // it while zooming left measured areas with nothing to stop their fill.
+  const key = id ? scopedTraceKey(traceScope, `${id}:boundary`) : "";
   useEffect(() => {
-    if (!id || !paths.boundary) return;
-    const key = scopedTraceKey(traceScope, `${id}:boundary`);
-    const timer = setTimeout(() => publishBoundary(key), 120);
-    return () => {
-      clearTimeout(timer);
+    if (!key) return;
+    return () => deleteTraceShape(key);
+  }, [key]);
+  useEffect(() => {
+    if (!key) return;
+    if (!paths.boundary) {
       deleteTraceShape(key);
-    };
-    // The boundary string changes whenever anything the residual reads does.
+      return;
+    }
+    const timer = setTimeout(() => publishBoundary(key), 120);
+    return () => clearTimeout(timer);
+    // The boundary changes whenever anything the residual reads does.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [paths, id, color, traceScope]);
+  }, [paths, key, color]);
 
   const publishBoundary = (key: string) => {
-    const xs: number[] = [];
-    const ys: number[] = [];
-    const cmd = /([ML])\s*(-?[\d.]+(?:e[-+]?\d+)?)[,\s]+(-?[\d.]+(?:e[-+]?\d+)?)/gi;
-    for (let m = cmd.exec(paths.boundary); m; m = cmd.exec(paths.boundary)) {
-      if (m[1].toUpperCase() === "M" && xs.length > 0) {
-        xs.push(NaN);
-        ys.push(NaN);
-      }
-      xs.push(Number(m[2]));
-      ys.push(Number(m[3]));
-    }
-    if (xs.length < 2) return;
-
+    if (paths.edges.length < 2) return;
     const scope = { ...baseScope, x: 0, y: 0 };
     const value = (v: any) => {
       if (v && (v.isMatrix || Array.isArray(v))) {
@@ -305,6 +300,14 @@ export const InequalityPlot: React.FC<InequalityPlotProps> = ({
       }
     };
 
+    // On the curve itself, so what's measured against it doesn't depend on the
+    // grid (and so on the zoom).
+    const { xs, ys } = refineImplicitOutline(residual, paths.edges, paths.cell, {
+      tolerance: 1e-3,
+      maxDepth: 2,
+      maxEvals: 60_000,
+    });
+    if (xs.length < 2) return;
     setTraceShape(key, { scope: traceScope, fnId: id!, color, kind: "curve", xs, ys, residual, soup: true });
   };
 

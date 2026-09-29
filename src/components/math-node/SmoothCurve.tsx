@@ -46,6 +46,26 @@ const isFinitePoint = (p: Vec2) => Number.isFinite(p[0]) && Number.isFinite(p[1]
 // Squared on-screen error that triggers subdivision; same visual tolerance as Mafs.
 const MAX_ERROR_PX2 = 0.1;
 
+/**
+ * What the Display quality slider ("Curve resolution", 1–30) means for curves.
+ * Each step changes something:
+ *  - minDepth: 2^minDepth evenly spaced starting samples, which is what catches
+ *    fast wiggles (sin(40x)) that refinement alone can skip over;
+ *  - maxDepth: how far refinement may go where the curve bends sharply;
+ *  - errorPx2: how close (squared, in screen pixels) the drawn line must be to
+ *    the true curve before refinement stops.
+ * 14, the default, matches the previous fixed settings (10, ~14, 0.1 px²).
+ */
+export function curveSamplingForQuality(quality: number) {
+  const q = Math.max(1, Math.min(30, Math.round(quality)));
+  return {
+    minDepth: Math.max(5, Math.min(14, Math.round(q / 2) + 3)),
+    maxDepth: Math.max(8, Math.min(22, q + 2)),
+    // From 2 px² (coarse, ~1.4 px) at 1 down to 0.005 px² (~0.07 px) at 30.
+    errorPx2: 2 * Math.pow(0.0025, (q - 1) / 29),
+  };
+}
+
 export interface SampleOptions {
   minDepth: number;
   maxDepth: number;
@@ -54,6 +74,8 @@ export interface SampleOptions {
   scaleY: number;
   /** Finite values beyond these bounds are clamped when written (SVG precision). */
   clamp: [number, number, number, number];
+  /** Squared on-screen error, in pixels, below which refinement stops. */
+  maxErrorPx2?: number;
   /**
    * Receives every vertex written, with its parameter, for the tracer. A run break
    * is recorded as a NaN vertex.
@@ -69,7 +91,7 @@ export interface SampleOptions {
 export function sampleCurvePath(
   fn: (t: number) => Vec2,
   domain: Vec2,
-  { minDepth, maxDepth, scaleX, scaleY, clamp, trace }: SampleOptions,
+  { minDepth, maxDepth, scaleX, scaleY, clamp, trace, maxErrorPx2 = MAX_ERROR_PX2 }: SampleOptions,
 ): string {
   const [cx0, cx1, cy0, cy1] = clamp;
   const parts: string[] = [];
@@ -144,7 +166,7 @@ export function sampleCurvePath(
     } else if (fa && fb && fm) {
       const lx = pa[0] + (pb[0] - pa[0]) * h;
       const ly = pa[1] + (pb[1] - pa[1]) * h;
-      const tooCoarse = dist2(pm, [lx, ly]) > MAX_ERROR_PX2;
+      const tooCoarse = dist2(pm, [lx, ly]) > maxErrorPx2;
       if (depth < maxDepth) deepen = tooCoarse;
       // At max depth a→b is drawn straight; break it if that line would fake a jump.
       else if (tooCoarse && isJump(a, pa, b, pb)) breakNext = true;
@@ -189,6 +211,8 @@ interface SmoothCurveProps {
   style?: "solid" | "dashed";
   minSamplingDepth?: number;
   maxSamplingDepth?: number;
+  /** Squared on-screen error in pixels (see curveSamplingForQuality). */
+  errorPx2?: number;
   svgPathProps?: React.SVGProps<SVGPathElement>;
   /** Publish the drawn geometry under this key so the tracer can snap to it. */
   traceKey?: string;
@@ -209,6 +233,7 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
   style = "solid",
   minSamplingDepth = 8,
   maxSamplingDepth = 14,
+  errorPx2 = MAX_ERROR_PX2,
   svgPathProps = {},
   traceKey,
   traceFnId,
@@ -230,6 +255,7 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
     const d = sampleCurvePath(xy, t, {
       minDepth: minSamplingDepth,
       maxDepth: maxSamplingDepth,
+      maxErrorPx2: errorPx2,
       scaleX,
       scaleY,
       clamp: [
@@ -244,7 +270,7 @@ export const SmoothCurve: React.FC<SmoothCurveProps> = ({
     return { d, trace, xy };
     // `xy` is deliberately not a dependency: `sampleKey` stands in for its output.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sampleKey, t[0], t[1], minSamplingDepth, maxSamplingDepth, scaleX, scaleY, xp0, xp1, yp0, yp1, traceKey]);
+  }, [sampleKey, t[0], t[1], minSamplingDepth, maxSamplingDepth, errorPx2, scaleX, scaleY, xp0, xp1, yp0, yp1, traceKey]);
 
   const { d, trace } = sampled;
   const traceScope = useContext(TraceScopeContext);

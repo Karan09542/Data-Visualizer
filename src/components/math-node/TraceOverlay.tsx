@@ -70,6 +70,8 @@ export const TraceShapeRegistrar: React.FC<{
 
 interface TraceOverlayProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
+  /** Another tool (the Area tool) owns clicks on the graph for now. */
+  disabled?: boolean;
 }
 
 /**
@@ -82,7 +84,7 @@ interface TraceOverlayProps {
  * - Touch: tap a shape to place the point, drag it along the curve, tap empty
  *   space to dismiss.
  */
-export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
+export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef, disabled = false }) => {
   const { viewTransform } = useTransformContext();
   const scope = useContext(TraceScopeContext);
   const anchorRef = useRef<SVGGElement>(null);
@@ -202,7 +204,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
     let start: { x: number; y: number } | null = null;
 
     const onMove = (e: PointerEvent) => {
-      if (e.pointerType === "touch" || live.current.dragging) return;
+      if (disabled || e.pointerType === "touch" || live.current.dragging) return;
       // Without Shift the point stays where it was left, ready to be dragged.
       if (!e.shiftKey || isOverOverlayUI(e)) return;
       setPin(pickAt(e.clientX, e.clientY, MOUSE_PICK_PX));
@@ -215,7 +217,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
     const onUp = (e: PointerEvent) => {
       const from = start;
       start = null;
-      if (!from || live.current.dragging) return;
+      if (disabled || !from || live.current.dragging) return;
       const moved = Math.hypot(e.clientX - from.x, e.clientY - from.y);
       if (moved > TAP_SLOP_PX) return; // a pan, not a tap
 
@@ -243,7 +245,7 @@ export const TraceOverlay: React.FC<TraceOverlayProps> = ({ containerRef }) => {
       el.removeEventListener("pointerup", onUp);
       window.removeEventListener("keydown", onKey);
     };
-  }, [containerRef, pickAt]);
+  }, [containerRef, pickAt, disabled]);
 
   // Dragging the point along its shape.
   const draggable = !!shown && shape?.kind === "curve";

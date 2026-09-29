@@ -73,6 +73,17 @@ export interface MathFunction {
   /** Show sliders for this equation's own parameters under its input. */
   showInlineVars?: boolean;
 
+  /** Polygons: draw the interior angle at every corner (on unless turned off). */
+  showAngles?: boolean;
+
+  /** y = f(x): shade and measure the area from `areaFrom` to `areaTo`. */
+  areaEnabled?: boolean;
+  /** Bounds as expressions, e.g. "0" and "pi". */
+  areaFrom?: string;
+  areaTo?: string;
+  /** Id of another y = f(x) row to measure against; the x-axis when empty. */
+  areaAgainst?: string;
+
   // Image shown in place of a point
   imageSrc?: string; // data URL (uploaded) or remote URL
   imageWidth?: number; // graph units

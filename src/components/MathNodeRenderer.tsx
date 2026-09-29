@@ -38,6 +38,7 @@ import {
   Grid3x3,
   Radar,
   SlidersHorizontal,
+  Ruler,
   Activity,
   FunctionSquare,
   Upload,
@@ -48,6 +49,7 @@ import {
   Hand,
   ScanLine,
   PenLine,
+  Zap,
 } from "lucide-react";
 
 import {
@@ -99,6 +101,7 @@ import {
   AxisSettingsPanel,
   dependencyKey,
   SmoothCurve,
+  curveSamplingForQuality,
   OdeCurve,
   PlotErrorBoundary,
   SettingsLabel,
@@ -120,6 +123,10 @@ import {
   TraceOverlay,
   TraceShapeRegistrar,
   InterceptsReadout,
+  AreaTool,
+  IntegralShade,
+  MeasureReadout,
+  PolygonAngles,
   TraceScopeContext,
   onTraceReveal,
   runsShape,
@@ -134,6 +141,8 @@ import {
   publishedOdeNames,
   SIMULATIONS,
   SimulationGallery,
+  GEOMETRY_LESSONS,
+  GeometryLessonsGallery,
   CalculatorResult,
   SavedScenesLibrary,
   type SceneSnapshot,
@@ -145,7 +154,15 @@ import {
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
 import { solveDrag, snapToStep } from "../lib/math/dragSolve";
-import { hasLiveValues, renderLiveLabel } from "../lib/math/liveLabel";
+import {
+  POINT_COORDINATES_LABEL,
+  hasFixedCoordinates,
+  hasLiveValues,
+  liveCoordinatesLabel,
+  pointLabelLocals,
+  pointRowName,
+  renderLiveLabel,
+} from "../lib/math/liveLabel";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { useNodeResize } from "../hooks/useNodeResize";
 import { splitRelation } from "../lib/math/splitRelation";
@@ -167,6 +184,12 @@ type PanelPosition = "left" | "right" | "bottom";
  * unreadable on the canvas — so name what's actually plotted instead.
  */
 function defaultFunctionLabel(fn: MathFunction): string {
+  // A point's equation holds its position as it was: label it with live
+  // coordinates instead, so the label follows the point ("A = {{xy}}").
+  if (fn.type === "point") {
+    const name = pointRowName(fn.expr);
+    return name ? `${name} = ${POINT_COORDINATES_LABEL}` : POINT_COORDINATES_LABEL;
+  }
   // For an ODE the expression is the whole system; it's shown as stacked equations,
   // so it reads fine on the canvas.
   return (fn as any).latex || fn.expr || "";
@@ -534,6 +557,7 @@ export const MathNodeRenderer: React.FC<any> = ({
         typeof settings.sidebarWidth === "number" ? settings.sidebarWidth : 320,
       sidebarHeight:
         typeof settings.sidebarHeight === "number" ? settings.sidebarHeight : 280,
+      liveDrag: settings.liveDrag !== false,
       timeline: readTimelineSettings(settings.timeline),
       view: readGraphView(settings.view),
     };
@@ -613,6 +637,11 @@ export const MathNodeRenderer: React.FC<any> = ({
     () => setShowAdvancedAxisControls(false),
     [],
   );
+  // Area tool: click inside a closed region to measure it.
+  const [areaToolActive, setAreaToolActive] = useState(false);
+  const [areaAxesAsWalls, setAreaAxesAsWalls] = useState(false);
+  const [areaClearSignal, setAreaClearSignal] = useState(0);
+  const [areaCount, setAreaCount] = useState(0);
   const [graphSize, setGraphSize] = useState({ width: 800, height: 600 });
   const [samplingDepth, setSamplingDepth] = useState(
     initialGridSettings.samplingDepth,
@@ -632,6 +661,10 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [sidebarHeight, setSidebarHeight] = useState(
     initialGridSettings.sidebarHeight,
   );
+  // Live drag: a dragged point is compiled on every move, so its label and
+  // everything built on it follow at once. Off, they catch up when the drag
+  // pauses — lighter on graphs with many dependent shapes.
+  const [liveDrag, setLiveDrag] = useState(initialGridSettings.liveDrag);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
   useEffect(() => {
@@ -710,6 +743,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     panelPosition,
     sidebarWidth,
     sidebarHeight,
+    liveDrag,
     timeline: timelineSettings,
     view: homeView,
   });
@@ -737,6 +771,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       panelPosition,
       sidebarWidth,
       sidebarHeight,
+      liveDrag,
       timeline: timelineSettings,
       view: homeView,
     };
@@ -753,6 +788,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     panelPosition,
     sidebarWidth,
     sidebarHeight,
+    liveDrag,
     timelineSettings,
     homeView,
   ]);
@@ -869,6 +905,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setSidebarWidth(parsed.gridSettings.sidebarWidth);
               if (typeof parsed.gridSettings.sidebarHeight === "number")
                 setSidebarHeight(parsed.gridSettings.sidebarHeight);
+              if (typeof parsed.gridSettings.liveDrag === "boolean")
+                setLiveDrag(parsed.gridSettings.liveDrag);
               if (parsed.gridSettings.timeline) {
                 const tl = readTimelineSettings(parsed.gridSettings.timeline);
                 setTimeMode(tl.mode);
@@ -961,6 +999,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     panelPosition,
     sidebarWidth,
     sidebarHeight,
+    liveDrag,
     timelineSettings,
     homeView,
   ]);
@@ -1818,12 +1857,13 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   const suggestedSceneName =
     SIMULATIONS.find((sim) => sim.key === activeExample)?.title ??
+    GEOMETRY_LESSONS.find((lesson) => lesson.key === activeExample)?.title ??
     EXAMPLE_GALLERY.find((ex) => ex.key === activeExample)?.label ??
     "";
 
-  /** Loads a physics lab. Clicking the open one again starts it fresh. */
+  /** Loads a physics lab or geometry lesson. Clicking the open one again starts it fresh. */
   const handleLoadSimulation = (key: string) => {
-    const sim = SIMULATIONS.find((item) => item.key === key);
+    const sim = SIMULATIONS.find((item) => item.key === key) ?? GEOMETRY_LESSONS.find((item) => item.key === key);
     if (!sim) return;
     const scene = sim.build();
     setActiveExample(key);
@@ -2892,6 +2932,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                           )}
                           {/* Roots and y-axis crossings of what this row draws. */}
                           {f.visible && <InterceptsReadout fnId={f.id} scope={traceScope} />}
+                          {f.visible && <MeasureReadout fnId={f.id} type={f.type} scope={traceScope} />}
                           {/* Sliders for just this equation's parameters. They edit the
                               same variables as the Variables Manager, not copies. */}
                           <InlineVariableSliders
@@ -3349,18 +3390,59 @@ export const MathNodeRenderer: React.FC<any> = ({
                                               fn.id === f.id
                                                 ? {
                                                   ...fn,
-                                                  label: (fn as any).latex || fn.expr || "",
+                                                  // A point's equation holds a fixed position: use live coordinates.
+                                                  label: defaultFunctionLabel(fn),
                                                 }
                                                 : fn
                                             )
                                           );
                                         }}
-                                        title="Inject current equation"
+                                        title={f.type === "point" ? "Label with the point's name and live coordinates" : "Inject current equation"}
                                         className="shrink-0 flex items-center justify-center w-8 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md border border-slate-200 dark:border-transparent transition-colors opacity-70 hover:opacity-100"
                                       >
                                         <FunctionSquare className="w-4 h-4" strokeWidth={2} />
                                       </button>
+                                      {f.type === "point" && (
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? { ...fn, label: liveCoordinatesLabel(fn.label, pointRowName(fn.expr)) }
+                                                  : fn,
+                                              ),
+                                            );
+                                          }}
+                                          title="Show the point's coordinates in the label, kept up to date as it moves"
+                                          className="shrink-0 flex items-center justify-center w-8 bg-slate-100 dark:bg-slate-800 text-slate-500 hover:text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-md border border-slate-200 dark:border-transparent transition-colors opacity-70 hover:opacity-100 font-mono text-[10px] font-semibold"
+                                        >
+                                          (x,y)
+                                        </button>
+                                      )}
                                     </div>
+
+                                    {f.type === "point" && hasFixedCoordinates(f.label) && (
+                                      <div className="flex items-center gap-2 mt-1 px-2 py-1 rounded-md border border-amber-300/60 bg-amber-50 text-[10px] text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300">
+                                        <span className="min-w-0 flex-1">These coordinates are fixed text and won't follow the point.</span>
+                                        <button
+                                          type="button"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            setFunctions((prev) =>
+                                              prev.map((fn) =>
+                                                fn.id === f.id
+                                                  ? { ...fn, label: liveCoordinatesLabel(fn.label, pointRowName(fn.expr)) }
+                                                  : fn,
+                                              ),
+                                            );
+                                          }}
+                                          className="shrink-0 rounded px-1.5 py-0.5 font-semibold text-amber-900 hover:bg-amber-200/70 dark:text-amber-200 dark:hover:bg-amber-500/20"
+                                        >
+                                          Make live
+                                        </button>
+                                      </div>
+                                    )}
 
                                     <label className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 dark:text-slate-400 cursor-pointer select-none">
                                       <input
@@ -3376,6 +3458,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                                         className="accent-blue-500"
                                       />
                                       Plain text (no math formatting). Live values: {"{{v0}}"}
+                                      {f.type === "point" && (
+                                        <span className="text-slate-400 dark:text-slate-500">
+                                          {" "}· this point: {"{{xy}}"}, {"{{x}}"}, {"{{y}}"} (decimals: {"{{xy:3}}"})
+                                        </span>
+                                      )}
                                     </label>
 
                                     {/* Label Settings Panel */}
@@ -5362,6 +5449,83 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 </div>
                               </div>
 
+                              {f.type === "polygon" && (
+                                <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-800/60">
+                                  <SettingsSwitch
+                                    checked={f.showAngles !== false}
+                                    onChange={(on) => setFunctions((prev) => prev.map((fn) => (fn.id === f.id ? { ...fn, showAngles: on } : fn)))}
+                                    label="Show angles"
+                                    hint="The interior angle at every corner, with a square for right angles"
+                                  />
+                                </div>
+                              )}
+
+                              {f.type === "function" && (
+                                <div className="flex flex-col gap-2 mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-800/60">
+                                  <SettingsSwitch
+                                    checked={!!f.areaEnabled}
+                                    onChange={(on) =>
+                                      setFunctions((prev) =>
+                                        prev.map((fn) =>
+                                          fn.id === f.id
+                                            ? { ...fn, areaEnabled: on, areaFrom: fn.areaFrom ?? "-1", areaTo: fn.areaTo ?? "1" }
+                                            : fn,
+                                        ),
+                                      )
+                                    }
+                                    label="Area under the curve"
+                                    hint="Shade it and measure the definite integral between two x values"
+                                  />
+                                  {f.areaEnabled && (
+                                    <>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <label className="flex flex-col gap-1">
+                                          <span className="text-[10px] text-slate-400 dark:text-slate-500">From x =</span>
+                                          <SettingsField
+                                            type="text"
+                                            value={f.areaFrom ?? ""}
+                                            placeholder="-1"
+                                            onChange={(e) => setFunctions((prev) => prev.map((fn) => (fn.id === f.id ? { ...fn, areaFrom: e.target.value } : fn)))}
+                                            title="A number or expression, e.g. 0, -pi, a"
+                                          />
+                                        </label>
+                                        <label className="flex flex-col gap-1">
+                                          <span className="text-[10px] text-slate-400 dark:text-slate-500">To x =</span>
+                                          <SettingsField
+                                            type="text"
+                                            value={f.areaTo ?? ""}
+                                            placeholder="1"
+                                            onChange={(e) => setFunctions((prev) => prev.map((fn) => (fn.id === f.id ? { ...fn, areaTo: e.target.value } : fn)))}
+                                            title="A number or expression, e.g. 2, pi, b"
+                                          />
+                                        </label>
+                                      </div>
+                                      <label className="flex items-center justify-between gap-2">
+                                        <span className="text-[10px] text-slate-400 dark:text-slate-500 shrink-0">Measured against</span>
+                                        <SettingsSelect
+                                          value={f.areaAgainst ?? ""}
+                                          onChange={(e) => setFunctions((prev) => prev.map((fn) => (fn.id === f.id ? { ...fn, areaAgainst: e.target.value || undefined } : fn)))}
+                                        >
+                                          <option value="">the x-axis</option>
+                                          {functions
+                                            .filter((o) => o.type === "function" && o.id !== f.id)
+                                            .map((o) => (
+                                              <option key={o.id} value={o.id}>
+                                                {o.name || o.label || o.expr || "Untitled"}
+                                              </option>
+                                            ))}
+                                        </SettingsSelect>
+                                      </label>
+                                      {(f.transformTranslate || f.transformRotate || f.transformScale) && (
+                                        <p className="text-[10px] leading-snug text-amber-600 dark:text-amber-400">
+                                          The area is measured on the untransformed curve; reset its transform to see it shaded.
+                                        </p>
+                                      )}
+                                    </>
+                                  )}
+                                </div>
+                              )}
+
                               {(f.type === "point" ||
                                 f.type === "differential") && (
                                 <div className="flex flex-col gap-2 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2.5">
@@ -5993,6 +6157,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                     activeKey={activeExample}
                     onLoad={handleLoadSimulation}
                   />
+                  <GeometryLessonsGallery
+                    activeKey={activeExample}
+                    onLoad={handleLoadSimulation}
+                  />
                   <SavedScenesLibrary
                     getSnapshot={getSceneSnapshot}
                     onLoad={handleLoadSavedScene}
@@ -6202,7 +6370,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                     </div>
                     <input
                       type="range"
-                      min={0}
+                      min={1}
                       max={30}
                       step={1}
                       value={samplingDepth}
@@ -6370,6 +6538,61 @@ export const MathNodeRenderer: React.FC<any> = ({
                 <SlidersHorizontal size={13} />
                 <span className="hidden sm:inline">Axes</span>
               </button>
+              <button
+                type="button"
+                onClick={() => setAreaToolActive((v) => !v)}
+                aria-pressed={areaToolActive}
+                title={areaToolActive ? "Stop measuring areas" : "Measure area: click inside a closed region"}
+                className={`flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${areaToolActive
+                  ? "bg-emerald-600 text-white shadow-sm"
+                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+              >
+                <Ruler size={13} />
+                <span className="hidden sm:inline">Area</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setLiveDrag((v) => !v)}
+                aria-pressed={liveDrag}
+                title={
+                  liveDrag
+                    ? "Live drag is on: labels and shapes built on a dragged point follow it as it moves. Turn off for smoother dragging on heavy graphs."
+                    : "Live drag is off: labels and shapes built on a dragged point update when the drag pauses. Turn on to follow it as it moves."
+                }
+                className={`flex items-center gap-1.5 shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-medium transition-all ${liveDrag
+                  ? "bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/40"
+                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  }`}
+              >
+                <Zap size={13} className={liveDrag ? "fill-current" : ""} />
+                <span className="hidden sm:inline">Live drag</span>
+              </button>
+              {areaToolActive && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => setAreaAxesAsWalls((v) => !v)}
+                    aria-pressed={areaAxesAsWalls}
+                    title="Count the x- and y-axes as edges, e.g. for the area between a curve and the x-axis"
+                    className={`shrink-0 px-2 py-1.5 rounded-lg text-[11px] font-medium transition-all ${areaAxesAsWalls
+                      ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-emerald-500/40"
+                      : "text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                      }`}
+                  >
+                    Axes as edges
+                  </button>
+                  {areaCount > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setAreaClearSignal((n) => n + 1)}
+                      className="shrink-0 px-2 py-1.5 rounded-lg text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+                    >
+                      Clear {areaCount}
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           )}
 
@@ -6429,6 +6652,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                 samplingDepth,
                 variables,
                 handleHandleDrag,
+                liveDrag,
               };
 
               if (
@@ -6876,6 +7100,15 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   })()}
                                 />
                               )}
+                              {!isInteractionLayer &&
+                                f.type === "polygon" &&
+                                f.showAngles !== false &&
+                                points.length > 2 && (
+                                  <PolygonAngles
+                                    points={points.map((p) => localToGlobal(p[0], p[1]))}
+                                    color={f.color}
+                                  />
+                                )}
                               {isPointBased && (
                                 <Transform translate={[tx, ty]}>
                                   <Transform translate={[px, py]}>
@@ -6979,6 +7212,16 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                                 if (match) {
                                                                   newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
                                                                 }
+                                                                // Live drag: compile here, so the label and whatever
+                                                                // uses this point follow now. Otherwise they catch up
+                                                                // with the regular (debounced) compile.
+                                                                let liveCompiled: any;
+                                                                // Read now: this layer is built once, so a captured value would be stale.
+                                                                if (latestContextRef.current?.liveDrag) {
+                                                                  try {
+                                                                    liveCompiled = parseAndAdjustForCompile(newExpr).compile();
+                                                                  } catch { }
+                                                                }
                                                                 setFunctions(
                                                                   (prev) =>
                                                                     prev.map(
@@ -6988,6 +7231,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                                           ? {
                                                                             ...fn,
                                                                             expr: newExpr,
+                                                                            ...(liveCompiled ? { compiled: liveCompiled } : {}),
                                                                           }
                                                                           : fn,
                                                                     ),
@@ -7021,7 +7265,16 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                               )}
                                                               <SafeLabel
                                                                 at={[p[0] + dx, p[1] + dy]}
-                                                                tex={hasLiveValues(f.label) ? renderLiveLabel(f.label!, baseScope) : f.label!}
+                                                                tex={
+                                                                  hasLiveValues(f.label)
+                                                                    ? renderLiveLabel(
+                                                                      f.label!,
+                                                                      baseScope,
+                                                                      // Where the point is on screen, after any transform.
+                                                                      pointLabelLocals(...localToGlobal(p[0], p[1])),
+                                                                    )
+                                                                    : f.label!
+                                                                }
                                                                 plain={!!f.labelPlain || hasLiveValues(f.label)}
                                                                 color={f.color}
                                                                 rotation={f.labelRotation}
@@ -7280,14 +7533,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       traceFnId={f.id}
                                       traceParamName="t"
                                       sampleKey={curveKey}
-                                      minSamplingDepth={Math.max(
-                                        8,
-                                        Math.min(10, samplingDepth),
-                                      )}
-                                      maxSamplingDepth={Math.max(
-                                        8,
-                                        Math.min(14, samplingDepth),
-                                      )}
+                                      // The Display quality slider, mapped to sampling settings.
+                                      minSamplingDepth={curveSamplingForQuality(samplingDepth).minDepth}
+                                      maxSamplingDepth={curveSamplingForQuality(samplingDepth).maxDepth}
+                                      errorPx2={curveSamplingForQuality(samplingDepth).errorPx2}
                                       xy={(t: number) => {
                                         try {
                                           const scope = Object.create(baseScope);
@@ -7488,14 +7737,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       traceFnId={f.id}
                                       traceParamName="θ"
                                       sampleKey={curveKey}
-                                      minSamplingDepth={Math.max(
-                                        8,
-                                        Math.min(10, samplingDepth),
-                                      )}
-                                      maxSamplingDepth={Math.max(
-                                        8,
-                                        Math.min(14, samplingDepth),
-                                      )}
+                                      // The Display quality slider, mapped to sampling settings.
+                                      minSamplingDepth={curveSamplingForQuality(samplingDepth).minDepth}
+                                      maxSamplingDepth={curveSamplingForQuality(samplingDepth).maxDepth}
+                                      errorPx2={curveSamplingForQuality(samplingDepth).errorPx2}
                                       xy={(() => {
                                         const useThetaAsAngle = /\btheta\b|θ/.test(f.expr);
                                         return (tVal: number): [number, number] => {
@@ -7669,19 +7914,54 @@ export const MathNodeRenderer: React.FC<any> = ({
                                           </React.Fragment>
                                         );
                                       })()}
+                                    {f.areaEnabled && isIdentityTransform && f.compiled && (() => {
+                                      // Bounds are expressions (e.g. "pi", "a"), evaluated with the sliders.
+                                      const bound = (expr: string | undefined, fallback: number) => {
+                                        try {
+                                          const v = Number(mathjs.evaluate(expr?.trim() || String(fallback), Object.create(baseScope)));
+                                          return Number.isFinite(v) ? v : NaN;
+                                        } catch {
+                                          return NaN;
+                                        }
+                                      };
+                                      const evaluator = (compiled: any) => {
+                                        const scope = Object.create(baseScope);
+                                        return (x: number) => {
+                                          scope.x = x;
+                                          try {
+                                            return Number(compiled.evaluate(scope));
+                                          } catch {
+                                            return NaN;
+                                          }
+                                        };
+                                      };
+                                      const other = f.areaAgainst
+                                        ? functions.find((o) => o.id === f.areaAgainst && o.type === "function" && o.compiled && o.visible)
+                                        : undefined;
+                                      const from = bound(f.areaFrom, -1);
+                                      const to = bound(f.areaTo, 1);
+                                      return (
+                                        <IntegralShade
+                                          id={f.id}
+                                          color={f.color}
+                                          f={evaluator(f.compiled)}
+                                          g={other ? evaluator(other.compiled) : undefined}
+                                          againstName={other ? other.name || other.label || other.expr : "the x-axis"}
+                                          from={from}
+                                          to={to}
+                                          cacheKey={`${curveKey}|${other ? `${other.id}:${other.expr}:${variablesHash}:${fTime}` : ""}`}
+                                        />
+                                      );
+                                    })()}
                                     <SmoothCurve
                                       key={`${f.id}-function`}
                                       traceKey={`${f.id}:curve`}
                                       traceFnId={f.id}
                                       sampleKey={curveKey}
-                                      minSamplingDepth={Math.max(
-                                        8,
-                                        Math.min(10, samplingDepth),
-                                      )}
-                                      maxSamplingDepth={Math.max(
-                                        8,
-                                        Math.min(14, samplingDepth),
-                                      )}
+                                      // The Display quality slider, mapped to sampling settings.
+                                      minSamplingDepth={curveSamplingForQuality(samplingDepth).minDepth}
+                                      maxSamplingDepth={curveSamplingForQuality(samplingDepth).maxDepth}
+                                      errorPx2={curveSamplingForQuality(samplingDepth).errorPx2}
                                       // Sample exactly the pane range (already padded past the
                                       // viewport and snapped by Mafs), as Mafs' own Plot.OfX does.
                                       // With a transform, use the pane's x-extent in the curve's
@@ -8355,7 +8635,14 @@ export const MathNodeRenderer: React.FC<any> = ({
                     <MathNodesLayer isInteractionLayer={true} />
                   </PlotErrorBoundary>
                   {/* Last, so its drag handle sits above every curve's stroke. */}
-                  <TraceOverlay containerRef={graphContainerRef} />
+                  <TraceOverlay containerRef={graphContainerRef} disabled={areaToolActive} />
+                  <AreaTool
+                    active={areaToolActive}
+                    containerRef={graphContainerRef}
+                    axesAsWalls={areaAxesAsWalls}
+                    clearSignal={areaClearSignal}
+                    onCountChange={setAreaCount}
+                  />
                 </React.Fragment>
               );
             })()}

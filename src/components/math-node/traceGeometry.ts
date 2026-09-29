@@ -771,3 +771,35 @@ export function requestTraceReveal(view: TraceView, scope = ""): boolean {
   handler(view);
   return true;
 }
+
+// ─── For measurements ──────────────────────────────────────────────────────────
+
+/**
+ * Every drawn curve of a graph as flat segments (x0, y0, x1, y1, …): the walls
+ * the Area tool fills between. Dots aren't walls.
+ */
+export function collectSegments(scope = ""): number[] {
+  const out: number[] = [];
+  for (const shape of shapes.values()) {
+    if ((shape.scope ?? "") !== scope || shape.kind !== "curve") continue;
+    const { xs, ys } = shape;
+    const n = Math.min(xs.length, ys.length);
+    for (let i = 0; i < n - 1; i++) {
+      const x0 = xs[i];
+      const y0 = ys[i];
+      const x1 = xs[i + 1];
+      const y1 = ys[i + 1];
+      if (finite(x0) && finite(y0) && finite(x1) && finite(y1)) out.push(x0, y0, x1, y1);
+    }
+  }
+  return out;
+}
+
+/** The drawn shapes of one row. */
+export function shapesForFunction(fnId: string, scope = ""): TraceShape[] {
+  const out: TraceShape[] = [];
+  for (const shape of shapes.values()) {
+    if (shape.fnId === fnId && (shape.scope ?? "") === scope) out.push(shape);
+  }
+  return out;
+}
