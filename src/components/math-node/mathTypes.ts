@@ -41,6 +41,16 @@ export interface MathFunction {
    * Ready-made rows are pinned to "rad"; a row without it follows the switch.
    */
   angleUnit?: "rad" | "deg";
+  /**
+   * Rows drawn together as one shape (a measurement's line, arc and label; a circle
+   * and its rim handle) share this, and are selected and deleted as one.
+   */
+  drawGroup?: string;
+  /**
+   * Made transformable by the Select tool, which draws its own handles while the
+   * row is selected: the row's built-in pivot handle stays hidden.
+   */
+  handlesOnSelect?: boolean;
   compiled?: any;
   compiledKey?: string;
   expr2?: string; // For parametric x/y or polar r/theta
@@ -62,6 +72,15 @@ export interface MathFunction {
 
   /** Show the label as ordinary text instead of formatting it as math. */
   labelPlain?: boolean;
+  /**
+   * The label is LaTeX, rendered as written once its {{…}} values are filled in
+   * (a vector's name with an arrow over it, beside its live length).
+   */
+  labelLatex?: boolean;
+  /** A vector row: draw its x and y parts as the dashed legs of a right triangle. */
+  vectorComponents?: boolean;
+  /** A vector row: draw the arc of its direction, from the positive x-axis. */
+  vectorDirection?: boolean;
   fillColor?: string;
   fillOpacity?: number;
   fillPattern?:

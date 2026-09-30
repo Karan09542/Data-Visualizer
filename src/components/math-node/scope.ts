@@ -85,9 +85,13 @@ const PRESET_ROW_ID = /^(?:g[a-z]{1,3}_[a-z]+|proj|spring|pend|kin)_\d+$/;
  * t up to 2π collapses to a dot if its t is read as degrees).
  */
 export function rowInDegrees(f: Pick<MathFunction, "id" | "angleUnit">, graphDegrees: boolean): boolean {
-  if (f.angleUnit) return f.angleUnit === "deg";
-  if (PRESET_ROW_ID.test(f.id)) return false;
-  return graphDegrees;
+  const pinned = pinnedAngleUnit(f);
+  return pinned ? pinned === "deg" : graphDegrees;
+}
+
+/** The unit a row is fixed to, if any (its own, or radians for a ready-made row). */
+export function pinnedAngleUnit(f: Pick<MathFunction, "id" | "angleUnit">): "rad" | "deg" | undefined {
+  return f.angleUnit ?? (PRESET_ROW_ID.test(f.id) ? "rad" : undefined);
 }
 
 /** The scope a row is evaluated in: `scope`, plus degree trig when the row is in degrees. */

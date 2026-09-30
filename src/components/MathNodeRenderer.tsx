@@ -151,6 +151,32 @@ import {
   EmptyGraph,
   GraphTips,
   buildDrawnShape,
+  VectorAngles,
+  buildVectorOp,
+  VECTOR_OP_LABELS,
+  type VectorOp,
+  type DrawnShape,
+  VectorDecorations,
+  VectorResultants,
+  vectorResultants,
+  vectorEndNames,
+  vectorJoints,
+  type DrawnVector,
+  type VectorOptions,
+  SelectTool,
+  SELECT_TOOL_HINT,
+  SELECT_MOVE,
+  SELECT_ROTATE,
+  SELECT_RESIZE,
+  describeSelection,
+  describeSelections,
+  selectionCentre,
+  transformPoints,
+  transformRow,
+  deleteRows,
+  type GraphTool,
+  type Motion,
+  type SelectToolSelection,
   DEGREE_TRIG,
   rowInDegrees,
   rowScope,
@@ -578,6 +604,8 @@ export const MathNodeRenderer: React.FC<any> = ({
         typeof settings.sidebarHeight === "number" ? settings.sidebarHeight : 280,
       liveDrag: settings.liveDrag !== false,
       angleMode: (settings.angleMode === "degrees" ? "degrees" : "radians") as "degrees" | "radians",
+      vectorAngles: settings.vectorAngles !== false,
+      vectorResultants: settings.vectorResultants === true,
       timeline: readTimelineSettings(settings.timeline),
       view: readGraphView(settings.view),
     };
@@ -687,8 +715,33 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [liveDrag, setLiveDrag] = useState(initialGridSettings.liveDrag);
   // Trig for the whole graph: radians, or degrees (sin(30) = 0.5).
   const [angleMode, setAngleMode] = useState<"degrees" | "radians">(initialGridSettings.angleMode);
+  // Show the angle wherever two drawn vectors share an end point.
+  const [vectorAngles, setVectorAngles] = useState(initialGridSettings.vectorAngles);
+  // Show the resultant wherever drawn vectors are joined.
+  const [showResultants, setShowResultants] = useState(initialGridSettings.vectorResultants);
   // The drawing tool in hand; null lets the graph pan as usual.
-  const [drawTool, setDrawTool] = useState<DrawToolKind | null>(null);
+  const [drawTool, setDrawTool] = useState<GraphTool | null>(null);
+  // What the Vector tool labels its arrows with (remembered per browser).
+  const [vectorOptions, setVectorOptionsState] = useState<VectorOptions>(() => {
+    try {
+      return JSON.parse(localStorage.getItem("mathNode.vectorOptions") || "{}") || {};
+    } catch {
+      return {};
+    }
+  });
+  const toggleVectorOption = (key: keyof VectorOptions) =>
+    setVectorOptionsState((prev) => {
+      const next = { ...prev, [key]: !prev[key] };
+      try {
+        localStorage.setItem("mathNode.vectorOptions", JSON.stringify(next));
+      } catch { }
+      return next;
+    });
+  // The rows the Select tool has hold of (each with the rest of its drawn shape).
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  useEffect(() => {
+    if (drawTool !== "select") setSelectedIds([]);
+  }, [drawTool]);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
 
   useEffect(() => {
@@ -769,6 +822,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     sidebarHeight,
     liveDrag,
     angleMode,
+    vectorAngles,
+    vectorResultants: showResultants,
     timeline: timelineSettings,
     view: homeView,
   });
@@ -798,6 +853,8 @@ export const MathNodeRenderer: React.FC<any> = ({
       sidebarHeight,
       liveDrag,
       angleMode,
+      vectorAngles,
+      vectorResultants: showResultants,
       timeline: timelineSettings,
       view: homeView,
     };
@@ -816,6 +873,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     sidebarHeight,
     liveDrag,
     angleMode,
+    vectorAngles,
+    showResultants,
     timelineSettings,
     homeView,
   ]);
@@ -936,6 +995,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setLiveDrag(parsed.gridSettings.liveDrag);
               if (parsed.gridSettings.angleMode === "degrees" || parsed.gridSettings.angleMode === "radians")
                 setAngleMode(parsed.gridSettings.angleMode);
+              if (typeof parsed.gridSettings.vectorAngles === "boolean")
+                setVectorAngles(parsed.gridSettings.vectorAngles);
+              if (typeof parsed.gridSettings.vectorResultants === "boolean")
+                setShowResultants(parsed.gridSettings.vectorResultants);
               if (parsed.gridSettings.timeline) {
                 const tl = readTimelineSettings(parsed.gridSettings.timeline);
                 setTimeMode(tl.mode);
@@ -1030,6 +1093,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     sidebarHeight,
     liveDrag,
     angleMode,
+    vectorAngles,
+    showResultants,
     timelineSettings,
     homeView,
   ]);
@@ -1635,12 +1700,21 @@ export const MathNodeRenderer: React.FC<any> = ({
   /** A shape finished with the drawing tools becomes rows: its new points, then the shape. */
   const handleDrawComplete = (tool: DrawToolKind, picks: DrawPick[]) => {
     const current = functionsRef.current;
-    const { rows, sliders } = buildDrawnShape(tool, picks, {
+    const { rows, sliders, updates, insertBefore } = buildDrawnShape(tool, picks, {
       taken: takenNames(current, variablesRef.current.map((v) => v.name)),
       color: COLORS[current.length % COLORS.length],
       pointColor: "#2563eb",
       newId: generateSafeId,
+      // For a point placed on a shape's outline: the shape, and which names are sliders.
+      rowById: (id) => current.find((f) => f.id === id),
+      sliderNames: new Set(variablesRef.current.map((v) => v.name)),
+      vector: vectorOptions,
     });
+    addDrawnShape({ rows, sliders, updates, insertBefore });
+  };
+
+  /** Puts a drawn shape's rows (and sliders) on the graph. */
+  const addDrawnShape = ({ rows, sliders, updates, insertBefore }: DrawnShape) => {
     if (!rows.length) return;
     // A circle's radius: a slider its rim point sets when dragged.
     if (sliders.length) {
@@ -1662,8 +1736,202 @@ export const MathNodeRenderer: React.FC<any> = ({
       ]);
     }
     // Blank rows are dropped, so a drawing started from the empty graph doesn't leave one behind.
-    setFunctions((prev) => [...prev.filter((f) => f.expr.trim()), ...rows]);
+    setFunctions((prev) => {
+      const patches = new Map((updates ?? []).map((u) => [u.id, u.patch]));
+      const kept = prev
+        .filter((f) => f.expr.trim())
+        // A shape that gained a point (a polygon's new corner) is compiled again.
+        .map((f) => (patches.has(f.id) ? { ...f, ...patches.get(f.id), compiled: undefined, compiledKey: undefined } : f));
+      // Rows are evaluated in order: a point a shape now uses has to come before it.
+      const at = insertBefore ? kept.findIndex((f) => f.id === insertBefore) : -1;
+      return at < 0 ? [...kept, ...rows] : [...kept.slice(0, at), ...rows, ...kept.slice(at)];
+    });
   };
+
+  // ─── Selecting: move, turn, resize, delete ──────────────────────────────────
+  const selection = useMemo(
+    () => (selectedIds.length ? describeSelections(selectedIds, functions, variables) : null),
+    [selectedIds, functions, variables],
+  );
+  // One row with no points behind it is transformed through its own settings.
+  const selectedRow =
+    selection && selection.rowIds.length === 1 ? functions.find((f) => f.id === selection.rowIds[0]) : undefined;
+
+  // What the Select tool draws its handles around.
+  let toolSelection: SelectToolSelection | null = null;
+  if (selection) {
+    if (selection.points.length) {
+      // Built on points: they are what moves.
+      toolSelection = {
+        rowIds: selection.rowIds,
+        centre: selectionCentre(selection),
+        canRotate: selection.points.length >= 2,
+        canResize: selection.points.length >= 2 || selection.sliders.length > 0,
+      };
+    } else if (selectedRow?.handlesOnSelect && selectedRow.transformPivot) {
+      // No points behind it: its own translate/rotate/scale, about its pivot.
+      const [tx, ty] = selectedRow.transformTranslate ?? [0, 0];
+      toolSelection = {
+        rowIds: selection.rowIds,
+        centre: [selectedRow.transformPivot[0] + tx, selectedRow.transformPivot[1] + ty],
+        canRotate: true,
+        canResize: true,
+      };
+    } else {
+      // A row the user set up to transform itself keeps its own handles; here it can be deleted.
+      toolSelection = { rowIds: selection.rowIds, centre: null, canRotate: false, canResize: false };
+    }
+  }
+
+  const handleSelect = (fnIds: string[], middle: [number, number] | null, add: boolean) => {
+    // Shift adds what isn't selected yet and lets go of what is.
+    setSelectedIds((prev) => {
+      if (!add) return fnIds;
+      const groups = (ids: string[]) => describeSelections(ids, functionsRef.current, variablesRef.current)?.rowIds ?? [];
+      const had = new Set(groups(prev));
+      const picked = groups(fnIds);
+      const dropping = picked.length > 0 && picked.every((id) => had.has(id));
+      return dropping ? [...had].filter((id) => !picked.includes(id)) : [...new Set([...prev, ...fnIds])];
+    });
+    const fnId = !add && fnIds.length === 1 ? fnIds[0] : null;
+    if (!fnId || !middle) return;
+    const sel = describeSelection(fnId, functionsRef.current, variablesRef.current);
+    if (!sel || sel.points.length || sel.rowIds.length !== 1) return;
+    // A row with no points behind it turns and resizes about the middle of what's
+    // visible of it. Its translate is adjusted so that taking this pivot moves nothing.
+    setFunctions((prev) =>
+      prev.map((f) => {
+        if (f.id !== fnId || f.isTransformable || f.handlesOnSelect || f.type === "calculator") return f;
+        const [tx, ty] = f.transformTranslate ?? [0, 0];
+        const rot = f.transformRotate ?? 0;
+        const [sx, sy] = f.transformScale ?? [1, 1];
+        const dx = middle[0] - tx;
+        const dy = middle[1] - ty;
+        const px = (dx * Math.cos(rot) + dy * Math.sin(rot)) / (sx || 1);
+        const py = (-dx * Math.sin(rot) + dy * Math.cos(rot)) / (sy || 1);
+        return {
+          ...f,
+          isTransformable: true,
+          isPivotEnabled: true,
+          handlesOnSelect: true,
+          transformPivot: [px, py] as [number, number],
+          transformTranslate: [middle[0] - px, middle[1] - py] as [number, number],
+        };
+      }),
+    );
+  };
+
+  const handleSelectionMotion = (motion: Motion) => {
+    const ids = selectedIds;
+    if (!ids.length) return;
+    const now = describeSelections(ids, functionsRef.current, variablesRef.current);
+    if (!now) return;
+    if (!now.points.length) {
+      const id = now.rowIds.length === 1 ? now.rowIds[0] : null;
+      if (!id) return;
+      setFunctions((prev) => prev.map((f) => (f.id === id && f.handlesOnSelect ? { ...f, ...transformRow(f, motion) } : f)));
+      return;
+    }
+    // Steps arrive faster than renders: each is applied to the latest rows, and the
+    // points are compiled here so the shape follows at once.
+    setFunctions((prev) => {
+      const sel = describeSelections(ids, prev, variablesRef.current);
+      if (!sel) return prev;
+      const { exprs } = transformPoints(sel, motion, variablesRef.current);
+      return prev.map((f) => {
+        const expr = exprs.get(f.id);
+        if (!expr) return f;
+        let compiled = f.compiled;
+        try {
+          compiled = parseAndAdjustForCompile(expr).compile();
+        } catch { }
+        return { ...f, expr, compiled };
+      });
+    });
+    if (motion.kind === "scale" && now.sliders.length) {
+      setVariables((prev) =>
+        prev.map((v) => {
+          if (!now.sliders.includes(v.name)) return v;
+          const value = Number((v.value * motion.factor).toFixed(6));
+          return { ...v, value, max: Math.max(v.max, Math.ceil(value)) };
+        }),
+      );
+    }
+  };
+
+  // The drawn vectors in the selection, in row order: what vector arithmetic works on.
+  const selectedVectors = selection
+    ? functions.flatMap((f) => {
+        if (f.type !== "vector" || !selection.rowIds.includes(f.id)) return [];
+        const names = vectorEndNames(f.expr);
+        return names ? [{ tail: names[0], tip: names[1] }] : [];
+      })
+    : [];
+
+  const handleVectorOp = (op: VectorOp) => {
+    const current = functionsRef.current;
+    const shape = buildVectorOp(op, selectedVectors, {
+      taken: takenNames(current, variablesRef.current.map((v) => v.name)),
+      color: COLORS[current.length % COLORS.length],
+      newId: generateSafeId,
+      vector: vectorOptions,
+    });
+    if (shape) addDrawnShape(shape);
+  };
+
+  const handleDeleteSelection = () => {
+    if (!selection) return;
+    const next = deleteRows(functionsRef.current, variablesRef.current, selection.rowIds);
+    setFunctions(next.functions);
+    setVariables(next.variables);
+    setSelectedIds([]);
+  };
+
+  // Delete removes the selection; Escape lets go of it, then of the tool.
+  const selectKeysRef = useRef({ handleDeleteSelection, hasSelection: !!selection });
+  selectKeysRef.current = { handleDeleteSelection, hasSelection: !!selection };
+  useEffect(() => {
+    if (drawTool !== "select") return;
+    const onKey = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+      const { hasSelection, handleDeleteSelection: remove } = selectKeysRef.current;
+      if ((e.key === "Delete" || e.key === "Backspace") && hasSelection) {
+        // Not the canvas's own Delete, which would remove the whole node.
+        e.preventDefault();
+        e.stopPropagation();
+        remove();
+      } else if (e.key === "Escape") {
+        if (hasSelection) setSelectedIds([]);
+        else setDrawTool(null);
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [drawTool]);
+
+  // Angles between drawn vectors that share an end point (by name).
+  const namedVectors = functions.flatMap((f) => {
+    if (f.type !== "vector" || f.visible === false || !f.compiled) return [];
+    const names = vectorEndNames(f.expr);
+    if (!names) return [];
+    const { points } = resolveGeometryPoints(f, rowScope(f, baseScope, angleMode === "degrees"));
+    if (points.length !== 2) return [];
+    return [
+      {
+        id: f.id,
+        tailName: names[0],
+        tipName: names[1],
+        tail: points[0],
+        tip: points[1],
+        color: f.color,
+        components: !!f.vectorComponents,
+        direction: !!f.vectorDirection,
+      },
+    ];
+  });
+  const vectorAngleJoints = vectorAngles ? vectorJoints(namedVectors as DrawnVector[]) : [];
+  const resultants = showResultants ? vectorResultants(namedVectors as DrawnVector[]) : [];
 
   // ─── Recentring ───────────────────────────────────────────────────────────
   /** Pixels the toolbars cover along the graph's left and top edges. */
@@ -1713,7 +1981,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   };
 
   // Named points the drawing tools snap to.
-  const drawSnapPoints = drawTool
+  const drawSnapPoints = drawTool && drawTool !== "select"
     ? functions.flatMap((f) => {
         if (f.type !== "point" || f.visible === false || !f.compiled) return [];
         const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1];
@@ -6880,7 +7148,7 @@ export const MathNodeRenderer: React.FC<any> = ({
             zoom={{ min: 0.1, max: 20 }}
             viewBox={focusView ?? homeView}
             preserveAspectRatio="contain"
-            pan={true}
+            pan={drawTool !== "select"}
           >
             <AdaptiveGrid
               gridType={gridType}
@@ -7545,7 +7813,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                                     )
                                                                     : f.label!
                                                                 }
-                                                                plain={!!f.labelPlain || hasLiveValues(f.label)}
+                                                                plain={!f.labelLatex && (!!f.labelPlain || hasLiveValues(f.label))}
+                                                                rawLatex={!!f.labelLatex}
                                                                 color={f.color}
                                                                 rotation={f.labelRotation}
                                                                 scale={f.labelScale}
@@ -8667,6 +8936,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                                   {/* Pivot Editor/Handle (Blueish) */}
                                   {f.isPivotEnabled &&
+                                    !f.handlesOnSelect &&
                                     (!activeGizmo ||
                                       activeGizmo.id !== f.id ||
                                       activeGizmo.type === "pivot") && (
@@ -8910,9 +9180,19 @@ export const MathNodeRenderer: React.FC<any> = ({
                     <MathNodesLayer isInteractionLayer={true} />
                   </PlotErrorBoundary>
                   {/* Last, so its drag handle sits above every curve's stroke. */}
+                  <VectorDecorations vectors={namedVectors} />
+                  <VectorResultants resultants={resultants} />
+                  <VectorAngles joints={vectorAngleJoints} />
                   <TraceOverlay containerRef={graphContainerRef} disabled={areaToolActive || !!drawTool} />
+                  <SelectTool
+                    active={!isCompact && drawTool === "select"}
+                    containerRef={graphContainerRef}
+                    selection={toolSelection}
+                    onSelect={handleSelect}
+                    onMotion={handleSelectionMotion}
+                  />
                   <DrawTool
-                    tool={isCompact ? null : drawTool}
+                    tool={isCompact || drawTool === "select" ? null : drawTool}
                     containerRef={graphContainerRef}
                     points={drawSnapPoints}
                     color={COLORS[functions.length % COLORS.length]}
@@ -8939,6 +9219,20 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setDrawTool(t);
                 if (t) setAreaToolActive(false);
               }}
+              vectorOptions={vectorOptions}
+              onToggleVectorOption={toggleVectorOption}
+              vectorAngles={vectorAngles}
+              onToggleVectorAngles={() => setVectorAngles((v) => !v)}
+              vectorResultants={showResultants}
+              onToggleVectorResultants={() => setShowResultants((v) => !v)}
+              onDrawVector={(tail, tip) => {
+                // An end that lands on a point already there is that point.
+                const pick = ([x, y]: [number, number]): DrawPick => {
+                  const at = drawSnapPoints.find((p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6);
+                  return at ? { name: at.name, x: at.x, y: at.y } : { x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) };
+                };
+                handleDrawComplete("vector", [pick(tail), pick(tip)]);
+              }}
             />
           )}
           {!isCompact && drawTool && (
@@ -8947,7 +9241,51 @@ export const MathNodeRenderer: React.FC<any> = ({
               data-capture-exclude
               className="absolute top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 max-w-[calc(100%-6rem)] pl-3 pr-1 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-medium shadow-lg"
             >
-              <span className="min-w-0">{DRAW_TOOL_HINTS[drawTool]} <span className="opacity-75">Esc to stop.</span></span>
+              {drawTool !== "select" ? (
+                <span className="min-w-0">{DRAW_TOOL_HINTS[drawTool]} <span className="opacity-75">Esc to stop.</span></span>
+              ) : !selection ? (
+                <span className="min-w-0">{SELECT_TOOL_HINT} <span className="opacity-75">Esc to stop.</span></span>
+              ) : (
+                <>
+                  <span className="min-w-0 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
+                    {selectedIds.length > 1 && <span className="font-semibold">{selectedIds.length} selected</span>}
+                    {toolSelection?.centre ? (
+                      <>
+                        <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full ring-1 ring-white/70" style={{ background: SELECT_MOVE }} />move</span>
+                        {toolSelection.canRotate && (
+                          <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full ring-1 ring-white/70" style={{ background: SELECT_ROTATE }} />turn</span>
+                        )}
+                        {toolSelection.canResize && (
+                          <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full ring-1 ring-white/70" style={{ background: SELECT_RESIZE }} />resize</span>
+                        )}
+                      </>
+                    ) : (
+                      <span>Selected.</span>
+                    )}
+                  </span>
+                  {(Object.keys(VECTOR_OP_LABELS) as VectorOp[])
+                    .filter((op) => VECTOR_OP_LABELS[op].needs === selectedVectors.length)
+                    .map((op) => (
+                      <button
+                        key={op}
+                        type="button"
+                        onClick={() => handleVectorOp(op)}
+                        title={VECTOR_OP_LABELS[op].title}
+                        className="shrink-0 px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 font-semibold font-mono"
+                      >
+                        {VECTOR_OP_LABELS[op].label}
+                      </button>
+                    ))}
+                  <button
+                    type="button"
+                    onClick={handleDeleteSelection}
+                    title="Delete the selected shape (Delete)"
+                    className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 hover:bg-red-400 font-semibold"
+                  >
+                    <Trash2 size={11} /> Delete
+                  </button>
+                </>
+              )}
               <button
                 type="button"
                 onClick={() => setDrawTool(null)}

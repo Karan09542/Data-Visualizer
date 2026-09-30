@@ -1,13 +1,20 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useContext, useEffect, useRef, useState } from "react";
 import { Line, Point, Polyline, Circle as MafsCircle, useTransformContext, vec } from "mafs";
 import type { Vec2 } from "./areaMath";
+import { TraceScopeContext, getTraceShape, hitTestTrace } from "./traceGeometry";
 
 /** What each drawing tool makes, and how many clicks it takes. */
-export type DrawToolKind = "point" | "segment" | "line" | "circle" | "polygon" | "distance" | "angle";
+export type DrawToolKind = "point" | "segment" | "vector" | "line" | "circle" | "polygon" | "distance" | "angle";
+
+/** A tool in hand on the graph: one that draws, or Select. */
+export type GraphTool = DrawToolKind | "select";
+
+export const SELECT_TOOL_HINT = "Click a shape, or drag a box round several, then move, turn, resize or delete them. Shift adds to the selection.";
 
 export const DRAW_TOOL_CLICKS: Record<DrawToolKind, number> = {
   point: 1,
   segment: 2,
+  vector: 2,
   line: 2,
   circle: 2,
   polygon: Infinity, // until the first corner is clicked again
@@ -16,8 +23,9 @@ export const DRAW_TOOL_CLICKS: Record<DrawToolKind, number> = {
 };
 
 export const DRAW_TOOL_HINTS: Record<DrawToolKind, string> = {
-  point: "Click to place a point.",
+  point: "Click to place a point. On a shape's outline it attaches to that shape.",
   segment: "Click two points to join them.",
+  vector: "Click where the arrow starts, then where it points.",
   line: "Click two points for a line through them.",
   circle: "Click the centre, then a point on the circle.",
   polygon: "Click the corners, then the first corner again to close (or press Enter).",
@@ -34,6 +42,11 @@ export interface DrawPick {
   name?: string;
   x: number;
   y: number;
+  /**
+   * The shape whose outline was clicked (Point tool only): its row, which
+   * segment of its outline, and the curve parameter there when it has one.
+   */
+  on?: { fnId: string; seg: number; t?: number };
 }
 
 interface DrawToolProps {
@@ -59,6 +72,7 @@ const SNAP_PX = 12;
  */
 export function DrawTool({ tool, containerRef, points, color, onComplete, onExit }: DrawToolProps) {
   const { viewTransform } = useTransformContext();
+  const scope = useContext(TraceScopeContext);
   const anchorRef = useRef<SVGGElement>(null);
   const [picks, setPicks] = useState<DrawPick[]>([]);
   const [hover, setHover] = useState<Vec2 | null>(null);
@@ -98,6 +112,14 @@ export function DrawTool({ tool, containerRef, points, color, onComplete, onExit
     }
     // A corner of this shape counts as itself (an existing point keeps its name).
     if (best) return { name: best.name && !best.name.startsWith("#") ? best.name : `#${best.pending}`, x: best.x, y: best.y };
+    // A point placed on a shape's outline belongs to that shape.
+    if (live.current.tool === "point") {
+      const hit = hitTestTrace(w[0], w[1], { sx: px, sy: py }, SNAP_PX, scope);
+      const shape = hit && getTraceShape(hit.key);
+      if (hit && shape && shape.kind === "curve") {
+        return { x: hit.x, y: hit.y, on: { fnId: shape.fnId, seg: hit.seg, t: hit.t } };
+      }
+    }
     const gx = Math.round(w[0]);
     const gy = Math.round(w[1]);
     if (dist(gx, gy) < SNAP_PX * 0.8) return { x: gx, y: gy };
@@ -215,7 +237,7 @@ export function DrawTool({ tool, containerRef, points, color, onComplete, onExit
       {tool === "line" && placed.length === 1 && hover && (
         <Line.ThroughPoints point1={placed[0]} point2={hover} color={color} opacity={0.7} style="dashed" />
       )}
-      {(tool === "segment" || tool === "distance" || tool === "angle" || tool === "polygon") && withHover.length >= 2 && (
+      {(tool === "segment" || tool === "vector" || tool === "distance" || tool === "angle" || tool === "polygon") && withHover.length >= 2 && (
         <Polyline points={withHover} color={color} strokeOpacity={0.7} strokeStyle="dashed" weight={2} />
       )}
       {placed.map((p, i) => (

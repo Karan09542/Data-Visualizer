@@ -88,6 +88,8 @@ const TIPS = [
   "Type anything: y = x², x² + y² = 4, r = 1 + cos(θ), [cos t, sin t] or A = [1, 2]. The kind is detected for you.",
   "Hold Shift and move over a curve to trace it and read its coordinates. On a touch screen, tap the curve.",
   "The tools on the left draw points, segments, circles and polygons, and measure distances and angles.",
+  "Select (second tool on the left): click a shape or drag a box round several, then move, turn, resize or delete them.",
+  "With the Point tool, click on a shape: a polygon gets a new corner, a circle a point that resizes it, a curve a point that slides along it.",
   "Points with a soft halo can be dragged. Live drag (⚡) keeps everything built on them following.",
   "Area: switch it on, then click inside any closed region to measure it.",
   "Labels can show live values: A = {{xy}}, or r = {{r}} for a slider r.",

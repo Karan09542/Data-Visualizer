@@ -803,3 +803,26 @@ export function shapesForFunction(fnId: string, scope = ""): TraceShape[] {
   }
   return out;
 }
+
+/**
+ * Rows of one graph drawn entirely inside a box (for selecting by dragging one
+ * out). A curve that runs on past the box isn't in it, however much of it shows.
+ */
+export function rowsInsideBox(box: { x0: number; x1: number; y0: number; y1: number }, scope = ""): string[] {
+  const inside = new Map<string, boolean>();
+  for (const shape of shapes.values()) {
+    if ((shape.scope ?? "") !== scope) continue;
+    let any = false;
+    let all = true;
+    for (let i = 0; i < shape.xs.length && all; i++) {
+      const x = shape.xs[i];
+      const y = shape.ys[i];
+      if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+      any = true;
+      if (x < box.x0 || x > box.x1 || y < box.y0 || y > box.y1) all = false;
+    }
+    if (!any) continue;
+    inside.set(shape.fnId, (inside.get(shape.fnId) ?? true) && all);
+  }
+  return [...inside].filter(([, ok]) => ok).map(([id]) => id);
+}
