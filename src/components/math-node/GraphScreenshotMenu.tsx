@@ -33,7 +33,9 @@ async function captureGraph(el: HTMLElement, scale: number, background: string):
     embedFonts: true,
     backgroundColor: background,
     exclude: [`[${CAPTURE_EXCLUDE}]`],
-    excludeMode: "hide",
+    // Removed, not hidden: "hide" leaves a same-sized box in the page flow, and for a
+    // toolbar floating over the graph that box pushes the whole graph down.
+    excludeMode: "remove",
   } as any);
 }
 

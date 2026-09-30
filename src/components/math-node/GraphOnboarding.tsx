@@ -91,7 +91,7 @@ const TIPS = [
   "Points with a soft halo can be dragged. Live drag (⚡) keeps everything built on them following.",
   "Area: switch it on, then click inside any closed region to measure it.",
   "Labels can show live values: A = {{xy}}, or r = {{r}} for a slider r.",
-  "Deg/Rad switches trig between degrees and radians: in degrees, sin(30) = 0.5.",
+  "DEG/RAD sets the angle unit for the equations you type: in degrees, sin(30) = 0.5. Lessons and drawn shapes keep working either way.",
   "The camera in the header saves, copies or adds a picture of the graph to the canvas.",
 ];
 

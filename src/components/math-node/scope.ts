@@ -33,7 +33,11 @@ export interface ScopeOptions {
    * for each; at the start of a run it needs none anyway (starting values are exact).
    */
   reuseOdeSolutions?: boolean;
-  /** Trig works in degrees: sin(30) = 0.5, and asin(0.5) = 30. */
+  /**
+   * The graph is in degrees mode: in rows the user wrote, sin(30) = 0.5 and
+   * asin(0.5) = 30. Ready-made rows (lessons, labs, drawn shapes) are written in
+   * radians and stay that way; see rowInDegrees.
+   */
   degrees?: boolean;
 }
 
@@ -41,9 +45,9 @@ const DEG = Math.PI / 180;
 const isList = (v: any) => Array.isArray(v) || (v && typeof v.toArray === "function" && !v.isUnit);
 
 /**
- * Trig in degrees, for the graph's degrees mode. Numbers (and lists of them) are
- * taken as degrees; anything with a unit (cos(t rad)) or complex keeps mathjs's
- * meaning, so rows that say "rad" stay in radians in either mode.
+ * Trig in degrees. Numbers (and lists of them) are taken as degrees; anything with
+ * a unit (cos(t rad)) or complex keeps mathjs's meaning, so an expression that
+ * says "rad" is in radians whatever the row's unit.
  */
 function degreeTrig(): Record<string, (...args: any[]) => any> {
   const m = mathjs as any;
@@ -65,6 +69,32 @@ function degreeTrig(): Record<string, (...args: any[]) => any> {
   (out.sin as any).inDegrees = true;
   for (const f of ["asin", "acos", "atan", "atan2", "asec", "acsc", "acot"]) out[f] = inverse(f);
   return out;
+}
+
+/** The degree versions of the trig functions, by name. */
+export const DEGREE_TRIG = degreeTrig();
+const TRIG_NAMES = new Set(Object.keys(DEGREE_TRIG));
+
+// Rows that come ready-made: a geometry lesson's (gt_semi_4), a lab's (proj_3).
+const PRESET_ROW_ID = /^(?:g[a-z]{1,3}_[a-z]+|proj|spring|pend|kin)_\d+$/;
+
+/**
+ * Whether a row's trig is in degrees. The graph's DEG/RAD switch is for what the
+ * user types; a row can pin its own unit, and ready-made rows are always in
+ * radians, because that is how they're written (a circle as [cos t, sin t] for
+ * t up to 2π collapses to a dot if its t is read as degrees).
+ */
+export function rowInDegrees(f: Pick<MathFunction, "id" | "angleUnit">, graphDegrees: boolean): boolean {
+  if (f.angleUnit) return f.angleUnit === "deg";
+  if (PRESET_ROW_ID.test(f.id)) return false;
+  return graphDegrees;
+}
+
+/** The scope a row is evaluated in: `scope`, plus degree trig when the row is in degrees. */
+export function rowScope(f: Pick<MathFunction, "id" | "angleUnit">, scope: any, graphDegrees: boolean): any {
+  const s = Object.create(scope);
+  if (rowInDegrees(f, graphDegrees)) Object.assign(s, DEGREE_TRIG);
+  return s;
 }
 
 const lastSolution = new Map<string, OdeSolution | null>();
@@ -156,7 +186,10 @@ export function buildBaseScope(
 ): any {
   // theta defaults to 0 so non-polar expressions that mention it still evaluate, but a
   // user variable named theta must win (polar sweeps bind theta per sample anyway).
-  const baseScope: any = { theta: 0, ...GEOMETRY_HELPERS, ...(options.degrees ? degreeTrig() : {}) };
+  const baseScope: any = { theta: 0, ...GEOMETRY_HELPERS };
+  // The graph's mode, for code that evaluates a row against this scope later
+  // (handlePosition). Not enumerable: it isn't a name rows can use.
+  Object.defineProperty(baseScope, "__graphDegrees", { value: !!options.degrees, enumerable: false });
   const overrides = options.overrides;
   for (const v of variables) {
     baseScope[v.name] = overrides && v.name in overrides ? overrides[v.name] : v.value;
@@ -198,7 +231,9 @@ export function buildBaseScope(
     }
     if (!f.compiled) return;
     try {
-      const fScope = Object.create(baseScope);
+      // Each row in its own angle unit. A helper it defines (on(deg) = …) keeps that
+      // unit wherever it's called from, since it closes over this scope.
+      const fScope = rowScope(f, baseScope, !!options.degrees);
       fScope.t = fTime;
       fScope.time = time;
 
@@ -206,7 +241,7 @@ export function buildBaseScope(
 
       // Propagate names the row assigned (k = 2, f(s) = …) to later rows.
       for (const key of Object.keys(fScope)) {
-        if (key !== "t" && key !== "time" && key !== "theta" && key !== "x" && key !== "y") {
+        if (key !== "t" && key !== "time" && key !== "theta" && key !== "x" && key !== "y" && !TRIG_NAMES.has(key)) {
           baseScope[key] = fScope[key];
         }
       }
@@ -294,7 +329,7 @@ export function isTailTipVector(f: MathFunction): boolean {
  */
 export function handlePosition(f: MathFunction, scope: any): Vec2 | null {
   if (f.type !== "point" && f.type !== "vector") return null;
-  const { points } = resolveGeometryPoints(f, scope);
+  const { points } = resolveGeometryPoints(f, rowScope(f, scope, !!scope?.__graphDegrees));
   if (points.length === 0) return null;
   if (f.type === "point" && points.length !== 1) return null;
   const tip = points[points.length - 1];

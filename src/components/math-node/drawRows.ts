@@ -91,7 +91,7 @@ export function buildDrawnShape(tool: DrawToolKind, picks: DrawPick[], opts: Bui
       // The direction it was drawn in, kept as plain numbers.
       const ux = fmt((rim.x - c.x) / radius);
       const uy = fmt((rim.y - c.y) / radius);
-      const base = { id: "", visible: true, autoType: false } as const;
+      const base = { id: "", visible: true, autoType: false, angleUnit: "rad" } as const;
       rows.push(
         {
           ...base,
@@ -140,6 +140,8 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     color,
     visible: true,
     autoType: false,
+    // Drawn shapes read the same in either mode; pinned so the DEG switch never touches them.
+    angleUnit: "rad",
     ...extra,
   });
 

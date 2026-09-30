@@ -36,6 +36,11 @@ export interface MathFunction {
    * this way; choosing a type from the menu turns it off for that row.
    */
   autoType?: boolean;
+  /**
+   * The unit this row's trig works in, whatever the graph's DEG/RAD switch says.
+   * Ready-made rows are pinned to "rad"; a row without it follows the switch.
+   */
+  angleUnit?: "rad" | "deg";
   compiled?: any;
   compiledKey?: string;
   expr2?: string; // For parametric x/y or polar r/theta

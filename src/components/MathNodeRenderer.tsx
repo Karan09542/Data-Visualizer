@@ -151,6 +151,9 @@ import {
   EmptyGraph,
   GraphTips,
   buildDrawnShape,
+  DEGREE_TRIG,
+  rowInDegrees,
+  rowScope,
   contentBounds,
   fitView,
   shapesForFunction,
@@ -1715,7 +1718,7 @@ export const MathNodeRenderer: React.FC<any> = ({
         if (f.type !== "point" || f.visible === false || !f.compiled) return [];
         const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1];
         if (!name) return [];
-        const { points } = resolveGeometryPoints(f, baseScope);
+        const { points } = resolveGeometryPoints(f, rowScope(f, baseScope, angleMode === "degrees"));
         return points.length === 1 ? [{ name, x: points[0][0], y: points[0][1] }] : [];
       })
     : [];
@@ -1879,7 +1882,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
     const exampleData = MATH_EXAMPLES[exampleName];
     if (exampleData) {
-      setFunctions(exampleData.functions);
+      setFunctions(exampleData.functions.map((f) => ({ ...f, angleUnit: "rad" as const })));
       setVariables(exampleData.variables);
       // Richer examples bring their own slider groups, timeline and view; plain ones
       // use the default group and animate freely.
@@ -2066,8 +2069,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (!sim) return;
     const scene = sim.build();
     setActiveExample(key);
-    setAngleMode("radians");
-    setFunctions(scene.functions);
+    // Written in radians: pinned, so the DEG switch (for what the user types) leaves them alone.
+    setFunctions(scene.functions.map((f) => ({ ...f, angleUnit: "rad" as const })));
     setVariables(scene.variables);
     setGroups(scene.groups);
     applyTimelineAndView(scene.timeline, scene.view);
@@ -6811,8 +6814,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                 aria-pressed={angleMode === "degrees"}
                 title={
                   angleMode === "degrees"
-                    ? "Trig works in degrees: sin(30) = 0.5. Click for radians."
-                    : "Trig works in radians: sin(pi/6) = 0.5. Click for degrees."
+                    ? "Equations you type use degrees: sin(30) = 0.5. Lessons, simulations and drawn shapes are not affected. Click for radians."
+                    : "Equations you type use radians: sin(pi/6) = 0.5. Click for degrees."
                 }
                 className={`flex items-center shrink-0 px-2.5 py-1.5 rounded-lg text-[11px] font-semibold tabular-nums transition-all ${angleMode === "degrees"
                   ? "bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-violet-500/40"
@@ -6930,8 +6933,6 @@ export const MathNodeRenderer: React.FC<any> = ({
                     pane && pane.yPaneRange ? pane.yPaneRange : [-10, 10];
 
                   const ctx = latestContextRef.current!;
-                  // θ in the graph's unit, so r = sin(2θ) draws right in degrees mode too.
-                  const angleUnit = ctx.angleMode === "degrees" ? 180 / Math.PI : 1;
                   const {
                     functions,
                     setFunctions,
@@ -6962,11 +6963,17 @@ export const MathNodeRenderer: React.FC<any> = ({
                             ? f.time
                             : 0
                           : time;
+                        // The row's own angle unit: degrees only for rows the user wrote
+                        // while the graph is in DEG (or a row pinned to it).
+                        const inDegrees = rowInDegrees(f, ctx.angleMode === "degrees");
                         const baseScope = {
                           ...ctx.baseScope,
                           t: fTime,
                           time: time,
+                          ...(inDegrees ? DEGREE_TRIG : {}),
                         };
+                        // θ sweeps in the row's unit, so r = sin(2θ) draws right in degrees too.
+                        const angleUnit = inDegrees ? 180 / Math.PI : 1;
                         const tx = f.transformTranslate?.[0] || 0;
                         const ty = f.transformTranslate?.[1] || 0;
                         const rot = f.transformRotate || 0;
@@ -9009,7 +9016,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                         ? f.time
                         : 0
                       : time;
-                    const fScope = { ...baseScope, t: fTime, time: time };
+                    const fScope = {
+                      ...baseScope,
+                      t: fTime,
+                      time: time,
+                      ...(rowInDegrees(f, angleMode === "degrees") ? DEGREE_TRIG : {}),
+                    };
                     const baseScopeShadow = fScope;
                     try {
                       const defName = definitionName(f, functions);
