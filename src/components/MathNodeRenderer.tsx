@@ -50,6 +50,7 @@ import {
   ScanLine,
   PenLine,
   Zap,
+  Palette,
 } from "lucide-react";
 
 import {
@@ -110,6 +111,12 @@ import {
   FIELD_CLASS,
   SettingsSelect,
   SettingsSwitch,
+  SettingsTitle,
+  SETTINGS_CARD,
+  SETTINGS_CHECK,
+  SETTINGS_SUBLABEL,
+  RowTimelineSettings,
+  LabelStyleSettings,
   InlineVariableSliders,
   PointImage,
   DEFAULT_IMAGE_WIDTH,
@@ -3450,7 +3457,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                           {expandedSettingsFnId === f.id && (
                             // Sits in the same column as the equation field, so it needs
                             // no extra indent — that would offset it from the field above.
-                            <div className="flex flex-col mt-2 gap-2.5 text-[11px] pb-1 animate-fadeIn">
+                            <div className="flex flex-col mt-2 gap-2 text-[11px] pb-1 animate-fadeIn">
                               {/* Handle: dragging this point / arrow tip sets sliders */}
                               {(f.type === "point" || f.type === "vector") && (() => {
                                 const used = referencedVariables(f, functions, variables);
@@ -3494,11 +3501,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   </>
                                 );
                                 return (
-                                  <div className="flex flex-col gap-1.5 mb-1">
-                                    <span className="text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700 pb-1 flex items-center gap-1.5">
-                                      <Hand size={12} /> Drag on the graph sets
-                                    </span>
-                                    <p className="text-[10px] leading-snug text-slate-400 dark:text-slate-500">
+                                  <div className={SETTINGS_CARD}>
+                                    <SettingsTitle icon={Hand}>Drag on the graph sets</SettingsTitle>
+                                    <p className="text-[10px] leading-snug text-slate-400 dark:text-slate-500 -mt-1">
                                       {f.type === "vector" ? "Drag the arrow's tip" : "Drag the point"} and these sliders
                                       follow. One slider slides it along its path; two let it move freely.
                                     </p>
@@ -3525,13 +3530,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                               })()}
 
                               {/* General Behaviors */}
-                              <div className="flex flex-col gap-2 mb-2">
-                                <span className="text-slate-500 dark:text-slate-400 font-semibold border-b border-slate-200 dark:border-slate-700 pb-1">
-                                  Behaviors & Properties
-                                </span>
-                                <div className="grid grid-cols-2 gap-2">
+                              <div className="flex flex-col gap-2">
+                                <div className={SETTINGS_CARD}>
+                                <SettingsTitle icon={SlidersHorizontal}>Behaviour &amp; label</SettingsTitle>
+                                <div className="grid grid-cols-2 gap-1.5">
                                   {/* Draggable */}
-                                  <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                  <label className={SETTINGS_CHECK}>
                                     <div
                                       className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.isDraggable ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                     >
@@ -3579,7 +3583,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                                   {/* Transformable */}
                                   {f.type !== "point" && (
-                                    <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                    <label className={SETTINGS_CHECK}>
                                       <div
                                         className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.isTransformable ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                       >
@@ -3629,7 +3633,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                                   {/* Rotatable (Only if Transformable) */}
                                   {f.isTransformable && (
-                                    <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                    <label className={SETTINGS_CHECK}>
                                       <div
                                         className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.isRotatable ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                       >
@@ -3675,7 +3679,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                                   {/* Resizable (Only if Transformable) */}
                                   {f.isTransformable && (
-                                    <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                    <label className={SETTINGS_CHECK}>
                                       <div
                                         className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.isResizable ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                       >
@@ -3721,7 +3725,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                                   {/* Pivot Enabled (Only if Transformable) */}
                                   {f.isTransformable && (
-                                    <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                    <label className={SETTINGS_CHECK}>
                                       <div
                                         className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.isPivotEnabled ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                       >
@@ -3766,7 +3770,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   )}
 
                                   {f.type === "point" && (
-                                    <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                    <label className={SETTINGS_CHECK}>
                                       <div
                                         className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.showPoint !== false ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                       >
@@ -3810,7 +3814,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   )}
 
                                   {/* Show Label */}
-                                  <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                  <label className={SETTINGS_CHECK}>
                                     <div
                                       className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.showLabel ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                     >
@@ -3937,7 +3941,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       </div>
                                     )}
 
-                                    <label className="flex items-center gap-1.5 mt-1 text-[10px] text-slate-500 dark:text-slate-400 cursor-pointer select-none">
+                                    <label className="group/plain flex items-start gap-2.5 px-2.5 py-2 rounded-lg border border-slate-200 dark:border-slate-700/70 bg-slate-50/70 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600 text-[10px] leading-snug text-slate-500 dark:text-slate-400 cursor-pointer select-none transition-colors">
                                       <input
                                         type="checkbox"
                                         checked={!!f.labelPlain}
@@ -3948,820 +3952,63 @@ export const MathNodeRenderer: React.FC<any> = ({
                                             ),
                                           )
                                         }
-                                        className="accent-blue-500"
+                                        className="peer sr-only"
                                       />
-                                      Plain text (no math formatting). Live values: {"{{v0}}"}
-                                      {f.type === "point" && (
+                                      {/* The box: drawn, so it matches the panel in both themes. */}
+                                      <span
+                                        aria-hidden
+                                        className={`mt-px size-4 shrink-0 rounded-[5px] border flex items-center justify-center text-white transition-colors peer-focus-visible:ring-2 peer-focus-visible:ring-blue-500/40 ${f.labelPlain
+                                          ? "bg-blue-600 border-blue-600"
+                                          : "bg-white dark:bg-slate-900 border-slate-300 dark:border-slate-600 group-hover/plain:border-slate-400 dark:group-hover/plain:border-slate-500"
+                                          }`}
+                                      >
+                                        {f.labelPlain && <Check size={11} strokeWidth={3.5} />}
+                                      </span>
+                                      <span>
+                                        <span className="font-medium text-slate-600 dark:text-slate-300">Plain text</span> (no math formatting).{" "}
                                         <span className="text-slate-400 dark:text-slate-500">
-                                          {" "}· this point: {"{{xy}}"}, {"{{x}}"}, {"{{y}}"} (decimals: {"{{xy:3}}"})
+                                          Live values: <code className="font-mono">{"{{v0}}"}</code>
+                                          {f.type === "point" && (
+                                            <>
+                                              {" "}· this point: <code className="font-mono">{"{{xy}}"}</code>, <code className="font-mono">{"{{x}}"}</code>,{" "}
+                                              <code className="font-mono">{"{{y}}"}</code> · decimals: <code className="font-mono">{"{{xy:3}}"}</code>
+                                            </>
+                                          )}
                                         </span>
-                                      )}
+                                      </span>
                                     </label>
 
-                                    {/* Label Settings Panel */}
-                                    <div className="flex flex-col gap-2 mt-2 p-2 rounded-lg bg-slate-100/70 dark:bg-slate-800/40 border border-slate-200/60 dark:border-slate-800/80">
-                                      <div className="text-[10px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500 mb-0.5 flex justify-between items-center">
-                                        <span>Label Settings</span>
-                                        <label className="flex items-center gap-1.5 cursor-pointer group/cb lowercase" title="Show a point at the label anchor">
-                                          <div className="relative flex items-center justify-center">
-                                            <input
-                                              type="checkbox"
-                                              checked={!!f.showLabelPoint}
-                                              onChange={(e) =>
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id
-                                                      ? { ...fn, showLabelPoint: e.target.checked }
-                                                      : fn
-                                                  )
-                                                )
-                                              }
-                                              className="peer sr-only"
-                                            />
-                                            <div
-                                              className={`w-3 h-3 rounded-[3px] border flex items-center justify-center transition-colors ${f.showLabelPoint ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-600 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400 dark:group-hover/cb:border-slate-500"}`}
-                                            >
-                                              {f.showLabelPoint && (
-                                                <svg className="w-2 h-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3.5}>
-                                                  <path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" />
-                                                </svg>
-                                              )}
-                                            </div>
-                                          </div>
-                                          <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium normal-case group-hover/cb:text-slate-700 dark:group-hover/cb:text-slate-300 transition-colors">
-                                            Show Point
-                                          </span>
-                                        </label>
-                                      </div>
-
-                                      {/* Rotation Slider */}
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Rotation: {f.labelRotation ?? 0}°</span>
-                                        <div className="flex items-center gap-1.5 flex-1 max-w-[130px]">
-                                          <input
-                                            type="range"
-                                            min="0"
-                                            max="360"
-                                            value={f.labelRotation ?? 0}
-                                            onChange={(e) => {
-                                              const r = parseInt(e.target.value, 10);
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelRotation: r } : fn
-                                                )
-                                              );
-                                            }}
-                                            className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Scale Slider */}
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Scale: {(f.labelScale ?? 1.0).toFixed(1)}x</span>
-                                        <div className="flex items-center gap-1.5 flex-1 max-w-[130px]">
-                                          <input
-                                            type="range"
-                                            min="0.5"
-                                            max="3.0"
-                                            step="0.1"
-                                            value={f.labelScale ?? 1.0}
-                                            onChange={(e) => {
-                                              const s = parseFloat(e.target.value);
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelScale: s } : fn
-                                                )
-                                              );
-                                            }}
-                                            className="w-full h-1 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-blue-500"
-                                          />
-                                        </div>
-                                      </div>
-
-                                      {/* Flips */}
-                                      <div className="flex items-center justify-between gap-2">
-                                        <span className="text-[11px] text-slate-500 dark:text-slate-400">Flip:</span>
-                                        <div className="flex gap-1.5">
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelFlipX: !fn.labelFlipX } : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${f.labelFlipX
-                                              ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
-                                              }`}
-                                          >
-                                            Flip X
-                                          </button>
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelFlipY: !fn.labelFlipY } : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`px-2 py-0.5 rounded text-[10px] font-medium transition-colors border ${f.labelFlipY
-                                              ? "bg-blue-100 border-blue-300 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50"
-                                              }`}
-                                          >
-                                            Flip Y
-                                          </button>
-                                        </div>
-                                      </div>
-
-                                      {/* Quick Presets */}
-                                      <div className="flex flex-col gap-1 mt-1 pt-1.5 border-t border-slate-200/50 dark:border-slate-700/50">
-                                        <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 mb-0.5">Quick Presets</span>
-
-                                        <div className="flex flex-wrap gap-1">
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id
-                                                    ? {
-                                                      ...fn,
-                                                      labelRotation: 0,
-                                                      labelScale: 1.0,
-                                                      labelFlipX: false,
-                                                      labelFlipY: false,
-                                                      labelPosition: [0.3, 0.3],
-                                                      labelAlignment: undefined,
-                                                    }
-                                                    : fn
-                                                )
-                                              );
-                                            }}
-                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-red-50 hover:text-red-500 hover:border-red-200 dark:hover:bg-red-950/20 dark:hover:text-red-400 transition-colors"
-                                            title="Reset label settings and position"
-                                          >
-                                            Reset
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelRotation: 90 } : fn
-                                                )
-                                              );
-                                            }}
-                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                                          >
-                                            90°
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelRotation: 180 } : fn
-                                                )
-                                              );
-                                            }}
-                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                                          >
-                                            180°
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelRotation: 270 } : fn
-                                                )
-                                              );
-                                            }}
-                                            className="px-1.5 py-0.5 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-[10px] text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50 transition-colors"
-                                          >
-                                            270°
-                                          </button>
-                                        </div>
-
-                                        <div className="flex flex-wrap gap-1 mt-1">
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelAlignment: "center" } : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "center"
-                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                              }`}
-                                            title="Center label exactly on shape"
-                                          >
-                                            Center
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelAlignment: "above" } : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "above"
-                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                              }`}
-                                            title="Snap label above shape"
-                                          >
-                                            Above
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelAlignment: "below" } : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "below"
-                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                              }`}
-                                            title="Snap label below shape"
-                                          >
-                                            Below
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelAlignment: "left" } : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "left"
-                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                              }`}
-                                            title="Snap label to left"
-                                          >
-                                            Left
-                                          </button>
-
-                                          <button
-                                            type="button"
-                                            onClick={() => {
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id ? { ...fn, labelAlignment: "right" } : fn
-                                                )
-                                              );
-                                            }}
-                                            className={`px-1.5 py-0.5 rounded border text-[10px] transition-colors ${f.labelAlignment === "right"
-                                              ? "bg-blue-50 border-blue-200 text-blue-600 dark:bg-blue-900/30 dark:border-blue-800 dark:text-blue-400"
-                                              : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-700/50"
-                                              }`}
-                                            title="Snap label to right"
-                                          >
-                                            Right
-                                          </button>
-                                        </div>
-                                      </div>
-                                    </div>
+                                    <LabelStyleSettings
+                                      f={f}
+                                      onPatch={(patch) =>
+                                        setFunctions((prev) =>
+                                          prev.map((fn) =>
+                                            fn.id === f.id ? { ...fn, ...(typeof patch === "function" ? patch(fn) : patch) } : fn,
+                                          ),
+                                        )
+                                      }
+                                    />
                                   </>
                                 )}
 
-                                {/* Custom Timeline Settings */}
-                                <div className="flex flex-col gap-2.5 mt-1 pb-1.5 border-t border-slate-200 dark:border-slate-800/80 pt-2.5">
-                                  <div className="flex items-center justify-between">
-                                    <span className="text-[11px] font-bold tracking-wider uppercase text-slate-400 dark:text-slate-500">
-                                      Individual Timeline
-                                    </span>
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-xs text-slate-600 dark:text-slate-300 font-medium select-none">
-                                        Enable
-                                      </span>
-                                      <button
-                                        type="button"
-                                        role="switch"
-                                        aria-checked={!!f.hasCustomTimeline}
-                                        onClick={() => {
-                                          const checked = !f.hasCustomTimeline;
-                                          setFunctions((prev) =>
-                                            prev.map((fn) =>
-                                              fn.id === f.id
-                                                ? {
-                                                  ...fn,
-                                                  hasCustomTimeline: checked,
-                                                  time: checked
-                                                    ? fn.time !== undefined
-                                                      ? fn.time
-                                                      : 0
-                                                    : undefined,
-                                                  isPlaying: checked
-                                                    ? fn.isPlaying !==
-                                                      undefined
-                                                      ? fn.isPlaying
-                                                      : true
-                                                    : undefined,
-                                                  timeMin: checked
-                                                    ? fn.timeMin !== undefined
-                                                      ? fn.timeMin
-                                                      : 0
-                                                    : undefined,
-                                                  timeMax: checked
-                                                    ? fn.timeMax !== undefined
-                                                      ? fn.timeMax
-                                                      : 10
-                                                    : undefined,
-                                                  timeSpeed: checked
-                                                    ? fn.timeSpeed !==
-                                                      undefined
-                                                      ? fn.timeSpeed
-                                                      : 1
-                                                    : undefined,
-                                                  timeMode: checked
-                                                    ? fn.timeMode || "loop"
-                                                    : undefined,
-                                                  direction: checked
-                                                    ? fn.direction !==
-                                                      undefined
-                                                      ? fn.direction
-                                                      : 1
-                                                    : undefined,
-                                                }
-                                                : fn,
-                                            ),
-                                          );
-                                        }}
-                                        className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none ${f.hasCustomTimeline
-                                          ? "bg-blue-500"
-                                          : "bg-slate-200 dark:bg-slate-700"
-                                          }`}
-                                      >
-                                        <span
-                                          className={`pointer-events-none inline-block h-4 w-4 transform rounded-full bg-white shadow-xs ring-0 transition duration-200 ease-in-out ${f.hasCustomTimeline
-                                            ? "translate-x-4"
-                                            : "translate-x-0"
-                                            }`}
-                                        />
-                                      </button>
-                                    </div>
-                                  </div>
-
-                                  {f.hasCustomTimeline &&
-                                    (() => {
-                                      const fnIndex =
-                                        functions.findIndex(
-                                          (fn) => fn.id === f.id,
-                                        ) + 1;
-                                      const fnNameMatch =
-                                        f.name?.match(/^([a-zA-Z0-9_]+)/);
-                                      const fnCleanName = fnNameMatch
-                                        ? fnNameMatch[1]
-                                        : null;
-
-                                      return (
-                                        <div className="flex flex-col gap-3 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-lg border border-slate-200 dark:border-slate-800 animate-fadeIn shadow-xs">
-                                          {/* Playback Controls & Time Display */}
-                                          <div className="flex items-center justify-between gap-2 bg-white dark:bg-slate-800 p-2 rounded-md border border-slate-200 dark:border-slate-700/50">
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id
-                                                      ? {
-                                                        ...fn,
-                                                        isPlaying:
-                                                          !fn.isPlaying,
-                                                      }
-                                                      : fn,
-                                                  ),
-                                                );
-                                              }}
-                                              className={`p-1.5 rounded text-white font-medium transition-all flex items-center justify-center active:scale-95 ${f.isPlaying
-                                                ? "bg-amber-500 hover:bg-amber-600 shadow-xs shadow-amber-500/10"
-                                                : "bg-emerald-500 hover:bg-emerald-600 shadow-xs shadow-emerald-500/10"
-                                                }`}
-                                              title={
-                                                f.isPlaying
-                                                  ? "Pause Timeline"
-                                                  : "Play Timeline"
-                                              }
-                                            >
-                                              {f.isPlaying ? (
-                                                <Pause
-                                                  size={12}
-                                                  fill="currentColor"
-                                                />
-                                              ) : (
-                                                <Play
-                                                  size={12}
-                                                  fill="currentColor"
-                                                />
-                                              )}
-                                            </button>
-
-                                            <div className="flex items-center gap-1.5">
-                                              <span className="text-slate-400 dark:text-slate-500 font-mono text-[11px] font-medium">
-                                                t =
-                                              </span>
-                                              <input
-                                                type="number"
-                                                step="0.01"
-                                                value={
-                                                  f.time !== undefined
-                                                    ? Number(f.time.toFixed(3))
-                                                    : 0
-                                                }
-                                                onChange={(e) => {
-                                                  const val =
-                                                    parseFloat(
-                                                      e.target.value,
-                                                    ) || 0;
-                                                  setFunctions((prev) =>
-                                                    prev.map((fn) =>
-                                                      fn.id === f.id
-                                                        ? { ...fn, time: val }
-                                                        : fn,
-                                                    ),
-                                                  );
-                                                }}
-                                                className="w-16 bg-slate-50 dark:bg-slate-800 text-center px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-xs font-mono text-slate-800 dark:text-slate-100 outline-none focus:border-blue-500"
-                                              />
-                                            </div>
-
-                                            <button
-                                              type="button"
-                                              onClick={() => {
-                                                setFunctions((prev) =>
-                                                  prev.map((fn) =>
-                                                    fn.id === f.id
-                                                      ? {
-                                                        ...fn,
-                                                        time:
-                                                          fn.timeMin !==
-                                                            undefined
-                                                            ? fn.timeMin
-                                                            : 0,
-                                                        direction: 1,
-                                                      }
-                                                      : fn,
-                                                  ),
-                                                );
-                                              }}
-                                              className="p-1.5 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center justify-center"
-                                              title="Reset to Min"
-                                            >
-                                              <RotateCcw size={12} />
-                                            </button>
-                                          </div>
-
-                                          {/* Min & Max Limits */}
-                                          <div className="grid grid-cols-2 gap-2.5">
-                                            <div className="flex flex-col gap-1">
-                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                                Min
-                                              </span>
-                                              <input
-                                                type="number"
-                                                step="0.1"
-                                                value={
-                                                  f.timeMin !== undefined
-                                                    ? f.timeMin
-                                                    : 0
-                                                }
-                                                onChange={(e) => {
-                                                  const val =
-                                                    parseFloat(
-                                                      e.target.value,
-                                                    ) || 0;
-                                                  setFunctions((prev) =>
-                                                    prev.map((fn) =>
-                                                      fn.id === f.id
-                                                        ? {
-                                                          ...fn,
-                                                          timeMin: val,
-                                                        }
-                                                        : fn,
-                                                    ),
-                                                  );
-                                                }}
-                                                className={`${FIELD_CLASS} text-center`}
-                                              />
-                                            </div>
-                                            <div className="flex flex-col gap-1">
-                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                                Max
-                                              </span>
-                                              <input
-                                                type="number"
-                                                step="0.1"
-                                                value={
-                                                  f.timeMax !== undefined
-                                                    ? f.timeMax
-                                                    : 10
-                                                }
-                                                onChange={(e) => {
-                                                  const val =
-                                                    parseFloat(
-                                                      e.target.value,
-                                                    ) || 0;
-                                                  setFunctions((prev) =>
-                                                    prev.map((fn) =>
-                                                      fn.id === f.id
-                                                        ? {
-                                                          ...fn,
-                                                          timeMax: val,
-                                                        }
-                                                        : fn,
-                                                    ),
-                                                  );
-                                                }}
-                                                className={`${FIELD_CLASS} text-center`}
-                                              />
-                                            </div>
-                                          </div>
-
-                                          {/* Speed & Mode */}
-                                          <div className="grid grid-cols-2 gap-2.5">
-                                            <div className="flex flex-col gap-1">
-                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                                Speed
-                                              </span>
-                                              <input
-                                                type="number"
-                                                step="0.1"
-                                                value={
-                                                  f.timeSpeed !== undefined
-                                                    ? f.timeSpeed
-                                                    : 1
-                                                }
-                                                onChange={(e) => {
-                                                  const val =
-                                                    parseFloat(
-                                                      e.target.value,
-                                                    ) || 0;
-                                                  setFunctions((prev) =>
-                                                    prev.map((fn) =>
-                                                      fn.id === f.id
-                                                        ? {
-                                                          ...fn,
-                                                          timeSpeed: val,
-                                                        }
-                                                        : fn,
-                                                    ),
-                                                  );
-                                                }}
-                                                className={`${FIELD_CLASS} text-center`}
-                                              />
-                                            </div>
-                                            <div className="flex flex-col gap-1">
-                                              <span className="text-[10px] font-semibold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-                                                Mode
-                                              </span>
-                                              <SettingsSelect
-                                                value={f.timeMode || "loop"}
-                                                onChange={(e) => {
-                                                  const val = e.target
-                                                    .value as any;
-                                                  setFunctions((prev) =>
-                                                    prev.map((fn) =>
-                                                      fn.id === f.id
-                                                        ? {
-                                                          ...fn,
-                                                          timeMode: val,
-                                                        }
-                                                        : fn,
-                                                    ),
-                                                  );
-                                                }}
-                                              >
-                                                <option value="loop">
-                                                  Loop
-                                                </option>
-                                                <option value="bounce">
-                                                  Bounce
-                                                </option>
-                                                <option value="continuous">
-                                                  Continuous
-                                                </option>
-                                              </SettingsSelect>
-                                            </div>
-                                          </div>
-
-                                          {/* Predefined Variables Copy Box */}
-                                          <div className="mt-1.5 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-100/80 dark:border-blue-900/40 p-2.5 rounded-lg flex flex-col gap-1.5">
-                                            <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 flex items-center gap-1">
-                                              <Sparkles
-                                                size={11}
-                                                className="text-blue-500 dark:text-blue-400"
-                                              />{" "}
-                                              Referencing this Timeline
-                                            </span>
-                                            <p className="text-[10px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                                              Type these variables into math
-                                              formulas to read this specific
-                                              timeline:
-                                            </p>
-                                            <div className="flex flex-col gap-1.5 mt-0.5">
-                                              {(() => {
-                                                const copyId = `${f.id}-t`;
-                                                const isCopied =
-                                                  copiedVarId === copyId;
-                                                return (
-                                                  <div
-                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${isCopied
-                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
-                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                      }`}
-                                                    onClick={() => {
-                                                      navigator.clipboard.writeText(
-                                                        "t",
-                                                      );
-                                                      setCopiedVarId(copyId);
-                                                      setTimeout(
-                                                        () =>
-                                                          setCopiedVarId(null),
-                                                        1500,
-                                                      );
-                                                    }}
-                                                    title="Click to copy 't'"
-                                                  >
-                                                    <div className="flex items-center gap-1.5">
-                                                      <code
-                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${isCopied
-                                                          ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
-                                                          : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                          }`}
-                                                      >
-                                                        t
-                                                      </code>
-                                                      <span className="text-[9px] text-slate-500 dark:text-slate-400">
-                                                        Inside this function
-                                                      </span>
-                                                      {isCopied && (
-                                                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">
-                                                          Copied!
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                    {isCopied ? (
-                                                      <Check
-                                                        size={11}
-                                                        className="text-emerald-500 dark:text-emerald-400"
-                                                      />
-                                                    ) : (
-                                                      <Copy
-                                                        size={10}
-                                                        className="text-blue-500 dark:text-blue-400"
-                                                      />
-                                                    )}
-                                                  </div>
-                                                );
-                                              })()}
-
-                                              {(() => {
-                                                const copyId = `${f.id}-t_${fnIndex}`;
-                                                const isCopied =
-                                                  copiedVarId === copyId;
-                                                return (
-                                                  <div
-                                                    className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${isCopied
-                                                      ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
-                                                      : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                      }`}
-                                                    onClick={() => {
-                                                      navigator.clipboard.writeText(
-                                                        `t_${fnIndex}`,
-                                                      );
-                                                      setCopiedVarId(copyId);
-                                                      setTimeout(
-                                                        () =>
-                                                          setCopiedVarId(null),
-                                                        1500,
-                                                      );
-                                                    }}
-                                                    title={`Click to copy 't_${fnIndex}'`}
-                                                  >
-                                                    <div className="flex items-center gap-1.5">
-                                                      <code
-                                                        className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${isCopied
-                                                          ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
-                                                          : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                          }`}
-                                                      >{`t_${fnIndex}`}</code>
-                                                      <span className="text-[9px] text-slate-500 dark:text-slate-400">
-                                                        Any function in
-                                                        workspace
-                                                      </span>
-                                                      {isCopied && (
-                                                        <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">
-                                                          Copied!
-                                                        </span>
-                                                      )}
-                                                    </div>
-                                                    {isCopied ? (
-                                                      <Check
-                                                        size={11}
-                                                        className="text-emerald-500 dark:text-emerald-400"
-                                                      />
-                                                    ) : (
-                                                      <Copy
-                                                        size={10}
-                                                        className="text-blue-500 dark:text-blue-400"
-                                                      />
-                                                    )}
-                                                  </div>
-                                                );
-                                              })()}
-
-                                              {fnCleanName &&
-                                                fnCleanName !== "t" &&
-                                                fnCleanName !== "time" &&
-                                                (() => {
-                                                  const copyId = `${f.id}-t_${fnCleanName}`;
-                                                  const isCopied =
-                                                    copiedVarId === copyId;
-                                                  return (
-                                                    <div
-                                                      className={`flex items-center justify-between px-2 py-1 rounded border shadow-2xs cursor-pointer transition-all ${isCopied
-                                                        ? "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-300 dark:border-emerald-800"
-                                                        : "bg-white dark:bg-slate-800/80 border-blue-100 dark:border-blue-900 hover:border-blue-300 dark:hover:border-blue-700"
-                                                        }`}
-                                                      onClick={() => {
-                                                        navigator.clipboard.writeText(
-                                                          `t_${fnCleanName}`,
-                                                        );
-                                                        setCopiedVarId(copyId);
-                                                        setTimeout(
-                                                          () =>
-                                                            setCopiedVarId(
-                                                              null,
-                                                            ),
-                                                          1500,
-                                                        );
-                                                      }}
-                                                      title={`Click to copy 't_${fnCleanName}'`}
-                                                    >
-                                                      <div className="flex items-center gap-1.5">
-                                                        <code
-                                                          className={`text-[10px] font-mono px-1 py-0.5 rounded font-bold transition-colors ${isCopied
-                                                            ? "bg-emerald-100/50 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400"
-                                                            : "bg-blue-50 dark:bg-blue-950 text-blue-600 dark:text-blue-400"
-                                                            }`}
-                                                        >{`t_${fnCleanName}`}</code>
-                                                        <span className="text-[9px] text-slate-500 dark:text-slate-400">
-                                                          Any function in
-                                                          workspace
-                                                        </span>
-                                                        {isCopied && (
-                                                          <span className="text-[9px] text-emerald-600 dark:text-emerald-400 font-medium animate-fadeIn">
-                                                            Copied!
-                                                          </span>
-                                                        )}
-                                                      </div>
-                                                      {isCopied ? (
-                                                        <Check
-                                                          size={11}
-                                                          className="text-emerald-500 dark:text-emerald-400"
-                                                        />
-                                                      ) : (
-                                                        <Copy
-                                                          size={10}
-                                                          className="text-blue-500 dark:text-blue-400"
-                                                        />
-                                                      )}
-                                                    </div>
-                                                  );
-                                                })()}
-                                            </div>
-                                          </div>
-                                        </div>
-                                      );
-                                    })()}
                                 </div>
 
-                                <div className="flex items-center justify-between mt-1 p-2 border border-blue-500/10 bg-blue-500/5 dark:bg-blue-500/5 rounded">
-                                  <span className="text-slate-600 dark:text-slate-400 text-[10px] font-semibold tracking-wide">
-                                    Change Origin [h, k]
+                                <RowTimelineSettings
+                                  f={f}
+                                  index={functions.findIndex((fn) => fn.id === f.id) + 1}
+                                  onPatch={(patch) =>
+                                    setFunctions((prev) =>
+                                      prev.map((fn) =>
+                                        fn.id === f.id ? { ...fn, ...(typeof patch === "function" ? patch(fn) : patch) } : fn,
+                                      ),
+                                    )
+                                  }
+                                />
+
+                                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 px-3 py-2">
+                                  <span className="min-w-0">
+                                    <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">Origin</span>
+                                    <span className="block text-[10px] text-slate-400 dark:text-slate-500">Shift by [h, k]</span>
                                   </span>
                                   <div className="flex gap-1.5 flex-1 max-w-[140px]">
                                     <input
@@ -4823,8 +4070,8 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                                 {/* Numeric Transform Inputs */}
                                 {f.isTransformable && (
-                                  <div className="flex flex-col gap-1.5 mt-3 p-2 border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10 rounded">
-                                    <div className="font-semibold text-blue-600 dark:text-blue-400 mb-1 flex items-center justify-between">
+                                  <div className={SETTINGS_CARD}>
+                                    <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-between">
                                       <span className="text-xs">
                                         Transform Data
                                       </span>
@@ -4983,11 +4230,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   </div>
                                 )}
                               </div>
-                              {/* Inequality Operator Control */}
+                              {/* Appearance: inequality type, colour, fill, line style, width */}
+                              <div className={SETTINGS_CARD}>
+                              <SettingsTitle icon={Palette}>Appearance</SettingsTitle>
                               {f.type === "inequality" && (
                                 <div className="flex flex-col gap-1 pb-1">
-                                  <span className="text-slate-500 dark:text-slate-400 font-semibold mb-0.5">
-                                    Inequality Type:
+                                  <span className={SETTINGS_SUBLABEL}>
+                                    Inequality type
                                   </span>
                                   <div className="flex border border-slate-200 dark:border-slate-700/60 rounded overflow-hidden">
                                     {["<", "<=", ">", ">="].map((op) => (
@@ -5035,8 +4284,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                               {/* Outline/Stroke Color */}
                               <div className="flex flex-col gap-1">
                                 <div className="flex items-center justify-between">
-                                  <span className="text-slate-500 dark:text-slate-400 font-semibold">
-                                    Outline Color:
+                                  <span className={SETTINGS_SUBLABEL}>
+                                    Outline color
                                   </span>
                                   <ReadableColorBadge color={f.color} />
                                 </div>
@@ -5125,15 +4374,15 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                               {f.type !== "point" && f.type !== "line" && (
                                 <React.Fragment>
-                                  <div className="border-t border-slate-200 dark:border-slate-800/60 my-0.5" />
+                                  <div className="border-t border-slate-100 dark:border-slate-800" />
 
                                   {/* Is Custom Fill Active */}
                                   <div className="flex flex-col gap-1.5">
                                     <div className="flex items-center justify-between">
-                                      <span className="text-slate-500 dark:text-slate-400 font-semibold font-semibold">
-                                        Fill Customization
+                                      <span className={SETTINGS_SUBLABEL}>
+                                        Fill
                                       </span>
-                                      <label className="flex items-center gap-1.5 cursor-pointer group/cb">
+                                      <label className={SETTINGS_CHECK}>
                                         <div
                                           className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition-colors ${f.fillColor !== undefined ? "bg-blue-500 border-blue-500 text-white" : "border-slate-300 dark:border-slate-500 bg-slate-100 dark:bg-slate-800 group-hover/cb:border-slate-400"}`}
                                         >
@@ -5816,9 +5065,9 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                               {/* Line Style Selection */}
                               {f.type !== "point" && (
-                                <div className="flex flex-col gap-1 mt-1 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
-                                  <span className="text-slate-500 dark:text-slate-400 font-semibold mb-1">
-                                    Line Style
+                                <div className="flex flex-col gap-1.5 border-t border-slate-100 dark:border-slate-800 pt-2.5">
+                                  <span className={SETTINGS_SUBLABEL}>
+                                    Line style
                                   </span>
                                   <div className="grid grid-cols-4 gap-1.5 mt-0.5">
                                     {(
@@ -5897,10 +5146,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                               )}
 
                               {/* Outline Width Slider */}
-                              <div className="flex flex-col gap-1 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2">
+                              <div className="flex flex-col gap-1.5 border-t border-slate-100 dark:border-slate-800 pt-2.5">
                                 <div className="flex justify-between items-center">
-                                  <span className="text-slate-500 dark:text-slate-400 font-semibold text-[11px]">
-                                    Outline Width
+                                  <span className={SETTINGS_SUBLABEL}>
+                                    Outline width
                                   </span>
                                   <span className="font-mono text-[10px] text-slate-400 dark:text-slate-500">
                                     {(f.outlineWidth !== undefined
@@ -5941,9 +5190,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   </span>
                                 </div>
                               </div>
+                              </div>
 
                               {f.type === "polygon" && (
-                                <div className="mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-800/60">
+                                <div className={SETTINGS_CARD}>
                                   <SettingsSwitch
                                     checked={f.showAngles !== false}
                                     onChange={(on) => setFunctions((prev) => prev.map((fn) => (fn.id === f.id ? { ...fn, showAngles: on } : fn)))}
@@ -5954,7 +5204,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                               )}
 
                               {f.type === "function" && (
-                                <div className="flex flex-col gap-2 mt-2.5 pt-2.5 border-t border-slate-200 dark:border-slate-800/60">
+                                <div className={SETTINGS_CARD}>
                                   <SettingsSwitch
                                     checked={!!f.areaEnabled}
                                     onChange={(on) =>
@@ -6021,7 +5271,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
                               {(f.type === "point" ||
                                 f.type === "differential") && (
-                                <div className="flex flex-col gap-2 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2.5">
+                                <div className={SETTINGS_CARD}>
                                   <div className="flex items-center justify-between gap-2">
                                     <SettingsLabel>
                                       {f.type === "differential"
@@ -6232,7 +5482,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       ),
                                     );
                                   return (
-                                    <div className="flex flex-col gap-2 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2.5">
+                                    <div className={SETTINGS_CARD}>
                                       <SettingsLabel>
                                         {f.type === "differential" ? "Time Range (t)" : "Parameter Range (t)"}
                                       </SettingsLabel>
@@ -6285,7 +5535,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                     ),
                                   );
                                 return (
-                                  <div className="flex flex-col gap-2.5 mt-2.5 pb-1 border-t border-slate-200 dark:border-slate-800/60 pt-2.5">
+                                  <div className={SETTINGS_CARD}>
                                     {system.error ? (
                                       <div className="rounded-lg border border-red-200 dark:border-red-900/50 bg-red-50 dark:bg-red-950/30 px-2.5 py-2 text-[10px] leading-snug text-red-600 dark:text-red-400">
                                         {system.error}

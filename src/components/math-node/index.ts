@@ -47,6 +47,8 @@ export * from "./selection";
 export * from "./SelectTool";
 export * from "./VectorAngles";
 export * from "./vectorOps";
+export * from "./RowTimelineSettings";
+export * from "./LabelStyleSettings";
 export * from "./CalculatorResult";
 export * from "./SavedScenesLibrary";
 export * from "./FormulaScanner";

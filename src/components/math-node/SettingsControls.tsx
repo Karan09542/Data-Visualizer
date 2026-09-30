@@ -74,3 +74,38 @@ export const SettingsSwitch: React.FC<{
     </button>
   </div>
 );
+
+/** One group of settings: a card, so the panel reads as sections rather than one long form. */
+export const SETTINGS_CARD =
+  "flex flex-col gap-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 p-3";
+
+/** The heading of a settings card: an icon, its title, and optionally a control on the right. */
+export const SettingsTitle: React.FC<{
+  icon?: React.ElementType;
+  children: React.ReactNode;
+  hint?: React.ReactNode;
+  right?: React.ReactNode;
+}> = ({ icon: Icon, children, hint, right }) => (
+  <div className="flex items-center justify-between gap-2">
+    <div className="min-w-0 flex items-center gap-2">
+      {Icon && (
+        <span className="size-6 shrink-0 inline-flex items-center justify-center rounded-lg bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400">
+          <Icon size={13} />
+        </span>
+      )}
+      <div className="min-w-0">
+        <div className="text-xs font-semibold text-slate-800 dark:text-slate-100 leading-tight">{children}</div>
+        {hint && <div className="text-[10px] leading-snug text-slate-400 dark:text-slate-500">{hint}</div>}
+      </div>
+    </div>
+    {right && <div className="shrink-0">{right}</div>}
+  </div>
+);
+
+/** A label above a field inside a card. */
+export const SETTINGS_SUBLABEL =
+  "text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500";
+
+/** A tick-box option, as a chip the whole of which is clickable. */
+export const SETTINGS_CHECK =
+  "flex items-center gap-2 h-8 px-2.5 rounded-lg border border-slate-200 dark:border-slate-700/70 bg-slate-50/70 dark:bg-slate-800/40 hover:border-slate-300 dark:hover:border-slate-600 cursor-pointer select-none transition-colors group/cb";
