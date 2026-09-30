@@ -6,7 +6,7 @@ import {
   PenTool, Highlighter, Square, Circle, Triangle,
   Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity, Pentagon, Hexagon, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
-  Sigma, X, ChevronUp, Eye, EyeOff, Copy, Check, Plus
+  Sigma, X, ChevronUp, Eye, EyeOff, Copy, Check, Plus, SlidersHorizontal
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -14,7 +14,7 @@ import { HexAlphaColorPicker } from 'react-colorful';
 import katex from 'katex';
 import * as math from 'mathjs';
 
-function Popover({ children, open, onOpenChange }: any) {
+function Popover({ children, open, onOpenChange, className = "relative inline-block" }: any) {
   const [internalOpen, setInternalOpen] = useState(false);
   const isControlled = open !== undefined;
   const isOpen = isControlled ? open : internalOpen;
@@ -32,7 +32,7 @@ function Popover({ children, open, onOpenChange }: any) {
   }, [isOpen, setIsOpen]);
 
   return (
-    <div className="relative inline-block" ref={ref}>
+    <div className={className} ref={ref}>
       {React.Children.map(children, child => {
         if (!child) return null;
         if (child.type === PopoverTrigger) {
@@ -51,7 +51,12 @@ function PopoverTrigger({ children, onClick, className }: any) {
   return <div onClick={onClick} className={className}>{children}</div>;
 }
 
-function PopoverContent({ children, className, side, align, sideOffset }: any) {
+function PopoverContent({ children, className, side, align, sideOffset, position }: any) {
+  // `position` overrides side/align with explicit classes (relative to the nearest positioned ancestor)
+  if (position) {
+    return <div className={`absolute z-[400] ${position} ${className || ''}`} onClick={e => e.stopPropagation()}>{children}</div>;
+  }
+
   let posClass = "absolute z-[400] ";
   if (side === "top") posClass += "bottom-[100%] mb-2 ";
   else posClass += "top-[100%] mt-2 ";
@@ -1246,6 +1251,8 @@ export default function DrawingToolbar() {
 
   const isVert = toolbarOrientation === 'vertical';
   const [showConfig, setShowConfig] = useState(false);
+  // Horizontal bar: the option panels can be collapsed from the toolbelt
+  const [showPanels, setShowPanels] = useState(true);
   const [isDragging, setIsDragging] = useState(false);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isMobile, setIsMobile] = useState(false);
@@ -1331,6 +1338,46 @@ export default function DrawingToolbar() {
   const [localArrowSize, setLocalArrowSize] = useState({ w: store.arrowPanelWidth, h: store.arrowPanelHeight });
   const [localScale, setLocalScale] = useState(store.toolbarScale);
   const [isAdjustingScale, setIsAdjustingScale] = useState(false);
+
+  // Toolbelt + container sizes, used to keep a free-dragged toolbar on screen and pick which side the panels open on
+  const beltRef = useRef<HTMLDivElement>(null);
+  const [metrics, setMetrics] = useState({
+    beltW: 0,
+    beltH: 0,
+    parentW: typeof window !== 'undefined' ? window.innerWidth : 0,
+    parentH: typeof window !== 'undefined' ? window.innerHeight : 0,
+  });
+
+  useLayoutEffect(() => {
+    const belt = beltRef.current;
+    if (!belt) return;
+    const parent = toolbarRef.current?.offsetParent as HTMLElement | null;
+
+    const measure = () => {
+      const next = {
+        beltW: belt.getBoundingClientRect().width,
+        beltH: belt.getBoundingClientRect().height,
+        parentW: parent?.clientWidth ?? window.innerWidth,
+        parentH: parent?.clientHeight ?? window.innerHeight,
+      };
+      setMetrics(prev => (
+        prev.beltW === next.beltW && prev.beltH === next.beltH && prev.parentW === next.parentW && prev.parentH === next.parentH
+          ? prev
+          : next
+      ));
+    };
+
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(belt);
+    if (parent) observer.observe(parent);
+    window.addEventListener('resize', measure);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener('resize', measure);
+    };
+  }, [isToolbarVisible, isMobile, localScale]);
 
   const scaleRef = useRef(localScale);
   const popoverContentRef = useRef<HTMLDivElement>(null);
@@ -1466,16 +1513,19 @@ export default function DrawingToolbar() {
         const dx = e.clientX - dragRef.current.startX;
         const dy = e.clientY - dragRef.current.startY;
 
-        const rect = toolbarRef.current?.getBoundingClientRect();
+        // Clamp by the toolbelt only (not the option panels) so it can reach every edge and corner
+        const rect = beltRef.current?.getBoundingClientRect();
         const w = rect?.width || 0;
         const h = rect?.height || 0;
+        const parent = toolbarRef.current?.offsetParent as HTMLElement | null;
+        const maxX = (parent?.clientWidth ?? window.innerWidth) - w;
+        const maxY = (parent?.clientHeight ?? window.innerHeight) - h;
 
         let newX = dragRef.current.initX + dx;
         let newY = dragRef.current.initY + dy;
 
-        // Clamp to viewport bounds
-        newX = Math.max(0, Math.min(window.innerWidth - w, newX));
-        newY = Math.max(0, Math.min(window.innerHeight - h, newY));
+        newX = Math.max(0, Math.min(maxX, newX));
+        newY = Math.max(0, Math.min(maxY, newY));
 
         setToolbarPosition({ x: newX, y: newY });
         if (document.body.style.cursor !== 'move') {
@@ -1527,37 +1577,88 @@ export default function DrawingToolbar() {
 
   if (!isToolbarVisible) return null;
 
+  // Free drag: toolbarPosition is the toolbelt's top-left corner. The panels open toward
+  // whichever side has more room, so the container is anchored from the toolbelt's corner.
+  const isDragPlaced = toolbarPlacement === 'drag';
+  const scaledBeltW = metrics.beltW;
+  const scaledBeltH = metrics.beltH;
+  const dragX = Math.max(0, Math.min(metrics.parentW - scaledBeltW, toolbarPosition.x));
+  const dragY = Math.max(0, Math.min(metrics.parentH - scaledBeltH, toolbarPosition.y));
+
+  const isBottomPlaced = isDragPlaced ? dragY + scaledBeltH / 2 > metrics.parentH / 2 : toolbarPlacement.startsWith('bottom');
+  const isRightPlaced = isDragPlaced ? dragX + scaledBeltW / 2 > metrics.parentW / 2 : toolbarPlacement.endsWith('right');
+  const isCenterPlaced = toolbarPlacement.endsWith('center');
+
+  // Position goes on the outer wrapper; the flex layout lives on the inner, zoomed one
   let placementClass = '';
   let placementStyle = {};
-  if (toolbarPlacement === 'drag') {
-    placementStyle = { left: toolbarPosition.x, top: toolbarPosition.y };
-    placementClass = 'flex-row items-start';
+  if (isDragPlaced) {
+    placementStyle = {
+      ...(isRightPlaced ? { right: metrics.parentW - dragX - scaledBeltW } : { left: dragX }),
+      ...(isBottomPlaced ? { bottom: metrics.parentH - dragY - scaledBeltH } : { top: dragY }),
+    };
   } else {
-    switch (toolbarPlacement) {
-      case 'top-left': placementClass = isVert ? 'top-4 left-4 flex-row items-start' : 'top-4 left-4 flex-col items-start'; break;
-      case 'top-center': placementClass = isVert ? 'top-4 left-1/2 -translate-x-1/2 flex-row items-start' : 'top-4 left-1/2 -translate-x-1/2 flex-col items-center'; break;
-      case 'top-right': placementClass = isVert ? 'top-4 right-4 flex-row-reverse items-start' : 'top-4 right-4 flex-col items-end'; break;
-      case 'bottom-left': placementClass = isVert ? 'bottom-4 left-4 flex-row items-start' : 'bottom-4 left-4 flex-col-reverse items-start'; break;
-      case 'bottom-center': placementClass = isVert ? 'bottom-4 left-1/2 -translate-x-1/2 flex-row items-start' : 'bottom-4 left-1/2 -translate-x-1/2 flex-col-reverse items-center'; break;
-      case 'bottom-right': placementClass = isVert ? 'bottom-4 right-4 flex-row-reverse items-start' : 'bottom-4 right-4 flex-col-reverse items-end'; break;
-    }
+    // Center placements use inset-x-0 + mx-auto so the panels get the full viewport width to lay out in
+    placementClass = `${isBottomPlaced ? 'bottom-4' : 'top-4'} ${isRightPlaced ? 'right-4' : isCenterPlaced ? 'inset-x-0 mx-auto w-fit' : 'left-4'}`;
   }
+
+  const layoutClass = isVert
+    ? `${isRightPlaced ? 'flex-row-reverse' : 'flex-row'} ${isBottomPlaced ? 'items-end' : 'items-start'}`
+    : `${isBottomPlaced ? 'flex-col-reverse' : 'flex-col'} ${isRightPlaced ? 'items-end' : isCenterPlaced ? 'items-center' : 'items-start'}`;
+
+  // Horizontal toolbar: panels sit in a row under (or above) the toolbelt instead of beside it
+  const panelsClass = isVert
+    ? 'contents'
+    : !showPanels
+    ? 'hidden'
+    : `flex flex-wrap gap-2 max-w-[calc(100vw-2rem)] ${isBottomPlaced ? 'items-end' : 'items-start'} ${isRightPlaced ? 'justify-end' : isCenterPlaced ? 'justify-center' : ''}`;
+
+  // Config popover is anchored to the toolbelt and opens away from the tools, toward the panels
+  const configPosition = isVert
+    ? `top-0 ${isRightPlaced ? 'right-full mr-2' : 'left-full ml-2'}`
+    : `${isBottomPlaced ? 'bottom-full mb-2' : 'top-full mt-2'} ${isRightPlaced ? 'right-0' : 'left-0'}`;
+
+  const configItemClass = (active: boolean) => `flex items-center justify-center rounded-md transition-colors ${active
+    ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400'
+    : 'text-slate-500 dark:text-slate-400 hover:bg-slate-200/70 dark:hover:bg-slate-800 hover:text-slate-700 dark:hover:text-slate-200'}`;
+
+  const PLACEMENT_OPTIONS: { id: typeof toolbarPlacement; label: string; icon: React.ReactNode }[] = [
+    { id: 'top-left', label: 'Top Left', icon: <ArrowUpLeft size={12} /> },
+    { id: 'top-center', label: 'Top Center', icon: <ArrowUp size={12} /> },
+    { id: 'top-right', label: 'Top Right', icon: <ArrowUpRight size={12} /> },
+    { id: 'bottom-left', label: 'Bottom Left', icon: <ArrowDownLeft size={12} /> },
+    { id: 'bottom-center', label: 'Bottom Center', icon: <ArrowDown size={12} /> },
+    { id: 'bottom-right', label: 'Bottom Right', icon: <ArrowDownRight size={12} /> },
+  ];
+
+  const strokeSliders: { label: string; shortLabel?: string; display: string; min: number; max: number; step: number; value: number; set: (v: number) => void }[] = [
+    { label: 'Width', display: `${store.width}px`, min: 1, max: 50, step: 1, value: store.width, set: store.setWidth },
+    { label: 'Opacity', display: `${Math.round(store.opacity * 100)}%`, min: 0.1, max: 1, step: 0.05, value: store.opacity, set: store.setOpacity },
+    { label: 'Glow', display: `${store.glowIntensity}`, min: 0, max: 20, step: 1, value: store.glowIntensity, set: store.setGlowIntensity },
+    { label: 'Smoothing', shortLabel: 'Smooth', display: `${Math.round(store.smoothing * 100)}%`, min: 0, max: 1, step: 0.1, value: store.smoothing, set: store.setSmoothing },
+  ];
+
+  const fadingFields = (
+    <div className="flex flex-col gap-1.5 text-[10px] w-full text-slate-600 dark:text-slate-400">
+      <div className="flex items-center gap-1 justify-between w-full hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
+        <span>Wait (s):</span>
+        <input type="number" min="0" step="0.5" value={store.blinkDuration} onChange={e => store.setBlinkDuration(Number(e.target.value))} className="w-10 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded outline-none border border-slate-200 dark:border-slate-700 text-center transition-colors focus:border-blue-500" title="Time to stay before disappearing (0 to stay forever)" />
+      </div>
+      <div className="flex items-center gap-1 justify-between w-full hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
+        <span>Hz:</span>
+        <input type="number" min="0" step="0.5" value={store.blinkFrequency} onChange={e => store.setBlinkFrequency(Number(e.target.value))} className="w-10 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded outline-none border border-slate-200 dark:border-slate-700 text-center transition-colors focus:border-blue-500" title="How fast to blink (0 to disable)" />
+      </div>
+      <div className="flex items-center gap-1 justify-between w-full hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
+        <span>Fade (s):</span>
+        <input type="number" min="0" step="0.5" value={store.fadeOutDuration} onChange={e => store.setFadeOutDuration(Number(e.target.value))} className="w-10 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded outline-none border border-slate-200 dark:border-slate-700 text-center transition-colors focus:border-blue-500" title="Duration of disappear transition" />
+      </div>
+    </div>
+  );
 
   const onPlacementChange = (placement: typeof toolbarPlacement) => {
     setToolbarPlacement(placement);
     setShowConfig(false);
   };
-
-  const transformOrigin = (() => {
-    if (toolbarPlacement === 'drag') return 'center center';
-    const parts = toolbarPlacement.split('-');
-    if (parts.length === 2) {
-      const vert = parts[0] === 'top' ? 'top' : (parts[0] === 'bottom' ? 'bottom' : 'center');
-      const horiz = parts[1] === 'left' ? 'left' : (parts[1] === 'right' ? 'right' : 'center');
-      return `${vert} ${horiz}`;
-    }
-    return 'center center';
-  })();
 
   if (isMobile) {
     return <MobileDrawingToolbar isInitialLoad={isInitialLoad} />;
@@ -1566,7 +1667,7 @@ export default function DrawingToolbar() {
   return (
     <div
       ref={toolbarRef}
-      className={`absolute flex z-[100] gap-2 ${isInitialLoad ? 'animate-in fade-in zoom-in-95 duration-200' : ''} ${placementClass} pointer-events-none`}
+      className={`absolute z-[100] ${isInitialLoad ? 'animate-in fade-in duration-200' : ''} ${placementClass} pointer-events-none`}
       style={{
         ...placementStyle,
         opacity: toolbarOpacity,
@@ -1578,14 +1679,14 @@ export default function DrawingToolbar() {
         '--function-h': `${localFunctionSize.h}px`,
         '--arrow-w': `${localArrowSize.w}px`,
         '--arrow-h': `${localArrowSize.h}px`,
-        transform: `scale(var(--toolbar-scale))`,
-        transformOrigin: transformOrigin,
-        transition: isDragging || resizingMode !== 'none' || isAdjustingScale ? 'none' : 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-        willChange: (resizingMode !== 'none' || isDragging || isAdjustingScale) ? 'transform' : 'auto'
+        transition: isDragging || resizingMode !== 'none' || isAdjustingScale ? 'none' : 'opacity 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       } as React.CSSProperties}
     >
+      {/* zoom (not transform: scale) so the UI is re-laid out at the new size and stays sharp */}
+      <div className={`flex gap-2 ${layoutClass}`} style={{ zoom: 'var(--toolbar-scale)' } as React.CSSProperties}>
       {/* Main Toolbelt */}
-      <div className={`pointer-events-auto flex ${isVert ? 'flex-col' : 'flex-row'} items-center gap-1.5 p-1 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-800/80 relative group ${isDragging || resizingMode !== 'none' ? 'cursor-grabbing transition-none' : 'transition-all duration-300'}`}>
+      {/* z-30 keeps the config popover above the sibling option panels */}
+      <div ref={beltRef} className={`pointer-events-auto flex ${isVert ? 'flex-col gap-1.5' : 'flex-row gap-1'} items-center p-1 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-xl border border-slate-200/50 dark:border-slate-800/80 relative z-30 group ${isDragging || resizingMode !== 'none' ? 'cursor-grabbing transition-none' : 'transition-all duration-300'}`}>
         <div className="flex gap-1 p-1">
           <button
             onClick={() => store.setIsToolbarVisible(false)}
@@ -1604,8 +1705,8 @@ export default function DrawingToolbar() {
                   isDragging: true,
                   startX: e.clientX,
                   startY: e.clientY,
-                  initX: toolbarPosition.x,
-                  initY: toolbarPosition.y
+                  initX: dragX,
+                  initY: dragY
                 };
                 e.preventDefault();
               }}
@@ -1618,35 +1719,29 @@ export default function DrawingToolbar() {
               {isVert ? <GripHorizontal size={12} /> : <GripVertical size={12} />}
             </div>
           )}
-          <Popover open={showConfig} onOpenChange={setShowConfig}>
+          <Popover open={showConfig} onOpenChange={setShowConfig} className="inline-block">
             <PopoverTrigger
-              className={`p-1.5 rounded-lg transition-colors ${showConfig ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer ${showConfig ? 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-200' : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300'}`}
               title="Toolbar Configuration"
             >
               <MoreHorizontal size={12} />
             </PopoverTrigger>
-            <PopoverContent
-              className="w-auto p-0 bg-transparent border-none shadow-none ring-0 z-[110] pointer-events-none"
-              align="start"
-              sideOffset={10}
-            >
-              <div
-                className="w-[180px] p-3 text-xs flex flex-col gap-2 bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-800 shadow-xl rounded-xl text-slate-900 dark:text-slate-200 transition-transform origin-top-left pointer-events-auto"
-                style={{
-                  transform: `scale(${localScale})`
-                }}
-              >
-                <div className="flex items-center justify-between px-2 py-0.5">
-                  <span className="text-[10px] uppercase font-bold text-slate-500">Scale</span>
-                  <button
-                    onClick={() => setToolbarScale(1)}
-                    className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-blue-500 transition-colors"
-                    title="Reset Scale"
-                  >
-                    <RotateCcw size={8} />
-                  </button>
-                </div>
-                <div className="px-2 pb-2">
+            <PopoverContent position={configPosition}>
+              <div className="w-[196px] p-3 flex flex-col gap-3 bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl text-slate-900 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-150">
+                <div className="flex flex-col gap-2.5">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Scale</span>
+                    <div className="flex items-center gap-1">
+                      <span className="text-[10px] font-mono text-slate-600 dark:text-slate-300">{Math.round(localScale * 100)}%</span>
+                      <button
+                        onClick={() => setToolbarScale(1)}
+                        className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-blue-500 transition-colors"
+                        title="Reset Scale"
+                      >
+                        <RotateCcw size={10} />
+                      </button>
+                    </div>
+                  </div>
                   <InternalScaleSlider
                     initialScale={store.toolbarScale}
                     toolbarRef={toolbarRef}
@@ -1658,35 +1753,59 @@ export default function DrawingToolbar() {
                     onAdjusting={setIsAdjustingScale}
                   />
                 </div>
-                <div className="h-[1px] bg-slate-200 dark:bg-slate-700 my-0.5" />
-                <span className="text-[10px] uppercase font-bold text-slate-500 px-2 py-0.5">Position</span>
-                <div className="grid grid-cols-3 gap-1 px-1">
-                  <button onClick={() => onPlacementChange('top-left')} title="Top Left" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-left' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUpLeft size={12} /></button>
-                  <button onClick={() => onPlacementChange('top-center')} title="Top Center" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-center' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUp size={12} /></button>
-                  <button onClick={() => onPlacementChange('top-right')} title="Top Right" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'top-right' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowUpRight size={12} /></button>
-                  <button onClick={() => onPlacementChange('bottom-left')} title="Bottom Left" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-left' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDownLeft size={12} /></button>
-                  <button onClick={() => onPlacementChange('bottom-center')} title="Bottom Center" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-center' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDown size={12} /></button>
-                  <button onClick={() => onPlacementChange('bottom-right')} title="Bottom Right" className={`p-1.5 rounded flex items-center justify-center hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'bottom-right' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}><ArrowDownRight size={12} /></button>
-                </div>
-                <button onClick={() => onPlacementChange('drag')} className={`flex items-center gap-2 px-2 py-1.5 mx-1 rounded hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarPlacement === 'drag' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : 'text-slate-500'}`}>
-                  <Move size={10} />
-                  <span className="text-[10px]">Free Drag</span>
-                </button>
-                <div className="h-[1px] bg-slate-200 dark:bg-slate-700 my-1" />
-                <span className="text-[10px] uppercase font-bold text-slate-500 px-2 py-1">Orientation</span>
-                <button onClick={() => { setToolbarOrientation('horizontal'); setShowConfig(false); }} className={`text-left px-2 py-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarOrientation === 'horizontal' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : ''}`}>Horizontal</button>
-                <button onClick={() => { setToolbarOrientation('vertical'); setShowConfig(false); }} className={`text-left px-2 py-1.5 rounded hover:bg-slate-100 dark:hover:bg-slate-700 ${toolbarOrientation === 'vertical' ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600' : ''}`}>Vertical</button>
 
-                <div className="h-[1px] bg-slate-200 dark:bg-slate-700 my-1" />
+                <div className="flex flex-col gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Position</span>
+                  <div className="grid grid-cols-3 gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900/70">
+                    {PLACEMENT_OPTIONS.map(p => (
+                      <button
+                        key={p.id}
+                        onClick={() => onPlacementChange(p.id)}
+                        title={p.label}
+                        className={`h-7 ${configItemClass(toolbarPlacement === p.id)}`}
+                      >
+                        {p.icon}
+                      </button>
+                    ))}
+                    <button
+                      onClick={() => onPlacementChange('drag')}
+                      className={`col-span-3 h-7 gap-1.5 text-[10px] font-medium ${configItemClass(toolbarPlacement === 'drag')}`}
+                    >
+                      <Move size={11} />
+                      Free Drag
+                    </button>
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Orientation</span>
+                  <div className="grid grid-cols-2 gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-900/70">
+                    <button
+                      onClick={() => { setToolbarOrientation('horizontal'); setShowConfig(false); }}
+                      className={`h-7 gap-1.5 text-[10px] font-medium ${configItemClass(toolbarOrientation === 'horizontal')}`}
+                    >
+                      <GripHorizontal size={11} />
+                      Horizontal
+                    </button>
+                    <button
+                      onClick={() => { setToolbarOrientation('vertical'); setShowConfig(false); }}
+                      className={`h-7 gap-1.5 text-[10px] font-medium ${configItemClass(toolbarOrientation === 'vertical')}`}
+                    >
+                      <GripVertical size={11} />
+                      Vertical
+                    </button>
+                  </div>
+                </div>
+
                 <button
                   onClick={() => {
                     store.resetPreferences();
                     setShowConfig(false);
                   }}
-                  className="flex items-center gap-2 px-2 py-2 mx-1 rounded-lg text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
+                  className="flex items-center justify-center gap-1.5 h-7 rounded-lg text-[10px] font-medium text-red-500 border border-red-500/20 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors"
                 >
                   <RotateCcw size={10} />
-                  <span className="text-[10px] font-bold uppercase tracking-wider">Reset Defaults</span>
+                  Reset Defaults
                 </button>
               </div>
             </PopoverContent>
@@ -1719,9 +1838,27 @@ export default function DrawingToolbar() {
           })}
         </div>
 
+        {!isVert && (
+          <>
+            <div className="w-[1px] h-8 bg-slate-200 dark:bg-slate-700" />
+            <button
+              onClick={() => setShowPanels(open => !open)}
+              title={showPanels ? 'Hide tool options' : 'Show tool options (color, width, style)'}
+              aria-expanded={showPanels}
+              className={`flex items-center gap-1.5 p-2 m-0.5 rounded-xl transition-colors ${showPanels
+                  ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                  : 'text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                }`}
+            >
+              <span className="w-3.5 h-3.5 rounded-full border border-slate-300 dark:border-slate-600" style={getColorSwatchStyle(store.color)} />
+              <SlidersHorizontal size={14} />
+            </button>
+          </>
+        )}
+
         <div className={isVert ? "w-8 h-[1px] bg-slate-200 dark:bg-slate-700" : "w-[1px] h-8 bg-slate-200 dark:bg-slate-700"} />
 
-        <div className="grid grid-cols-2 gap-1 p-0.5">
+        <div className={`grid ${isVert ? 'grid-cols-2' : 'grid-cols-1'} gap-1 p-0.5`}>
           <button
             disabled={store.historyIndex <= 0}
             onClick={() => store.undo()}
@@ -1779,17 +1916,21 @@ export default function DrawingToolbar() {
         </div>
       </div>
 
+      <div className={panelsClass}>
       {/* Options Panel depending on tool */}
       {store.activeTool !== 'eraser' && (store.activeTool !== 'select' || store.selectedAnnotationIds.length > 0) && (
         <div
           className={`pointer-events-auto flex flex-col p-0 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-800/80 text-slate-900 dark:text-slate-100 relative group/options will-change-[width,height] overflow-hidden animate-in fade-in duration-300 ${resizingMode !== 'none' ? 'select-none transition-none shadow-2xl ring-2 ring-blue-500/10' : ''}`}
-          style={{
+          style={(isVert ? {
             width: 'var(--options-w)',
             height: 'var(--options-h)',
             minWidth: '200px',
             minHeight: '150px',
             maxHeight: 'min(90vh, 800px)'
-          } as React.CSSProperties}
+          } : {
+            // Horizontal: a compact strip sized by its content
+            maxHeight: 'min(90vh, 800px)'
+          }) as React.CSSProperties}
         >
           {/* Top Notch Decor */}
           <div className="absolute top-0 left-1/2 -translate-x-1/2 w-3/4 h-1 bg-slate-200/40 dark:bg-slate-700/40 rounded-b-full pointer-events-none" />
@@ -1799,7 +1940,7 @@ export default function DrawingToolbar() {
 
           {/* Resize Handle for Options Panel */}
           <div
-            className="absolute bottom-0 right-0 w-10 h-10 cursor-nwse-resize opacity-40 hover:opacity-100 transition-all flex items-end justify-end p-2 z-50 touch-none active:scale-90"
+            className={`absolute bottom-0 right-0 w-10 h-10 cursor-nwse-resize opacity-40 hover:opacity-100 transition-all items-end justify-end p-2 z-50 touch-none active:scale-90 ${isVert ? 'flex' : 'hidden'}`}
             style={{
               transform: `scale(${1 / localScale})`,
               transformOrigin: 'bottom right'
@@ -1829,127 +1970,90 @@ export default function DrawingToolbar() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-6 pr-5 scroll-smooth min-h-0 bg-white dark:bg-[#0b1120]">
-            <div className={`flex ${isVert ? 'flex-col gap-6' : 'flex-wrap gap-x-8 gap-y-6 w-full'}`}>
+          <div className={`flex-1 overflow-y-auto custom-scrollbar scroll-smooth min-h-0 bg-white dark:bg-[#0b1120] ${isVert ? 'p-6 pr-5' : 'px-3 py-2.5'}`}>
+            <div className={`flex flex-col ${isVert ? 'gap-6' : 'gap-2.5'}`}>
+              {/* Horizontal: two rows. Colors + sliders on top, style + toggles below */}
+              <div className={isVert ? 'contents' : 'flex gap-x-3'}>
               {/* Colors Section */}
-              <div className={`flex flex-col gap-3 ${isVert ? 'pb-6 border-b border-slate-800' : 'pr-8 border-r border-slate-800/50'}`}>
-                <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase mb-1">Colors</span>
-                <div className={`grid ${isVert ? 'grid-cols-4' : 'grid-cols-2 md:grid-cols-3'} gap-3 w-fit relative`}>
+              <div className={`flex flex-col ${isVert ? 'gap-3 pb-6 border-b border-slate-800' : 'justify-center pr-3 border-r border-slate-200 dark:border-slate-800/50'}`}>
+                {isVert && <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase mb-1">Colors</span>}
+                <div className={`grid ${isVert ? 'grid-cols-4 gap-3' : 'grid-cols-6 gap-2'} w-fit relative`}>
                   {COLORS.map(c => (
                     <button
                       key={c}
                       onClick={() => store.setColor(c)}
-                      className={`w-7 h-7 rounded-full transition-all ${store.color === c ? 'scale-110 ring-2 ring-white/50 ring-offset-2 ring-offset-[#0b1120] shadow-lg' : 'hover:scale-105 opacity-90 hover:opacity-100'}`}
+                      className={`${isVert ? 'w-7 h-7' : 'w-5 h-5'} rounded-full transition-all ${store.color === c ? 'scale-110 ring-2 ring-white/50 ring-offset-2 ring-offset-[#0b1120] shadow-lg' : 'hover:scale-105 opacity-90 hover:opacity-100'}`}
                       style={getColorSwatchStyle(c)}
                     />
                   ))}
                   <PortalColorPicker
                     color={store.color}
                     onChange={(c) => store.setColor(c)}
-                    side="top"
+                    side={isBottomPlaced ? 'top' : 'bottom'}
                     align="center"
                     showInput
-                    triggerClassName="w-7 h-7 rounded-full border-2 border-dashed border-slate-700 flex items-center justify-center cursor-pointer hover:border-slate-500 transition-colors"
+                    triggerClassName={`${isVert ? 'w-7 h-7' : 'w-5 h-5'} rounded-full border-2 border-dashed border-slate-700 flex items-center justify-center cursor-pointer hover:border-slate-500 transition-colors`}
                   >
-                    <Plus size={14} className="text-slate-500" />
+                    <Plus size={isVert ? 14 : 10} className="text-slate-500" />
                   </PortalColorPicker>
                 </div>
               </div>
 
-              {/* Sliders Section 1: Width & Opacity */}
-              <div className={`flex flex-col gap-6 ${isVert ? 'pb-6 border-b border-slate-800' : 'flex-1 pr-8 border-r border-slate-800/50'}`}>
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between group">
-                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Width</span>
-                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
-                      {store.width}px
+              {/* Sliders: Width & Opacity, Glow & Smoothing */}
+              {[strokeSliders.slice(0, 2), strokeSliders.slice(2)].map((group, i) => (
+                <div
+                  key={i}
+                  className={`flex flex-col ${isVert ? 'gap-6 pb-6 border-b border-slate-800' : 'justify-center gap-2.5 flex-1 min-w-20'}`}
+                >
+                  {group.map(s => (
+                    <div key={s.label} className={`flex flex-col ${isVert ? 'gap-4' : 'gap-1.5'}`}>
+                      <div className="flex items-center justify-between group">
+                        <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">{isVert ? s.label : s.shortLabel ?? s.label}</span>
+                        <div className={isVert
+                          ? 'bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center'
+                          : 'text-[10px] font-mono text-slate-600 dark:text-slate-300'}>
+                          {s.display}
+                        </div>
+                      </div>
+                      <Slider
+                        min={s.min}
+                        max={s.max}
+                        step={s.step}
+                        value={s.value}
+                        onValueChange={v => s.set(Array.isArray(v) ? v[0] : (v as number))}
+                        className="w-full"
+                      />
                     </div>
-                  </div>
-                  <Slider
-                    min={1}
-                    max={50}
-                    value={store.width}
-                    onValueChange={v => store.setWidth(Array.isArray(v) ? v[0] : (v as number))}
-                    className="w-full"
-                  />
+                  ))}
                 </div>
+              ))}
 
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between group">
-                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Opacity</span>
-                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
-                      {Math.round(store.opacity * 100)}%
-                    </div>
-                  </div>
-                  <Slider
-                    min={0.1}
-                    max={1}
-                    step={0.05}
-                    value={store.opacity}
-                    onValueChange={v => store.setOpacity(Array.isArray(v) ? v[0] : (v as number))}
-                    className="w-full"
-                  />
-                </div>
               </div>
 
-              {/* Sliders Section 2: Glow & Smoothing */}
-              <div className={`flex flex-col gap-6 ${isVert ? 'pb-6 border-b border-slate-800' : 'flex-1 pr-8 border-r border-slate-800/50'}`}>
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between group">
-                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Glow</span>
-                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
-                      {store.glowIntensity}
-                    </div>
-                  </div>
-                  <Slider
-                    min={0}
-                    max={20}
-                    value={store.glowIntensity}
-                    onValueChange={v => store.setGlowIntensity(Array.isArray(v) ? v[0] : (v as number))}
-                    className="w-full"
-                  />
-                </div>
-
-                <div className="flex flex-col gap-4">
-                  <div className="flex items-center justify-between group">
-                    <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Smoothing</span>
-                    <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[10px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
-                      {Math.round(store.smoothing * 100)}%
-                    </div>
-                  </div>
-                  <Slider
-                    min={0}
-                    max={1}
-                    step={0.1}
-                    value={store.smoothing}
-                    onValueChange={v => store.setSmoothing(Array.isArray(v) ? v[0] : (v as number))}
-                    className="w-full"
-                  />
-                </div>
-              </div>
-
+              <div className={isVert ? 'contents' : 'flex gap-x-3 pt-2.5 border-t border-slate-200 dark:border-slate-800/50'}>
               {/* Options Section */}
-              <div className={`flex flex-col gap-4 min-w-[160px] ${isVert ? 'pt-2' : ''}`}>
-                <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Style</span>
-                <div className="grid grid-cols-2 gap-2">
+              {/* Horizontal: brushes in the left column, toggles in the right one */}
+              <div className={isVert ? 'flex flex-col gap-4 min-w-[160px] pt-2' : 'grid grid-cols-[auto_7rem] grid-rows-[auto_1fr] content-center gap-x-3 gap-y-2'}>
+                {isVert && <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Style</span>}
+                <div className={`grid ${isVert ? 'grid-cols-2 gap-2' : 'grid-cols-4 gap-1 col-start-1 row-start-1 row-span-2 content-center [&_svg]:w-8 [&_svg]:h-4'}`}>
                   {BRUSHES.map(b => (
                     <button
                       key={b.id}
                       onClick={() => store.setBrushStyle(b.id)}
                       title={b.label}
-                      className={`flex flex-col items-center justify-center py-2 px-1 rounded-xl border transition-all ${
+                      className={`flex flex-col items-center justify-center border transition-all ${isVert ? 'px-1 py-2 rounded-xl' : 'p-0.5 rounded-md'} ${
                         store.brushStyle === b.id
                           ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-500 text-blue-600 dark:text-blue-400 shadow-sm'
                           : 'bg-white dark:bg-[#0b1120] border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-900/50 hover:border-slate-300 dark:hover:border-slate-700'
                       }`}
                     >
                       <BrushPreview brushId={b.id} color={store.brushStyle === b.id ? (document.documentElement.classList.contains('dark') ? '#60a5fa' : '#3b82f6') : 'currentColor'} />
-                      <span className="text-[9px] mt-1.5 font-medium text-center leading-tight">{b.label}</span>
+                      {isVert && <span className="text-[9px] mt-1.5 font-medium text-center leading-tight">{b.label}</span>}
                     </button>
                   ))}
                 </div>
 
-                <div className="flex items-center gap-3 mt-2 group">
+                <div className={`flex items-center gap-3 group ${isVert ? 'mt-2' : 'col-start-2 row-start-1'}`}>
                   <Checkbox
                     id="auto-shape"
                     checked={store.autoShapeDetection}
@@ -1964,7 +2068,7 @@ export default function DrawingToolbar() {
                   </label>
                 </div>
 
-                <div className="flex flex-col gap-3">
+                <div className={`flex flex-col gap-3 ${isVert ? '' : 'col-start-2 row-start-2'}`}>
                   <div className="flex items-center justify-between group cursor-pointer" onClick={() => store.setFillEnabled(!store.fillEnabled)}>
                     <div className="flex items-center gap-3">
                       <Checkbox
@@ -1995,7 +2099,7 @@ export default function DrawingToolbar() {
                   {store.fillEnabled && (
                     <div className="flex flex-col gap-2 animate-in slide-in-from-top-1 duration-200">
                       <div className="flex items-center justify-between">
-                        <span className="text-[9px] font-bold text-slate-500 uppercase pr-1">Fill Opacity</span>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase pr-1">{isVert ? 'Fill Opacity' : 'Fill'}</span>
                         <div className="flex items-center gap-1.5">
                           <div className="bg-slate-100 dark:bg-slate-900/80 px-2 py-1 rounded text-[9px] font-mono text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-800 min-w-[36px] text-center">
                             {Math.round(store.fillOpacity * 100)}%
@@ -2025,6 +2129,14 @@ export default function DrawingToolbar() {
                   )}
                 </div>
               </div>
+
+              {/* Horizontal: highlighter timing lives in the strip instead of its own panel */}
+              {!isVert && store.activeTool === 'highlighter' && (
+                <div className="flex flex-col justify-center w-[104px] box-content pl-3 border-l border-slate-200 dark:border-slate-800/50">
+                  {fadingFields}
+                </div>
+              )}
+              </div>
             </div>
           </div>
 
@@ -2032,25 +2144,13 @@ export default function DrawingToolbar() {
       )}
 
       {/* Highlighter Settings */}
-      {store.activeTool === 'highlighter' && (
+      {isVert && store.activeTool === 'highlighter' && (
         <div
-          className={`pointer-events-auto flex ${isVert ? 'flex-col items-start gap-1.5' : 'items-center gap-2'} p-1.5 px-2 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-lg shadow-sm border border-slate-200/50 dark:border-slate-800 text-slate-900 dark:text-slate-100`}
+          className="pointer-events-auto flex flex-col gap-2.5 p-3.5 min-w-[132px] bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-800/80 text-slate-900 dark:text-slate-100 animate-in fade-in duration-300"
           style={{ transitionTimingFunction: 'cubic-bezier(0, 0, 0, 1.04)' }}
         >
-          <div className={`flex ${isVert ? 'flex-col' : 'flex-wrap items-center'} gap-1.5 text-[10px] w-full text-slate-600 dark:text-slate-400`}>
-            <div className="flex items-center gap-1 justify-between w-full hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
-              <span>Wait (s):</span>
-              <input type="number" min="0" step="0.5" value={store.blinkDuration} onChange={e => store.setBlinkDuration(Number(e.target.value))} className="w-10 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded outline-none border border-slate-200 dark:border-slate-700 text-center transition-colors focus:border-blue-500" title="Time to stay before disappearing (0 to stay forever)" />
-            </div>
-            <div className="flex items-center gap-1 justify-between w-full hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
-              <span>Hz:</span>
-              <input type="number" min="0" step="0.5" value={store.blinkFrequency} onChange={e => store.setBlinkFrequency(Number(e.target.value))} className="w-10 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded outline-none border border-slate-200 dark:border-slate-700 text-center transition-colors focus:border-blue-500" title="How fast to blink (0 to disable)" />
-            </div>
-            <div className="flex items-center gap-1 justify-between w-full hover:text-slate-800 dark:hover:text-slate-200 transition-colors">
-              <span>Fade (s):</span>
-              <input type="number" min="0" step="0.5" value={store.fadeOutDuration} onChange={e => store.setFadeOutDuration(Number(e.target.value))} className="w-10 bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded outline-none border border-slate-200 dark:border-slate-700 text-center transition-colors focus:border-blue-500" title="Duration of disappear transition" />
-            </div>
-          </div>
+          <span className="text-[10px] font-bold tracking-[0.1em] text-slate-500 uppercase">Fading</span>
+          {fadingFields}
         </div>
       )}
 
@@ -2237,7 +2337,7 @@ export default function DrawingToolbar() {
 
       {/* Waves Settings */}
       {(store.activeTool === 'sine-wave' || store.activeTool === 'square-wave' || store.activeTool === 'triangle-wave') && (
-        <div className={`pointer-events-auto flex ${isVert ? 'flex-col gap-3 min-w-[150px]' : 'items-center gap-4'} p-2.5 px-4 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-xl shadow-lg border border-slate-200/50 dark:border-slate-800 text-slate-900 dark:text-slate-100`}>
+        <div className={`pointer-events-auto flex ${isVert ? 'flex-col gap-3 min-w-[150px]' : 'items-center gap-4 min-w-[300px]'} p-3.5 px-4 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-800 text-slate-900 dark:text-slate-100`}>
           <div className="flex flex-col gap-2 w-full">
             <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between gap-4">
               Amplitude <span>{store.waveAmplitude}px</span>
@@ -2508,6 +2608,8 @@ export default function DrawingToolbar() {
           </div>
         </div>
       )}
+      </div>
+      </div>
     </div>
   );
 }

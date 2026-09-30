@@ -201,6 +201,12 @@ export function useDrawingSystem(
       }
     };
 
+    // Highlighter strokes with a stay time get a fade deadline; the store fades and removes them
+    const getFadeAt = (state: { activeTool: DrawingTool; blinkDuration: number }) =>
+      state.activeTool === 'highlighter' && state.blinkDuration > 0
+        ? { fadeAt: Date.now() + state.blinkDuration * 1000 }
+        : {};
+
     const handlePointerUp = (e: PointerEvent) => {
       if (!e.isPrimary) return;
       if (!isDrawing.current) return;
@@ -259,18 +265,10 @@ export function useDrawingSystem(
                   useAnnotationStore.getState().updateAnnotation(annId, {
                     points: detected.points,
                     tool: targetTool,
+                    isFading: false,
+                    ...getFadeAt(state)
                   });
                   useAnnotationStore.getState().commitAction();
-
-                  if (state.activeTool === 'highlighter' && state.blinkDuration > 0) {
-                    setTimeout(() => {
-                      useAnnotationStore.getState().updateAnnotation(annId, { isFading: true });
-                      setTimeout(() => {
-                        useAnnotationStore.getState().removeAnnotations([annId]);
-                        useAnnotationStore.getState().commitAction();
-                      }, state.fadeOutDuration * 1000);
-                    }, state.blinkDuration * 1000);
-                  }
                 }
               };
               requestAnimationFrame(animate);
@@ -287,25 +285,11 @@ export function useDrawingSystem(
         updateAnnotation(currentAnnotationId.current, {
           points: finalPoints,
           tool: finalTool,
-          isFading: false
+          isFading: false,
+          ...getFadeAt(state)
         });
 
         useAnnotationStore.getState().commitAction();
-
-        // Trigger auto remove if highlighter has a stay time > 0
-        if (state.activeTool === 'highlighter' && state.blinkDuration > 0) {
-          const id = currentAnnotationId.current;
-          setTimeout(() => {
-            // Start the fade out CSS transition
-            useAnnotationStore.getState().updateAnnotation(id, { isFading: true });
-
-            // Remove the annotation from state after the fade duration
-            setTimeout(() => {
-              useAnnotationStore.getState().removeAnnotations([id]);
-              useAnnotationStore.getState().commitAction();
-            }, state.fadeOutDuration * 1000);
-          }, state.blinkDuration * 1000);
-        }
 
         currentAnnotationId.current = null;
       }
@@ -356,14 +340,18 @@ export function useDrawingSystem(
 
     el.addEventListener('pointerdown', handlePointerDown);
     window.addEventListener('pointermove', handlePointerMove);
-    window.addEventListener('pointerup', handlePointerUp);
+    // Capture phase + pointercancel so a stroke is always finalized, even if the canvas
+    // stops the event or the browser cancels the pointer
+    window.addEventListener('pointerup', handlePointerUp, true);
+    window.addEventListener('pointercancel', handlePointerUp, true);
     window.addEventListener('cancel-drawing', handleCancelDrawing);
     window.addEventListener('keydown', handleDrawingKeyDown);
 
     return () => {
       el.removeEventListener('pointerdown', handlePointerDown);
       window.removeEventListener('pointermove', handlePointerMove);
-      window.removeEventListener('pointerup', handlePointerUp);
+      window.removeEventListener('pointerup', handlePointerUp, true);
+      window.removeEventListener('pointercancel', handlePointerUp, true);
       window.removeEventListener('cancel-drawing', handleCancelDrawing);
       window.removeEventListener('keydown', handleDrawingKeyDown);
     };

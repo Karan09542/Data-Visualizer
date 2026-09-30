@@ -40,6 +40,7 @@ export interface Annotation {
   waveLength?: number; // Only for waves
   polygonSides?: number; // Only for polygons
   isFading?: boolean;
+  fadeAt?: number; // timestamp (ms) when a timed highlighter stroke starts fading out
   isHighlighter?: boolean;
   fillEnabled?: boolean;
   fillOpacity?: number;
@@ -481,3 +482,49 @@ export const useAnnotationStore = create<AnnotationState>()(
 }
 )
 );
+
+// Timed highlighter strokes fade out at `fadeAt` and are then removed. This is driven from the
+// stored data (not from timers started while drawing), so strokes restored after a reload or
+// an undo still expire.
+const expiryTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
+const syncHighlighterExpiry = (annotations: Annotation[]) => {
+  const liveIds = new Set(annotations.map(a => a.id));
+  expiryTimers.forEach((timer, id) => {
+    if (!liveIds.has(id)) {
+      clearTimeout(timer);
+      expiryTimers.delete(id);
+    }
+  });
+
+  for (const anno of annotations) {
+    if (anno.fadeAt === undefined || expiryTimers.has(anno.id)) continue;
+    const id = anno.id;
+    const fadeMs = (anno.fadeOutDuration || 0) * 1000;
+
+    expiryTimers.set(id, setTimeout(() => {
+      useAnnotationStore.getState().updateAnnotation(id, { isFading: true });
+      expiryTimers.set(id, setTimeout(() => {
+        expiryTimers.delete(id);
+        const state = useAnnotationStore.getState();
+        if (!state.annotations.some(a => a.id === id)) return;
+        state.removeAnnotations([id]);
+        state.commitAction();
+      }, fadeMs));
+    }, Math.max(0, anno.fadeAt - Date.now())));
+  }
+};
+
+if (typeof window !== 'undefined') {
+  // Timed strokes saved before `fadeAt` existed have lost their timers: expire them now
+  const isStale = (a: Annotation) => !!a.isHighlighter && a.blinkDuration > 0 && a.fadeAt === undefined;
+  const restored = useAnnotationStore.getState().annotations;
+  if (restored.some(isStale)) {
+    useAnnotationStore.setState({
+      annotations: restored.map(a => isStale(a) ? { ...a, isFading: false, fadeAt: Date.now() } : a)
+    });
+  }
+
+  syncHighlighterExpiry(useAnnotationStore.getState().annotations);
+  useAnnotationStore.subscribe(state => syncHighlighterExpiry(state.annotations));
+}

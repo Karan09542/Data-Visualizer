@@ -2,18 +2,84 @@ import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
 import * as d3 from 'd3';
 import { Annotation, useAnnotationStore } from '../store/useAnnotationStore';
 
+const WAVE_TOOLS = ['sine-wave', 'square-wave', 'triangle-wave', 'sawtooth-wave', 'pulse-wave', 'zigzag-wave'];
+// Shapes drawn from the first and last point only; the points in between are just the drag trail
+const TWO_POINT_TOOLS = ['straight-line', 'rectangle', 'rounded-rectangle', 'triangle', 'pentagon', 'hexagon', 'heptagon', 'octagon', 'polygon', 'star', 'diamond'];
+
+// Bounds of the shape as it is actually drawn (see the path builders in AnnotationRenderer),
+// which for most tools is not the bounds of the raw pointer points.
 export function getAnnotationBounds(anno: Annotation) {
   if (anno.points.length === 0) return { minX: 0, maxX: 0, minY: 0, maxY: 0, cx: 0, cy: 0, w: 0, h: 0 };
-  const xs = anno.points.map(p => p.x);
-  const ys = anno.points.map(p => p.y);
-  
-  const pad = anno.width ? anno.width / 2 : 5;
-  const minX = Math.min(...xs) - pad;
-  const maxX = Math.max(...xs) + pad;
-  const minY = Math.min(...ys) - pad;
-  const maxY = Math.max(...ys) + pad;
 
-  return { 
+  const p1 = anno.points[0];
+  const p2 = anno.points[anno.points.length - 1];
+  const dx = p2.x - p1.x;
+  const dy = p2.y - p1.y;
+
+  let pad = anno.width ? anno.width / 2 : 5;
+  let box = { minX: 0, maxX: 0, minY: 0, maxY: 0 };
+
+  const boxOf = (pts: { x: number; y: number }[]) => {
+    const xs = pts.map(p => p.x);
+    const ys = pts.map(p => p.y);
+    return { minX: Math.min(...xs), maxX: Math.max(...xs), minY: Math.min(...ys), maxY: Math.max(...ys) };
+  };
+
+  if (anno.tool === 'circle' || anno.tool === 'ellipse') {
+    // Drawn around the first point
+    const r = Math.sqrt(dx * dx + dy * dy);
+    const rx = anno.tool === 'ellipse' ? Math.abs(dx) : r;
+    const ry = anno.tool === 'ellipse' ? Math.abs(dy) : r;
+    box = { minX: p1.x - rx, maxX: p1.x + rx, minY: p1.y - ry, maxY: p1.y + ry };
+  } else if (anno.tool === 'square') {
+    const x = Math.min(p1.x, p2.x);
+    const y = Math.min(p1.y, p2.y);
+    const size = Math.max(Math.abs(dx), Math.abs(dy));
+    box = { minX: x, maxX: x + size, minY: y, maxY: y + size };
+  } else if (WAVE_TOOLS.includes(anno.tool)) {
+    // The wave swings +/- amplitude perpendicular to the line between the two points
+    const amp = anno.waveAmplitude || 20;
+    const angle = Math.atan2(dy, dx);
+    const nx = -Math.sin(angle) * amp;
+    const ny = Math.cos(angle) * amp;
+    box = boxOf([
+      { x: p1.x + nx, y: p1.y + ny }, { x: p1.x - nx, y: p1.y - ny },
+      { x: p2.x + nx, y: p2.y + ny }, { x: p2.x - nx, y: p2.y - ny },
+    ]);
+  } else if (anno.tool === 'arrow') {
+    box = boxOf([p1, p2]);
+    const tipStyle = anno.arrowTipStyle || 'triangle';
+    const tipSize = anno.arrowTipSize || 15;
+    const tipPad = tipStyle === 'none' ? 0 : tipStyle === 'custom-math' ? tipSize : tipSize / 2;
+    const linePad = anno.arrowLineStyle === 'curly' || anno.arrowLineStyle === 'custom-math' ? 10 : 0;
+    pad = Math.max(pad, tipPad, linePad);
+  } else if (anno.tool === 'function-brush') {
+    // Generated from an expression: measure the rendered path, fall back to the stroke +/- amplitude
+    box = boxOf(anno.points);
+    const el = typeof document !== 'undefined' ? document.getElementById(`anno-${anno.id}`) : null;
+    let measured = false;
+    if (el && 'getBBox' in el) {
+      try {
+        const bb = (el as unknown as SVGGraphicsElement).getBBox();
+        if (bb.width > 0 || bb.height > 0) {
+          box = { minX: bb.x, maxX: bb.x + bb.width, minY: bb.y, maxY: bb.y + bb.height };
+          measured = true;
+        }
+      } catch (e) {}
+    }
+    if (!measured) pad += anno.functionAmplitude ?? 20;
+  } else if (TWO_POINT_TOOLS.includes(anno.tool)) {
+    box = boxOf([p1, p2]);
+  } else {
+    box = boxOf(anno.points);
+  }
+
+  const minX = box.minX - pad;
+  const maxX = box.maxX + pad;
+  const minY = box.minY - pad;
+  const maxY = box.maxY + pad;
+
+  return {
     minX, maxX, minY, maxY, 
     cx: (minX + maxX)/2, 
     cy: (minY + maxY)/2,
@@ -41,6 +107,11 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
 
   const w = b.w * sx;
   const h = b.h * sy;
+
+  // The shape is transformed around (cx, cy), which may be a pivot saved from older bounds.
+  // Offset the box so it stays on the shape when the pivot is not the bounds' center.
+  const ox = (b.cx - cx) * sx;
+  const oy = (b.cy - cy) * sy;
 
   const handleSize = 8;
   const rotateHandleDist = 30;
@@ -263,7 +334,7 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
     <g 
       ref={gRef}
       className="transform-box pointer-events-auto"
-      transform={`translate(${cx + tx}, ${cy + ty}) rotate(${rot})`}
+      transform={`translate(${cx + tx}, ${cy + ty}) rotate(${rot}) translate(${ox}, ${oy})`}
     >
       {/* Box */}
       <rect 
