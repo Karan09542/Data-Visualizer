@@ -5,6 +5,7 @@ import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionSt
 import { buildVirtualFS, getVirtualPath, buildVfsMap } from './vfs';
 import { applyFileChanges, describeFileChanges, type WorkspaceFileChange } from './pyFileSync';
 import { getValueAtPath } from './pathUtils';
+import { stdinBridgeAvailable } from './stdinBridge';
 
 /**
  * Puts what a Python run wrote back into the workspace: changed files, new ones, removed ones.
@@ -89,6 +90,20 @@ export let currentExecutingPath: string | null = null;
 // Set while a run is aborting so the install phase can bail out between steps.
 export const pyAbortRequests: Record<string, boolean> = {};
 
+/**
+ * Closes the input request of a run that ended while waiting on it. Its prompt has not been
+ * logged yet - it waits to share a line with the answer - so it is logged now.
+ */
+const dismissPrompt = (path: string) => {
+    const store = useStore.getState();
+    const prompt = store.activePrompts[path];
+    if (!prompt) return;
+    if (prompt.linePrefix) {
+        void appendLogs(path, [{ type: 'log', args: [prompt.linePrefix], time: new Date().toISOString() }]).catch(() => {});
+    }
+    store.setActivePrompt(path, null);
+};
+
 export const abortPyNode = (
     path: string,
     forceTerminate: boolean = false,
@@ -102,7 +117,7 @@ export const abortPyNode = (
         } catch {}
     }
     try {
-        useStore.getState().setActivePrompt(path, null);
+        dismissPrompt(path);
     } catch {}
     if (activePyWorkers[SHARED_KEY] && (path === currentExecutingPath || forceTerminate)) {
         activePyWorkers[SHARED_KEY].terminate();
@@ -351,7 +366,8 @@ export const executePyNode = async (path: string, codeToRun: string) => {
                      sessionId: e.data.sessionId,
                      promptText: e.data.promptText,
                      defaultValue: e.data.defaultValue,
-                     type: e.data.promptType || 'input'
+                     type: e.data.promptType || 'input',
+                     linePrefix: e.data.linePrefix
                  });
                  return;
              }
@@ -425,7 +441,8 @@ export const executePyNode = async (path: string, codeToRun: string) => {
             vfs,
             entryPath,
             cacheEnabled: usePyPackageStore.getState().pyPackageCacheEnabled,
-            enabledProxies
+            enabledProxies,
+            stdinBridge: stdinBridgeAvailable()
          });
       });
 
@@ -447,6 +464,8 @@ export const executePyNode = async (path: string, codeToRun: string) => {
        if (currentExecutingPath === path) {
           currentExecutingPath = null;
        }
+       // A run that ended - crashed, timed out - while asking for input is no longer asking.
+       dismissPrompt(path);
        setJsNodeLoading(path, false);
     }
 };

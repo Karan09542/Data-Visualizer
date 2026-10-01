@@ -105,7 +105,52 @@ self.fetch = keptPackageFetch(networkFetch, {
 let pyodide: any = null;
 let currentFlushInterval: any = null;
 let activeAddLog: ((logType: string, args: any[]) => void) | null = null;
+/** Sends the logs gathered so far right away; the timer cannot fire while input() blocks. */
+let activeFlushLogs: () => void = () => { };
 let currentSessionId: string = "";
+/** Whether the page has a service worker to answer input() - see sw.ts, /api/stdin-get. */
+let stdinBridgeAvailable = true;
+const STDIN_UNAVAILABLE =
+  "[Pyodide]: input() cannot read from the console: this page is not controlled by the service worker " +
+  "(usually after a hard reload with Ctrl+Shift+R, or with \"Bypass for network\" on in DevTools). " +
+  "Reload the page normally and run again.";
+
+/**
+ * Python output split into lines for the console. A line still waiting for its newline - an
+ * input() prompt, a print(end="") - is held here so it can be shown before input is read
+ * instead of being glued onto the next line printed.
+ */
+function lineWriter(logType: string) {
+  const decoder = new TextDecoder();
+  let pending = "";
+  return {
+    write(buffer: Uint8Array) {
+      pending += decoder.decode(buffer, { stream: true });
+      const lines = pending.split("\n");
+      pending = lines.pop() || "";
+      for (const line of lines) activeAddLog?.(logType, [line]);
+      return buffer.length;
+    },
+    /** The unfinished line, removed from the buffer. */
+    takePending() {
+      const text = pending;
+      pending = "";
+      return text;
+    },
+    flushPending() {
+      const text = this.takePending();
+      if (text) activeAddLog?.(logType, [text]);
+    },
+  };
+}
+
+const stdoutWriter = lineWriter("log");
+const stderrWriter = lineWriter("error");
+
+const flushPendingOutput = () => {
+  stderrWriter.flushPending();
+  stdoutWriter.flushPending();
+};
 
 self.addEventListener("error", (e) => {
   e.preventDefault();
@@ -503,9 +548,12 @@ function reportWorkspaceFileChanges(data: any) {
 }
 
 self.onmessage = async (e) => {
-  const { code, input, id, type, cacheEnabled: msgCacheEnabled, enabledProxies } = e.data;
+  const { code, input, id, type, cacheEnabled: msgCacheEnabled, enabledProxies, stdinBridge } = e.data;
   if (msgCacheEnabled !== undefined) {
     cacheEnabled = msgCacheEnabled;
+  }
+  if (stdinBridge !== undefined) {
+    stdinBridgeAvailable = stdinBridge;
   }
   if (enabledProxies !== undefined) {
     activeEnabledProxies = enabledProxies;
@@ -555,6 +603,7 @@ self.onmessage = async (e) => {
     };
 
     activeAddLog = addLog;
+    activeFlushLogs = flushLogs;
 
     // Cold boot initialization of Pyodide
     const coldBoot = !pyodide;
@@ -563,26 +612,29 @@ self.onmessage = async (e) => {
       pyodide = await loadPyodide({
         indexURL: "https://cdn.jsdelivr.net/pyodide/v0.29.4/full/",
       });
-      pyodide.setStdout({
-        batched: (msg: any) => {
-          if (activeAddLog) {
-            activeAddLog("log", [msg]);
-          }
-        },
-      });
-      pyodide.setStderr({
-        batched: (msg: any) => {
-          if (activeAddLog) {
-            activeAddLog("error", [msg]);
-          }
-        },
-      });
+      pyodide.setStdout({ write: (buffer: Uint8Array) => stdoutWriter.write(buffer) });
+      pyodide.setStderr({ write: (buffer: Uint8Array) => stderrWriter.write(buffer) });
       pyodide.setStdin({
         stdin: () => {
+          // Everything printed before input() reaches the console first, its prompt included.
+          stderrWriter.flushPending();
+          // The prompt is not logged here: the console writes it together with the answer, on
+          // one line as a terminal would, and shows it in front of the input until then.
+          const promptText = stdoutWriter.takePending();
+          // Nothing would answer the request below, and an empty line would pass for a real answer.
+          if (!stdinBridgeAvailable) {
+            if (promptText) activeAddLog?.("log", [promptText]);
+            activeAddLog?.("error", [STDIN_UNAVAILABLE]);
+            activeFlushLogs();
+            return null; // EOF: input() raises EOFError
+          }
+          activeFlushLogs();
+
           post({
             type: "need_prompt",
             sessionId: currentSessionId,
-            promptText: "Python input requested",
+            promptText: promptText.trim() || "Python input requested",
+            linePrefix: promptText,
             promptType: "input",
           });
 
@@ -594,22 +646,20 @@ self.onmessage = async (e) => {
           );
           xhr.send();
 
-          if (xhr.status === 200) {
-            try {
-              const res = JSON.parse(xhr.responseText);
-              const val =
-                res.value !== null && res.value !== undefined
-                  ? String(res.value)
-                  : "";
-              if (activeAddLog) {
-                activeAddLog("log", [val]);
-              }
-              return val + "\n";
-            } catch (err) {
-              console.error("Error parsing stdin result", err);
-            }
+          let res: any = null;
+          try {
+            res = xhr.status === 200 ? JSON.parse(xhr.responseText) : null;
+          } catch (err) { }
+          if (!res || typeof res !== "object" || !("value" in res)) {
+            // Answered by something other than the service worker's input bridge.
+            if (promptText) activeAddLog?.("log", [promptText]);
+            activeAddLog?.("error", [STDIN_UNAVAILABLE]);
+            activeFlushLogs();
+            return null;
           }
-          return "\n";
+          if (res.cancelled || res.timeout) return null;
+          // The console writes the answer itself when it is submitted.
+          return (res.value !== null && res.value !== undefined ? String(res.value) : "") + "\n";
         },
       });
       addLog("log", ["[Pyodide]: Runtime initialized successfully!"]);
@@ -830,6 +880,7 @@ except Exception:
     }
 
     const result = await pyodide.runPythonAsync(code);
+    flushPendingOutput();
 
     reportWorkspaceFileChanges(e.data);
 
@@ -849,6 +900,9 @@ except Exception:
     });
   } catch (error: any) {
     if (currentFlushInterval) clearInterval(currentFlushInterval);
+    try {
+      flushPendingOutput();
+    } catch (e) { }
     try {
       if (typeof flushLogs === "function") flushLogs();
     } catch (e) { }

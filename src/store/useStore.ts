@@ -143,6 +143,19 @@ export interface ProxyServer {
   isEnabled: boolean;
 }
 
+/** Code waiting on input() / prompt() / confirm() / alert() for an answer from the console. */
+export interface ActivePrompt {
+  sessionId: string;
+  promptText?: string;
+  defaultValue?: string;
+  type: "input" | "prompt" | "confirm" | "alert";
+  /**
+   * Text already printed on the console line the answer goes on - Python's input() prompt.
+   * Not logged yet: it is written together with the answer, so both sit on one line.
+   */
+  linePrefix?: string;
+}
+
 export interface WorkspaceTab {
   path: string;
   isPreview: boolean;
@@ -284,11 +297,8 @@ export interface StoreState {
   mediaViewOnly: Record<string, boolean>;
   setMediaViewOnly: (path: string, viewOnly: boolean) => void;
 
-  activePrompts: Record<string, { sessionId: string; promptText?: string; defaultValue?: string; type: "input" | "prompt" | "confirm" | "alert" } | null>;
-  setActivePrompt: (
-    path: string,
-    prompt: { sessionId: string; promptText?: string; defaultValue?: string; type: "input" | "prompt" | "confirm" | "alert" } | null,
-  ) => void;
+  activePrompts: Record<string, ActivePrompt | null>;
+  setActivePrompt: (path: string, prompt: ActivePrompt | null) => void;
 
   isAutosaveEnabled: boolean;
   setIsAutosaveEnabled: (enabled: boolean) => void;

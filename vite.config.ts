@@ -2,8 +2,80 @@ import tailwindcss from '@tailwindcss/vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import fs from 'fs';
-import { defineConfig, loadEnv } from 'vite';
+import { defineConfig, loadEnv, type Plugin } from 'vite';
 import { VitePWA } from 'vite-plugin-pwa';
+
+/**
+ * What sw.ts does for input() / prompt() in production, for the dev server, where no service
+ * worker is registered: /api/stdin-get is held open until /api/stdin-submit brings the answer.
+ * Runs ahead of the /api proxy, so these never reach the remote server.
+ */
+function stdinBridge(): Plugin {
+  const waiting = new Map<string, (body: object) => void>();
+  const early = new Map<string, object>();
+  const reply = (res: any, body: object) => {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify(body));
+  };
+
+  return {
+    name: 'stdin-bridge',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const url = new URL(req.url || '/', 'http://localhost');
+
+        if (url.pathname === '/api/stdin-get') {
+          const sessionId = url.searchParams.get('sessionId') || '';
+          if (early.has(sessionId)) {
+            reply(res, early.get(sessionId)!);
+            early.delete(sessionId);
+            return;
+          }
+          const timer = setTimeout(() => {
+            if (waiting.get(sessionId) === answer) waiting.delete(sessionId);
+            reply(res, { value: null, timeout: true });
+          }, 10 * 60 * 1000);
+          const answer = (body: object) => {
+            clearTimeout(timer);
+            reply(res, body);
+          };
+          waiting.set(sessionId, answer);
+          req.on('close', () => {
+            if (waiting.get(sessionId) === answer) waiting.delete(sessionId);
+            clearTimeout(timer);
+          });
+          return;
+        }
+
+        if (url.pathname === '/api/stdin-submit' && req.method === 'POST') {
+          let raw = '';
+          req.on('data', (chunk) => (raw += chunk));
+          req.on('end', () => {
+            try {
+              const { type, sessionId, value } = JSON.parse(raw);
+              const body = type === 'STDIN_CANCEL' ? { value: null, cancelled: true } : { value };
+              const answer = waiting.get(sessionId);
+              if (answer) {
+                waiting.delete(sessionId);
+                answer(body);
+              } else {
+                early.set(sessionId, body); // the code has not asked yet
+              }
+              reply(res, { ok: true });
+            } catch {
+              res.statusCode = 400;
+              reply(res, { ok: false });
+            }
+          });
+          return;
+        }
+
+        next();
+      });
+    },
+  };
+}
 
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, '.', '');
@@ -16,6 +88,7 @@ export default defineConfig(({ mode }) => {
     plugins: [
       react(),
       tailwindcss(),
+      stdinBridge(),
       VitePWA({
         strategies: 'injectManifest',
         srcDir: 'src',

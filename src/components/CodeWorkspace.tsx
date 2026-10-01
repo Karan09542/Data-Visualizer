@@ -1,6 +1,7 @@
 import katex from "katex";
 import { Virtuoso } from "react-virtuoso";
 import { useExecutionLogs } from "../utils/useExecutionLogs";
+import { submitStdin, cancelStdin } from "../utils/stdinBridge";
 import React, {
   useState,
   useEffect,
@@ -724,22 +725,22 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     const currentPrompt = activePrompts[currentFilePath];
     if (!currentPrompt) return;
 
-    // 1. Post to the Service Worker Synchronous I/O Bridge
-    if (navigator.serviceWorker && navigator.serviceWorker.controller) {
-      navigator.serviceWorker.controller.postMessage({
-        type: "STDIN_SUBMIT",
-        sessionId: currentPrompt.sessionId,
-        value: valueToSend,
-      });
-    }
+    // 1. Hand the answer to the synchronous I/O bridge the code is waiting on
+    submitStdin(currentPrompt.sessionId, valueToSend);
 
-    // 2. Append standard terminal log of the input
+    // 2. Clear prompt state at once: the run can end before the log below is written, and must
+    //    not find this prompt still open
+    setTerminalInput("");
+    setActivePrompt(currentFilePath, null);
+
+    // 3. Append standard terminal log of the input, on the prompt's line when it has one
     let logText = String(valueToSend);
     if (currentPrompt.type === "confirm") {
       logText = valueToSend ? "Yes" : "No";
     } else if (currentPrompt.type === "alert") {
       logText = "[Dismissed Alert]";
     }
+    if (currentPrompt.linePrefix) logText = currentPrompt.linePrefix + logText;
 
     await appendLogs(currentFilePath, [
       {
@@ -748,10 +749,6 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
         time: new Date().toISOString(),
       },
     ]);
-
-    setTerminalInput("");
-    // 3. Clear prompt state to dismiss expectations
-    setActivePrompt(currentFilePath, null);
   };
 
   const handleTerminalSubmit = async (e: React.FormEvent) => {
@@ -2915,7 +2912,7 @@ declare const console: {
             >
               {/* Console/Result Pane tabs header */}
               <div className="flex justify-between items-center gap-2 h-[35px] bg-[var(--vsc-panel)] border-b border-[var(--vsc-border)] select-none shrink-0 w-full overflow-hidden">
-                <div className="flex flex-1 items-stretch gap-4 px-3 overflow-x-auto scrollbar-none min-w-0">
+                <div className="flex flex-1 self-stretch items-stretch gap-4 px-3 overflow-x-auto scrollbar-none min-w-0">
                   <button
                     onClick={() => setActiveTab("console")}
                     className={panelTab(activeTab === "console")}
@@ -3204,6 +3201,16 @@ declare const console: {
                         </span>
                       )}
 
+                      {/* The prompt the answer will share a console line with */}
+                      {currentPrompt?.linePrefix?.trim() && (
+                        <span
+                          className="text-[var(--vsc-fg)] whitespace-pre truncate max-w-[50%] shrink-0 select-none"
+                          title={currentPrompt.linePrefix}
+                        >
+                          {currentPrompt.linePrefix.trimEnd()}
+                        </span>
+                      )}
+
                       <input
                         ref={terminalInputRef}
                         type="text"
@@ -3218,7 +3225,8 @@ declare const console: {
                                 : "Type response and press Enter... " +
                                 (currentPrompt.promptText &&
                                   currentPrompt.promptText !==
-                                  "Python input requested"
+                                  "Python input requested" &&
+                                  !currentPrompt.linePrefix?.trim()
                                   ? `(${currentPrompt.promptText})`
                                   : "")
                             : "pip install <package>, pip list, clear, help, python..."
@@ -3260,23 +3268,16 @@ declare const console: {
                         <button
                           type="button"
                           onClick={async () => {
-                            if (
-                              navigator.serviceWorker &&
-                              navigator.serviceWorker.controller
-                            ) {
-                              navigator.serviceWorker.controller.postMessage({
-                                type: "STDIN_CANCEL",
-                                sessionId: currentPrompt.sessionId,
-                              });
-                            }
-                            await appendLogs(currentFilePath, [
-                              {
-                                type: "warn",
-                                args: ["[Cancelled]"],
-                                time: new Date().toISOString(),
-                              },
-                            ]);
+                            cancelStdin(currentPrompt.sessionId);
                             setActivePrompt(currentFilePath, null);
+                            const time = new Date().toISOString();
+                            await appendLogs(currentFilePath, [
+                              // The prompt was waiting to share a line with the answer
+                              ...(currentPrompt.linePrefix
+                                ? [{ type: "log", args: [currentPrompt.linePrefix], time }]
+                                : []),
+                              { type: "warn", args: ["[Cancelled]"], time },
+                            ]);
                           }}
                           className="p-1 px-2.5 hover:bg-red-500/10 hover:text-red-600 text-slate-400 dark:hover:text-red-400 cursor-pointer shrink-0 border border-dashed border-slate-350 dark:border-slate-800 hover:border-red-500/40 rounded text-[10px] font-bold uppercase tracking-wider font-sans select-none"
                           title="Cancel input/abort prompt"
