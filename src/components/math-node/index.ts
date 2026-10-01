@@ -36,6 +36,7 @@ export * from "./scope";
 export * from "./simulations";
 export * from "./SimulationGallery";
 export * from "./geometryLessons";
+export * from "./geometryLessonsMore";
 export * from "./GeometryLessonsGallery";
 export * from "./GraphScreenshotMenu";
 export * from "./DrawTool";

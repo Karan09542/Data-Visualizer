@@ -224,6 +224,9 @@ import { parseOdeSystemCached } from "../lib/math/odeSystem";
 import { getOdeExtent } from "../lib/math/odeCurveData";
 import { odeSystemToLatex } from "../lib/math/odeLatex";
 
+// Compiled lesson-challenge conditions, by expression.
+const CHECK_CACHE = new Map<string, any>();
+
 // Identity of this module instance. It changes when Vite hot-reloads this file, which
 // lets the cached plot-layer component below be rebuilt — otherwise an open dev page
 // keeps rendering the previous version's closure and edits appear to do nothing.
@@ -1524,6 +1527,26 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   // Sliders, time, helpers, then every row in order (definitions, solved ODE states).
   const baseScope: any = buildBaseScope(functions, variables, time, { degrees: angleMode === "degrees" });
+
+  /** A lesson challenge's condition, read against the graph as it is now (in radians, like the lessons). */
+  const evaluateCheck = (expr: string) => {
+    if (!CHECK_CACHE.has(expr)) {
+      let compiled: any = null;
+      try {
+        compiled = parseAndAdjustForCompile(expr).compile();
+      } catch {
+        compiled = null;
+      }
+      CHECK_CACHE.set(expr, compiled);
+    }
+    const compiled = CHECK_CACHE.get(expr);
+    if (!compiled) return false;
+    try {
+      return compiled.evaluate(Object.create(baseScope)) === true;
+    } catch {
+      return false;
+    }
+  };
 
   // The end of the timeline, which may be a formula such as the flight time "T".
   let effectiveTimeMax = timeBounds.max;
@@ -5908,6 +5931,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                   <GeometryLessonsGallery
                     activeKey={activeExample}
                     onLoad={handleLoadSimulation}
+                    evaluateCheck={evaluateCheck}
                   />
                   <SavedScenesLibrary
                     getSnapshot={getSceneSnapshot}

@@ -17,29 +17,61 @@
 import type { MathFunction, MathVariable, VariableGroup } from "./mathTypes";
 import { INK, TEXT, sceneGroup, sceneSlider, type SimulationPreset, type SimulationScene } from "./simulations";
 
-export type LessonCategory = "Circle" | "Circle theorems" | "Conics" | "Triangles" | "Polygons";
+export type LessonCategory =
+  | "Lines & angles"
+  | "Coordinates"
+  | "Circle"
+  | "Circle theorems"
+  | "Conics"
+  | "Triangles"
+  | "Polygons"
+  | "Vectors"
+  | "Trigonometry"
+  | "Transformations";
 
-export const LESSON_CATEGORIES: LessonCategory[] = ["Circle", "Circle theorems", "Conics", "Triangles", "Polygons"];
+export const LESSON_CATEGORIES: LessonCategory[] = [
+  "Lines & angles",
+  "Coordinates",
+  "Triangles",
+  "Polygons",
+  "Circle",
+  "Circle theorems",
+  "Conics",
+  "Vectors",
+  "Trigonometry",
+  "Transformations",
+];
+
+/** Something to try on the graph, ticked off when the graph shows it done. */
+export interface LessonChallenge {
+  text: string;
+  /** A condition on the lesson's own names, true once it's met (e.g. abs(ang(P, A, B) - 60) < 0.5). */
+  check: string;
+}
 
 export interface GeometryLesson extends SimulationPreset {
   category: LessonCategory;
   /** What to learn: definitions, statements and formulas. */
   facts: string[];
+  /** Goals to reach by dragging, checked live. */
+  challenges?: LessonChallenge[];
+  /** Why it's true, one step at a time. */
+  proof?: string[];
 }
 
-const BLUE = "#3b82f6";
-const PINK = "#ec4899";
-const GREEN = "#10b981";
-const AMBER = "#f59e0b";
-const VIOLET = "#8b5cf6";
-const RED = "#ef4444";
-const SKY = "#0ea5e9";
-const TEAL = "#14b8a6";
+export const BLUE = "#3b82f6";
+export const PINK = "#ec4899";
+export const GREEN = "#10b981";
+export const AMBER = "#f59e0b";
+export const VIOLET = "#8b5cf6";
+export const RED = "#ef4444";
+export const SKY = "#0ea5e9";
+export const TEAL = "#14b8a6";
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Small functions the lessons measure with, added as rows so they can be read. */
-const HELPERS = {
+export const HELPERS = {
   len: "len(P, Q) = norm(Q - P)",
   nrm: "nrm(v) = v/norm(v)",
   dir: "dir(V, P) = atan2(P[2] - V[2], P[1] - V[1])",
@@ -50,13 +82,17 @@ const HELPERS = {
   cross2: "cross2(u, v) = u[1]*v[2] - u[2]*v[1]",
   on: "on(deg) = r*[cos(deg*pi/180), sin(deg*pi/180)]",
   foot: "foot(P, A, B) = A + dot(P - A, B - A)/dot(B - A, B - A)*(B - A)",
+  // Where line P1P2 meets line Q1Q2.
+  meet: "meet(P1, P2, Q1, Q2) = P1 + cross2(Q1 - P1, Q2 - Q1)/cross2(P2 - P1, Q2 - Q1)*(P2 - P1)",
+  // P reflected in the line through U and V.
+  refl: "refl(P, U, V) = U + 2*dot(P - U, nrm(V - U))*nrm(V - U) - (P - U)",
   circum:
     "circum(P, Q, R) = [dot(P, P)*(Q[2] - R[2]) + dot(Q, Q)*(R[2] - P[2]) + dot(R, R)*(P[2] - Q[2]), dot(P, P)*(R[1] - Q[1]) + dot(Q, Q)*(P[1] - R[1]) + dot(R, R)*(Q[1] - P[1])]/(2*(P[1]*(Q[2] - R[2]) + Q[1]*(R[2] - P[2]) + R[1]*(P[2] - Q[2])))",
 };
-type Helper = keyof typeof HELPERS;
-const ANGLES: Helper[] = ["len", "nrm", "dir", "turn", "ang", "arc", "cross2"];
+export type Helper = keyof typeof HELPERS;
+export const ANGLES: Helper[] = ["len", "nrm", "dir", "turn", "ang", "arc", "cross2"];
 
-function lessonRows(prefix: string) {
+export function lessonRows(prefix: string) {
   let n = 0;
   const row = (type: MathFunction["type"], expr: string, color: string, extra: Partial<MathFunction> = {}): MathFunction => ({
     id: `${prefix}_${++n}`,
@@ -91,6 +127,9 @@ function lessonRows(prefix: string) {
     /** A point dragged anywhere: its equation holds its position. */
     free: (name: string, [x, y]: [number, number], color: string) =>
       row("point", `${name} = [${x}, ${y}]`, color, { isDraggable: true, ...labelled(name) }),
+    /** An arrow: Vector(tail, tip). */
+    arrow: (expr: string, color: string, extra?: Partial<MathFunction>) =>
+      row("vector", expr, color, { outlineWidth: 3, ...extra }),
     polygon: (expr: string, color: string, extra?: Partial<MathFunction>) =>
       row("polygon", expr, color, { fillColor: color, fillOpacity: 0.12, fillPattern: "solid", outlineWidth: 2.5, ...extra }),
     path: (expr: string, color: string, tRange: [number, number], extra?: Partial<MathFunction>) =>
@@ -123,26 +162,26 @@ function lessonRows(prefix: string) {
 }
 
 /** Readouts stacked downwards from `top`, centred on x. */
-const stack = (r: ReturnType<typeof lessonRows>, x: number, top: number, lines: string[], color = TEXT, gap = 0.7) =>
+export const stack = (r: ReturnType<typeof lessonRows>, x: number, top: number, lines: string[], color = TEXT, gap = 0.7) =>
   lines.map((line, i) => r.text(`[${x}, ${top - i * gap}]`, line, color));
 
-const still = { mode: "once" as const, min: 0, max: 10, autoplay: false };
+export const still = { mode: "once" as const, min: 0, max: 10, autoplay: false };
 
 /** Rows, possibly grouped (a helper can add several). */
 type Rows = MathFunction | Rows[];
 const flatten = (rows: Rows[]): MathFunction[] => rows.flatMap((x) => (Array.isArray(x) ? flatten(x) : [x]));
 
-const scene = (
+export const scene = (
   functions: Rows[],
   variables: MathVariable[],
   groups: VariableGroup[],
   view: SimulationScene["view"],
 ): SimulationScene => ({ functions: flatten(functions), variables, groups, timeline: still, view });
 
-const radiusSlider = () => sceneSlider("r", "Radius r", 3, [1, 5, 0.1], "The circle's radius.", "circle");
-const onCircle = (name: string, label: string, value: number) =>
+export const radiusSlider = () => sceneSlider("r", "Radius r", 3, [1, 5, 0.1], "The circle's radius.", "circle");
+export const onCircle = (name: string, label: string, value: number) =>
   sceneSlider(name, label, value, [0, 360, 1], "Degrees round the circle. Drag the point on the graph.", "points");
-const circleGroups = () => [sceneGroup("circle", "Circle"), sceneGroup("points", "Points (drag them)")];
+export const circleGroups = () => [sceneGroup("circle", "Circle"), sceneGroup("points", "Points (drag them)")];
 
 // ─── Circle ───────────────────────────────────────────────────────────────────
 
@@ -236,13 +275,13 @@ function circleMeasures(): SimulationScene {
 // ─── Circle theorems ──────────────────────────────────────────────────────────
 
 /** The rows every circle theorem starts with: helpers, O and the circle. */
-const circleBase = (r: ReturnType<typeof lessonRows>) => [
+export const circleBase = (r: ReturnType<typeof lessonRows>) => [
   r.helpers(...ANGLES, "on"),
   r.point("O = [0, 0]", TEXT, "O"),
   r.circle("O", "r", BLUE),
 ];
-const theoremView = { x: [-7.5, 7.5] as [number, number], y: [-6.5, 4.8] as [number, number] };
-const below = (r: ReturnType<typeof lessonRows>, lines: string[]) => stack(r, 0, -4.2, lines);
+export const theoremView = { x: [-7.5, 7.5] as [number, number], y: [-6.5, 4.8] as [number, number] };
+export const below = (r: ReturnType<typeof lessonRows>, lines: string[]) => stack(r, 0, -4.2, lines);
 
 function angleAtCentre(): SimulationScene {
   const r = lessonRows("gt_centre");
@@ -597,14 +636,14 @@ function conicFamily(): SimulationScene {
 // ─── Triangles ────────────────────────────────────────────────────────────────
 
 /** Three draggable corners and the triangle through them. */
-const triangle = (r: ReturnType<typeof lessonRows>, A: [number, number], B: [number, number], C: [number, number], color = BLUE, angles = true) => [
+export const triangle = (r: ReturnType<typeof lessonRows>, A: [number, number], B: [number, number], C: [number, number], color = BLUE, angles = true) => [
   r.free("A", A, color),
   r.free("B", B, color),
   r.free("C", C, color),
   r.polygon("[A, B, C]", color, { showAngles: angles }),
 ];
-const triangleView = { x: [-7, 7] as [number, number], y: [-6.5, 5] as [number, number] };
-const sides = (r: ReturnType<typeof lessonRows>) => [
+export const triangleView = { x: [-7, 7] as [number, number], y: [-6.5, 5] as [number, number] };
+export const sides = (r: ReturnType<typeof lessonRows>) => [
   r.define("sa = len(B, C)"),
   r.define("sb = len(C, A)"),
   r.define("sc = len(A, B)"),
@@ -930,14 +969,15 @@ function quadrilateral(): SimulationScene {
 
 // ─── The lessons ──────────────────────────────────────────────────────────────
 
-const accent = (dot: string, ring: string, text: string) => ({ dot, ring, text });
-const CIRCLE_ACCENT = accent("bg-blue-500", "ring-blue-400/60 border-blue-400", "text-blue-600 dark:text-blue-400");
-const THEOREM_ACCENT = accent("bg-pink-500", "ring-pink-400/60 border-pink-400", "text-pink-600 dark:text-pink-400");
-const CONIC_ACCENT = accent("bg-violet-500", "ring-violet-400/60 border-violet-400", "text-violet-600 dark:text-violet-400");
-const TRIANGLE_ACCENT = accent("bg-emerald-500", "ring-emerald-400/60 border-emerald-400", "text-emerald-600 dark:text-emerald-400");
-const POLYGON_ACCENT = accent("bg-amber-500", "ring-amber-400/60 border-amber-400", "text-amber-600 dark:text-amber-400");
+export const accent = (dot: string, ring: string, text: string) => ({ dot, ring, text });
+export const CIRCLE_ACCENT = accent("bg-blue-500", "ring-blue-400/60 border-blue-400", "text-blue-600 dark:text-blue-400");
+export const THEOREM_ACCENT = accent("bg-pink-500", "ring-pink-400/60 border-pink-400", "text-pink-600 dark:text-pink-400");
+export const CONIC_ACCENT = accent("bg-violet-500", "ring-violet-400/60 border-violet-400", "text-violet-600 dark:text-violet-400");
+export const TRIANGLE_ACCENT = accent("bg-emerald-500", "ring-emerald-400/60 border-emerald-400", "text-emerald-600 dark:text-emerald-400");
+export const POLYGON_ACCENT = accent("bg-amber-500", "ring-amber-400/60 border-amber-400", "text-amber-600 dark:text-amber-400");
 
-export const GEOMETRY_LESSONS: GeometryLesson[] = [
+/** The first lessons; the full list (with more topics) is GEOMETRY_LESSONS in geometryLessonsMore. */
+export const CORE_LESSONS: GeometryLesson[] = [
   // Circle
   {
     key: "geo_circle_parts",
