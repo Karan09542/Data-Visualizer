@@ -13,6 +13,8 @@ import {
   RulerDimensionLine,
   Slash,
   Triangle,
+  SlidersHorizontal,
+  X,
 } from "lucide-react";
 import { DRAW_TOOL_HINTS, SELECT_TOOL_HINT, type GraphTool } from "./DrawTool";
 import type { VectorOptions } from "./drawRows";
@@ -31,6 +33,7 @@ const TOOLS: { id: GraphTool | null; label: string; Icon: React.ElementType }[] 
 ];
 
 const HIDDEN_KEY = "mathNode.drawToolsHidden";
+const OPTIONS_OPEN_KEY = "mathNode.vectorOptionsOpen";
 
 interface DrawToolbarProps {
   tool: GraphTool | null;
@@ -155,6 +158,26 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
   onToggleVectorResultants,
   onDrawVector,
 }) => {
+  // The vector options fold away to one button: shut at first on a phone, where the
+  // graph needs the room; open at first on a wider screen. Remembered once changed.
+  const [optionsOpen, setOptionsOpenState] = useState(() => {
+    try {
+      const saved = localStorage.getItem(OPTIONS_OPEN_KEY);
+      if (saved === "1" || saved === "0") return saved === "1";
+    } catch {
+      // Fall through to the screen size.
+    }
+    return typeof window === "undefined" || window.matchMedia?.("(min-width: 768px)").matches !== false;
+  });
+  const setOptionsOpen = (open: boolean) => {
+    setOptionsOpenState(open);
+    try {
+      localStorage.setItem(OPTIONS_OPEN_KEY, open ? "1" : "0");
+    } catch {
+      // Still applies for this visit.
+    }
+  };
+
   const checkRow = (key: string, on: boolean, toggle: () => void, label: string, example: string) => (
     <button
       key={key}
@@ -257,7 +280,21 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
         <ChevronLeft size={14} />
       </button>
     </div>
-    {tool === "vector" && (
+    {tool === "vector" && !optionsOpen && (
+      <button
+        type="button"
+        data-no-trace
+        data-capture-exclude
+        onClick={() => setOptionsOpen(true)}
+        title="Vector options: labels, angles, resultant, draw by numbers"
+        className="absolute left-14 top-1/2 -translate-y-1/2 z-40 h-8 inline-flex items-center gap-1.5 pl-2 pr-2.5 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg text-[11px] font-medium text-slate-600 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+      >
+        <SlidersHorizontal size={13} />
+        Options
+        {VECTOR_OPTIONS.some((o) => vectorOptions[o.key]) && <span className="size-1.5 rounded-full bg-blue-500" />}
+      </button>
+    )}
+    {tool === "vector" && optionsOpen && (
       <div
         data-no-trace
         data-capture-exclude
@@ -265,7 +302,18 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
         aria-label="Vector options"
         className="absolute left-14 top-1/2 -translate-y-1/2 z-40 w-52 max-h-[calc(100%-1rem)] overflow-y-auto no-scrollbar p-2 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 flex flex-col gap-1"
       >
-        <div className="px-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Vector: show</div>
+        <div className="flex items-center justify-between pl-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Vector: show</span>
+          <button
+            type="button"
+            onClick={() => setOptionsOpen(false)}
+            title="Fold the options away"
+            aria-label="Close vector options"
+            className="size-6 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            <X size={13} />
+          </button>
+        </div>
         {VECTOR_OPTIONS.map(({ key, label, example }) =>
           checkRow(key, !!vectorOptions[key], () => onToggleVectorOption(key), label, example),
         )}

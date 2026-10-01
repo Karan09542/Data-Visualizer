@@ -33,6 +33,20 @@ export const DRAW_TOOL_HINTS: Record<DrawToolKind, string> = {
   angle: "Click a point, the corner, then another point to measure the angle.",
 };
 
+/** The same, short enough for one line on a phone. */
+export const DRAW_TOOL_SHORT_HINTS: Record<DrawToolKind, string> = {
+  point: "Tap to place a point",
+  segment: "Tap two points",
+  vector: "Tap the tail, then the tip",
+  line: "Tap two points",
+  circle: "Tap the centre, then the edge",
+  polygon: "Tap corners; tap the first to close",
+  distance: "Tap two points to measure",
+  angle: "Tap a point, the corner, a point",
+};
+
+export const SELECT_TOOL_SHORT_HINT = "Tap a shape or drag a box";
+
 /** A clicked spot: an existing named point, or a new position. */
 export interface DrawPick {
   /**

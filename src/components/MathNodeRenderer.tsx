@@ -172,6 +172,8 @@ import {
   type VectorOptions,
   SelectTool,
   SELECT_TOOL_HINT,
+  SELECT_TOOL_SHORT_HINT,
+  DRAW_TOOL_SHORT_HINTS,
   SELECT_MOVE,
   SELECT_ROTATE,
   SELECT_RESIZE,
@@ -8486,33 +8488,54 @@ export const MathNodeRenderer: React.FC<any> = ({
             />
           )}
           {!isCompact && drawTool && (
+            // One line, whatever the screen: a short hint on phones, the full one from md up.
+            // Centred, and narrow enough to stay clear of the drawing tools on the left.
             <div
               data-no-trace
               data-capture-exclude
-              className="absolute top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-2 max-w-[calc(100%-6rem)] pl-3 pr-1 py-1 rounded-lg bg-blue-600 text-white text-[11px] font-medium shadow-lg"
+              role="status"
+              className="absolute top-2 md:top-14 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1.5 max-w-[calc(100%-7rem)] md:max-w-[calc(100%-8rem)] h-9 pl-3 pr-1 rounded-full bg-slate-900/90 dark:bg-slate-800/95 backdrop-blur-md text-white text-[11px] font-medium shadow-lg shadow-black/20 ring-1 ring-white/10 whitespace-nowrap"
             >
-              {drawTool !== "select" ? (
-                <span className="min-w-0">{DRAW_TOOL_HINTS[drawTool]} <span className="opacity-75">Esc to stop.</span></span>
-              ) : !selection ? (
-                <span className="min-w-0">{SELECT_TOOL_HINT} <span className="opacity-75">Esc to stop.</span></span>
+              {drawTool !== "select" || !selection ? (
+                <span className="min-w-0 truncate">
+                  <span className="md:hidden">{drawTool === "select" ? SELECT_TOOL_SHORT_HINT : DRAW_TOOL_SHORT_HINTS[drawTool]}</span>
+                  <span className="hidden md:inline">
+                    {drawTool === "select" ? SELECT_TOOL_HINT : DRAW_TOOL_HINTS[drawTool]}{" "}
+                    <span className="text-white/50">Esc to stop.</span>
+                  </span>
+                </span>
               ) : (
                 <>
-                  <span className="min-w-0 flex flex-wrap items-center gap-x-2.5 gap-y-0.5">
-                    {selectedIds.length > 1 && <span className="font-semibold">{selectedIds.length} selected</span>}
-                    {toolSelection?.centre ? (
+                  <span className="shrink-0 font-semibold tabular-nums">
+                    {selectedIds.length > 1 ? (
                       <>
-                        <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full ring-1 ring-white/70" style={{ background: SELECT_MOVE }} />move</span>
-                        {toolSelection.canRotate && (
-                          <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full ring-1 ring-white/70" style={{ background: SELECT_ROTATE }} />turn</span>
-                        )}
-                        {toolSelection.canResize && (
-                          <span className="inline-flex items-center gap-1"><i className="size-2 rounded-full ring-1 ring-white/70" style={{ background: SELECT_RESIZE }} />resize</span>
-                        )}
+                        {selectedIds.length}
+                        <span className="hidden sm:inline"> selected</span>
                       </>
                     ) : (
-                      <span>Selected.</span>
+                      "Selected"
                     )}
                   </span>
+                  {toolSelection?.centre && (
+                    // Which handle does what: dots on a phone, words from sm up.
+                    <span className="min-w-0 flex items-center gap-2 pl-1 text-white/70">
+                      {(
+                        [
+                          [SELECT_MOVE, "move", true],
+                          [SELECT_ROTATE, "turn", toolSelection.canRotate],
+                          [SELECT_RESIZE, "resize", toolSelection.canResize],
+                        ] as const
+                      )
+                        .filter(([, , shown]) => shown)
+                        .map(([color, word]) => (
+                          <span key={word} className="inline-flex items-center gap-1" title={`Drag this handle to ${word}`}>
+                            <i className="size-2 rounded-full ring-1 ring-white/60" style={{ background: color }} />
+                            <span className="hidden sm:inline">{word}</span>
+                          </span>
+                        ))}
+                    </span>
+                  )}
+                  <span className="flex-1" />
                   {(Object.keys(VECTOR_OP_LABELS) as VectorOp[])
                     .filter((op) => VECTOR_OP_LABELS[op].needs === selectedVectors.length)
                     .map((op) => (
@@ -8521,7 +8544,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                         type="button"
                         onClick={() => handleVectorOp(op)}
                         title={VECTOR_OP_LABELS[op].title}
-                        className="shrink-0 px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 font-semibold font-mono"
+                        className="shrink-0 h-7 px-2 rounded-full bg-white/10 hover:bg-white/20 font-semibold font-mono"
                       >
                         {VECTOR_OP_LABELS[op].label}
                       </button>
@@ -8530,18 +8553,23 @@ export const MathNodeRenderer: React.FC<any> = ({
                     type="button"
                     onClick={handleDeleteSelection}
                     title="Delete the selected shape (Delete)"
-                    className="shrink-0 inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-red-500 hover:bg-red-400 font-semibold"
+                    aria-label="Delete"
+                    className="shrink-0 h-7 inline-flex items-center justify-center gap-1 px-2 rounded-full bg-red-500/90 hover:bg-red-500 font-semibold"
                   >
-                    <Trash2 size={11} /> Delete
+                    <Trash2 size={13} />
+                    <span className="hidden sm:inline">Delete</span>
                   </button>
                 </>
               )}
               <button
                 type="button"
                 onClick={() => setDrawTool(null)}
-                className="shrink-0 px-2 py-0.5 rounded-md bg-white/20 hover:bg-white/30 font-semibold"
+                title="Put the tool down"
+                aria-label="Done"
+                className="shrink-0 h-7 inline-flex items-center justify-center gap-1 px-2 rounded-full bg-white/10 hover:bg-white/20 font-semibold"
               >
-                Done
+                <X size={13} className="sm:hidden" />
+                <span className="hidden sm:inline">Done</span>
               </button>
             </div>
           )}
