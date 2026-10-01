@@ -314,6 +314,137 @@ function curvedMirror(prefix: string, concave: boolean): SimulationScene {
   );
 }
 
+// ─── Power in dioptres ────────────────────────────────────────────────────────
+
+/**
+ * A closed lens outline centred on x = cx, half-height H: its half-width at height y
+ * is w(y), so a positive power bulges in the middle and a negative one hollows.
+ */
+const lensOutline = (cx: string, w: string, H: number) =>
+  `t <= 1 ? [${cx} + ${w}(${H}*(1 - 2*t)), ${H}*(1 - 2*t)] : [${cx} - ${w}(${H}*(2*t - 3)), ${H}*(2*t - 3)]`;
+/** The half-width function for a lens of power `p`: thicker in the middle the stronger it is. */
+const lensWidth = (name: string, p: string, H: number, k: number) =>
+  `${name}(y) = 0.08 + max(0, -${k}*${p}) + ${k}*${p}*(1 - (y/${H})^2)`;
+
+/**
+ * A dial drawn on the graph: a track from min to max with a knob to drag, so a
+ * power can be set right where the lens is.
+ */
+const dial = (
+  r: ReturnType<typeof lessonRows>,
+  v: string,
+  title: string,
+  [min, max]: [number, number],
+  cx: number,
+  y: number,
+  width: number,
+  color: string,
+) => {
+  const a = cx - width / 2;
+  const at = `[${a} + (${v} - (${min}))/${max - min}*${width}, ${y}]`;
+  const zero = min < 0 && max > 0 ? a + (-min / (max - min)) * width : null;
+  return [
+    r.seg(`[${a}, ${y}]`, `[${a + width}, ${y}]`, color, { outlineWidth: 3, lineStyle: "dotted" }),
+    ...(zero !== null ? [r.seg(`[${zero}, ${y - 0.18}]`, `[${zero}, ${y + 0.18}]`, TEXT, { outlineWidth: 1.5 })] : []),
+    r.text(`[${a - 0.7}, ${y}]`, `${min}`, TEXT),
+    r.text(`[${a + width + 0.7}, ${y}]`, `+${max}`, TEXT),
+    r.handle(at, color, "", [v], { showPoint: true }),
+    r.text(`${at} + [0, 0.55]`, `${title}: {{${v}}} D`, color),
+  ];
+};
+
+const PARALLEL_HEIGHTS = [-2.4, -1.2, 0, 1.2, 2.4];
+
+function lensPower(): SimulationScene {
+  const r = lessonRows("gop_power");
+  const status =
+    '{{P > 0 ? "Converging (convex): positive power, the rays really meet at F" : (P < 0 ? "Diverging (concave): negative power, the rays spread as if from F" : "No power at all: the rays go straight through")}}';
+  return scene(
+    [
+      r.helpers("nrm"),
+      r.define("P = P1 + P2"),
+      // One grid square is 10 cm, so f in squares is 10/P.
+      r.define("f = 10/P"),
+      r.define(lensWidth("w1", "P1", 3.5, 0.045)),
+      r.define(lensWidth("w2", "P2", 3.5, 0.045)),
+      r.path("[t, 0]", TEXT, [-30, 30], dotted),
+      r.fill(lensOutline("-0.5", "w1", 3.5), SKY, [0, 2], 0.3),
+      r.fill(lensOutline("0.5", "w2", 3.5), VIOLET, [0, 2], 0.3),
+      r.text("[-0.9, 4.1]", "{{P1}} D", SKY),
+      r.text("[0.9, 4.1]", "{{P2}} D", VIOLET),
+      ...PARALLEL_HEIGHTS.flatMap((y) => [
+        r.seg(`[-12, ${y}]`, `[0, ${y}]`, AMBER, ray),
+        r.path(`[0, ${y}] + t*nrm([1, -(${y})/f])`, AMBER, [0, 30], ray),
+        r.seg(`[0, ${y}]`, `f < 0 ? [f, 0] : [0, ${y}]`, AMBER, dotted),
+      ]),
+      r.handle("[f, 0]", PINK, "F", ["P1"]),
+      r.text("[-8.5, 3.1]", "light from far away", TEXT),
+      dial(r, "P1", "Lens 1", [-10, 10], -6.5, 4.5, 6, SKY),
+      dial(r, "P2", "Lens 2", [-10, 10], 7, 4.5, 6, VIOLET),
+      stack(r, 0, -4.6, [
+        "Power P = 1/f (f in metres), measured in dioptres (D).   1 square = 10 cm",
+        'Lenses touching add up: P = P₁ + P₂ = {{P1}} + {{P2}} = {{P}} D   f = 1/P = {{P == 0 ? "∞" : 100/P:1}} cm',
+        status,
+      ]),
+    ],
+    [
+      sceneSlider("P1", "Lens 1 power (D)", 2.5, [-10, 10, 0.5], "Drag F as well: positive converges, negative diverges.", "lenses"),
+      sceneSlider("P2", "Lens 2 power (D)", 0, [-10, 10, 0.5], "A second lens touching the first.", "lenses"),
+    ],
+    [sceneGroup("lenses", "Lenses")],
+    { x: [-12, 14], y: [-7, 6] },
+  );
+}
+
+const EYE_HEIGHTS = [-1.2, -0.6, 0, 0.6, 1.2];
+
+function correctingVision(): SimulationScene {
+  const r = lessonRows("gop_eye");
+  // Half a centimetre a square: the retina is 2.5 cm (5 squares) behind the eye lens,
+  // so a sharp image needs 40 D in all.
+  const status =
+    '{{abs(Pt - 40) < 1e-9 ? "Sharp: the light focuses on the retina" : (Pt > 40 ? "Focuses in front of the retina: short sight (myopia). Add a concave (−) lens" : "Would focus behind the retina: long sight (hypermetropia). Add a convex (+) lens")}}';
+  return scene(
+    [
+      r.define("Pt = Pe + Ps"),
+      r.define("ft = 200/Pt"),
+      r.define(lensWidth("wc", "Ps", 1.9, 0.05)),
+      r.path("[t, 0]", TEXT, [-30, 30], dotted),
+      // The eye: eyeball, its lens, and the retina at the back.
+      r.circle("[2.5, 0]", "2.6", TEXT, { outlineWidth: 2 }),
+      r.fill("[0.22*cos(t), 1.6*sin(t)]", SKY, [0, 2 * Math.PI], 0.35),
+      r.path("[2.5, 0] + 2.6*[cos(t), sin(t)]", PINK, [-0.75, 0.75], { outlineWidth: 5 }),
+      r.text("[5.9, 2.2]", "retina", PINK),
+      r.text("[0.1, 2.1]", "eye lens {{Pe}} D", SKY),
+      // The correcting lens, worn against the eye.
+      r.fill(lensOutline("-0.75", "wc", 1.9), VIOLET, [0, 2], 0.3),
+      r.text("[-1.6, -2.5]", "lens {{Ps}} D", VIOLET),
+      ...EYE_HEIGHTS.flatMap((y) => [
+        r.seg(`[-11, ${y}]`, `[0, ${y}]`, AMBER, ray),
+        r.path(`[0, ${y}] + t*[1, -(${y})/ft]`, AMBER, [0, 5], ray),
+        // Where the rays would have met, past the retina.
+        r.path(`[0, ${y}] + (5 + t*max(0, ft - 5))*[1, -(${y})/ft]`, AMBER, [0, 1], dotted),
+      ]),
+      // Drag where the light focuses: the correcting lens it takes follows.
+      r.handle("[ft, 0]", PINK, "focus", ["Ps"]),
+      r.text("[-8.5, 1.8]", "light from far away", TEXT),
+      dial(r, "Ps", "Correcting lens", [-6, 6], -6, 3.7, 5, VIOLET),
+      dial(r, "Pe", "Eye", [36, 44], 4.5, 3.7, 4, SKY),
+      stack(r, 0, -3.4, [
+        "Eye {{Pe}} D + lens {{Ps}} D = {{Pt}} D   (a sharp image needs 40 D: f = 2.5 cm, the eye's depth)",
+        "It focuses {{100/Pt:2}} cm behind the lens; the blur on the retina is {{2.4*abs(1 - Pt/40)*5:2}} mm wide",
+        status,
+      ]),
+    ],
+    [
+      sceneSlider("Pe", "The eye's own power (D)", 43, [36, 44, 0.5], "40 is a normal eye. More: short-sighted. Less: long-sighted.", "eye"),
+      sceneSlider("Ps", "Correcting lens (D)", 0, [-6, 6, 0.25], "Negative: concave, for short sight. Positive: convex, for long sight.", "lens"),
+    ],
+    [sceneGroup("eye", "The eye"), sceneGroup("lens", "Spectacles / contact lens")],
+    { x: [-11, 9], y: [-5.6, 4.8] },
+  );
+}
+
 // ─── The lessons ──────────────────────────────────────────────────────────────
 
 export const OPTICS_LESSONS: GeometryLesson[] = [
@@ -491,5 +622,60 @@ export const OPTICS_LESSONS: GeometryLesson[] = [
     challenges: [{ text: "Make the image half the object's height", check: "abs(-v/u - 0.5) < 0.01" }],
     accent: OPTICS_ACCENT,
     build: () => curvedMirror("gop_mirror", false),
+  },
+  {
+    key: "geo_optics_power",
+    category: "Optics",
+    title: "Lens Power & Dioptres",
+    topic: "Lenses",
+    summary: "P = 1/f in dioptres: positive converges, negative diverges, and lenses in contact add up.",
+    facts: [
+      "The power of a lens is P = 1/f, with f in metres. Its unit is the dioptre (D): 1 D = 1 m⁻¹.",
+      "A convex (converging) lens has positive power, a concave (diverging) one negative power.",
+      "The stronger the lens (bigger |P|), the shorter its focal length: +4 D has f = 25 cm, +10 D has f = 10 cm.",
+      "Thin lenses touching add their powers: P = P₁ + P₂ + … (that's why opticians use dioptres).",
+    ],
+    tryThis: [
+      "Drag lens 1's dial from −10 D to +10 D and watch its shape and the rays change.",
+      "Drag the focus F: the power follows.",
+      "Turn lens 2's dial too and see the powers add.",
+    ],
+    challenges: [
+      { text: "Make a lens with f = 25 cm", check: "abs(P - 4) < 1e-9" },
+      { text: "Combine +5 D and −2 D: what do they make together?", check: "abs(P1 - 5) < 1e-9 and abs(P2 + 2) < 1e-9" },
+      { text: "Use two lenses that cancel out, so the light doesn't bend at all", check: "P == 0 and P1 != 0" },
+    ],
+    proof: [
+      "A lens with focal length f bends a ray at height y by an angle of about y/f.",
+      "Two thin lenses touching bend it by y/f₁ and then by y/f₂: y/f₁ + y/f₂ in all.",
+      "That's the same as one lens with 1/f = 1/f₁ + 1/f₂, so the powers add: P = P₁ + P₂.",
+    ],
+    accent: OPTICS_ACCENT,
+    build: lensPower,
+  },
+  {
+    key: "geo_optics_vision",
+    category: "Optics",
+    title: "Correcting Vision",
+    topic: "Lenses",
+    summary: "Short and long sight, fixed with a lens of the right power in dioptres.",
+    facts: [
+      "The eye's lens focuses light onto the retina, about 2.5 cm behind it, so a relaxed normal eye has a power of about 40 D in this model.",
+      "Short sight (myopia): the eye is too strong, light focuses in front of the retina. Corrected with a concave lens (negative D).",
+      "Long sight (hypermetropia): the eye is too weak, light would focus behind the retina. Corrected with a convex lens (positive D).",
+      "The lens needed is roughly 40 D minus the eye's power. A glasses prescription like −2.5 D is exactly this number.",
+      "Here the correcting lens touches the eye, like a contact lens; glasses sit about 1.5 cm in front, which changes the number a little.",
+    ],
+    tryThis: [
+      "Start short-sighted (43 D): see the rays cross before the retina and spread into a blur.",
+      "Turn the correcting lens's dial until the blur vanishes, or drag the pink focus onto the retina.",
+      "Turn the eye's dial to make it long-sighted and fix it again.",
+    ],
+    challenges: [
+      { text: "Fix the short-sighted eye (43 D): find its glasses prescription", check: "Pe == 43 and Pt == 40" },
+      { text: "Make the eye long-sighted (37.5 D) and correct it", check: "Pe == 37.5 and Pt == 40" },
+    ],
+    accent: OPTICS_ACCENT,
+    build: correctingVision,
   },
 ];
