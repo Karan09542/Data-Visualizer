@@ -799,6 +799,15 @@ export const MathNodeRenderer: React.FC<any> = ({
   }, [isResizingSidebar, panelPosition]);
 
   const graphContainerRef = useRef<HTMLDivElement>(null);
+
+  // Hovering a row in the list lights up its shapes on the graph and fades the rest,
+  // so it's easy to find. Done on the DOM: hovering shouldn't re-render the graph.
+  const highlightRow = (id: string | null) => {
+    const root = graphContainerRef.current;
+    if (!root) return;
+    root.querySelectorAll(".math-row-hover").forEach((el) => el.classList.remove("math-row-hover"));
+    if (id) root.querySelectorAll(`g[data-row-id="${CSS.escape(id)}"]`).forEach((el) => el.classList.add("math-row-hover"));
+  };
   const appTheme = useStore((state) => state.appTheme);
   const updateNodeValue = useStore((state) => state.updateNodeValue);
 
@@ -2693,6 +2702,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                       ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""} ${activeActionMenuId === f.id ? "z-[100]" : activeVisualEditorId === f.id ? "z-40" : "z-10"}
                     `}
                         style={{ borderLeftColor: f.color }}
+                        onPointerEnter={(e) => {
+                          // A mouse only: on touch, "enter" fires on a tap and never leaves.
+                          if (e.pointerType === "mouse") highlightRow(f.id);
+                        }}
+                        onPointerLeave={() => highlightRow(null)}
                       >
                         {/* Real-time drop insertion line boundary indicator */}
                         {dragOverFunctionId === f.id &&
@@ -6215,6 +6229,7 @@ export const MathNodeRenderer: React.FC<any> = ({
         {/* Graph Canvas */}
         <div
           ref={graphContainerRef}
+          data-math-graph
           className={`flex-1 min-w-0 min-h-0 relative ${appTheme === "dark" ? "bg-slate-950" : "bg-white"} overflow-hidden select-none nodrag cursor-crosshair group/graph`}
           style={
             {
@@ -6862,7 +6877,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                               : "";
 
                           return (
-                            <React.Fragment key={f.id}>
+                            // One group per row, so hovering the row in the list can light it up.
+                            <g key={f.id} data-row-id={f.id} style={{ ["--row-color" as any]: f.color }}>
                               {isInteractionLayer &&
                                 isVarHandle &&
                                 (() => {
@@ -8431,7 +8447,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                     })}
                                 </React.Fragment>
                               )}
-                            </React.Fragment>
+                            </g>
                           );
                         } catch {
                           return null;

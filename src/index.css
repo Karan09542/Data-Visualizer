@@ -8,6 +8,17 @@
 @import "katex/dist/katex.min.css";
 @custom-variant dark (&:is(.dark *));
 
+/* Math node: hovering a row in the list lights up its shapes and fades the rest. */
+[data-math-graph] g[data-row-id] {
+  transition: opacity 150ms ease, filter 150ms ease;
+}
+[data-math-graph]:has(g.math-row-hover) g[data-row-id]:not(.math-row-hover) {
+  opacity: 0.18;
+}
+[data-math-graph] g.math-row-hover {
+  filter: drop-shadow(0 0 2px var(--row-color)) drop-shadow(0 0 6px var(--row-color));
+}
+
 @layer utilities {
   .export-mode-override .truncate {
     white-space: normal !important;
