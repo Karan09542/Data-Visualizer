@@ -33,6 +33,7 @@ import {
   triangleView,
   type GeometryLesson,
 } from "./geometryLessons";
+import { OPTICS_LESSONS } from "./opticsLessons";
 
 const LINES_ACCENT = accent("bg-sky-500", "ring-sky-400/60 border-sky-400", "text-sky-600 dark:text-sky-400");
 const COORD_ACCENT = accent("bg-teal-500", "ring-teal-400/60 border-teal-400", "text-teal-600 dark:text-teal-400");
@@ -1436,5 +1437,6 @@ const CORE_EXTRAS: Record<string, Pick<GeometryLesson, "challenges" | "proof">> 
 export const GEOMETRY_LESSONS: GeometryLesson[] = [
   ...CORE_LESSONS.map((lesson) => ({ ...lesson, ...CORE_EXTRAS[lesson.key] })),
   ...MORE_LESSONS,
+  ...OPTICS_LESSONS,
 ];
 

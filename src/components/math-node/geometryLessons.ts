@@ -27,7 +27,8 @@ export type LessonCategory =
   | "Polygons"
   | "Vectors"
   | "Trigonometry"
-  | "Transformations";
+  | "Transformations"
+  | "Optics";
 
 export const LESSON_CATEGORIES: LessonCategory[] = [
   "Lines & angles",
@@ -40,6 +41,7 @@ export const LESSON_CATEGORIES: LessonCategory[] = [
   "Vectors",
   "Trigonometry",
   "Transformations",
+  "Optics",
 ];
 
 /** Something to try on the graph, ticked off when the graph shows it done. */

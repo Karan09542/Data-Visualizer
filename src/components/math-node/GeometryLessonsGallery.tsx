@@ -48,8 +48,8 @@ export const GeometryLessonsGallery: React.FC<GeometryLessonsGalleryProps> = ({ 
       {open && (
         <>
           <p className="text-[10px] leading-snug text-slate-500 dark:text-slate-400">
-            Lines, coordinates, triangles, circles, conics, vectors, trigonometry and transformations you can drag,
-            with every measurement live.
+            Lines, coordinates, triangles, circles, conics, vectors, trigonometry, transformations and optics you can
+            drag, with every measurement live.
           </p>
 
           <div className="flex flex-wrap gap-1" role="tablist" aria-label="Geometry topics">
