@@ -339,7 +339,8 @@ function PortalColorPicker({
         position: 'fixed',
         top: coords.top,
         left: coords.left,
-        zIndex: 10000,
+        // Above the mobile drawing sheet (z-10010), which it can open from.
+        zIndex: 10020,
         opacity: coords.opacity,
         transformOrigin: coords.placement === 'top' ? 'bottom center' : 'top center',
       }}
@@ -567,6 +568,8 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   const currentToolIcon = TOOLS.find(t => t.id === store.activeTool)?.icon;
 
   const scrollbarClasses = "custom-scrollbar";
+  // The sideways rows (tools, colours, styles) scroll by swipe: a scrollbar under each only adds clutter.
+  const rowScrollClasses = "no-scrollbar";
 
   const handleClear = () => {
     store.clearAnnotations();
@@ -626,9 +629,13 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
         </div>
       </div>
 
+      {/* The open sheet goes to <body>, above everything else on the page: the canvas controls
+          (z-350) and the voice mic (z-9999) would otherwise sit on top of it. Its colour picker
+          portals higher still (z-10020). */}
+      {typeof document !== 'undefined' && createPortal(
       <AnimatePresence>
         {isOpen && (
-          <div className="fixed inset-0 z-[200] flex flex-col justify-end pointer-events-none">
+          <div className="fixed inset-0 z-[10010] flex flex-col justify-end pointer-events-none">
             <motion.div
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
@@ -684,7 +691,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
 
                 {/* Tools category */}
                 <div className="mb-4">
-                  <div className={`flex gap-2 overflow-x-auto pb-3 pt-1 snap-x ${scrollbarClasses}`}>
+                  <div className={`flex gap-2 overflow-x-auto pb-3 pt-1 snap-x ${rowScrollClasses}`}>
                     {TOOLS.map((t, idx) => {
                       const isActive = store.activeTool === t.id || (t.id === 'triangle' && ['pentagon', 'hexagon', 'heptagon', 'octagon', 'polygon'].includes(store.activeTool));
                       return (
@@ -724,7 +731,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                     {/* Colors */}
                     <div className="flex flex-col gap-3">
                       <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Color</span>
-                      <div className={`flex items-center gap-4 overflow-x-auto py-2 px-2 -mx-2 ${scrollbarClasses}`}>
+                      <div className={`flex items-center gap-4 overflow-x-auto py-2 px-2 -mx-2 ${rowScrollClasses}`}>
                         {COLORS.map(c => (
                           <button
                             key={c}
@@ -1159,7 +1166,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
 
                     <div className="flex flex-col gap-4 mt-2">
                       <h3 className="text-[11px] font-bold uppercase tracking-widest text-[#3B82F6]">Brush Style</h3>
-                      <div className={`flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 snap-x ${scrollbarClasses}`}>
+                      <div className={`flex gap-2 overflow-x-auto pb-2 -mx-2 px-2 snap-x ${rowScrollClasses}`}>
                         {BRUSHES.map(b => (
                           <button
                             key={b.id}
@@ -1184,7 +1191,9 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
             </motion.div>
           </div>
         )}
-      </AnimatePresence>
+      </AnimatePresence>,
+      document.body,
+      )}
     </>
   );
 }
