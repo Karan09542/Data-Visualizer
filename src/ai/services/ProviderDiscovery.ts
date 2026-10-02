@@ -22,14 +22,6 @@ export class ProviderDiscovery {
     } catch (e) {
       console.warn("Failed to discover LiteRT Provider", e);
     }
-
-    try {
-      const { NVIDIANIMProvider } = await import("../providers/NVIDIANIMProvider");
-      const nvidia = new NVIDIANIMProvider();
-      await this.registerAndValidate(nvidia);
-    } catch (e) {
-      console.warn("Failed to discover NVIDIA NIM Provider", e);
-    }
   }
 
   private async registerAndValidate(provider: IAIProvider) {

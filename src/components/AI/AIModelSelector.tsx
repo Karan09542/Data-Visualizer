@@ -5,9 +5,8 @@ import { useStore } from '../../store/useStore';
 import { providerRegistry } from '../../ai/services/ProviderRegistry';
 import { providerDiscovery } from '../../ai/services/ProviderDiscovery';
 import { AIModel } from '../../ai/providers/IAIProvider';
-import { 
-  siNvidia, 
-  siGoogle, 
+import {
+  siGoogle,
   siAnthropic, 
   siOllama,
   siMeta,
@@ -34,7 +33,6 @@ const SimpleIcon = ({ icon, color, size = 16 }: { icon: any, color?: string, siz
 
 export const getProviderIcon = (providerId: string, isDark: boolean = true) => {
   switch (providerId) {
-    case 'nvidia': return <SimpleIcon icon={siNvidia} color="#76B900" size={16} />;
     case 'openai': return <Bot size={16} className={isDark ? "text-emerald-400" : "text-emerald-600"} />;
     case 'gemini': return <SimpleIcon icon={siGoogle} color="#4285F4" size={16} />;
     case 'anthropic': return <SimpleIcon icon={siAnthropic} color="#D97757" size={16} />;
@@ -53,9 +51,6 @@ export const getModelIcon = (modelId: string, providerId: string, isDark: boolea
   }
   if (lower.includes('deepseek')) {
     return <SimpleIcon icon={siDeepseek} color="#4D6BFE" size={16} />;
-  }
-  if (lower.includes('nemotron') || lower.includes('nvidia')) {
-    return <SimpleIcon icon={siNvidia} color="#76B900" size={16} />;
   }
   if (lower.includes('gemma') || lower.includes('gemini') || lower.includes('google')) {
     return <SimpleIcon icon={siGoogle} color="#4285F4" size={16} />;

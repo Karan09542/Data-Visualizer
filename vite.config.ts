@@ -222,12 +222,6 @@ export default defineConfig(({ mode }) => {
     },
     server: {
       proxy: {
-        '/api/nvidia': {
-          target: 'https://integrate.api.nvidia.com/v1',
-          changeOrigin: true,
-          secure: false,
-          rewrite: (path) => path.replace(/^\/api\/nvidia/, ''),
-        },
         '/api': {
           target: 'https://datavisualizer-signalling-server.onrender.com',
           changeOrigin: true,

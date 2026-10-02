@@ -34,8 +34,8 @@ export interface AIState {
 export const useAIStore = create<AIState>()(
   persist(
     (set) => ({
-      activeProviderId: 'nvidia', // Default to cloud
-      activeModelId: 'meta/llama-3.1-70b-instruct',
+      activeProviderId: 'litert',
+      activeModelId: '', // the provider's first model
       
       apiKeys: {},
       
@@ -83,6 +83,18 @@ export const useAIStore = create<AIState>()(
     {
       name: 'data-visualizer-ai-storage', // unique name
       storage: createJSONStorage(() => localStorage),
+      // 1: NVIDIA NIM was removed. Drop a saved NVIDIA selection and its API key.
+      version: 1,
+      migrate: (persisted: any, version) => {
+        if (version < 1 && persisted) {
+          if (persisted.activeProviderId === 'nvidia') {
+            persisted.activeProviderId = 'litert';
+            persisted.activeModelId = '';
+          }
+          if (persisted.apiKeys) delete persisted.apiKeys.nvidia;
+        }
+        return persisted;
+      },
       partialize: (state) => ({
         // We only persist these fields
         activeProviderId: state.activeProviderId,

@@ -40,7 +40,6 @@ import {
   Wrench,
   Camera,
   ClipboardPaste,
-  Sparkles,
   ArrowDown,
   ArrowRight,
   CircleDot,
@@ -163,17 +162,6 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         return { color: "bg-red-500", label: "Too Large" };
     }
   }, [shareSizeInfo.status]);
-
-  // The palette listens for Ctrl+J / Cmd+J, so the hint has to follow the OS
-  // rather than always showing the Mac glyph.
-  const modKeyLabel = useMemo(
-    () =>
-      typeof navigator !== "undefined" &&
-      /Mac|iPhone|iPad|iPod/.test(navigator.platform || "")
-        ? "⌘"
-        : "Ctrl+",
-    [],
-  );
 
   const [isApiHelpOpen, setIsApiHelpOpen] = useState(false);
   const [isBarcodeGeneratorOpen, setIsBarcodeGeneratorOpen] = useState(false);
@@ -991,19 +979,6 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           <div className="flex items-center gap-1 xl:gap-4 lg:gap-2">
             <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
               <button
-                onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
-                className="group flex items-center gap-1.5 p-1.5 px-2.5 rounded-md text-purple-600 dark:text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 transition-all cursor-pointer text-xs font-semibold border border-purple-500/25 hover:-translate-y-px active:scale-95"
-                title={`Open AI Command Palette (${modKeyLabel}J)`}
-              >
-                <Sparkles size={14} className="group-hover:scale-110 transition-transform" />
-                <span>Ask AI</span>
-                <kbd className="hidden xl:inline-flex items-center px-1.5 py-0.5 rounded bg-purple-500/10 border border-purple-500/25 text-[9px] font-mono font-semibold">
-                  {modKeyLabel}J
-                </kbd>
-              </button>
-            </div>
-            <div className="flex items-center space-x-2 border-r border-slate-300 dark:border-slate-800 pr-2 xl:pr-4 flex-shrink-0">
-              <button
                 onClick={expandAll}
                 className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
                 title="Expand All"
@@ -1240,13 +1215,6 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
         <div className="lg:hidden flex items-center gap-1 shrink-0">
           <button
-            onClick={() => useStore.getState().setIsAIPaletteOpen(true)}
-            className="flex items-center justify-center p-1.5 rounded-lg bg-gradient-to-r from-purple-600 to-indigo-600 text-white shadow-sm active:scale-95 transition-all"
-            title="Ask AI Command Palette"
-          >
-            <Sparkles size={16} className="animate-pulse" />
-          </button>
-          <button
             onClick={() => {
               preloadLearningGames();
               useStore.getState().setIsLearningGamesOpen(true);
@@ -1292,35 +1260,6 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <UserMenu variant="row" onAction={() => setIsMobileMenuOpen(false)} />
               </div>
 
-              {/* AI Features Section */}
-              <div className="col-span-2 p-3 bg-gradient-to-r from-purple-500/10 via-indigo-500/10 to-blue-500/10 dark:from-purple-950/40 dark:via-indigo-950/40 dark:to-slate-900/40 border border-purple-200 dark:border-purple-800/40 rounded-xl flex flex-col gap-2.5">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-purple-700 dark:text-purple-300 uppercase tracking-wider">
-                    <Sparkles size={14} className="text-purple-500" />
-                    <span>AI Intelligence</span>
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      useStore.getState().setIsAIPaletteOpen(true);
-                    }}
-                    className="flex items-center justify-center gap-2 p-2 bg-purple-600 hover:bg-purple-700 active:bg-purple-800 text-white rounded-lg text-xs font-semibold shadow-sm transition-all"
-                  >
-                    <Sparkles size={14} /> Ask AI
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsMobileMenuOpen(false);
-                      useStore.getState().setIsAISettingsPanelOpen(true);
-                    }}
-                    className="flex items-center justify-center gap-2 p-2 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-semibold border border-slate-300 dark:border-slate-700 transition-all"
-                  >
-                    <SlidersHorizontal size={14} className="text-purple-500" /> AI Settings
-                  </button>
-                </div>
-              </div>
               <CustomSelect
                 label="Mode"
                 value={visualizerMode}
