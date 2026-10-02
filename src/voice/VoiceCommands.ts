@@ -78,6 +78,10 @@ export const registerAllVoiceCommands = () => {
   // Navigation commands
   CommandRegistry.register({
     phrases: ["go to *node", "focus on *node", "navigate to *node", "find *node", "select *node"],
+    title: "Go to a node",
+    group: "navigate",
+    description: "Selects a node, opens its parents and brings it into view",
+    example: "go to users",
     execute: (args?: any[]) => {
       const store = useStore.getState();
       let target = args?.[0] as string;
@@ -108,6 +112,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["deselect", "clear selection", "unselect"],
+    title: "Clear selection",
+    group: "navigate",
+    description: "Deselects the node and clears the search",
     execute: () => {
       stopAutoMatch(true);
       const store = useStore.getState();
@@ -120,6 +127,9 @@ export const registerAllVoiceCommands = () => {
   // Tree Controls
   CommandRegistry.register({
     phrases: ["expand all", "open all"],
+    title: "Expand all nodes",
+    group: "view",
+    description: "Opens every branch of the tree",
     execute: () => {
       useStore.getState().setCollapsedNodes(new Set());
       window.dispatchEvent(new CustomEvent("schema-expand-all"));
@@ -128,6 +138,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["collapse all", "close all"],
+    title: "Collapse all nodes",
+    group: "view",
+    description: "Folds every branch away",
     execute: () => {
       const store = useStore.getState();
       const allIds = new Set<string>();
@@ -144,6 +157,10 @@ export const registerAllVoiceCommands = () => {
   // Search Commands
   CommandRegistry.register({
     phrases: ["search for *query", "search *query"],
+    title: "Search",
+    group: "navigate",
+    description: "Highlights the nodes that match your words",
+    example: "search for email",
     execute: (args?: any[]) => {
       const store = useStore.getState();
       let query = args?.[0] as string;
@@ -204,6 +221,10 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["move *args", "pan *args"],
+    title: "Move the view",
+    group: "view",
+    description: "Pans the canvas in a direction",
+    example: "move left 2 times",
     execute: (args?: any[]) => {
       const { factor, direction } = parseMoveArgs(args);
       if (direction) {
@@ -280,6 +301,11 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["zoom in *args", "zoom in"],
+    title: "Zoom in",
+    group: "view",
+    description: "Closer, optionally by an amount",
+    example: "zoom in 2 times",
+    examples: ["get closer", "make it bigger", "enlarge", "magnify"],
     execute: (args?: any[]) => {
       const { factor, direction } = parseZoomArgs(args);
       window.dispatchEvent(new CustomEvent("voice-zoom", { detail: { op: 'in', factor, direction } }));
@@ -288,6 +314,11 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["zoom out *args", "zoom out"],
+    title: "Zoom out",
+    group: "view",
+    description: "Further away, optionally by an amount",
+    example: "zoom out twice",
+    examples: ["back off", "move further away", "make it smaller", "shrink"],
     execute: (args?: any[]) => {
       const { factor, direction } = parseZoomArgs(args);
       window.dispatchEvent(new CustomEvent("voice-zoom", { detail: { op: 'out', factor, direction } }));
@@ -295,6 +326,10 @@ export const registerAllVoiceCommands = () => {
   });
   CommandRegistry.register({
     phrases: ["export as *format", "download as *format", "save as *format"],
+    title: "Export the graph",
+    group: "files",
+    description: "Saves it as PNG, JPEG, WebP or SVG; say transparent for no background",
+    example: "export as png",
     execute: (args?: any[]) => {
       let format = args?.[0] as string;
       if (!format) return;
@@ -319,6 +354,10 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["reset zoom", "fit graph", "center graph", "fit into center", "zoom into center", "fit to screen", "reset view", "zoom to fit"],
+    title: "Fit the graph",
+    group: "view",
+    description: "Centers the whole graph on screen",
+    examples: ["show everything", "show the whole graph"],
     execute: () => {
       const fitBtn = document.getElementById("fit-graph-btn");
       if (fitBtn) fitBtn.click();
@@ -327,6 +366,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["show schema", "toggle schema", "switch to schema"],
+    title: "Schema view",
+    group: "view",
+    description: "Switches between the schema and the graph",
     execute: () => {
       const store = useStore.getState();
       store.setVisualizerMode(store.visualizerMode === 'schema' ? 'graph' : 'schema');
@@ -336,6 +378,10 @@ export const registerAllVoiceCommands = () => {
   // Theme Commands
   CommandRegistry.register({
     phrases: ["enable dark mode", "switch to dark mode", "dark mode", "turn on dark mode", "go dark"],
+    title: "Dark mode",
+    group: "look",
+    description: "Switches the app to dark",
+    examples: ["make it darker", "dark theme", "night mode"],
     execute: () => {
       const store = useStore.getState();
       store.setAppTheme("dark");
@@ -347,6 +393,10 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["enable light mode", "switch to light mode", "light mode", "turn on light mode", "go light"],
+    title: "Light mode",
+    group: "look",
+    description: "Switches the app to light",
+    examples: ["make it brighter", "light theme", "day mode"],
     execute: () => {
       const store = useStore.getState();
       store.setAppTheme("light");
@@ -358,6 +408,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["toggle dark mode", "toggle theme", "toggle themes", "switch theme", "switch themes", "change theme", "change themes", "toggle light mode"],
+    title: "Switch theme",
+    group: "look",
+    description: "Flips between dark and light",
     execute: () => {
       const store = useStore.getState();
       if (store.appTheme === "dark") {
@@ -376,6 +429,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["show tree", "show graph", "switch to graph"],
+    title: "Graph view",
+    group: "view",
+    description: "Shows the graph",
     execute: () => {
       const store = useStore.getState();
       store.setVisualizerMode('graph');
@@ -385,6 +441,9 @@ export const registerAllVoiceCommands = () => {
   // Workspace Commands
   CommandRegistry.register({
     phrases: ["open settings", "show settings", "open config", "show config"],
+    title: "Open settings",
+    group: "panels",
+    description: "Opens the advanced panel",
     execute: () => {
       const store = useStore.getState() as any;
       if (store.setIsAdvancedPanelOpen) {
@@ -395,6 +454,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["close settings", "hide settings", "close config", "hide config"],
+    title: "Close settings",
+    group: "panels",
+    description: "Closes the advanced panel",
     execute: () => {
       const store = useStore.getState() as any;
       if (store.setIsAdvancedPanelOpen) {
@@ -406,6 +468,11 @@ export const registerAllVoiceCommands = () => {
   // Format Commands
   CommandRegistry.register({
     phrases: ["change format to *fmt", "set format to *fmt", "format as *fmt", "switch to *fmt format"],
+    title: "Change data format",
+    group: "files",
+    description: "Converts the data between JSON and YAML",
+    example: "change format to yaml",
+    options: CODE_FORMATS,
     execute: (args?: any[]) => {
       let fmt = args?.[0] as string;
       if (!fmt) return;
@@ -423,6 +490,11 @@ export const registerAllVoiceCommands = () => {
   // Layout Commands
   CommandRegistry.register({
     phrases: ["change layout to *layout", "set layout to *layout", "use *layout layout", "switch to *layout layout", "layout *layout"],
+    title: "Change layout",
+    group: "look",
+    description: "Arranges the nodes differently",
+    example: "change layout to radial",
+    options: LAYOUT_MODES,
     execute: (args?: any[]) => {
       let layout = args?.[0] as string;
       if (!layout) return;
@@ -441,6 +513,9 @@ export const registerAllVoiceCommands = () => {
   // Info and Upload Commands
   CommandRegistry.register({
     phrases: ["open info", "show info", "info popup", "help popup", "open help"],
+    title: "Open help",
+    group: "panels",
+    description: "Shows the info popup",
     execute: () => {
       const infoBtn = document.getElementById("main-info-btn");
       if (infoBtn) {
@@ -452,6 +527,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["upload file", "upload files", "open upload", "upload data", "import file", "import data", "open import"],
+    title: "Upload a file",
+    group: "files",
+    description: "Opens the file picker to import data",
     execute: () => {
       const uploadBtn = document.getElementById("main-file-upload");
       if (uploadBtn) {
@@ -463,6 +541,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["confirm import", "import data", "import media", "save import", "finish import", "apply import"],
+    title: "Confirm import",
+    group: "files",
+    description: "Applies the import that is open",
     execute: () => {
       const confirmBtn = document.getElementById("confirm-import-btn");
       if (confirmBtn) {
@@ -475,6 +556,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["cancel import", "close import", "stop import", "abort import"],
+    title: "Cancel import",
+    group: "files",
+    description: "Closes the import without applying it",
     execute: () => {
       const cancelBtn = document.getElementById("cancel-import-btn");
       if (cancelBtn) {
@@ -486,6 +570,9 @@ export const registerAllVoiceCommands = () => {
   // Advanced Panel Toggles
   CommandRegistry.register({
     phrases: ["toggle drawing toolbar", "enable drawing toolbar", "disable drawing toolbar", "show drawing toolbar", "hide drawing toolbar", "drawing toolbar"],
+    title: "Drawing toolbar",
+    group: "panels",
+    description: "Shows, hides or toggles it",
     execute: (args?: any[], phrase?: string) => {
       const store = useAnnotationStore.getState();
       const p = phrase?.toLowerCase() || "";
@@ -497,6 +584,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["toggle media preview", "enable media preview", "disable media preview", "show media preview", "hide media preview", "media preview"],
+    title: "Media preview",
+    group: "panels",
+    description: "Shows, hides or toggles it",
     execute: (args?: any[], phrase?: string) => {
       const store = useStore.getState();
       const p = phrase?.toLowerCase() || "";
@@ -508,6 +598,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["toggle sticky notes", "enable sticky notes", "disable sticky notes", "show sticky notes", "hide sticky notes", "sticky notes", "workspace notes"],
+    title: "Sticky notes",
+    group: "panels",
+    description: "Shows, hides or toggles them",
     execute: (args?: any[], phrase?: string) => {
       const store = useStore.getState();
       const p = phrase?.toLowerCase() || "";
@@ -519,6 +612,11 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["open youtube search", "show youtube search", "youtube search", "youtube video"],
+    title: "YouTube search",
+    group: "panels",
+    description: "Opens the YouTube search panel",
+    examples: ["play a video", "find a video", "watch something on youtube"],
+    requires: ["youtube", "video", "videos"],
     execute: () => {
       useStore.getState().setIsYoutubeSearchOpen(true);
       useStore.getState().setNotification({ message: 'Opened YouTube Search', type: 'info' });
@@ -527,6 +625,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["toggle expand all text", "enable expand all text", "disable expand all text", "expand all text", "collapse all text"],
+    title: "Expand all text",
+    group: "view",
+    description: "Shows or folds long values in every node",
     execute: (args?: any[], phrase?: string) => {
       const store = useStore.getState();
       const p = phrase?.toLowerCase() || "";
@@ -538,6 +639,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["toggle audio player", "enable audio player", "disable audio player", "show audio player", "hide audio player", "open audio player", "close audio player", "audio player", "music player"],
+    title: "Audio player",
+    group: "panels",
+    description: "Opens or closes the music player",
     execute: (args?: any[], phrase?: string) => {
       const store = useAudioStore.getState();
       const p = phrase?.toLowerCase() || "";
@@ -550,6 +654,9 @@ export const registerAllVoiceCommands = () => {
   // Organize Command
   CommandRegistry.register({
     phrases: ["auto organize", "organize nodes", "organize graph", "clean up graph"],
+    title: "Organize the graph",
+    group: "view",
+    description: "Tidies up the node positions",
     execute: () => {
       useStore.getState().triggerAutoOrganize();
       useStore.getState().clearDragOverrides();
@@ -560,6 +667,11 @@ export const registerAllVoiceCommands = () => {
   // Theme, Edge, and Shape Commands
   CommandRegistry.register({
     phrases: ["change theme to *theme", "set theme to *theme", "use *theme theme", "switch to *theme theme", "theme *theme"],
+    title: "Node theme",
+    group: "look",
+    description: "Restyles every node",
+    example: "change theme to ocean",
+    options: NODE_THEMES,
     execute: (args?: any[]) => {
       let theme = args?.[0] as string;
       if (!theme) return;
@@ -576,6 +688,11 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["change edge to *edge", "set edge to *edge", "use *edge edge", "switch to *edge edge", "edge *edge", "change edge style to *edge", "set edge style to *edge"],
+    title: "Edge style",
+    group: "look",
+    description: "Changes how the links are drawn",
+    example: "change edge to curved",
+    options: EDGE_STYLES,
     execute: (args?: any[]) => {
       let edge = args?.[0] as string;
       if (!edge) return;
@@ -592,6 +709,11 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["change shape to *shape", "set shape to *shape", "use *shape shape", "switch to *shape shape", "shape *shape", "change node shape to *shape", "set node shape to *shape"],
+    title: "Node shape",
+    group: "look",
+    description: "Changes the shape of every node",
+    example: "change shape to circle",
+    options: NODE_SHAPES,
     execute: (args?: any[]) => {
       let shape = args?.[0] as string;
       if (!shape) return;
@@ -609,6 +731,9 @@ export const registerAllVoiceCommands = () => {
   // Editor Panel Commands
   CommandRegistry.register({
     phrases: ["toggle editor panel", "toggle editor", "open editor panel", "close editor panel", "show editor panel", "hide editor panel", "hide editor", "show editor", "open editor", "close editor"],
+    title: "Editor panel",
+    group: "panels",
+    description: "Opens or closes the editor",
     execute: () => {
       const store = useStore.getState();
       const newState = !store.isEditorPanelOpen;
@@ -619,6 +744,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["switch to gui editor", "open gui editor", "show gui editor", "gui editor"],
+    title: "GUI editor",
+    group: "panels",
+    description: "Opens the visual editor tab",
     execute: () => {
       const store = useStore.getState();
       store.setActiveTab("gui");
@@ -629,6 +757,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["switch to file explorer", "open file explorer", "show file explorer", "file explorer", "explorer"],
+    title: "File explorer",
+    group: "panels",
+    description: "Opens the file explorer tab",
     execute: () => {
       const store = useStore.getState();
       store.setActiveTab("explorer");
@@ -639,6 +770,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["switch to raw editor", "open raw editor", "show raw editor", "raw editor", "code editor", "switch to code editor"],
+    title: "Raw editor",
+    group: "panels",
+    description: "Opens the code editor tab",
     execute: () => {
       const store = useStore.getState();
       store.setActiveTab("raw");
@@ -649,6 +783,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["switch to api panel", "open api panel", "show api panel", "api panel"],
+    title: "API panel",
+    group: "panels",
+    description: "Opens the API tab",
     execute: () => {
       const store = useStore.getState();
       store.setActiveTab("api");
@@ -659,6 +796,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["open code workspace", "show code workspace", "code workspace", "open workspace", "workspace"],
+    title: "Code workspace",
+    group: "panels",
+    description: "Opens the workspace for the selected node",
     execute: () => {
       const store = useStore.getState();
       const selectedId = store.selectedNodeId;
@@ -711,6 +851,11 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["next match *args", "next node *args", "next match", "next node"],
+    title: "Next match",
+    group: "navigate",
+    description: "Jumps to the next search match; add seconds for a slideshow",
+    example: "next match 3",
+    examples: ["next one", "show the next result"],
     execute: (args?: any[]) => {
       const delay = parseMatchArgs(args);
       stopAutoMatch(true); // Stop any existing interval silently
@@ -727,6 +872,11 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["previous match *args", "previous node *args", "previous match", "previous node"],
+    title: "Previous match",
+    group: "navigate",
+    description: "Jumps back a match; add seconds for a slideshow",
+    example: "previous match 3",
+    examples: ["previous one", "go back one", "show the previous result"],
     execute: (args?: any[]) => {
       const delay = parseMatchArgs(args);
       stopAutoMatch(true);
@@ -743,6 +893,9 @@ export const registerAllVoiceCommands = () => {
 
   CommandRegistry.register({
     phrases: ["stop preview", "stop match", "stop auto match", "stop auto", "stop slideshow", "stop matching", "stop node"],
+    title: "Stop the slideshow",
+    group: "navigate",
+    description: "Stops stepping through matches",
     execute: () => {
       stopAutoMatch();
     }

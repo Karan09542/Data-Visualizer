@@ -1,11 +1,14 @@
 import React from "react";
-import { Mic, MicOff, Loader2, AlertCircle, CheckCircle2 } from "lucide-react";
+import { MicOff } from "lucide-react";
+import { VoiceSpirit3D } from "./VoiceSpirit3D";
+import { VoiceToast } from "./VoiceToast";
+import "./naad.css";
 import { VoiceManager } from "../VoiceManager";
 import { useVoiceStore } from "../useVoiceStore";
 
 export const FloatingMic: React.FC = () => {
   const state = useVoiceStore((state) => state.state);
-  const lastCommand = useVoiceStore((state) => state.lastCommand);
+  const feedback = useVoiceStore((state) => state.feedback);
   const errorMessage = useVoiceStore((state) => state.errorMessage);
   const isVoiceEnabled = useVoiceStore((state) => state.isVoiceEnabled);
 
@@ -29,53 +32,40 @@ export const FloatingMic: React.FC = () => {
   const isListening = state === "listening";
   const isError = state === "error";
   const isSuccess = state === "success";
+  /** Listening, or briefly showing what it heard before listening again. */
+  const isActive = isListening || state === "processing" || isSuccess;
   
   return (
     <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-2 pointer-events-none">
       
-      {/* Toast Notification */}
-      {(lastCommand || errorMessage) && state !== "idle" && (
-        <div className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-4 py-3 rounded-xl shadow-xl border border-slate-200 dark:border-slate-700 max-w-xs animate-in fade-in slide-in-from-bottom-4 pointer-events-auto">
-          <div className="flex items-start gap-3">
-            {isError ? (
-              <AlertCircle className="w-5 h-5 text-red-500 shrink-0 mt-0.5" />
-            ) : isSuccess ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-500 shrink-0 mt-0.5" />
-            ) : (
-              <Loader2 className="w-5 h-5 text-blue-500 shrink-0 mt-0.5 animate-spin" />
-            )}
-            
-            <div className="flex flex-col">
-              <span className="text-xs font-semibold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
-                {isError ? "Error" : isSuccess ? "Recognized" : "Listening..."}
-              </span>
-              <span className="text-sm font-medium leading-tight">
-                {isError ? errorMessage : lastCommand || "Say a command..."}
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
+      <VoiceToast state={state} feedback={feedback} errorMessage={errorMessage} />
 
-      {/* Mic Button */}
+      {/* Mic Button: the Kailash spirit, whose naad spreads while it listens */}
       <button
         onClick={handleToggle}
+        aria-pressed={isActive}
+        aria-label={isActive ? "Stop listening" : "Start voice commands"}
+        title={isActive ? "Stop listening" : "Start voice commands"}
         className={`
-          flex items-center justify-center w-14 h-14 rounded-full shadow-xl pointer-events-auto transition-all duration-300
-          ${isListening 
-            ? "bg-red-500 hover:bg-red-600 text-white shadow-red-500/30 ring-4 ring-red-500/20 animate-pulse" 
+          relative flex items-center justify-center w-16 h-16 rounded-full pointer-events-auto transition-all duration-300
+          bg-[radial-gradient(circle_at_50%_40%,#1e1b4b_0%,#0b0a1f_60%,#020205_100%)] text-white shadow-xl hover:scale-105 active:scale-95
+          focus:outline-none focus-visible:ring-4 focus-visible:ring-cyan-300/50
+          ${isActive
+            ? "ring-2 ring-cyan-300/70 shadow-[0_0_24px_rgba(34,211,238,0.5)]"
             : isError
-              ? "bg-amber-500 hover:bg-amber-600 text-white shadow-amber-500/30"
-              : "bg-indigo-600 hover:bg-indigo-700 text-white shadow-indigo-600/30"
+              ? "ring-2 ring-amber-400/70 shadow-amber-500/30"
+              : "ring-1 ring-indigo-300/20 shadow-[0_0_14px_rgba(99,102,241,0.25)]"
           }
         `}
-        title={isListening ? "Stop Listening" : "Start Voice Commands"}
       >
-        {isListening ? (
-          <Mic className="w-6 h-6" />
-        ) : (
-          <MicOff className="w-6 h-6" />
+        {isListening && (
+          <span className="absolute inset-0 text-cyan-300" aria-hidden>
+            <span className="naad-ring" />
+            <span className="naad-ring" />
+            <span className="naad-ring" />
+          </span>
         )}
+        <VoiceSpirit3D mode={state} size={64} />
       </button>
     </div>
   );
