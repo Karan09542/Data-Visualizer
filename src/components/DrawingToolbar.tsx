@@ -6,7 +6,7 @@ import {
   PenTool, Highlighter, Square, Circle, Triangle,
   Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity, Pentagon, Hexagon, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
-  Sigma, X, ChevronUp, Eye, EyeOff, Copy, Check, Plus, SlidersHorizontal
+  Sigma, X, ChevronUp, Eye, EyeOff, Copy, Check, Plus, SlidersHorizontal, SquareDashedMousePointer
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -158,6 +158,7 @@ const LaTeXPreview = React.memo(({ expression, className = "", onSelect }: { exp
 
 const TOOLS: { id: DrawingTool; icon: React.ReactNode; label: string }[] = [
   { id: 'select', icon: <MousePointer2 size={14} />, label: 'Select' },
+  { id: 'box-select', icon: <SquareDashedMousePointer size={14} />, label: 'Box select' },
   { id: 'pen', icon: <PenTool size={14} />, label: 'Pen' },
   { id: 'highlighter', icon: <Highlighter size={14} />, label: 'Highlighter' },
   { id: 'straight-line', icon: <Minus size={14} />, label: 'Line' },
@@ -724,7 +725,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                 </div>
 
                 {/* Options Section */}
-                {store.activeTool !== 'eraser' && (store.activeTool !== 'select' || store.selectedAnnotationIds.length > 0) && (
+                {store.activeTool !== 'eraser' && ((store.activeTool !== 'select' && store.activeTool !== 'box-select') || store.selectedAnnotationIds.length > 0) && (
                   <div className="flex flex-col gap-6 mb-8">
                     <h3 className="text-[11px] font-bold uppercase tracking-widest text-slate-500">Properties</h3>
 
@@ -1313,6 +1314,7 @@ export default function DrawingToolbar() {
       if (e.shiftKey) {
         switch (key) {
           case 'v': store.setActiveTool('select'); break;
+          case 'b': store.setActiveTool('box-select'); break;
           case 'p': store.setActiveTool('pen'); break;
           case 'f': store.setActiveTool('function-brush'); break;
           case 'h': store.setActiveTool('highlighter'); break;
@@ -1927,7 +1929,7 @@ export default function DrawingToolbar() {
 
       <div className={panelsClass}>
       {/* Options Panel depending on tool */}
-      {store.activeTool !== 'eraser' && (store.activeTool !== 'select' || store.selectedAnnotationIds.length > 0) && (
+      {store.activeTool !== 'eraser' && ((store.activeTool !== 'select' && store.activeTool !== 'box-select') || store.selectedAnnotationIds.length > 0) && (
         <div
           className={`pointer-events-auto flex flex-col p-0 bg-white/95 dark:bg-[#0b1120] backdrop-blur-md rounded-2xl shadow-lg border border-slate-200/50 dark:border-slate-800/80 text-slate-900 dark:text-slate-100 relative group/options will-change-[width,height] overflow-hidden animate-in fade-in duration-300 ${resizingMode !== 'none' ? 'select-none transition-none shadow-2xl ring-2 ring-blue-500/10' : ''}`}
           style={(isVert ? {

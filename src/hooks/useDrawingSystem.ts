@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import * as d3 from 'd3';
 import { useAnnotationStore, Point, Annotation, DrawingTool } from '../store/useAnnotationStore';
 import { detectShape } from '../utils/shapeDetection';
+import { annotationsInRect } from '../utils/annotationSelection';
 
 function simplifyPath(points: Point[], tolerance = 1): Point[] {
   if (points.length <= 2) return points;
@@ -34,6 +35,15 @@ export function useDrawingSystem(
   const isDrawing = useRef(false);
   const currentAnnotationId = useRef<string | null>(null);
   const currentPoints = useRef<Point[]>([]);
+  /**
+   * A Box select gesture: dragging out a box (`base` is the selection kept from before, with
+   * Shift), or moving the selected annotations together.
+   */
+  const boxGesture = useRef<
+    | { mode: 'box'; origin: Point; base: string[] }
+    | { mode: 'move'; last: Point; moved: boolean }
+    | null
+  >(null);
 
   useEffect(() => {
     const el = wrapperRef.current;
@@ -72,7 +82,41 @@ export function useDrawingSystem(
         return;
       }
 
+      // Controls floating on the canvas (marked data-canvas-ui) are not the canvas. This listener is
+      // native, so it runs before React's: a React stopPropagation there can't keep it out.
+      if ((e.target as Element).closest?.('[data-canvas-ui]')) return;
+
       const pt = getGraphPos(e);
+
+      if (state.activeTool === 'box-select') {
+        const target = e.target as Element;
+        // The selection's handles (one shape's TransformBox, or the group box) run their own
+        // drags, started from mousedown: preventDefault below would suppress that mousedown.
+        if (target.closest?.('.transform-box')) return;
+
+        // The canvas is locked for this tool (see the visualizers), so every drag selects or moves.
+        e.preventDefault();
+        const hitId = target.closest?.('[data-anno-id]')?.getAttribute('data-anno-id') ?? null;
+        const selected = state.selectedAnnotationIds;
+
+        if (hitId && e.shiftKey) {
+          // Shift-tap adds or removes one annotation.
+          state.setSelectedAnnotations(selected.includes(hitId) ? selected.filter(id => id !== hitId) : [...selected, hitId]);
+          return;
+        }
+        if (hitId) {
+          // On a shape outside the selection's box: select it and move it straight away.
+          if (!selected.includes(hitId)) state.setSelectedAnnotations([hitId]);
+          boxGesture.current = { mode: 'move', last: pt, moved: false };
+          return;
+        }
+        // On empty canvas: drag out a box. Shift keeps what is already selected.
+        const base = e.shiftKey ? selected : [];
+        if (!e.shiftKey) state.setSelectedAnnotations([]);
+        boxGesture.current = { mode: 'box', origin: pt, base };
+        state.setSelectionRect({ x1: pt.x, y1: pt.y, x2: pt.x, y2: pt.y });
+        return;
+      }
 
       if (state.activeTool === 'select') {
         const target = e.target as SVGElement;
@@ -155,6 +199,30 @@ export function useDrawingSystem(
 
     const handlePointerMove = (e: PointerEvent) => {
       if (!e.isPrimary) return;
+
+      const gesture = boxGesture.current;
+      if (gesture) {
+        const state = useAnnotationStore.getState();
+        const pt = getGraphPos(e);
+        if (gesture.mode === 'box') {
+          const rect = { x1: gesture.origin.x, y1: gesture.origin.y, x2: pt.x, y2: pt.y };
+          state.setSelectionRect(rect);
+          // Select live, so the user sees what the box will take before letting go.
+          const ids = [...new Set([...gesture.base, ...annotationsInRect(state.annotations, rect)])];
+          const current = state.selectedAnnotationIds;
+          if (ids.length !== current.length || ids.some(id => !current.includes(id))) state.setSelectedAnnotations(ids);
+        } else {
+          const dx = pt.x - gesture.last.x;
+          const dy = pt.y - gesture.last.y;
+          if (dx !== 0 || dy !== 0) {
+            state.moveAnnotations(state.selectedAnnotationIds, dx, dy);
+            gesture.last = pt;
+            gesture.moved = true;
+          }
+        }
+        return;
+      }
+
       if (!isDrawing.current || !currentAnnotationId.current) return;
 
       const state = useAnnotationStore.getState();
@@ -209,6 +277,19 @@ export function useDrawingSystem(
 
     const handlePointerUp = (e: PointerEvent) => {
       if (!e.isPrimary) return;
+
+      const gesture = boxGesture.current;
+      if (gesture) {
+        boxGesture.current = null;
+        if (gesture.mode === 'box') {
+          // A tap without a drag selects what is under it: the box test already did that.
+          useAnnotationStore.getState().setSelectionRect(null);
+        } else if (gesture.moved) {
+          useAnnotationStore.getState().commitAction();
+        }
+        return;
+      }
+
       if (!isDrawing.current) return;
       isDrawing.current = false;
 
@@ -301,9 +382,20 @@ export function useDrawingSystem(
       }
       isDrawing.current = false;
       currentAnnotationId.current = null;
+      if (boxGesture.current?.mode === 'box') useAnnotationStore.getState().setSelectionRect(null);
+      boxGesture.current = null;
     };
 
     const handleDrawingKeyDown = (e: KeyboardEvent) => {
+      const state = useAnnotationStore.getState();
+      // Esc with Box select: drop the selection (and any box being dragged).
+      if (e.key === 'Escape' && state.activeTool === 'box-select' && (state.selectedAnnotationIds.length > 0 || boxGesture.current)) {
+        boxGesture.current = null;
+        state.setSelectionRect(null);
+        state.setSelectedAnnotations([]);
+        return;
+      }
+
       if (isDrawing.current && currentAnnotationId.current && e.key === 'Tab') {
         e.preventDefault();
         const state = useAnnotationStore.getState();

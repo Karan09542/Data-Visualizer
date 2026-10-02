@@ -1,6 +1,7 @@
 import React, { useState, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useAnnotationStore, Annotation } from '../store/useAnnotationStore';
+import { groupTransformUpdates, unionBox, type GroupTransform } from '../utils/annotationSelection';
 import { 
   Link, 
   Link2Off, 
@@ -317,6 +318,116 @@ export const AnnotationContextMenu = ({
       <button onClick={remove} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500 hover:text-white flex items-center gap-2 transition-colors">
         <Trash2 size={14} />
         Delete Shape
+      </button>
+    </div>,
+    document.body
+  );
+};
+
+/**
+ * The menu for a multi-shape selection (Box select): flip, rotate, stacking order and delete, for
+ * every selected shape at once. Flips and turns are about the selection's centre, like its handles.
+ */
+export const GroupContextMenu = ({ x, y, onClose }: { x: number; y: number; onClose: () => void }) => {
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState({ top: y, left: x });
+  const [isMeasured, setIsMeasured] = useState(false);
+  const count = useAnnotationStore(s => s.selectedAnnotationIds.length);
+
+  useLayoutEffect(() => {
+    if (!menuRef.current) return;
+    const { offsetWidth: width, offsetHeight: height } = menuRef.current;
+    setPos({
+      left: Math.max(10, Math.min(x, window.innerWidth - width - 10)),
+      top: Math.max(10, Math.min(y, window.innerHeight - height - 10)),
+    });
+    setIsMeasured(true);
+  }, [x, y]);
+
+  const selected = () => {
+    const { annotations, selectedAnnotationIds } = useAnnotationStore.getState();
+    return annotations.filter(a => selectedAnnotationIds.includes(a.id));
+  };
+
+  const transform = (m: GroupTransform['m']) => {
+    const annos = selected();
+    const box = unionBox(annos);
+    if (!box) return;
+    const state = useAnnotationStore.getState();
+    state.updateAnnotations(groupTransformUpdates(annos, { cx: (box.minX + box.maxX) / 2, cy: (box.minY + box.maxY) / 2, m, dx: 0, dy: 0 }));
+    state.commitAction();
+    onClose();
+  };
+  const rotate = (deg: number) => {
+    const t = (deg * Math.PI) / 180;
+    transform({ a: Math.cos(t), b: -Math.sin(t), c: Math.sin(t), d: Math.cos(t) });
+  };
+
+  // Moved one by one, in the right order, so the selection keeps its own stacking among itself.
+  const reorder = (action: 'front' | 'back') => {
+    const state = useAnnotationStore.getState();
+    const ids = state.annotations.filter(a => state.selectedAnnotationIds.includes(a.id)).map(a => a.id);
+    (action === 'front' ? ids : [...ids].reverse()).forEach(id => state.reorderAnnotation(id, action));
+    state.commitAction();
+    onClose();
+  };
+
+  const remove = () => {
+    const state = useAnnotationStore.getState();
+    state.removeAnnotations(state.selectedAnnotationIds);
+    state.commitAction();
+    onClose();
+  };
+
+  const item = "w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-500 hover:text-white flex items-center gap-2 transition-colors";
+
+  return createPortal(
+    <div
+      ref={menuRef}
+      className="fixed z-[1000] w-48 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl py-1 overflow-hidden animate-in fade-in zoom-in duration-100"
+      style={{ top: pos.top, left: pos.left, visibility: isMeasured ? 'visible' : 'hidden' }}
+      onClick={e => e.stopPropagation()}
+    >
+      <div className="px-3 py-2 border-b border-slate-100 dark:border-slate-800 mb-1">
+        <span className="text-[10px] uppercase font-black text-slate-400 tracking-widest block">Selection</span>
+        <span className="text-[11px] text-slate-500">{count} shapes</span>
+      </div>
+
+      <button onClick={() => transform({ a: -1, b: 0, c: 0, d: 1 })} className={item}>
+        <FlipHorizontal size={14} /> Flip Horizontal
+      </button>
+      <button onClick={() => transform({ a: 1, b: 0, c: 0, d: -1 })} className={item}>
+        <FlipVertical size={14} /> Flip Vertical
+      </button>
+
+      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
+
+      <div className="grid grid-cols-3 gap-0.5 px-2 mb-1">
+        {[90, 180, 270].map(deg => (
+          <button
+            key={deg}
+            onClick={() => rotate(deg)}
+            className="px-2 py-1.5 text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded flex items-center justify-center gap-1 transition-colors"
+            title={`Turn the selection ${deg}°`}
+          >
+            <RotateCw size={10} /> {deg}°
+          </button>
+        ))}
+      </div>
+
+      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
+
+      <button onClick={() => reorder('front')} className={item}>
+        <ChevronsUp size={14} /> Bring to Front
+      </button>
+      <button onClick={() => reorder('back')} className={item}>
+        <ChevronsDown size={14} /> Send to Back
+      </button>
+
+      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
+
+      <button onClick={remove} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500 hover:text-white flex items-center gap-2 transition-colors">
+        <Trash2 size={14} /> Delete {count} Shapes
       </button>
     </div>,
     document.body

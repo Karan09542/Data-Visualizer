@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type DrawingTool = 
-  | 'select' | 'eraser' | 'pen' | 'highlighter' 
+  | 'select' | 'box-select' | 'eraser' | 'pen' | 'highlighter' 
   | 'straight-line' | 'arrow' | 'rectangle' | 'rounded-rectangle' | 'square' | 'circle' | 'ellipse' | 'triangle'
   | 'pentagon' | 'hexagon' | 'heptagon' | 'octagon' | 'polygon' | 'star' | 'diamond'
   | 'sine-wave' | 'square-wave' | 'triangle-wave' | 'sawtooth-wave' | 'pulse-wave' | 'zigzag-wave'
@@ -14,6 +14,14 @@ export type BrushStyle =
 
 export type ArrowTipStyle = 'default' | 'none' | 'stealth' | 'triangle' | 'circle' | 'diamond' | 'custom-math';
 export type ArrowLineStyle = 'solid' | 'dashed' | 'dotted' | 'curly' | 'custom-math';
+
+/** A box dragged out on the canvas, in canvas coordinates; the corners in drag order. */
+export interface SelectionRect {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}
 
 export interface Point {
   x: number;
@@ -96,6 +104,8 @@ interface AnnotationState {
   customArrowLineEquation: string;
   customArrowTipEquation: string;
   selectedAnnotationIds: string[];
+  /** The box being dragged out with the Box select tool; null when not dragging. Not saved. */
+  selectionRect: SelectionRect | null;
   
   // UI Settings
   isToolbarVisible: boolean;
@@ -165,10 +175,15 @@ interface AnnotationState {
 
   addAnnotation: (annotation: Annotation) => void;
   updateAnnotation: (id: string, updates: Partial<Annotation>) => void;
+  /** Several updates in one go, keyed by annotation id (a group resize touches every shape at once). */
+  updateAnnotations: (updates: Record<string, Partial<Annotation>>) => void;
   reorderAnnotation: (id: string, action: 'forward' | 'backward' | 'front' | 'back') => void;
   removeAnnotations: (ids: string[]) => void;
   clearAnnotations: () => void;
   setSelectedAnnotations: (ids: string[]) => void;
+  setSelectionRect: (rect: SelectionRect | null) => void;
+  /** Moves annotations by (dx, dy) in canvas units, rotated and scaled ones included. */
+  moveAnnotations: (ids: string[], dx: number, dy: number) => void;
   commitAction: () => void;
   undo: () => void;
   redo: () => void;
@@ -208,6 +223,7 @@ export const useAnnotationStore = create<AnnotationState>()(
   customArrowLineEquation: 'sin(t * dist * 0.05) * 10',
   customArrowTipEquation: 'size * (0.5 + 0.5 * cos(theta * 3))',
   selectedAnnotationIds: [],
+  selectionRect: null,
   isToolbarVisible: false,
   toolbarOpacity: 1,
   toolbarOrientation: 'vertical',
@@ -224,7 +240,11 @@ export const useAnnotationStore = create<AnnotationState>()(
   history: [[]],
   historyIndex: 0,
 
-  setActiveTool: (tool) => set({ activeTool: tool }),
+  // Drawing tools start clean: a selection kept from a select tool would take the new tool's
+  // colour, width and other settings as they are picked.
+  setActiveTool: (tool) => set(tool === 'select' || tool === 'box-select' || tool === 'eraser'
+    ? { activeTool: tool, selectionRect: null }
+    : { activeTool: tool, selectionRect: null, selectedAnnotationIds: [] }),
   setColor: (color) => {
     const prevState = get();
     const shouldSyncFill = prevState.fillColor === prevState.color;
@@ -357,6 +377,9 @@ export const useAnnotationStore = create<AnnotationState>()(
   updateAnnotation: (id, updates) => set((state) => ({
     annotations: state.annotations.map(a => a.id === id ? { ...a, ...updates } : a)
   })),
+  updateAnnotations: (updates) => set((state) => ({
+    annotations: state.annotations.map(a => updates[a.id] ? { ...a, ...updates[a.id] } : a)
+  })),
   reorderAnnotation: (id, action) => set((state) => {
     const annotations = [...state.annotations];
     const index = annotations.findIndex(a => a.id === id);
@@ -381,6 +404,20 @@ export const useAnnotationStore = create<AnnotationState>()(
     selectedAnnotationIds: state.selectedAnnotationIds.filter(id => !ids.includes(id))
   })),
   clearAnnotations: () => set({ annotations: [], selectedAnnotationIds: [] }),
+  setSelectionRect: (selectionRect) => set({ selectionRect }),
+  moveAnnotations: (ids, dx, dy) => set((state) => ({
+    annotations: state.annotations.map(a => {
+      if (!ids.includes(a.id)) return a;
+      // A rotated or scaled shape turns about its saved pivot: move the pivot with the points,
+      // or the shape would swing around the old one.
+      return {
+        ...a,
+        points: a.points.map(p => ({ x: p.x + dx, y: p.y + dy })),
+        ...(a.centerX !== undefined ? { centerX: a.centerX + dx } : {}),
+        ...(a.centerY !== undefined ? { centerY: a.centerY + dy } : {}),
+      };
+    }),
+  })),
   setSelectedAnnotations: (ids) => {
     set({ selectedAnnotationIds: ids });
     const { annotations } = get();
@@ -476,7 +513,7 @@ export const useAnnotationStore = create<AnnotationState>()(
 {
   name: 'drawing-app-storage',
   partialize: (state) => {
-    const { history, historyIndex, ...rest } = state;
+    const { history, historyIndex, selectionRect, ...rest } = state;
     return rest;
   },
 }

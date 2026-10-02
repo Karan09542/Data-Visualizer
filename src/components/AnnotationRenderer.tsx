@@ -1,7 +1,9 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import { useAnnotationStore, Annotation, Point } from '../store/useAnnotationStore';
 import { getAnnotationBounds, TransformBox } from './TransformBox';
-import { AnnotationContextMenu, ManualResizeModal } from './AnnotationControls';
+import { annotationBox, rectToBox } from '../utils/annotationSelection';
+import { AnnotationContextMenu, GroupContextMenu, ManualResizeModal } from './AnnotationControls';
+import { GroupTransformBox } from './GroupTransformBox';
 import * as d3 from 'd3';
 import { create, all } from 'mathjs';
 import { 
@@ -651,7 +653,8 @@ const BaseAnnotationShape = ({ anno, activeTool }: { anno: Annotation, activeToo
         strokeLinecap={strokeLinecap}
         strokeLinejoin={strokeLinejoin}
         pointerEvents={anno.tool === 'eraser' ? 'none' : 'visibleStroke'}
-        style={{ cursor: activeTool === 'select' ? 'pointer' : 'default', touchAction: 'none' }}
+        data-anno-id={anno.id}
+        style={{ cursor: activeTool === 'select' ? 'pointer' : activeTool === 'box-select' ? 'move' : 'default', touchAction: 'none' }}
         onClick={(e) => {
           if (activeTool === 'eraser') {
             useAnnotationStore.getState().removeAnnotations([anno.id]);
@@ -690,12 +693,24 @@ export default function AnnotationRenderer() {
   const annotations = useAnnotationStore(state => state.annotations);
   const activeTool = useAnnotationStore(state => state.activeTool);
   const selectedAnnotationIds = useAnnotationStore(state => state.selectedAnnotationIds);
+  const selectionRect = useAnnotationStore(state => state.selectionRect);
+
+  const isBoxSelect = activeTool === 'box-select';
+  const boxSelected = isBoxSelect ? annotations.filter(a => selectedAnnotationIds.includes(a.id)) : [];
+  // Box select handles one shape exactly as Select does, and several with the group box.
+  const isGroup = boxSelected.length > 1;
 
   const [contextMenu, setContextMenu] = useState<{ x: number, y: number, anno: Annotation } | null>(null);
+  const [groupMenu, setGroupMenu] = useState<{ x: number, y: number } | null>(null);
   const [manualResizeAnno, setManualResizeAnno] = useState<Annotation | null>(null);
+  // Stable, so the group box doesn't rebind its drag handlers on every render (mid-gesture too).
+  const openGroupMenu = useCallback((x: number, y: number) => setGroupMenu({ x, y }), []);
 
   useEffect(() => {
-    const handleGlobalClick = () => setContextMenu(null);
+    const handleGlobalClick = () => {
+      setContextMenu(null);
+      setGroupMenu(null);
+    };
     window.addEventListener('click', handleGlobalClick);
     return () => window.removeEventListener('click', handleGlobalClick);
   }, []);
@@ -727,7 +742,16 @@ export default function AnnotationRenderer() {
         <g 
           key={anno.id} 
           onContextMenu={(e) => {
-            if (activeTool === 'select') {
+            if (isBoxSelect) {
+              e.preventDefault();
+              e.stopPropagation();
+              if (selectedAnnotationIds.includes(anno.id)) {
+                if (isGroup) setGroupMenu({ x: e.clientX, y: e.clientY });
+                else setContextMenu({ x: e.clientX, y: e.clientY, anno });
+              } else {
+                useAnnotationStore.getState().setSelectedAnnotations([anno.id]);
+              }
+            } else if (activeTool === 'select') {
               e.preventDefault(); // Always prevent browser menu in select mode
               e.stopPropagation(); // Always stop propagation on shapes to prevent global gestures
               // Only allow menu if already selected (as per user request)
@@ -755,7 +779,47 @@ export default function AnnotationRenderer() {
           <BaseAnnotationShape anno={anno} activeTool={activeTool} />
         </g>
       ))}
-      {activeTool === 'select' && annotations
+      {/* Box select: with several shapes, each one outlined inside the group box; and the box
+          being dragged out. */}
+      {isGroup && boxSelected.map(anno => {
+        const b = annotationBox(anno);
+        return (
+          <rect
+            key={`bs-${anno.id}`}
+            x={b.minX}
+            y={b.minY}
+            width={b.maxX - b.minX}
+            height={b.maxY - b.minY}
+            fill="none"
+            stroke="#3b82f6"
+            strokeWidth={1.5}
+            strokeDasharray="4 3"
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+        );
+      })}
+      {isBoxSelect && selectionRect && (() => {
+        const r = rectToBox(selectionRect);
+        return (
+          <rect
+            x={r.minX}
+            y={r.minY}
+            width={r.maxX - r.minX}
+            height={r.maxY - r.minY}
+            fill="rgba(59,130,246,0.10)"
+            stroke="#3b82f6"
+            strokeWidth={1.5}
+            strokeDasharray="6 4"
+            vectorEffect="non-scaling-stroke"
+            pointerEvents="none"
+          />
+        );
+      })()}
+
+      {isGroup && <GroupTransformBox annos={boxSelected} onOpenMenu={openGroupMenu} />}
+
+      {(activeTool === 'select' || (isBoxSelect && !isGroup)) && annotations
         .filter(anno => selectedAnnotationIds.includes(anno.id))
         .map(anno => (
           <TransformBox 
@@ -775,6 +839,8 @@ export default function AnnotationRenderer() {
           onShowManualResize={() => setManualResizeAnno(contextMenu.anno)}
         />
       )}
+
+      {groupMenu && <GroupContextMenu x={groupMenu.x} y={groupMenu.y} onClose={() => setGroupMenu(null)} />}
 
       {manualResizeAnno && (
         <ManualResizeModal 
