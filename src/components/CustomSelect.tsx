@@ -32,6 +32,25 @@ interface CustomSelectProps {
    * show the choice on the canvas before committing to it; omit it for a plain select.
    */
   onPreview?: (value: string | null) => void;
+  /** Controls whether the menu is open, for opening it from somewhere else (a right-click, say) */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  /**
+   * Draws your own trigger instead of the default button. Attach `ref` to a button - the menu is
+   * placed against it - and spread `props` onto it for keyboard and screen-reader support.
+   */
+  renderTrigger?: (trigger: {
+    ref: React.RefObject<HTMLButtonElement | null>;
+    isOpen: boolean;
+    props: {
+      onKeyDown: (event: React.KeyboardEvent) => void;
+      "aria-haspopup": "listbox";
+      "aria-expanded": boolean;
+      "aria-controls"?: string;
+    };
+  }) => React.ReactNode;
+  /** A small heading at the top of the menu, also used as its accessible name */
+  menuTitle?: string;
 }
 
 const GAP = 6;
@@ -50,12 +69,23 @@ export default function CustomSelect({
   searchable = false,
   variant = "default",
   onPreview,
+  open,
+  onOpenChange,
+  renderTrigger,
+  menuTitle,
 }: CustomSelectProps) {
   const { bind, stop, consumeHoldClick } = usePreviewHold<string>({
     preview: (option) => onPreview?.(option),
     revert: () => onPreview?.(null)
   });
-  const [isOpen, setIsOpen] = useState(false);
+  const [uncontrolledOpen, setUncontrolledOpen] = useState(false);
+  const isOpen = open ?? uncontrolledOpen;
+  const onOpenChangeRef = useRef(onOpenChange);
+  onOpenChangeRef.current = onOpenChange;
+  const setIsOpen = useCallback((next: boolean) => {
+    setUncontrolledOpen(next);
+    onOpenChangeRef.current?.(next);
+  }, []);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(-1);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -88,7 +118,7 @@ export default function CustomSelect({
     setIsOpen(false);
     setSearchQuery("");
     setPosition(null);
-  }, []);
+  }, [setIsOpen]);
 
   const choose = (optionValue: string) => {
     stop();
@@ -239,6 +269,16 @@ export default function CustomSelect({
           {label}
         </label>
       )}
+      {renderTrigger ? renderTrigger({
+        ref: triggerRef,
+        isOpen,
+        props: {
+          onKeyDown: handleKeyDown,
+          "aria-haspopup": "listbox",
+          "aria-expanded": isOpen,
+          "aria-controls": isOpen ? listId : undefined,
+        },
+      }) : (
       <button
         ref={triggerRef}
         type="button"
@@ -277,6 +317,7 @@ export default function CustomSelect({
             }`}
         />
       </button>
+      )}
 
       {typeof document !== 'undefined'
         ? createPortal(
@@ -299,6 +340,11 @@ export default function CustomSelect({
                   }}
                   className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-xl shadow-slate-900/10 dark:border-slate-700/70 dark:bg-slate-900 dark:shadow-black/40"
                 >
+                  {menuTitle && (
+                    <div className="border-b border-slate-200 px-3 py-2 text-[11px] font-semibold text-slate-500 dark:border-slate-800 dark:text-slate-400">
+                      {menuTitle}
+                    </div>
+                  )}
                   {searchable && (
                     <div className="p-2 border-b border-slate-200 dark:border-slate-800">
                       <div className="relative">
@@ -319,7 +365,7 @@ export default function CustomSelect({
                     ref={listRef}
                     id={listId}
                     role="listbox"
-                    aria-label={label}
+                    aria-label={label ?? menuTitle}
                     className="overflow-y-auto overscroll-contain custom-scrollbar p-1"
                     style={{ maxHeight: position?.maxHeight ?? MAX_LIST_HEIGHT }}
                   >

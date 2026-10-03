@@ -52,6 +52,7 @@ import {
 } from "lucide-react";
 import { useFullscreen } from "../hooks/useFullscreen";
 import CustomSelect from "./CustomSelect";
+import UploadFileButton from "./UploadFileButton";
 import { estimateShareSize } from "../utils/shareUtils";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { db } from "../lib/db";
@@ -255,20 +256,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     }
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
-
+  const handleFileUpload = async (files: File[]) => {
+    if (files.length === 0) return;
     try {
       // We will dynamically import the handler for file processing
       const { processFiles } = await import("../utils/fileProcessor");
-      processFiles(Array.from(files));
+      processFiles(files);
     } catch (err) {
       console.error("Failed to process file upload:", err);
     }
-
-    // Clear input so same file can be selected again
-    e.target.value = "";
   };
 
   const handlePasteClipboard = async () => {
@@ -1091,23 +1087,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </button>
               )}
 
-              <label
-                className="cursor-pointer flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors border border-indigo-500/25 hover:-translate-y-px mr-2"
-                title="Upload JSON/CSV/Excel"
+              <UploadFileButton
+                onFiles={handleFileUpload}
+                inputId="main-file-upload"
+                wrapperClassName="mr-2"
+                className="cursor-pointer flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-transparent hover:bg-slate-200 dark:hover:bg-slate-800 text-indigo-600 dark:text-indigo-400 transition-colors border border-indigo-500/25 hover:-translate-y-px"
               >
                 <Database size={14} />
                 <span className="text-xs font-semibold hidden lg:inline">
                   Upload File
                 </span>
-                <input
-                  id="main-file-upload"
-                  type="file"
-                  className="hidden"
-                  multiple
-                  accept=".json,.csv,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf"
-                  onChange={handleFileUpload}
-                />
-              </label>
+              </UploadFileButton>
 
               <button
                 id="main-info-btn"
@@ -1429,20 +1419,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     </button>
                   )}
 
-                  <label className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition-all cursor-pointer">
+                  <UploadFileButton
+                    onFiles={(files) => {
+                      setIsMobileMenuOpen(false);
+                      handleFileUpload(files);
+                    }}
+                    title="Upload a file (hold to pick a type)"
+                    className="flex w-full items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-indigo-600 dark:text-indigo-400 transition-all cursor-pointer"
+                  >
                     <Database size={16} />
                     <span className="truncate">Upload File</span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      multiple
-                      accept=".json,.xlsx,.xls,.yaml,.yml,.txt,image/*,video/*,audio/*,application/pdf"
-                      onChange={(e) => {
-                        setIsMobileMenuOpen(false);
-                        handleFileUpload(e);
-                      }}
-                    />
-                  </label>
+                  </UploadFileButton>
 
                   <button
                     onClick={() => {
