@@ -1,2120 +1,1202 @@
-import React, { useEffect, useLayoutEffect, useRef, useState, useCallback } from "react";
-import { createPortal } from "react-dom";
-import { ChevronLeft, ChevronRight, ZoomIn, ZoomOut, ExternalLink, Loader2, AlertCircle, Search, LayoutGrid, Sidebar, X, Play, Archive, FileDown, Maximize2, Minimize2, Check, FileImage, FileText, ChevronDown, BookOpen, Layers, Download, RotateCw, RotateCcw, AlignStartVertical, AlignCenterVertical } from "lucide-react";
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertCircle,
+  AlignStartVertical,
+  AlignVerticalJustifyCenter,
+  Archive,
+  BookOpen,
+  ChevronDown,
+  ChevronLeft,
+  ChevronRight,
+  Ellipsis,
+  ExternalLink,
+  FileDown,
+  FileImage,
+  FileText,
+  GalleryVertical,
+  ListChecks,
+  Lock,
+  Maximize2,
+  Minimize2,
+  PanelLeft,
+  RefreshCw,
+  RotateCcw,
+  RotateCw,
+  Search,
+  Undo2,
+  X,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
 import { useDebounce } from "use-debounce";
 import * as pdfjsLib from "pdfjs-dist";
 import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
-import { DndContext, closestCenter, KeyboardSensor, PointerSensor, TouchSensor, MouseSensor, useSensor, useSensors, DragEndEvent, DragStartEvent, DragOverlay } from '@dnd-kit/core';
-import { arrayMove, SortableContext, sortableKeyboardCoordinates, rectSortingStrategy, useSortable } from '@dnd-kit/sortable';
-import { CSS } from '@dnd-kit/utilities';
-import { PDFDocument, degrees } from 'pdf-lib';
+import CustomSelect from "./CustomSelect";
+import { PdfPage, PdfPagePlaceholder, MAX_PIXELS_CONTINUOUS, MAX_PIXELS_SINGLE } from "./pdf-viewer/PdfPage";
+import { ThumbnailGrid } from "./pdf-viewer/PdfThumbnails";
+import { PdfSearch } from "./pdf-viewer/PdfSearch";
+import { createPdfWorkerClient, type PdfWorkerClient, type SearchRect, type SearchResult } from "./pdf-viewer/pdfWorkerClient";
+import {
+  buildPdf,
+  documentTitle,
+  downloadBlob,
+  renderPageImage,
+  zipFiles,
+  type ExportImageFormat,
+} from "./pdf-viewer/pdfExport";
+import { ICON_BUTTON, pdfPalette } from "./pdf-viewer/pdfTheme";
 
+export type { ExportImageFormat } from "./pdf-viewer/pdfExport";
 
-export type ExportImageFormat = 'png' | 'jpeg' | 'webp';
-
-interface SortableThumbnailProps {
-  pageNum: number;
-  url: string;
-  currentPage: number;
-  selectionMode: boolean;
-  isSelected: boolean;
-  defaultFormat: ExportImageFormat;
-  isDownloadingThisPage?: boolean;
-  isFormatMenuOpen?: boolean;
-  onSelect: (pageNum: number) => void;
-  onGoToPage: (pageNum: number) => void;
-  onLongPress: (pageNum: number) => void;
-  onDownloadPage: (pageNum: number, format: ExportImageFormat) => void;
-  onOpenFormatMenu: (pageNum: number) => void;
-  onCloseFormatMenu: () => void;
-}
-
-interface ThumbnailCardProps {
-  pageNum: number;
-  url: string;
-  currentPage: number;
-  selectionMode: boolean;
-  isSelected: boolean;
-  defaultFormat: ExportImageFormat;
-  isDownloadingThisPage?: boolean;
-  isFormatMenuOpen?: boolean;
-  onSelect?: (pageNum: number) => void;
-  onGoToPage?: (pageNum: number) => void;
-  onLongPress?: (pageNum: number) => void;
-  onDownloadPage?: (pageNum: number, format: ExportImageFormat) => void;
-  onOpenFormatMenu?: (pageNum: number) => void;
-  onCloseFormatMenu?: () => void;
-  isOverlay?: boolean;
-  isDark?: boolean;
-}
-
-interface FormatMenuPortalProps {
-  buttonRef: React.RefObject<HTMLButtonElement | null>;
-  defaultFormat: ExportImageFormat;
-  pageNum: number;
-  onSelectFormat: (pageNum: number, format: ExportImageFormat) => void;
-  onClose: () => void;
-}
-
-const FormatMenuPortal: React.FC<FormatMenuPortalProps> = ({
-  buttonRef,
-  defaultFormat,
-  pageNum,
-  onSelectFormat,
-  onClose,
-}) => {
-  const [coords, setCoords] = useState<{ top: number; left: number } | null>(null);
-
-  useLayoutEffect(() => {
-    if (!buttonRef.current) return;
-    const rect = buttonRef.current.getBoundingClientRect();
-    const menuWidth = 152;
-    const menuHeight = 155;
-
-    let top = rect.bottom + 6;
-    let left = rect.left;
-
-    // Flip vertically above button if near screen bottom edge
-    if (top + menuHeight > window.innerHeight - 12) {
-      top = Math.max(12, rect.top - menuHeight - 6);
-    }
-
-    // Shift horizontally left if near screen right edge
-    if (left + menuWidth > window.innerWidth - 12) {
-      left = Math.max(12, window.innerWidth - menuWidth - 12);
-    }
-
-    // Clamp to left screen edge
-    if (left < 12) {
-      left = 12;
-    }
-
-    setCoords({ top, left });
-  }, [buttonRef]);
-
-  useEffect(() => {
-    const handlePointerDown = (e: PointerEvent) => {
-      const target = e.target as HTMLElement;
-      if (buttonRef.current && buttonRef.current.contains(target)) return;
-      onClose();
-    };
-
-    const handleScroll = () => onClose();
-
-    window.addEventListener("pointerdown", handlePointerDown);
-    window.addEventListener("scroll", handleScroll, true);
-    return () => {
-      window.removeEventListener("pointerdown", handlePointerDown);
-      window.removeEventListener("scroll", handleScroll, true);
-    };
-  }, [buttonRef, onClose]);
-
-  if (!coords) return null;
-
-  return createPortal(
-    <div
-      style={{ top: `${coords.top}px`, left: `${coords.left}px` }}
-      className="fixed w-38 bg-slate-900/98 backdrop-blur-2xl border border-slate-700/90 rounded-2xl shadow-2xl overflow-hidden z-[999999] p-1.5 divide-y divide-slate-800/80 animate-in fade-in zoom-in-95 duration-150 font-sans"
-    >
-      <div className="text-[9px] font-bold text-slate-400 uppercase tracking-wider px-2 py-1 select-none flex items-center justify-between">
-        <span>Format Options</span>
-        <span className="text-[8px] font-mono text-indigo-400 font-bold">P.{pageNum}</span>
-      </div>
-
-      <div className="py-1 flex flex-col gap-0.5">
-        {[
-          { id: 'png' as const, label: 'PNG Image', ext: '.png', desc: 'Lossless 3x HD' },
-          { id: 'jpeg' as const, label: 'JPEG Image', ext: '.jpg', desc: 'High quality' },
-          { id: 'webp' as const, label: 'WEBP Image', ext: '.webp', desc: 'Modern compact' },
-        ].map((item) => (
-          <button
-            key={item.id}
-            type="button"
-            onPointerDown={(e) => e.stopPropagation()}
-            onClick={(e) => {
-              e.stopPropagation();
-              onSelectFormat(pageNum, item.id);
-              onClose();
-            }}
-            className={`w-full px-2 py-1.5 text-left text-xs font-semibold rounded-xl flex items-center justify-between transition-colors ${
-              defaultFormat === item.id
-                ? 'bg-indigo-600/35 text-indigo-200 font-bold border border-indigo-500/40 shadow-sm'
-                : 'text-slate-300 hover:bg-indigo-600 hover:text-white border border-transparent'
-            }`}
-          >
-            <div>
-              <div className="text-[11px] font-bold flex items-center gap-1">
-                {item.label}
-                {defaultFormat === item.id && <Check size={10} className="text-indigo-400" />}
-              </div>
-              <div className="text-[9px] text-slate-400 font-normal">{item.desc}</div>
-            </div>
-            <span className="text-[9px] font-mono font-bold uppercase px-1 py-0.5 rounded bg-slate-800 text-slate-300 shrink-0">
-              {item.ext}
-            </span>
-          </button>
-        ))}
-      </div>
-    </div>,
-    document.body
-  );
-};
-
-const ThumbnailCard: React.FC<ThumbnailCardProps> = React.memo(({
-  pageNum,
-  url,
-  currentPage,
-  selectionMode,
-  isSelected,
-  defaultFormat,
-  isDownloadingThisPage = false,
-  isFormatMenuOpen = false,
-  onSelect,
-  onGoToPage,
-  onLongPress,
-  onDownloadPage,
-  onOpenFormatMenu,
-  onCloseFormatMenu,
-  isOverlay,
-  isDark = false
-}) => {
-  const downloadHoldTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const downloadButtonRef = useRef<HTMLButtonElement | null>(null);
-
-  const clearHoldTimer = () => {
-    if (downloadHoldTimerRef.current) {
-      clearTimeout(downloadHoldTimerRef.current);
-      downloadHoldTimerRef.current = null;
-    }
-  };
-
-  const handleDownloadPointerDown = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    clearHoldTimer();
-    downloadHoldTimerRef.current = setTimeout(() => {
-      onOpenFormatMenu?.(pageNum);
-      downloadHoldTimerRef.current = null;
-    }, 350);
-  };
-
-  const handleDownloadPointerUp = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    clearHoldTimer();
-  };
-
-  const handleDownloadClick = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    clearHoldTimer();
-    onDownloadPage?.(pageNum, defaultFormat);
-  };
-
-  return (
-    <div
-      onClick={(e) => {
-        if (!isOverlay) {
-          onGoToPage?.(pageNum);
-        }
-      }}
-      className={`relative flex flex-col gap-1.5 cursor-pointer group select-none ${
-        isOverlay
-          ? 'scale-105 shadow-2xl z-50 pointer-events-none'
-          : selectionMode
-            ? ''
-            : (currentPage === pageNum ? 'opacity-100' : 'opacity-85 hover:opacity-100')
-      }`}
-    >
-      <div
-        className={`rounded-xl overflow-hidden aspect-[1/1.4] relative border shadow-md transition-colors duration-150 ${isDark ? "bg-slate-950" : "bg-white"} ${
-          isSelected
-            ? isDark ? 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/15' : 'border-indigo-500 ring-2 ring-indigo-500/40 shadow-lg shadow-indigo-500/20'
-            : (currentPage === pageNum && !selectionMode
-              ? isDark ? 'border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/15' : 'border-blue-500 ring-2 ring-blue-500/30 shadow-lg shadow-blue-500/20'
-              : isDark ? 'border-slate-800/80 group-hover:border-slate-600/80' : 'border-slate-200 group-hover:border-slate-300')
-        }`}
-      >
-        <img
-          src={url}
-          alt={`Page ${pageNum}`}
-          className="w-full h-full object-contain bg-white pointer-events-none select-none"
-          loading="lazy"
-          draggable={false}
-        />
-
-        {/* Soft top gradient */}
-        <div className="absolute inset-x-0 top-0 h-8 bg-gradient-to-b from-slate-950/40 to-transparent pointer-events-none" />
-
-        {/* Download Button (Top-Left Corner) */}
-        {!isOverlay && (
-          <div className="absolute top-1.5 left-1.5 z-20">
-            <button
-              ref={downloadButtonRef}
-              type="button"
-              onPointerDown={handleDownloadPointerDown}
-              onPointerUp={handleDownloadPointerUp}
-              onPointerCancel={clearHoldTimer}
-              onPointerLeave={clearHoldTimer}
-              onClick={handleDownloadClick}
-              className={`flex items-center gap-1 px-1.5 py-0.5 rounded-lg bg-slate-900/85 hover:bg-indigo-600 backdrop-blur-md border border-slate-700/80 hover:border-indigo-500 text-slate-200 hover:text-white shadow-md transition-all ${
-                selectionMode ? 'opacity-100' : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100'
-              }`}
-              title={`Click to download ${defaultFormat.toUpperCase()} • Hold for format options`}
-            >
-              {isDownloadingThisPage ? (
-                <Loader2 size={11} className="animate-spin text-indigo-400" />
-              ) : (
-                <Download size={11} className="shrink-0" />
-              )}
-              <span className="text-[9px] font-mono font-bold uppercase tracking-tight text-indigo-300 group-hover:text-white">
-                {defaultFormat}
-              </span>
-            </button>
-
-            {/* Portal-based Format Picker Popover Menu */}
-            {isFormatMenuOpen && (
-              <FormatMenuPortal
-                buttonRef={downloadButtonRef}
-                defaultFormat={defaultFormat}
-                pageNum={pageNum}
-                onSelectFormat={(p, fmt) => onDownloadPage?.(p, fmt)}
-                onClose={() => onCloseFormatMenu?.()}
-              />
-            )}
-          </div>
-        )}
-
-        {/* Checkbox Button (Top-Right Corner) */}
-        <button
-          className={`absolute top-1.5 right-1.5 z-10 transition-all duration-200 ${
-            selectionMode
-              ? 'opacity-100 scale-100'
-              : 'opacity-100 sm:opacity-0 sm:group-hover:opacity-100 scale-90 sm:group-hover:scale-100'
-          }`}
-          onPointerDown={(e) => e.stopPropagation()}
-          onClick={(e) => {
-            e.stopPropagation();
-            if (!selectionMode) {
-              onLongPress?.(pageNum);
-            } else {
-              onSelect?.(pageNum);
-            }
-          }}
-          title={isSelected ? 'Deselect Page' : 'Select Page'}
-        >
-          {isSelected ? (
-            <div className="w-5 h-5 rounded-full bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/40 scale-100 transition-transform">
-              <Check size={12} strokeWidth={3} />
-            </div>
-          ) : (
-            <div className="w-5 h-5 rounded-full border-2 border-slate-400/70 bg-slate-900/60 backdrop-blur-sm shadow-sm hover:border-indigo-400 hover:bg-slate-800 transition-all" />
-          )}
-        </button>
-
-        {/* Active Page Pill */}
-        {currentPage === pageNum && !selectionMode && (
-          <div className="absolute bottom-1.5 left-1.5 z-10 px-2 py-0.5 rounded-md bg-blue-600/90 text-white text-[9px] font-bold tracking-wider backdrop-blur-md shadow-sm">
-            ACTIVE
-          </div>
-        )}
-      </div>
-
-      <span
-        className={`text-[11px] text-center font-medium tracking-tight select-none transition-colors ${
-          isSelected
-            ? 'text-indigo-300 font-semibold'
-            : (currentPage === pageNum && !selectionMode
-              ? 'text-blue-400 font-semibold'
-              : 'text-slate-400 group-hover:text-slate-200')
-        }`}
-      >
-        Page {pageNum}
-      </span>
-    </div>
-  );
-});
-
-const SortableThumbnail: React.FC<SortableThumbnailProps> = React.memo(({
-  pageNum,
-  url,
-  currentPage,
-  selectionMode,
-  isSelected,
-  defaultFormat,
-  isDownloadingThisPage,
-  isFormatMenuOpen,
-  onSelect,
-  onGoToPage,
-  onLongPress,
-  onDownloadPage,
-  onOpenFormatMenu,
-  onCloseFormatMenu
-}) => {
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pageNum.toString() });
-
-  const style: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: isDragging ? undefined : transition,
-    opacity: isDragging ? 0.25 : 1,
-    touchAction: 'pan-y',
-    willChange: 'transform',
-  };
-
-  return (
-    <div
-      ref={setNodeRef}
-      style={style}
-      {...attributes}
-      {...listeners}
-    >
-      <ThumbnailCard
-        pageNum={pageNum}
-        url={url}
-        currentPage={currentPage}
-        selectionMode={selectionMode}
-        isSelected={isSelected}
-        defaultFormat={defaultFormat}
-        isDownloadingThisPage={isDownloadingThisPage}
-        isFormatMenuOpen={isFormatMenuOpen}
-        onSelect={onSelect}
-        onGoToPage={onGoToPage}
-        onLongPress={onLongPress}
-        onDownloadPage={onDownloadPage}
-        onOpenFormatMenu={onOpenFormatMenu}
-        onCloseFormatMenu={onCloseFormatMenu}
-      />
-    </div>
-  );
-});
-
-interface VirtualizedThumbnailSlotProps {
-  pageNum: number;
-  thumbnailUrl: string | null;
-  currentPage: number;
-  selectionMode: boolean;
-  isSelected: boolean;
-  defaultFormat: ExportImageFormat;
-  isDownloadingThisPage?: boolean;
-  isFormatMenuOpen?: boolean;
-  isDark?: boolean;
-  onRequestThumbnail: (pageNum: number) => void;
-  onSelect: (pageNum: number) => void;
-  onGoToPage: (pageNum: number) => void;
-  onLongPress: (pageNum: number) => void;
-  onDownloadPage: (pageNum: number, format: ExportImageFormat) => void;
-  onOpenFormatMenu: (pageNum: number) => void;
-  onCloseFormatMenu: () => void;
-}
-
-/**
- * Virtualized thumbnail slot that uses IntersectionObserver to lazily request
- * thumbnail generation only when the placeholder enters the visible viewport.
- * This prevents rendering all thumbnails at once for large PDFs.
- */
-const VirtualizedThumbnailSlot: React.FC<VirtualizedThumbnailSlotProps> = React.memo(({
-  pageNum,
-  thumbnailUrl,
-  currentPage,
-  selectionMode,
-  isSelected,
-  defaultFormat,
-  isDownloadingThisPage,
-  isFormatMenuOpen,
-  onRequestThumbnail,
-  onSelect,
-  onGoToPage,
-  onLongPress,
-  onDownloadPage,
-  onOpenFormatMenu,
-  onCloseFormatMenu,
-  isDark = false,
-}) => {
-  const observerElRef = useRef<HTMLDivElement | null>(null);
-  const [isVisible, setIsVisible] = useState(false);
-  const hasRequestedRef = useRef(false);
-
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: pageNum.toString() });
-
-  // Merge the sortable ref with our observer ref
-  const mergedRef = useCallback((node: HTMLDivElement | null) => {
-    setNodeRef(node);
-    observerElRef.current = node;
-  }, [setNodeRef]);
-
-  useEffect(() => {
-    const el = observerElRef.current;
-    if (!el) return;
-
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setIsVisible(true);
-            // Request thumbnail generation if not already loaded or requested
-            if (!thumbnailUrl && !hasRequestedRef.current) {
-              hasRequestedRef.current = true;
-              onRequestThumbnail(pageNum);
-            }
-          } else {
-            setIsVisible(false);
-          }
-        }
-      },
-      {
-        // Use a generous rootMargin to pre-load thumbnails slightly before they enter viewport
-        rootMargin: '200px 0px 200px 0px',
-        threshold: 0,
-      }
-    );
-
-    observer.observe(el);
-    return () => observer.disconnect();
-  }, [pageNum, thumbnailUrl, onRequestThumbnail]);
-
-  const sortableStyle: React.CSSProperties = {
-    transform: CSS.Transform.toString(transform),
-    transition: isDragging ? undefined : transition,
-    opacity: isDragging ? 0.25 : 1,
-    touchAction: 'pan-y',
-    willChange: 'transform',
-  };
-
-  // If the thumbnail URL is available, render the full card with sortable wrapper
-  if (thumbnailUrl) {
-    return (
-      <div ref={mergedRef} style={sortableStyle} {...attributes} {...listeners}>
-        <ThumbnailCard
-          pageNum={pageNum}
-          url={thumbnailUrl}
-          currentPage={currentPage}
-          selectionMode={selectionMode}
-          isSelected={isSelected}
-          defaultFormat={defaultFormat}
-          isDownloadingThisPage={isDownloadingThisPage}
-          isFormatMenuOpen={isFormatMenuOpen}
-          onSelect={onSelect}
-          onGoToPage={onGoToPage}
-          onLongPress={onLongPress}
-          onDownloadPage={onDownloadPage}
-          onOpenFormatMenu={onOpenFormatMenu}
-          onCloseFormatMenu={onCloseFormatMenu}
-          isDark={isDark}
-        />
-      </div>
-    );
-  }
-
-  // Placeholder for thumbnails that haven't loaded yet (also sortable)
-  return (
-    <div
-      ref={mergedRef}
-      style={sortableStyle}
-      {...attributes}
-      {...listeners}
-      className="relative flex flex-col gap-1.5 select-none"
-    >
-      <div className={`rounded-xl overflow-hidden aspect-[1/1.4] relative border shadow-md flex items-center justify-center ${isDark ? "bg-slate-950 border-slate-800/80" : "bg-slate-50 border-slate-200"}`}>
-        {isVisible ? (
-          <div className="flex flex-col items-center gap-1.5 text-slate-500">
-            <Loader2 size={16} className={`animate-spin ${isDark ? "text-indigo-500/70" : "text-indigo-400"}`} />
-            <span className={`text-[9px] font-mono font-medium tracking-wide ${isDark ? "" : "text-slate-400"}`}>Loading...</span>
-          </div>
-        ) : (
-          <div className={`flex flex-col items-center gap-1 ${isDark ? "text-slate-600" : "text-slate-400"}`}>
-            <LayoutGrid size={14} className={isDark ? "text-slate-700" : "text-slate-300"} />
-            <span className="text-[9px] font-mono font-medium tracking-wide">Page {pageNum}</span>
-          </div>
-        )}
-      </div>
-      <span className="text-[11px] text-center font-medium tracking-tight select-none text-slate-500">
-        Page {pageNum}
-      </span>
-    </div>
-  );
-});
-
-// Initialize the pdf.js worker using unpkg CDN to bypass Vite bundling issues with .mjs workers
 // Bundled with the app, and so precached, rather than fetched from unpkg: PDFs open offline.
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
 interface PdfViewerProps {
   url: string;
-  alignment?: 'top' | 'center';
+  /** The document's name, for downloads; otherwise taken from the URL */
+  fileName?: string;
+  alignment?: "top" | "center";
   isDark?: boolean;
 }
 
-interface PdfPageCanvasProps {
-  pdfDoc: any;
-  pageNum: number;
-  scale: number;
-  rotation?: number;
-  onVisible?: (pageNum: number) => void;
+type ViewMode = "single" | "continuous";
+type ZoomMode = "auto" | "fit-width" | "fit-page" | "custom";
+type Busy = null | "pdf" | "zip-images" | "zip-pdf";
+
+const MIN_SCALE = 0.25;
+const MAX_SCALE = 4;
+const ZOOM_STEPS = [0.25, 0.33, 0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3, 4];
+/** Pages drawn either side of the current one in continuous mode; the rest are placeholders */
+const RENDER_WINDOW = 2;
+/** "Automatic" zoom fits the width, but not beyond this on a large screen */
+const AUTO_MAX_SCALE = 1.25;
+const PROXY = "https://go.data-visualizer.workers.dev/?url=";
+
+const clampScale = (s: number) => Math.min(MAX_SCALE, Math.max(MIN_SCALE, s));
+
+/** Downloads a URL, reporting progress when the size is known */
+async function fetchBytes(url: string, onProgress: (fraction: number) => void, signal: AbortSignal): Promise<ArrayBuffer> {
+  const res = await fetch(url, { signal });
+  if (!res.ok) throw new Error(`The server answered ${res.status}${res.statusText ? ` ${res.statusText}` : ""}`);
+  const total = Number(res.headers.get("content-length")) || 0;
+  if (!res.body || !total) return res.arrayBuffer();
+  const reader = res.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let received = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    chunks.push(value);
+    received += value.length;
+    onProgress(Math.min(1, received / total));
+  }
+  const out = new Uint8Array(received);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.length;
+  }
+  return out.buffer;
 }
 
-const PdfPageCanvas: React.FC<PdfPageCanvasProps> = ({ pdfDoc, pageNum, scale, rotation = 0, onVisible }) => {
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const [viewportSize, setViewportSize] = useState<{ width: number; height: number }>({ width: 0, height: 0 });
-  const renderTaskRef = useRef<any>(null);
-  const [debouncedScale] = useDebounce(scale, 300);
+export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment = "top", isDark = true }) => {
+  /* ── Document ───────────────────────────────────────────────────────── */
+  const [pdfDoc, setPdfDoc] = useState<any>(null);
+  const [numPages, setNumPages] = useState(0);
+  const [firstPageSize, setFirstPageSize] = useState({ width: 612, height: 792 });
+  const [status, setStatus] = useState<"loading" | "ready" | "password" | "error" | "embed">("loading");
+  const [progress, setProgress] = useState<number | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [password, setPassword] = useState("");
+  const [passwordError, setPasswordError] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  const bufferRef = useRef<ArrayBuffer | null>(null);
+  const bufferUrlRef = useRef<string | null>(null);
+  const passwordRef = useRef<string | undefined>(undefined);
 
+  /* ── View ───────────────────────────────────────────────────────────── */
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageInput, setPageInput] = useState("1");
+  const [viewMode, setViewMode] = useState<ViewMode>("single");
+  const [alignMode, setAlignMode] = useState<"top" | "center">(alignment);
+  const [scale, setScale] = useState(1);
+  const [zoomMode, setZoomMode] = useState<ZoomMode>("auto");
+  const [rotations, setRotations] = useState<Record<number, number>>({});
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const [openMenu, setOpenMenu] = useState<null | "zoom" | "more" | "zip">(null);
+
+  /* ── Sidebar ────────────────────────────────────────────────────────── */
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarTab, setSidebarTab] = useState<"pages" | "search">("pages");
+  const [sidebarWide, setSidebarWide] = useState(false);
+  const [gridRoot, setGridRoot] = useState<HTMLDivElement | null>(null);
+  const [isNarrow, setIsNarrow] = useState(false);
+
+  /* ── Pages: order, selection, export ────────────────────────────────── */
+  const [orderedPages, setOrderedPages] = useState<number[]>([]);
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [busy, setBusy] = useState<Busy>(null);
+  const [exportProgress, setExportProgress] = useState<string | null>(null);
+  const [downloadingPage, setDownloadingPage] = useState<number | null>(null);
+  const [defaultFormat, setDefaultFormat] = useState<ExportImageFormat>("png");
+  const cancelExportRef = useRef(false);
+
+  /* ── Search ─────────────────────────────────────────────────────────── */
+  const [query, setQuery] = useState("");
+  const [debouncedQuery] = useDebounce(query, 300);
+  const [results, setResults] = useState<SearchResult[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [activeMatch, setActiveMatch] = useState(-1);
+
+  const rootRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pagesRef = useRef<HTMLDivElement>(null);
+  const programmaticScroll = useRef(false);
+  const currentPageRef = useRef(currentPage);
+  currentPageRef.current = currentPage;
+
+  /* ── Worker for thumbnails and search, started only when first needed ─ */
+  const [client, setClient] = useState<PdfWorkerClient | null>(null);
+  const workerLoadedRef = useRef(false);
   useEffect(() => {
-    if (!pdfDoc) return;
-    let active = true;
+    const c = createPdfWorkerClient();
+    setClient(c);
+    return () => c.destroy();
+  }, []);
+  const ensureWorker = useCallback(() => {
+    if (!client || !bufferRef.current || workerLoadedRef.current) return;
+    workerLoadedRef.current = true;
+    client.load(bufferRef.current, passwordRef.current);
+  }, [client]);
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && onVisible) {
-            onVisible(pageNum);
-          }
-        });
-      },
-      { threshold: 0.25 }
-    );
+  /* ── Loading ────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    const controller = new AbortController();
+    let doc: any = null;
+    const cleanUrl = url.replace(/#.*$/, "");
+    setStatus("loading");
+    setError(null);
+    setProgress(null);
+    workerLoadedRef.current = false;
 
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
+    (async () => {
+      // Reuse the bytes when only the password changed
+      let buffer = bufferUrlRef.current === cleanUrl ? bufferRef.current : null;
+      const failures: string[] = [];
+      if (!buffer) {
+        try {
+          buffer = await fetchBytes(cleanUrl, setProgress, controller.signal);
+        } catch (err: any) {
+          if (controller.signal.aborted) return;
+          failures.push(`Direct: ${err?.message || err}`);
+        }
+      }
+      if (!buffer && /^https?:/i.test(cleanUrl)) {
+        try {
+          setProgress(null);
+          buffer = await fetchBytes(PROXY + encodeURIComponent(cleanUrl), setProgress, controller.signal);
+        } catch (err: any) {
+          if (controller.signal.aborted) return;
+          failures.push(`Proxy: ${err?.message || err}`);
+        }
+      }
+      if (!buffer) throw new Error(failures.join("\n") || "The file could not be downloaded");
+      bufferRef.current = buffer;
+      bufferUrlRef.current = cleanUrl;
 
-    pdfDoc.getPage(pageNum).then((page: any) => {
-      if (!active) return;
-      const baseRotation = page.rotate || 0;
-      const finalRotation = (baseRotation + rotation) % 360;
-      const baseViewport = page.getViewport({ scale: 1.0, rotation: finalRotation });
-      setViewportSize({ width: baseViewport.width, height: baseViewport.height });
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
+      try {
+        // pdf.js takes ownership of what it is given, so it gets a copy
+        doc = await pdfjsLib.getDocument({
+          data: new Uint8Array(buffer.slice(0)),
+          useSystemFonts: true,
+          password: passwordRef.current,
+        }).promise;
+      } catch (err: any) {
+        if (err?.name === "PasswordException") {
+          if (controller.signal.aborted) return;
+          setPasswordError(!!passwordRef.current);
+          setStatus("password");
+          return;
+        }
+        throw err;
+      }
+      if (controller.signal.aborted) {
+        doc.destroy();
+        return;
       }
 
-      const context = canvas.getContext('2d');
-      if (!context) return;
-
-      // Dynamic crisp render resolution based on debounced zoom scale
-      const renderScale = Math.max(debouncedScale * 2.0, 2.0);
-      const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      const renderTask = page.render({ canvasContext: context, viewport });
-      renderTaskRef.current = renderTask;
-
-      renderTask.promise
-        .catch((err: any) => {
-          if (err?.name !== 'RenderingCancelledException') {
-            console.error(`Page ${pageNum} render error:`, err);
-          }
-        });
+      const first = await doc.getPage(1);
+      const size = first.getViewport({ scale: 1 });
+      setFirstPageSize({ width: size.width, height: size.height });
+      setPdfDoc(doc);
+      setNumPages(doc.numPages);
+      setOrderedPages(Array.from({ length: doc.numPages }, (_, i) => i + 1));
+      setRotations({});
+      setSelected(new Set());
+      setSelectionMode(false);
+      setCurrentPage(1);
+      setPageInput("1");
+      setZoomMode("auto");
+      setPasswordError(false);
+      setStatus("ready");
+    })().catch((err: any) => {
+      if (controller.signal.aborted) return;
+      console.error("PDF failed to open:", err);
+      setError(String(err?.message || err));
+      setStatus("error");
     });
 
     return () => {
-      active = false;
-      observer.disconnect();
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
-      }
-    };
-  }, [pdfDoc, pageNum, debouncedScale, rotation]);
-
-  return (
-    <div
-      id={`pdf-page-${pageNum}`}
-      ref={containerRef}
-      className="shadow-md border border-slate-700/30 bg-white overflow-hidden relative flex-shrink-0 mx-auto transition-shadow rounded-sm"
-      style={{
-        width: viewportSize.width ? `${viewportSize.width * scale}px` : 'auto',
-        height: viewportSize.height ? `${viewportSize.height * scale}px` : 'auto',
-      }}
-    >
-      <canvas ref={canvasRef} className="w-full h-full block relative z-0" />
-      <div className="absolute top-2 left-2 px-2 py-0.5 rounded bg-slate-900/80 backdrop-blur-md text-white text-[10px] font-bold select-none z-10 opacity-70">
-        Page {pageNum}
-      </div>
-    </div>
-  );
-};
-
-interface PdfPlaceholderCanvasProps {
-  pageNum: number;
-  width: number;
-  height: number;
-  onVisible?: (pageNum: number) => void;
-}
-
-const PdfPlaceholderCanvas: React.FC<PdfPlaceholderCanvasProps> = ({ pageNum, width, height, onVisible }) => {
-  const containerRef = useRef<HTMLDivElement | null>(null);
-
-  useEffect(() => {
-    let active = true;
-    const observer = new IntersectionObserver(
-      (entries) => {
-        entries.forEach((entry) => {
-          if (entry.isIntersecting && onVisible && active) {
-            onVisible(pageNum);
-          }
-        });
-      },
-      { threshold: 0.15 }
-    );
-
-    if (containerRef.current) {
-      observer.observe(containerRef.current);
-    }
-
-    return () => {
-      active = false;
-      observer.disconnect();
-    };
-  }, [pageNum, onVisible]);
-
-  return (
-    <div
-      id={`pdf-page-${pageNum}`}
-      ref={containerRef}
-      className="shadow-sm border border-slate-800/40 bg-slate-950/40 rounded-sm flex items-center justify-center flex-shrink-0 mx-auto transition-colors relative select-none"
-      style={{
-        width: width ? `${width}px` : '100%',
-        height: height ? `${height}px` : '600px',
-      }}
-    >
-      <div className="flex flex-col items-center gap-1.5 text-slate-500">
-        <Loader2 size={18} className="animate-spin text-indigo-500/70 mb-0.5" />
-        <span className="text-xs font-mono font-medium tracking-wide">Page {pageNum}</span>
-      </div>
-    </div>
-  );
-};
-
-export const PdfViewer: React.FC<PdfViewerProps> = ({ url, alignment = 'top', isDark = true }) => {
-  const [pdfDoc, setPdfDoc] = useState<any>(null);
-  const [currentPage, setCurrentPage] = useState<number>(1);
-  const [totalPages, setTotalPages] = useState<number>(0);
-  const [scale, setScale] = useState<number>(1.2);
-  const [loading, setLoading] = useState<boolean>(true);
-  const [rendering, setRendering] = useState<boolean>(false);
-  const [error, setError] = useState<string | null>(null);
-  const [passwordRequired, setPasswordRequired] = useState<boolean>(false);
-  const [password, setPassword] = useState<string>("");
-  const [useIframeFallback, setUseIframeFallback] = useState<boolean>(false);
-  const [reloadKey, setReloadKey] = useState<number>(0);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const containerRef = useRef<HTMLDivElement | null>(null);
-  const renderTaskRef = useRef<any>(null);
-  const touchStartRef = useRef<{ x: number, y: number, time: number } | null>(null);
-  const [showControls, setShowControls] = useState(true);
-
-  const [baseViewportWidth, setBaseViewportWidth] = useState<number>(0);
-  const [baseViewportHeight, setBaseViewportHeight] = useState<number>(0);
-  const [currentViewport, setCurrentViewport] = useState<any>(null);
-
-  const [alignMode, setAlignMode] = useState<'top' | 'center'>(alignment);
-
-  // Pinch to zoom state
-  const [initialPinchDistance, setInitialPinchDistance] = useState<number | null>(null);
-  const [initialScale, setInitialScale] = useState<number | null>(null);
-
-  // New features state
-  const [showSidebar, setShowSidebar] = useState(false);
-  const [sidebarTab, setSidebarTab] = useState<'thumbnails' | 'search'>('thumbnails');
-  const [pageInput, setPageInput] = useState<string>("1");
-  const [thumbnails, setThumbnails] = useState<{ [key: number]: string }>({});
-  const [thumbnailsGenerating, setThumbnailsGenerating] = useState(false);
-  const [thumbnailsGenerated, setThumbnailsGenerated] = useState(false);
-  const [thumbnailsRequested, setThumbnailsRequested] = useState<Set<number>>(new Set());
-  const [thumbnailsReady, setThumbnailsReady] = useState(false); // true once PDF buffer is loaded & worker is initialized
-  const thumbnailGridRef = useRef<HTMLDivElement | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<any[]>([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [hasSearched, setHasSearched] = useState(false);
-  const [downloadingType, setDownloadingType] = useState<'pdf' | 'zip-images' | 'zip-pdfs' | null>(null);
-
-  // View Mode State: 'single' (one page) or 'vertical' (all pages stacked)
-  const [viewMode, setViewMode] = useState<'single' | 'vertical'>('single');
-  const isProgrammaticScrollRef = useRef<boolean>(false);
-  const scrollTimeoutRef = useRef<any>(null);
-
-  // Selection and Ordering State
-  const [orderedPages, setOrderedPages] = useState<number[]>([]);
-  const [selectedPages, setSelectedPages] = useState<Set<number>>(new Set());
-  const [selectionMode, setSelectionMode] = useState<boolean>(false);
-  const [rotations, setRotations] = useState<{ [page: number]: number }>({});
-
-  const handleRotateCw = () => {
-    setRotations(prev => ({
-      ...prev,
-      [currentPage]: ((prev[currentPage] || 0) + 90) % 360
-    }));
-  };
-
-  const handleRotateCcw = () => {
-    setRotations(prev => ({
-      ...prev,
-      [currentPage]: ((prev[currentPage] || 0) - 90 + 360) % 360
-    }));
-  };
-
-  const [activeId, setActiveId] = useState<number | null>(null);
-  const [zipMenuOpen, setZipMenuOpen] = useState<boolean>(false);
-  const [isSidebarExpanded, setIsSidebarExpanded] = useState<boolean>(false);
-  const [defaultDownloadFormat, setDefaultDownloadFormat] = useState<ExportImageFormat>('png');
-  const [downloadingPageNum, setDownloadingPageNum] = useState<number | null>(null);
-  const [formatMenuPageNum, setFormatMenuPageNum] = useState<number | null>(null);
-  const zipMenuRef = useRef<HTMLDivElement | null>(null);
-
-  const handleDownloadSinglePageImage = async (pageNum: number, format: ExportImageFormat = defaultDownloadFormat) => {
-    if (!pdfDoc || downloadingPageNum !== null) return;
-
-    setDefaultDownloadFormat(format);
-    setFormatMenuPageNum(null);
-    setDownloadingPageNum(pageNum);
-
-    try {
-      const page = await pdfDoc.getPage(pageNum);
-      const renderScale = 3.0;
-
-      const baseRotation = page.rotate || 0;
-      const currentRotation = rotations[pageNum] || 0;
-      const finalRotation = (baseRotation + currentRotation) % 360;
-
-      const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
-
-      const canvas = document.createElement('canvas');
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      const ctx = canvas.getContext('2d');
-
-      if (ctx) {
-        ctx.fillStyle = '#FFFFFF';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({ canvasContext: ctx, viewport } as any).promise;
-
-        const mimeType = format === 'jpeg' ? 'image/jpeg' : format === 'webp' ? 'image/webp' : 'image/png';
-        const ext = format === 'jpeg' ? 'jpg' : format;
-
-        const blob: Blob | null = await new Promise((resolve) =>
-          canvas.toBlob((b) => resolve(b), mimeType, 0.95)
-        );
-
-        if (blob) {
-          const docTitle = url.split('/').pop()?.replace(/#.*$/, '').replace(/\.pdf$/i, '') || 'document';
-          const link = document.createElement('a');
-          link.href = URL.createObjectURL(blob);
-          link.download = `${docTitle}_page_${pageNum}.${ext}`;
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
-          URL.revokeObjectURL(link.href);
-        }
-      }
-    } catch (err) {
-      console.error(`Error downloading page ${pageNum} image:`, err);
-    } finally {
-      setDownloadingPageNum(null);
-    }
-  };
-
-  const workerRef = useRef<Worker | null>(null);
-  const pdfBufferRef = useRef<ArrayBuffer | null>(null);
-  const pdfPasswordRef = useRef<string | undefined>(undefined);
-  const prevScaleRef = useRef<number>(scale);
-
-  // Close zip menu on outside click
-  useEffect(() => {
-    if (!zipMenuOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (zipMenuRef.current && !zipMenuRef.current.contains(e.target as Node)) {
-        setZipMenuOpen(false);
-      }
-    };
-    document.addEventListener('pointerdown', handleClickOutside);
-    return () => document.removeEventListener('pointerdown', handleClickOutside);
-  }, [zipMenuOpen]);
-
-  // Preserve center focus when scale changes (Zoom in/out towards center)
-  useLayoutEffect(() => {
-    if (!containerRef.current) return;
-    const prevScale = prevScaleRef.current;
-    if (prevScale !== scale) {
-      const container = containerRef.current;
-      const ratio = scale / prevScale;
-
-      const centerX = container.scrollLeft + container.clientWidth / 2;
-      const centerY = container.scrollTop + container.clientHeight / 2;
-
-      container.scrollLeft = centerX * ratio - container.clientWidth / 2;
-      container.scrollTop = centerY * ratio - container.clientHeight / 2;
-
-      prevScaleRef.current = scale;
-    }
-  }, [scale]);
-
-  // Handle trackpad pinch to zoom
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container) return;
-
-    const handleWheel = (e: WheelEvent) => {
-      if (e.ctrlKey) {
-        e.preventDefault(); // Prevent browser zoom
-        const zoomSensitivity = 0.01;
-        const delta = -e.deltaY * zoomSensitivity;
-        setScale((prev) => Math.min(Math.max(prev * (1 + delta), 0.4), 3.0));
-      }
-    };
-
-    // Must be non-passive to preventDefault on wheel events
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
-  }, []);
-
-  useEffect(() => {
-    // Setup worker (lightweight – no PDF loaded yet)
-    const worker = new Worker(new URL('../workers/pdfWorker.ts', import.meta.url), { type: 'module' });
-    workerRef.current = worker;
-
-    worker.onmessage = (e) => {
-      const { action, payload } = e.data;
-      if (action === 'THUMBNAIL_GENERATED') {
-        const blob = new Blob([payload.buffer], { type: 'image/jpeg' });
-        const objectUrl = URL.createObjectURL(blob);
-        setThumbnails(prev => ({ ...prev, [payload.pageNumber]: objectUrl }));
-      } else if (action === 'THUMBNAILS_COMPLETE') {
-        setThumbnailsGenerating(false);
-        setThumbnailsGenerated(true);
-      } else if (action === 'SEARCH_RESULT_FOUND') {
-        setSearchResults(prev => [...prev, payload]);
-      } else if (action === 'SEARCH_COMPLETE') {
-        setIsSearching(false);
-      } else if (action === 'ERROR') {
-        console.error('PDF Worker error:', payload);
-        setThumbnailsGenerating(false);
-        setIsSearching(false);
-      }
-    };
-
-    worker.onerror = (err) => {
-      console.error('PDF Worker fatal error:', err);
-      setThumbnailsGenerating(false);
-      setIsSearching(false);
-    };
-
-    return () => {
-      worker.terminate();
-      setThumbnails((prev) => {
-        Object.values(prev).forEach(URL.revokeObjectURL);
-        return {};
-      });
-    };
-  }, []);
-
-  useEffect(() => {
-    let timeout: NodeJS.Timeout;
-    if (showControls) {
-      timeout = setTimeout(() => setShowControls(false), 4000);
-    }
-    return () => clearTimeout(timeout);
-  }, [showControls, scale, currentPage]);
-
-  const handlePointerMoveControls = () => {
-    setShowControls(true);
-  };
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    handlePointerMoveControls();
-    if (e.touches.length === 1) {
-      touchStartRef.current = {
-        x: e.touches[0].clientX,
-        y: e.touches[0].clientY,
-        time: Date.now()
-      };
-    } else if (e.touches.length === 2) {
-      touchStartRef.current = null;
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      setInitialPinchDistance(dist);
-      setInitialScale(scale);
-    }
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (e.touches.length === 2 && initialPinchDistance !== null && initialScale !== null) {
-      const dist = Math.hypot(
-        e.touches[0].clientX - e.touches[1].clientX,
-        e.touches[0].clientY - e.touches[1].clientY
-      );
-      const ratio = dist / initialPinchDistance;
-      const newScale = Math.min(Math.max(initialScale * ratio, 0.4), 3.0);
-      setScale(newScale);
-    }
-  };
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (e.touches.length < 2) {
-      setInitialPinchDistance(null);
-      setInitialScale(null);
-    }
-
-    if (e.changedTouches.length === 1 && touchStartRef.current) {
-      const touchEndX = e.changedTouches[0].clientX;
-      const touchEndY = e.changedTouches[0].clientY;
-      const dx = touchEndX - touchStartRef.current.x;
-      const dy = touchEndY - touchStartRef.current.y;
-      const timeDiff = Date.now() - touchStartRef.current.time;
-
-      if (Math.abs(dx) > Math.abs(dy) && Math.abs(dx) > 50 && timeDiff < 500) {
-        const container = containerRef.current;
-        let canSwipe = true;
-
-        if (container && container.scrollWidth > container.clientWidth) {
-          if (dx > 0 && container.scrollLeft > 10) {
-            canSwipe = false;
-          } else if (dx < 0 && container.scrollLeft < container.scrollWidth - container.clientWidth - 10) {
-            canSwipe = false;
-          }
-        }
-
-        if (canSwipe) {
-          if (dx > 0 && currentPage > 1) {
-            setCurrentPage(currentPage - 1);
-            setPageInput(String(currentPage - 1));
-          } else if (dx < 0 && currentPage < totalPages) {
-            setCurrentPage(currentPage + 1);
-            setPageInput(String(currentPage + 1));
-          }
-        }
-      }
-      touchStartRef.current = null;
-    }
-  };
-
-  // Load PDF.js document using local bundled package with CORS proxy backup attempts
-  useEffect(() => {
-    let active = true;
-    setLoading(true);
-    setError(null);
-    setUseIframeFallback(false);
-    setThumbnails({});
-    setThumbnailsReady(false);
-    setThumbnailsRequested(new Set());
-    setSearchResults([]);
-    pdfBufferRef.current = null;
-
-    const cleanUrl = url.replace(/#.*$/, "");
-
-    const loadPdfDoc = async (currentPassword?: string) => {
-      let arrayBuffer: ArrayBuffer | null = null;
-      let lastErrorMsg = "";
-
-      // Attempt 1: Direct Fetch
-      try {
-        const response = await fetch(cleanUrl);
-        if (response.ok) {
-          arrayBuffer = await response.arrayBuffer();
-        } else {
-          throw new Error(`Server returned status code: ${response.status} (${response.statusText || "Forbidden/CORS Block"})`);
-        }
-      } catch (err: any) {
-        lastErrorMsg = `Direct Fetch: ${err.message || err.toString()}`;
-        console.warn("Direct fetch failed, trying proxy...", err);
-      }
-
-      // Attempt 2: Workers.dev proxy
-      if (!arrayBuffer && active) {
-        try {
-          const proxyUrl = `https://go.data-visualizer.workers.dev/?url=${encodeURIComponent(cleanUrl)}`;
-          const response = await fetch(proxyUrl);
-          if (response.ok) {
-            arrayBuffer = await response.arrayBuffer();
-          } else {
-            throw new Error(`Workers proxy returned status code: ${response.status} (${response.statusText})`);
-          }
-        } catch (err: any) {
-          lastErrorMsg += `\nWorkers Proxy: ${err.message || err.toString()}`;
-          console.warn("Workers proxy failed.", err);
-        }
-      }
-
-      // If we successfully received the byte buffer, let's load it in PDF.js
-      if (arrayBuffer && active) {
-        try {
-          // Store the buffer for later lazy use by the worker (thumbnails/search)
-          pdfBufferRef.current = arrayBuffer.slice(0);
-          pdfPasswordRef.current = currentPassword;
-
-          const loadingTask = pdfjsLib.getDocument({
-            data: new Uint8Array(arrayBuffer),
-            useSystemFonts: true,
-            password: currentPassword
-          });
-
-          const pdf = await loadingTask.promise;
-          if (!active) return;
-          setPdfDoc(pdf);
-          setTotalPages(pdf.numPages);
-          setOrderedPages(Array.from({ length: pdf.numPages }, (_, i) => i + 1));
-          setCurrentPage(1);
-          setPageInput("1");
-          setLoading(false);
-          setPasswordRequired(false);
-
-          // Auto-fit initial scale based on container width & set base viewport
-          pdf.getPage(1).then((page: any) => {
-            if (!active) return;
-            const baseViewport = page.getViewport({ scale: 1.0 });
-            setBaseViewportWidth(baseViewport.width);
-            setBaseViewportHeight(baseViewport.height);
-            if (containerRef.current) {
-              const containerWidth = containerRef.current.clientWidth;
-              const isMobile = containerWidth < 640;
-              const desiredWidth = isMobile ? containerWidth : Math.max(containerWidth - 32, 200);
-              const newScale = desiredWidth / baseViewport.width;
-              // Cap initial scale to 1.25 on desktop to prevent absurdly large zooming on ultra-wide screens
-              const maxInitialScale = isMobile ? 2.5 : 1.25;
-              setScale(Math.min(Math.max(newScale, 0.4), maxInitialScale));
-            }
-          });
-
-          return;
-        } catch (err: any) {
-          if (err.name === "PasswordException") {
-            if (active) {
-              setPasswordRequired(true);
-              setLoading(false);
-              if (currentPassword) {
-                setError("Incorrect password. Please try again.");
-              }
-            }
-            return;
-          }
-          console.error("PDF.js parsing error:", err);
-          lastErrorMsg += `\nPDFJS Parsing Error: ${err.message || err.toString()}`;
-        }
-      }
-
-      // If all attempts failed, set the dynamic error to inform the user
-      if (active) {
-        setError(lastErrorMsg || "Failed to fetch or parse the PDF document due to CORS or security restrictions.");
-        setLoading(false);
-      }
-    };
-
-    loadPdfDoc(password);
-
-    return () => {
-      active = false;
+      controller.abort();
+      doc?.destroy();
     };
   }, [url, reloadKey]);
 
-  // Render current page (Single Page Mode)
+  // A new document means new search results and thumbnails
   useEffect(() => {
-    if (!pdfDoc || viewMode !== 'single') return;
+    setResults([]);
+    setActiveMatch(-1);
+  }, [pdfDoc]);
 
-    let active = true;
-    setRendering(true);
-
-    pdfDoc.getPage(currentPage).then((page: any) => {
-      if (!active) return;
-
-      const canvas = canvasRef.current;
-      if (!canvas) return;
-
-      // Cancel previous render task if in progress
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
-      }
-
-      const context = canvas.getContext("2d");
-      if (!context) return;
-
-      const currentRotation = rotations[currentPage] || 0;
-      const baseRotation = page.rotate || 0;
-      const finalRotation = (baseRotation + currentRotation) % 360;
-
-      // Render at a high fixed scale for crispness
-      const renderScale = 2.5;
-      const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
-
-      const baseViewport = page.getViewport({ scale: 1.0, rotation: finalRotation });
-      setBaseViewportWidth(baseViewport.width);
-      setBaseViewportHeight(baseViewport.height);
-      setCurrentViewport(baseViewport);
-
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-
-      const renderContext = {
-        canvasContext: context,
-        viewport,
-      };
-
-      const renderTask = page.render(renderContext);
-      renderTaskRef.current = renderTask;
-
-      renderTask.promise
-        .then(() => {
-          if (!active) return;
-          setRendering(false);
-          renderTaskRef.current = null;
-        })
-        .catch((err: any) => {
-          if (err?.name === "RenderingCancelledException") {
-            return; // Ignore safe cancellations
-          }
-          if (!active) return;
-          console.error("Page render error:", err);
-          setRendering(false);
-        });
-    });
-
-    return () => {
-      active = false;
-      if (renderTaskRef.current) {
-        renderTaskRef.current.cancel();
-      }
-    };
-  }, [pdfDoc, currentPage, viewMode, rotations]);
-
-  const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      setCurrentPage(page);
-      setPageInput(String(page));
-      if (viewMode === 'vertical') {
-        isProgrammaticScrollRef.current = true;
-        if (scrollTimeoutRef.current) clearTimeout(scrollTimeoutRef.current);
-
-        const el = document.getElementById(`pdf-page-${page}`);
-        if (el) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-
-        scrollTimeoutRef.current = setTimeout(() => {
-          isProgrammaticScrollRef.current = false;
-        }, 750);
-      }
-    }
-  };
-
-  const handlePrevPage = () => goToPage(currentPage - 1);
-  const handleNextPage = () => goToPage(currentPage + 1);
-
-  const handlePageSubmit = (e?: React.FormEvent) => {
-    if (e) e.preventDefault();
-    const page = parseInt(pageInput, 10);
-    if (!isNaN(page)) {
-      if (page < 1) goToPage(1);
-      else if (page > totalPages) goToPage(totalPages);
-      else goToPage(page);
-    } else {
-      setPageInput(String(currentPage));
-    }
-  };
-
-  const handleZoomIn = () => {
-    setScale((prev) => Math.min(prev + 0.2, 3.0));
-  };
-
-  const handleZoomOut = () => {
-    setScale((prev) => Math.max(prev - 0.2, 0.5));
-  };
-
-  const downloadFile = () => {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = url.split("/").pop() || "document.pdf";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const handlePasswordSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (password) setReloadKey(prev => prev + 1);
-  };
-
-  const submitPassword = () => {
-    if (password) setReloadKey(prev => prev + 1);
-  };
-
-  const startThumbnailGeneration = () => {
-    if (!workerRef.current || thumbnailsGenerating || !pdfBufferRef.current) return;
-    setThumbnailsGenerating(true);
-    // Send data to worker without transferring ownership to prevent React DevTools crash
-    workerRef.current.postMessage({
-      action: 'GENERATE_THUMBNAILS',
-      payload: { data: pdfBufferRef.current, password: pdfPasswordRef.current }
-    });
-  };
-
-  // Initialize the worker with the PDF buffer so it's ready for on-demand thumbnail requests
-  // (No separate init needed; requestThumbnail sends the PDF data with each request)
-
-  // Request a single thumbnail on-demand (called by IntersectionObserver when a placeholder scrolls into view)
-  const requestThumbnail = useCallback((pageNum: number) => {
-    if (!workerRef.current || !pdfBufferRef.current) return;
-    if (thumbnails[pageNum] || thumbnailsRequested.has(pageNum)) return;
-
-    setThumbnailsRequested(prev => {
-      const next = new Set(prev);
-      next.add(pageNum);
-      return next;
-    });
-
-    workerRef.current.postMessage({
-      action: 'GENERATE_THUMBNAIL_SINGLE',
-      payload: { data: pdfBufferRef.current, password: pdfPasswordRef.current, pageNumber: pageNum }
-    });
-  }, [thumbnails, thumbnailsRequested]);
-
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!workerRef.current || !searchQuery.trim() || !pdfBufferRef.current) return;
-    setIsSearching(true);
-    setHasSearched(true);
-    setSearchResults([]);
-    // Send data to worker without transferring ownership to prevent React DevTools crash
-    workerRef.current.postMessage({
-      action: 'SEARCH_TEXT',
-      payload: { query: searchQuery, data: pdfBufferRef.current, password: pdfPasswordRef.current }
-    });
-  };
-
-  const renderedHighlights = React.useMemo(() => {
-    if (!currentViewport || !searchQuery.trim()) return null;
-
-    const highlights = searchResults.filter(r => r.pageNumber === currentPage);
-    if (highlights.length === 0) return null;
-
-    // Flatten all rects and limit to 500 to prevent performance issues (DOM overload)
-    const allRects = highlights.flatMap(h => h.rects || []).slice(0, 500);
-
-    return allRects.map((rect: any, index: number) => {
-      try {
-        const charWidth = rect.width / Math.max(1, rect.totalLen);
-        const startX = rect.transform[4] + rect.overlapStart * charWidth;
-        const startY = rect.transform[5];
-
-        // Use standard viewport method to convert coordinates safely
-        const pt = currentViewport.convertToViewportPoint(startX, startY);
-
-        // Try to derive font size from matrix or height
-        const fontSizePdf = Math.abs(rect.transform[3]) || rect.height || 12;
-        const topPt = currentViewport.convertToViewportPoint(startX, startY + fontSizePdf);
-
-        const highlightWidth = (rect.overlapEnd - rect.overlapStart) * charWidth;
-        // Vector conversion for width to handle scale accurately
-        const endPt = currentViewport.convertToViewportPoint(startX + highlightWidth, startY);
-        const cssWidth = Math.abs(endPt[0] - pt[0]);
-        const cssHeight = Math.abs(pt[1] - topPt[1]);
-
-        return (
-          <div
-            key={index}
-            style={{
-              position: 'absolute',
-              left: pt[0],
-              top: Math.min(pt[1], topPt[1]),
-              width: Math.max(cssWidth, 2), // Minimum width
-              height: Math.max(cssHeight, 5), // Minimum height
-              backgroundColor: 'rgba(250, 204, 21, 0.4)',
-              borderBottom: '2px solid rgba(234, 179, 8, 0.8)',
-              pointerEvents: 'none',
-              zIndex: 10,
-            }}
-          />
-        );
-      } catch (e) {
-        return null;
-      }
-    });
-  }, [currentViewport, searchResults, currentPage, searchQuery]);
-
-  const sensors = useSensors(
-    useSensor(MouseSensor, {
-      activationConstraint: {
-        distance: 5,
-      },
-    }),
-    useSensor(TouchSensor, {
-      activationConstraint: {
-        delay: 120,
-        tolerance: 8,
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
+  /* ── Zoom ───────────────────────────────────────────────────────────── */
+  const pageSize = useCallback(
+    async (page: number) => {
+      const p = await pdfDoc.getPage(page);
+      const vp = p.getViewport({ scale: 1, rotation: ((p.rotate || 0) + (rotations[page] || 0)) % 360 });
+      return { width: vp.width, height: vp.height };
+    },
+    [pdfDoc, rotations],
   );
 
-  const handleDragStart = (event: DragStartEvent) => {
-    setActiveId(Number(event.active.id));
-  };
+  const fitScale = useCallback(
+    async (mode: Exclude<ZoomMode, "custom">) => {
+      const el = scrollRef.current;
+      if (!el || !pdfDoc) return null;
+      const size = await pageSize(currentPageRef.current);
+      const narrow = el.clientWidth < 640;
+      const padX = narrow ? 16 : 64;
+      const width = (el.clientWidth - padX) / size.width;
+      if (mode === "fit-page") return clampScale(Math.min(width, (el.clientHeight - 112) / size.height));
+      if (mode === "auto") return clampScale(narrow ? width : Math.min(width, AUTO_MAX_SCALE));
+      return clampScale(width);
+    },
+    [pdfDoc, pageSize],
+  );
 
-  const handleDragEnd = (event: DragEndEvent) => {
-    const { active, over } = event;
-    if (over && active.id !== over.id) {
-      setOrderedPages((items) => {
-        const oldIndex = items.indexOf(Number(active.id));
-        const newIndex = items.indexOf(Number(over.id));
-        return arrayMove(items, oldIndex, newIndex);
+  const applyZoomMode = useCallback(
+    async (mode: ZoomMode) => {
+      setZoomMode(mode);
+      if (mode === "custom") return;
+      const next = await fitScale(mode);
+      if (next) setScale(next);
+    },
+    [fitScale],
+  );
+
+  // Fitted zoom follows the viewer's size: window resizes, the sidebar opening, rotation
+  useEffect(() => {
+    if (status !== "ready" || zoomMode === "custom") return;
+    const el = scrollRef.current;
+    if (!el) return;
+    let frame = 0;
+    const refit = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(async () => {
+        const next = await fitScale(zoomMode);
+        if (next) setScale(next);
       });
+    };
+    refit();
+    const observer = new ResizeObserver(refit);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      cancelAnimationFrame(frame);
+    };
+  }, [status, zoomMode, fitScale, viewMode === "single" ? currentPage : 0]);
+
+  const anchorZoom = useRef(false);
+  const setCustomScale = useCallback((next: number | ((s: number) => number)) => {
+    anchorZoom.current = true;
+    setZoomMode("custom");
+    setScale((s) => clampScale(typeof next === "function" ? next(s) : next));
+  }, []);
+  const zoomIn = () => setCustomScale((s) => ZOOM_STEPS.find((z) => z > s + 0.001) ?? MAX_SCALE);
+  const zoomOut = () => setCustomScale((s) => [...ZOOM_STEPS].reverse().find((z) => z < s - 0.001) ?? MIN_SCALE);
+
+  // Keep the middle of the view steady while zooming
+  const prevScale = useRef(scale);
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el || prevScale.current === scale) return;
+    if (!anchorZoom.current) {
+      prevScale.current = scale;
+      return;
     }
-    setActiveId(null);
+    anchorZoom.current = false;
+    const ratio = scale / prevScale.current;
+    const cx = el.scrollLeft + el.clientWidth / 2;
+    const cy = el.scrollTop + el.clientHeight / 2;
+    el.scrollLeft = cx * ratio - el.clientWidth / 2;
+    el.scrollTop = cy * ratio - el.clientHeight / 2;
+    prevScale.current = scale;
+  }, [scale]);
+
+  // Ctrl + wheel (and trackpad pinch) zooms the document rather than the page
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const onWheel = (e: WheelEvent) => {
+      if (!e.ctrlKey && !e.metaKey) return;
+      e.preventDefault();
+      setCustomScale((s) => s * (1 - e.deltaY * 0.01));
+    };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => el.removeEventListener("wheel", onWheel);
+  }, [status, setCustomScale]);
+
+  /* ── Navigation ─────────────────────────────────────────────────────── */
+  const scrollToPage = useCallback((page: number, smooth: boolean) => {
+    const el = scrollRef.current;
+    const target = pagesRef.current?.querySelector<HTMLElement>(`[data-page="${page}"]`);
+    if (!el || !target) return;
+    programmaticScroll.current = true;
+    el.scrollTo({ top: target.offsetTop - 16, behavior: smooth ? "smooth" : "auto" });
+    window.setTimeout(() => (programmaticScroll.current = false), smooth ? 600 : 80);
+  }, []);
+
+  const goToPage = useCallback(
+    (page: number) => {
+      if (!numPages) return;
+      const next = Math.min(numPages, Math.max(1, page));
+      const far = Math.abs(next - currentPageRef.current) > 3;
+      setCurrentPage(next);
+      setPageInput(String(next));
+      if (viewMode === "continuous") requestAnimationFrame(() => scrollToPage(next, !far));
+      else scrollRef.current?.scrollTo({ top: 0 });
+    },
+    [numPages, viewMode, scrollToPage],
+  );
+
+  // In continuous mode, the page under the reading line becomes the current one
+  const scrollFrame = useRef(0);
+  const handleScroll = () => {
+    if (viewMode !== "continuous" || programmaticScroll.current || scrollFrame.current) return;
+    scrollFrame.current = requestAnimationFrame(() => {
+      scrollFrame.current = 0;
+      const el = scrollRef.current;
+      const list = pagesRef.current;
+      if (!el || !list) return;
+      const line = el.scrollTop + el.clientHeight * 0.35 - list.offsetTop;
+      const nodes = list.children as HTMLCollectionOf<HTMLElement>;
+      let lo = 0;
+      let hi = nodes.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi + 1) >> 1;
+        if (nodes[mid].offsetTop <= line) lo = mid;
+        else hi = mid - 1;
+      }
+      const page = Number(nodes[lo]?.dataset.page);
+      if (page && page !== currentPageRef.current) {
+        setCurrentPage(page);
+        setPageInput(String(page));
+      }
+    });
   };
 
-  const getPagesToProcess = () => {
-    if (selectionMode && selectedPages.size > 0) {
-      return orderedPages.filter(p => selectedPages.has(p));
-    }
-    return orderedPages;
+  const switchViewMode = (mode: ViewMode) => {
+    setViewMode(mode);
+    if (mode === "continuous") requestAnimationFrame(() => requestAnimationFrame(() => scrollToPage(currentPageRef.current, false)));
   };
 
-  const downloadAsPdf = async () => {
-    const pages = getPagesToProcess();
-    if (pages.length === 0 || !pdfBufferRef.current) return;
-    setDownloadingType('pdf');
+  const rotate = (delta: number) =>
+    setRotations((r) => ({ ...r, [currentPage]: (((r[currentPage] || 0) + delta) % 360 + 360) % 360 }));
 
+  /* ── Touch: swipe between pages, pinch to zoom, auto-hiding controls ── */
+  const touch = useRef<{ x: number; y: number; t: number } | null>(null);
+  const pinch = useRef<{ dist: number; scale: number } | null>(null);
+  const hideTimer = useRef<number | null>(null);
+  const isCoarse = useMemo(() => typeof window !== "undefined" && window.matchMedia?.("(pointer: coarse)").matches, []);
+
+  const pokeControls = useCallback(() => {
+    setControlsVisible(true);
+    if (!isCoarse) return;
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+    hideTimer.current = window.setTimeout(() => setControlsVisible(false), 3500);
+  }, [isCoarse]);
+  useEffect(() => () => {
+    if (hideTimer.current) window.clearTimeout(hideTimer.current);
+  }, []);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    pokeControls();
+    if (e.touches.length === 2) {
+      touch.current = null;
+      const [a, b] = [e.touches[0], e.touches[1]];
+      pinch.current = { dist: Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY), scale };
+    } else if (e.touches.length === 1) {
+      touch.current = { x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now() };
+    }
+  };
+  const onTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length !== 2 || !pinch.current) return;
+    const [a, b] = [e.touches[0], e.touches[1]];
+    const ratio = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY) / pinch.current.dist;
+    setCustomScale(pinch.current.scale * ratio);
+  };
+  const onTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length < 2) pinch.current = null;
+    const start = touch.current;
+    touch.current = null;
+    if (!start || viewMode !== "single" || e.changedTouches.length !== 1) return;
+    const dx = e.changedTouches[0].clientX - start.x;
+    const dy = e.changedTouches[0].clientY - start.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5 || Date.now() - start.t > 500) return;
+    // Only swipe pages when the page itself isn't scrolled sideways
+    const el = scrollRef.current;
+    if (el && el.scrollWidth > el.clientWidth + 2) {
+      if (dx > 0 && el.scrollLeft > 4) return;
+      if (dx < 0 && el.scrollLeft < el.scrollWidth - el.clientWidth - 4) return;
+    }
+    goToPage(currentPage + (dx < 0 ? 1 : -1));
+  };
+
+  // The sidebar is a drawer over the page on narrow screens and sits beside it on wide ones
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el) return;
+    const observer = new ResizeObserver(([entry]) => setIsNarrow(entry.contentRect.width < 720));
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, [status]);
+
+  /* ── Search ─────────────────────────────────────────────────────────── */
+  useEffect(() => {
+    if (!client || status !== "ready") return;
+    if (!debouncedQuery.trim()) {
+      setResults([]);
+      setIsSearching(false);
+      setActiveMatch(-1);
+      return;
+    }
+    ensureWorker();
+    setResults([]);
+    setActiveMatch(-1);
+    setIsSearching(true);
+    // Results stream in; batch them per frame so a common word doesn't re-render thousands of times
+    let pending: SearchResult[] = [];
+    let frame = 0;
+    const flush = () => {
+      frame = 0;
+      const batch = pending;
+      pending = [];
+      setResults((prev) => prev.concat(batch));
+    };
+    client.search(
+      debouncedQuery,
+      (r) => {
+        pending.push(r);
+        if (!frame) frame = requestAnimationFrame(flush);
+      },
+      () => {
+        cancelAnimationFrame(frame);
+        flush();
+        setIsSearching(false);
+      },
+    );
+    return () => cancelAnimationFrame(frame);
+  }, [debouncedQuery, client, status, ensureWorker]);
+
+  const highlightsByPage = useMemo(() => {
+    const map = new Map<number, SearchRect[]>();
+    if (!query.trim()) return map;
+    for (const r of results) {
+      const list = map.get(r.pageNumber);
+      if (list) list.push(...r.rects);
+      else map.set(r.pageNumber, [...r.rects]);
+    }
+    return map;
+  }, [results, query]);
+
+  const pickMatch = (index: number) => {
+    setActiveMatch(index);
+    const r = results[index];
+    if (r) goToPage(r.pageNumber);
+    if (isNarrow) setSidebarOpen(false);
+  };
+
+  const openSearch = () => {
+    setSidebarOpen(true);
+    setSidebarTab("search");
+  };
+
+  /* ── Thumbnails, selection, export ──────────────────────────────────── */
+  useEffect(() => {
+    if (sidebarOpen) ensureWorker();
+  }, [sidebarOpen, ensureWorker]);
+
+  const toggleSelect = useCallback((page: number) => {
+    setSelectionMode(true);
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(page)) next.delete(page);
+      else next.add(page);
+      return next;
+    });
+  }, []);
+  const exitSelection = () => {
+    setSelectionMode(false);
+    setSelected(new Set());
+  };
+  const onThumbGoTo = useCallback(
+    (page: number) => {
+      goToPage(page);
+      if (isNarrow) setSidebarOpen(false);
+    },
+    [goToPage, isNarrow],
+  );
+
+  const isReordered = useMemo(() => orderedPages.some((p, i) => p !== i + 1), [orderedPages]);
+  const hasRotations = Object.values(rotations).some(Boolean);
+  const pagesToExport = () => (selectionMode && selected.size ? orderedPages.filter((p) => selected.has(p)) : orderedPages);
+  const title = documentTitle(url, fileName);
+
+  const downloadPageImage = useCallback(
+    async (page: number, format: ExportImageFormat) => {
+      if (!pdfDoc) return;
+      setDefaultFormat(format);
+      setDownloadingPage(page);
+      try {
+        const blob = await renderPageImage(pdfDoc, page, rotations[page] || 0, format);
+        downloadBlob(blob, `${title}_page_${page}.${format === "jpeg" ? "jpg" : format}`);
+      } catch (err) {
+        console.error(`Could not save page ${page}:`, err);
+      } finally {
+        setDownloadingPage(null);
+      }
+    },
+    [pdfDoc, rotations, title],
+  );
+
+  const downloadPdf = async () => {
+    const buffer = bufferRef.current;
+    if (!buffer) return;
+    const pages = pagesToExport();
+    const unchanged = pages.length === numPages && !isReordered && !hasRotations;
+    if (unchanged) {
+      downloadBlob(new Blob([buffer], { type: "application/pdf" }), `${title}.pdf`);
+      return;
+    }
+    setBusy("pdf");
     try {
-      // Load the original PDF using pdf-lib (clone buffer to avoid detach)
-      const srcDoc = await PDFDocument.load(pdfBufferRef.current.slice(0), {
-        ignoreEncryption: true,
-      });
-      const newDoc = await PDFDocument.create();
-
-      // Copy selected pages (pdf-lib uses 0-based page indices)
-      const pageIndices = pages.map(p => p - 1);
-      const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
-      copiedPages.forEach((page, index) => {
-        const originalPageNum = pages[index];
-        const rot = rotations[originalPageNum] || 0;
-        if (rot) {
-          const currentRot = page.getRotation().angle;
-          page.setRotation(degrees((currentRot + rot) % 360));
-        }
-        newDoc.addPage(page);
-      });
-
-      const pdfBytes = await newDoc.save();
-      const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
-      const link = document.createElement('a');
-      link.href = URL.createObjectURL(blob);
-      link.download = 'document.pdf';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      URL.revokeObjectURL(link.href);
+      downloadBlob(await buildPdf(buffer, pages, rotations), `${title}${pages.length < numPages ? `_${pages.length}_pages` : ""}.pdf`);
+      if (selectionMode) exitSelection();
     } catch (err) {
-      console.error('Failed to generate PDF:', err);
+      console.error("Could not build the PDF:", err);
     } finally {
-      setDownloadingType(null);
-    }
-
-    if (selectionMode) {
-      setSelectionMode(false);
-      setSelectedPages(new Set());
+      setBusy(null);
     }
   };
 
-  const downloadAsZip = async (mode: 'images' | 'pdfs') => {
-    const pages = getPagesToProcess();
-    if (pages.length === 0 || !pdfBufferRef.current) return;
-    setZipMenuOpen(false);
-    setDownloadingType(mode === 'images' ? 'zip-images' : 'zip-pdfs');
-
+  const downloadZip = async (kind: "images" | "pdf") => {
+    const buffer = bufferRef.current;
+    if (!buffer || !pdfDoc) return;
+    const pages = pagesToExport();
+    cancelExportRef.current = false;
+    setBusy(kind === "images" ? "zip-images" : "zip-pdf");
     try {
-      const filesToZip: { file: File | Blob; path: string }[] = [];
-
-      if (mode === 'images') {
-        // High-quality images: render each page at 3x scale via pdfjs-dist (clone buffer to avoid detach)
-        const pdfDoc = await pdfjsLib.getDocument({
-          data: new Uint8Array(pdfBufferRef.current.slice(0)),
-          useSystemFonts: true,
-          password: pdfPasswordRef.current,
-        }).promise;
-
+      const files: { file: Blob; path: string }[] = [];
+      if (kind === "images") {
         for (let i = 0; i < pages.length; i++) {
-          const pageNum = pages[i];
-          const page = await pdfDoc.getPage(pageNum);
-          const renderScale = 3.0;
-
-          const baseRotation = page.rotate || 0;
-          const currentRotation = rotations[pageNum] || 0;
-          const finalRotation = (baseRotation + currentRotation) % 360;
-
-          const viewport = page.getViewport({ scale: renderScale, rotation: finalRotation });
-
-          const canvas = document.createElement('canvas');
-          canvas.width = viewport.width;
-          canvas.height = viewport.height;
-          const ctx = canvas.getContext('2d')!;
-          await page.render({ canvasContext: ctx, viewport } as any).promise;
-
-          const blob: Blob = await new Promise((resolve) =>
-            canvas.toBlob((b) => resolve(b!), 'image/png')
-          );
-          filesToZip.push({ file: blob, path: `page_${pageNum}.png` });
+          if (cancelExportRef.current) return;
+          setExportProgress(`${i + 1}/${pages.length}`);
+          files.push({ file: await renderPageImage(pdfDoc, pages[i], rotations[pages[i]] || 0, "png"), path: `page_${pages[i]}.png` });
         }
       } else {
-        // PDFs: combine all selected pages into a single PDF, then zip it (clone buffer to avoid detach)
-        const srcDoc = await PDFDocument.load(pdfBufferRef.current.slice(0), {
-          ignoreEncryption: true,
-        });
-        const newDoc = await PDFDocument.create();
-
-        const pageIndices = pages.map(p => p - 1);
-        const copiedPages = await newDoc.copyPages(srcDoc, pageIndices);
-        copiedPages.forEach((page, index) => {
-          const originalPageNum = pages[index];
-          const rot = rotations[originalPageNum] || 0;
-          if (rot) {
-            const currentRot = page.getRotation().angle;
-            page.setRotation(degrees((currentRot + rot) % 360));
-          }
-          newDoc.addPage(page);
-        });
-
-        const pdfBytes = await newDoc.save();
-        const blob = new Blob([pdfBytes as any], { type: 'application/pdf' });
-        filesToZip.push({ file: blob, path: 'document.pdf' });
+        files.push({ file: await buildPdf(buffer, pages, rotations), path: `${title}.pdf` });
       }
-
-      await new Promise<void>((resolve, reject) => {
-        const worker = new Worker(new URL("../workers/zipWorker.ts", import.meta.url), {
-          type: "module",
-        });
-
-        worker.onmessage = (e) => {
-          const { zipFile, error } = e.data;
-          if (error) {
-            worker.terminate();
-            reject(new Error(error));
-          } else if (zipFile) {
-            const url = URL.createObjectURL(zipFile);
-            const link = document.createElement("a");
-            link.href = url;
-            link.download = "pages.zip";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-            URL.revokeObjectURL(url);
-            
-            worker.terminate();
-            resolve();
-          }
-        };
-
-        worker.postMessage({
-          id: "pdf-zip",
-          files: filesToZip,
-          folderName: "pages"
-        });
-      });
+      setExportProgress("Zipping…");
+      const zip = await zipFiles(files, title, (p) => setExportProgress(`Zipping ${Math.round(p)}%`));
+      downloadBlob(zip, `${title}.zip`);
+      if (selectionMode) exitSelection();
     } catch (err) {
-      console.error('Failed to generate ZIP:', err);
+      console.error("Could not build the ZIP:", err);
     } finally {
-      setDownloadingType(null);
-    }
-
-    if (selectionMode) {
-      setSelectionMode(false);
-      setSelectedPages(new Set());
+      setBusy(null);
+      setExportProgress(null);
     }
   };
 
-  if (passwordRequired) {
-    return (
-      <div className="flex flex-col items-center justify-center p-4 sm:p-8 h-full w-full bg-slate-950">
-        <AlertCircle className="h-10 w-10 text-amber-500 mb-4" />
-        <h3 className="text-lg font-bold text-white mb-2">Password Protected PDF</h3>
-        <p className="text-sm text-slate-400 mb-6 text-center max-w-xs">
-          This document is encrypted. Please enter the password to view the content.
-        </p>
-        <form onSubmit={handlePasswordSubmit} className="w-full max-w-xs flex flex-col gap-3">
-          <input
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="Enter PDF password"
-            className="w-full px-4 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white text-sm focus:ring-2 focus:ring-indigo-500 outline-none transition-all"
-            autoFocus
-          />
-          {error && <p className="text-xs text-rose-500 font-medium">{error}</p>}
-          <button
-            type="submit"
-            onClick={submitPassword}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl transition-all shadow-lg active:scale-[0.98]"
-          >
-            Unlock PDF
-          </button>
-        </form>
-      </div>
+  /* ── Keyboard ───────────────────────────────────────────────────────── */
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "f") {
+      e.preventDefault();
+      openSearch();
+      return;
+    }
+    const target = e.target as HTMLElement;
+    if (target.closest("input, textarea, [contenteditable=true]")) return;
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const single = viewMode === "single";
+    switch (e.key) {
+      case "ArrowRight":
+      case "PageDown":
+        if (!single && e.key === "PageDown") return;
+        e.preventDefault();
+        goToPage(currentPage + 1);
+        break;
+      case "ArrowLeft":
+      case "PageUp":
+        if (!single && e.key === "PageUp") return;
+        e.preventDefault();
+        goToPage(currentPage - 1);
+        break;
+      case "Home":
+        e.preventDefault();
+        goToPage(1);
+        break;
+      case "End":
+        e.preventDefault();
+        goToPage(numPages);
+        break;
+      case "+":
+      case "=":
+        e.preventDefault();
+        zoomIn();
+        break;
+      case "-":
+        e.preventDefault();
+        zoomOut();
+        break;
+      case "0":
+        e.preventDefault();
+        void applyZoomMode("fit-width");
+        break;
+      case "Escape":
+        if (selectionMode) {
+          e.stopPropagation();
+          exitSelection();
+        } else if (sidebarOpen && isNarrow) {
+          e.stopPropagation();
+          setSidebarOpen(false);
+        }
+        break;
+    }
+  };
+
+  /* ── States other than a readable document ──────────────────────────── */
+  const palette = pdfPalette(isDark);
+  const shell = (children: React.ReactNode) => (
+    <div style={palette} className="flex h-full w-full items-center justify-center overflow-auto bg-(--pv-canvas) p-6 text-(--pv-text)">
+      <div className="flex w-full max-w-sm flex-col items-center text-center">{children}</div>
+    </div>
+  );
+
+  if (status === "loading") {
+    return shell(
+      <>
+        <div className="mb-4 h-8 w-8 animate-spin rounded-full border-[3px] border-(--pv-line) border-t-(--pv-accent)" />
+        <p className="text-sm font-medium">Opening document…</p>
+        {progress !== null && (
+          <div className="mt-4 w-48">
+            <div className="h-1 overflow-hidden rounded-full bg-(--pv-line)">
+              <div className="h-full rounded-full bg-(--pv-accent) transition-[width]" style={{ width: `${progress * 100}%` }} />
+            </div>
+            <p className="mt-2 text-xs tabular-nums text-(--pv-muted)">{Math.round(progress * 100)}%</p>
+          </div>
+        )}
+      </>,
     );
   }
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-full w-full bg-slate-950">
-        <Loader2 className="h-8 w-8 text-rose-500/80 animate-spin mb-4" />
-        <p className="text-sm font-semibold text-slate-300">Loading document...</p>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex flex-col items-center justify-center p-4 sm:p-8 h-full w-full text-center bg-slate-950 overflow-auto">
-        <AlertCircle className="h-10 w-10 text-rose-500 mb-4 flex-shrink-0" />
-        <h4 className="text-base font-bold text-rose-400">PDF Rendering Blocked</h4>
-        <p className="text-sm text-slate-400 mt-2 max-w-sm">
-          Failed to fetch or render the PDF file directly due to CORS settings or target server blocks.
-        </p>
-        <div className="mt-2.5 max-w-sm w-full font-mono bg-slate-950/20 dark:bg-slate-950/40 p-2.5 rounded border border-rose-500/20 break-all text-left overflow-auto max-h-32">
-          <span className="font-sans font-semibold text-rose-500/80 dark:text-rose-400/80 block text-xs mb-1">Error details:</span>
-          <span className="text-[10px] text-slate-600 dark:text-slate-300">{error}</span>
+  if (status === "password") {
+    return shell(
+      <form
+        className="flex w-full flex-col items-center"
+        onSubmit={(e) => {
+          e.preventDefault();
+          if (!password) return;
+          passwordRef.current = password;
+          setReloadKey((k) => k + 1);
+        }}
+      >
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-(--pv-accent-soft) text-(--pv-accent)">
+          <Lock size={22} />
         </div>
-        <div className="flex flex-wrap gap-2 mt-4 justify-center">
+        <h3 className="text-base font-semibold">This PDF is password protected</h3>
+        <p className="mt-1 text-sm text-(--pv-muted)">Enter the password to open it.</p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="Password"
+          autoFocus
+          aria-invalid={passwordError}
+          className={`mt-5 h-10 w-full rounded-lg border bg-(--pv-panel) px-3 text-sm outline-none transition-colors focus:border-(--pv-accent) ${passwordError ? "border-red-500" : "border-(--pv-line)"}`}
+        />
+        {passwordError && <p className="mt-2 self-start text-xs text-red-500">That password didn't work. Try again.</p>}
+        <button
+          type="submit"
+          disabled={!password}
+          className="mt-4 h-10 w-full rounded-lg bg-(--pv-accent) text-sm font-semibold text-(--pv-on-accent) transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          Unlock
+        </button>
+      </form>,
+    );
+  }
+
+  if (status === "error") {
+    const isWeb = /^https?:/i.test(url);
+    return shell(
+      <>
+        <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-red-500/10 text-red-500">
+          <AlertCircle size={22} />
+        </div>
+        <h3 className="text-base font-semibold">This PDF couldn't be opened</h3>
+        <p className="mt-1 text-sm text-(--pv-muted)">
+          {isWeb ? "The site may block other apps from reading it, or the file may be damaged." : "The file may be damaged or not a PDF."}
+        </p>
+        <div className="mt-5 flex flex-wrap justify-center gap-2">
           <button
-            onClick={() => setReloadKey((prev) => prev + 1)}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
+            onClick={() => setReloadKey((k) => k + 1)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-(--pv-accent) px-3.5 text-[13px] font-semibold text-(--pv-on-accent) hover:opacity-90"
           >
-            Retry Parse
+            <RefreshCw size={14} /> Try again
           </button>
-          <button
-            onClick={() => {
-              setError(null);
-              setUseIframeFallback(true);
-            }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold rounded-lg transition shadow-sm"
-          >
-            Google Docs Fallback
-          </button>
+          {isWeb && (
+            <button
+              onClick={() => setStatus("embed")}
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-(--pv-line) px-3.5 text-[13px] font-medium hover:bg-(--pv-hover)"
+            >
+              Use Google's viewer
+            </button>
+          )}
           <a
             href={url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold rounded-lg transition border border-slate-700 shadow-sm"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-(--pv-line) px-3.5 text-[13px] font-medium hover:bg-(--pv-hover)"
           >
-            <ExternalLink size={12} />
-            Open Tab
+            <ExternalLink size={14} /> Open in new tab
           </a>
         </div>
+        {error && (
+          <details className="mt-5 w-full text-left">
+            <summary className="cursor-pointer text-xs text-(--pv-muted)">Technical details</summary>
+            <pre className="mt-2 max-h-32 overflow-auto whitespace-pre-wrap break-all rounded-lg bg-(--pv-chip) p-2.5 text-[11px] text-(--pv-muted)">
+              {error}
+            </pre>
+          </details>
+        )}
+      </>,
+    );
+  }
+
+  if (status === "embed") {
+    return (
+      <div style={palette} className="h-full w-full bg-(--pv-canvas)">
+        <iframe
+          src={`https://docs.google.com/gview?url=${encodeURIComponent(url.replace(/#.*$/, ""))}&embedded=true`}
+          className="h-full min-h-125 w-full border-0 bg-white"
+          title="PDF document"
+        />
       </div>
     );
   }
 
-  if (useIframeFallback) {
-    const cleanUrl = url.replace(/#.*$/, "");
-    return (
-      <div className={`flex flex-col h-full w-full overflow-hidden shadow-none border-0 ${isDark ? "bg-slate-950/20" : "bg-slate-100"}`}>
-        <div className={`flex-1 w-full flex items-stretch justify-stretch min-h-[500px] ${isDark ? "bg-slate-800" : "bg-slate-200/50"}`}>
-          <iframe
-            src={`https://docs.google.com/gview?url=${encodeURIComponent(cleanUrl)}&embedded=true`}
-            className="w-full h-full border-0 bg-white"
-            style={{ minHeight: "550px" }}
-            title="PDF Document Embed"
-          />
+  /* ── The viewer ─────────────────────────────────────────────────────── */
+  const currentIndex = orderedPages.indexOf(currentPage);
+  const pageInputWidth = `${Math.max(2, String(numPages).length) + 1.5}ch`;
+  const columns = sidebarWide ? (isNarrow ? 3 : 4) : 2;
+  const pill =
+    "pointer-events-auto flex items-center gap-0.5 rounded-full border border-(--pv-line) bg-(--pv-elevated)/95 p-1 shadow-(--pv-shadow) backdrop-blur-md";
+  const divider = <span className="mx-1 h-5 w-px shrink-0 bg-(--pv-line)" />;
+
+  const zoomOptions = [
+    { value: "auto", label: "Automatic", description: "Fit the width, up to 125%" },
+    { value: "fit-width", label: "Fit width" },
+    { value: "fit-page", label: "Fit page", description: "Whole page on screen" },
+    ...[0.5, 0.75, 1, 1.25, 1.5, 2, 3, 4].map((z) => ({ value: String(z), label: `${Math.round(z * 100)}%` })),
+  ];
+  const zoomValue = zoomMode !== "custom" ? zoomMode : zoomOptions.find((o) => Number(o.value) === scale)?.value ?? "";
+
+  const moreOptions = [
+    { value: "single", label: "Single page", description: "One page at a time", icon: <BookOpen size={15} /> },
+    { value: "continuous", label: "Continuous scroll", description: "All pages in a column", icon: <GalleryVertical size={15} /> },
+    { value: "rotate-ccw", label: "Rotate left", description: `Page ${currentPage}`, icon: <RotateCcw size={15} /> },
+    { value: "rotate-cw", label: "Rotate right", description: `Page ${currentPage}`, icon: <RotateCw size={15} /> },
+    ...(viewMode === "single"
+      ? [
+          alignMode === "top"
+            ? { value: "align", label: "Center vertically", description: "Middle of the view", icon: <AlignVerticalJustifyCenter size={15} /> }
+            : { value: "align", label: "Align to top", description: "Start at the top", icon: <AlignStartVertical size={15} /> },
+        ]
+      : []),
+    { value: "search", label: "Find in document", description: "Ctrl+F", icon: <Search size={15} /> },
+    { value: "download", label: "Download PDF", description: hasRotations || isReordered ? "With your changes" : "Original file", icon: <FileDown size={15} /> },
+    { value: "page-image", label: "Save page as image", description: `Page ${currentPage}, ${defaultFormat.toUpperCase()}`, icon: <FileImage size={15} /> },
+  ];
+  const onMore = (value: string) => {
+    if (value === "single" || value === "continuous") switchViewMode(value);
+    else if (value === "rotate-ccw") rotate(-90);
+    else if (value === "rotate-cw") rotate(90);
+    else if (value === "align") setAlignMode((a) => (a === "top" ? "center" : "top"));
+    else if (value === "search") openSearch();
+    else if (value === "download") void downloadPdf();
+    else if (value === "page-image") void downloadPageImage(currentPage, defaultFormat);
+  };
+
+  const sidebar = sidebarOpen && (
+    <>
+      {isNarrow && <div className="absolute inset-0 z-30 bg-black/40" onClick={() => setSidebarOpen(false)} aria-hidden />}
+      <aside
+        className={`flex min-h-0 flex-col border-r border-(--pv-line) bg-(--pv-panel) ${
+          isNarrow ? "absolute inset-y-0 left-0 z-40 w-[min(88%,360px)] shadow-(--pv-shadow)" : `relative shrink-0 ${sidebarWide ? "w-130" : "w-68"}`
+        }`}
+        aria-label="Pages and search"
+      >
+        <div className="flex h-14 shrink-0 items-center gap-2 border-b border-(--pv-line) px-3">
+          <div className="flex rounded-lg bg-(--pv-chip) p-0.5" role="tablist">
+            {(["pages", "search"] as const).map((tab) => (
+              <button
+                key={tab}
+                role="tab"
+                aria-selected={sidebarTab === tab}
+                onClick={() => setSidebarTab(tab)}
+                className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors ${
+                  sidebarTab === tab ? "bg-(--pv-elevated) text-(--pv-text) shadow-sm" : "text-(--pv-muted) hover:text-(--pv-text)"
+                }`}
+              >
+                {tab === "pages" ? "Pages" : "Search"}
+                {tab === "search" && results.length > 0 && (
+                  <span className="rounded-full bg-(--pv-accent-soft) px-1.5 text-[10px] font-semibold tabular-nums text-(--pv-accent)">
+                    {results.length > 999 ? "999+" : results.length}
+                  </span>
+                )}
+              </button>
+            ))}
+          </div>
+          <div className="ml-auto flex items-center">
+            {sidebarTab === "pages" && (
+              <button
+                onClick={() => setSidebarWide((w) => !w)}
+                className={ICON_BUTTON}
+                title={sidebarWide ? "Fewer columns" : "More columns"}
+                aria-label={sidebarWide ? "Fewer columns" : "More columns"}
+              >
+                {sidebarWide ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              </button>
+            )}
+            <button onClick={() => setSidebarOpen(false)} className={ICON_BUTTON} aria-label="Close panel" title="Close panel">
+              <X size={17} />
+            </button>
+          </div>
         </div>
-      </div>
-    );
-  }
+
+        {sidebarTab === "pages" ? (
+          <>
+            <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-(--pv-line) px-3 text-xs">
+              {selectionMode ? (
+                <>
+                  <span className="font-medium">{selected.size} selected</span>
+                  <span className="flex items-center gap-1">
+                    <button
+                      onClick={() => setSelected(selected.size === orderedPages.length ? new Set() : new Set(orderedPages))}
+                      className="rounded-md px-2 py-1 font-medium text-(--pv-accent) hover:bg-(--pv-hover)"
+                    >
+                      {selected.size === orderedPages.length ? "Select none" : "Select all"}
+                    </button>
+                    <button onClick={exitSelection} className="rounded-md px-2 py-1 font-medium text-(--pv-muted) hover:bg-(--pv-hover) hover:text-(--pv-text)">
+                      Done
+                    </button>
+                  </span>
+                </>
+              ) : (
+                <>
+                  <span className="text-(--pv-muted)">
+                    {numPages.toLocaleString()} {numPages === 1 ? "page" : "pages"}
+                  </span>
+                  <button
+                    onClick={() => setSelectionMode(true)}
+                    className="flex items-center gap-1.5 rounded-md px-2 py-1 font-medium text-(--pv-muted) hover:bg-(--pv-hover) hover:text-(--pv-text)"
+                  >
+                    <ListChecks size={14} /> Select
+                  </button>
+                </>
+              )}
+            </div>
+
+            <div ref={setGridRoot} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
+              {client && (
+                <ThumbnailGrid
+                  client={client}
+                  scrollRoot={gridRoot}
+                  pages={orderedPages}
+                  currentPage={currentPage}
+                  selectionMode={selectionMode}
+                  selected={selected}
+                  rotations={rotations}
+                  columns={columns}
+                  isDark={isDark}
+                  defaultFormat={defaultFormat}
+                  downloadingPage={downloadingPage}
+                  onReorder={setOrderedPages}
+                  onGoToPage={onThumbGoTo}
+                  onToggleSelect={toggleSelect}
+                  onDownloadPage={downloadPageImage}
+                />
+              )}
+            </div>
+
+            {(selectionMode || isReordered) && (
+              <div className="shrink-0 space-y-2 border-t border-(--pv-line) p-3">
+                {!selectionMode && isReordered && (
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="text-(--pv-muted)">Pages reordered</span>
+                    <button
+                      onClick={() => setOrderedPages(Array.from({ length: numPages }, (_, i) => i + 1))}
+                      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-(--pv-accent) hover:bg-(--pv-hover)"
+                    >
+                      <Undo2 size={12} /> Reset order
+                    </button>
+                  </div>
+                )}
+                {busy ? (
+                  <div className="flex h-9 items-center justify-between gap-2 rounded-lg bg-(--pv-chip) px-3 text-xs">
+                    <span className="flex items-center gap-2">
+                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-(--pv-line) border-t-(--pv-accent)" />
+                      {busy === "pdf" ? "Building PDF…" : busy === "zip-images" ? `Rendering ${exportProgress ?? ""}` : exportProgress ?? "Preparing…"}
+                    </span>
+                    {busy === "zip-images" && (
+                      <button onClick={() => (cancelExportRef.current = true)} className="font-medium text-(--pv-muted) hover:text-(--pv-text)">
+                        Cancel
+                      </button>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={downloadPdf}
+                      disabled={selectionMode && selected.size === 0}
+                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-(--pv-accent) text-[13px] font-semibold text-(--pv-on-accent) transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      <FileDown size={15} />
+                      {selectionMode ? `PDF (${selected.size})` : "Download PDF"}
+                    </button>
+                    <CustomSelect
+                      value=""
+                      options={[
+                        { value: "images", label: "PNG images", description: "One image per page", icon: <FileImage size={15} /> },
+                        { value: "pdf", label: "Single PDF", description: "The PDF, zipped", icon: <FileText size={15} /> },
+                      ]}
+                      onChange={(v) => void downloadZip(v as "images" | "pdf")}
+                      menuTitle="Download as ZIP"
+                      open={openMenu === "zip"}
+                      onOpenChange={(o) => setOpenMenu(o ? "zip" : null)}
+                      className="flex-1"
+                      disabled={selectionMode && selected.size === 0}
+                      renderTrigger={({ ref, props }) => (
+                        <button
+                          ref={ref}
+                          type="button"
+                          {...props}
+                          disabled={selectionMode && selected.size === 0}
+                          onClick={() => setOpenMenu((m) => (m === "zip" ? null : "zip"))}
+                          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-(--pv-line) text-[13px] font-medium transition-colors hover:bg-(--pv-hover) disabled:opacity-40"
+                        >
+                          <Archive size={14} /> ZIP <ChevronDown size={13} className="text-(--pv-muted)" />
+                        </button>
+                      )}
+                    />
+                  </div>
+                )}
+              </div>
+            )}
+          </>
+        ) : (
+          <PdfSearch
+            query={query}
+            onQueryChange={setQuery}
+            results={results}
+            isSearching={isSearching}
+            activeIndex={activeMatch}
+            onPick={pickMatch}
+            autoFocus={sidebarTab === "search"}
+          />
+        )}
+      </aside>
+    </>
+  );
 
   return (
     <div
-      className="flex h-full w-full bg-transparent overflow-hidden relative"
-      onPointerMove={handlePointerMoveControls}
-      onClick={handlePointerMoveControls}
-      onTouchStart={handlePointerMoveControls}
+      ref={rootRef}
+      style={palette}
+      tabIndex={-1}
+      onKeyDown={onKeyDown}
+      onPointerMove={(e) => e.pointerType === "mouse" && !controlsVisible && pokeControls()}
+      className="relative flex h-full w-full overflow-hidden bg-(--pv-canvas) text-(--pv-text) outline-none"
     >
-      {/* Sidebar for Thumbnails / Search */}
-      {showSidebar && (
-        <>
-          {/* Mobile backdrop */}
+      {sidebar}
+
+      <div className="relative flex min-w-0 flex-1 flex-col">
+        <div
+          ref={scrollRef}
+          onScroll={handleScroll}
+          onTouchStart={onTouchStart}
+          onTouchMove={onTouchMove}
+          onTouchEnd={onTouchEnd}
+          onClick={() => isCoarse && pokeControls()}
+          className="custom-scrollbar min-h-0 flex-1 overflow-auto overscroll-contain"
+        >
           <div
-            className="fixed inset-0 z-[29999] bg-black/60 backdrop-blur-xs sm:hidden"
-            onClick={() => setShowSidebar(false)}
-          />
-          <div className={`fixed inset-y-0 left-0 z-[30000] sm:absolute sm:inset-auto sm:left-0 sm:top-0 sm:bottom-0 sm:z-20 border-r shadow-2xl flex flex-col ${isDark ? "bg-slate-900 border-slate-800/90" : "bg-slate-50 border-slate-200"} ${isSidebarExpanded ? 'w-full sm:w-[540px] md:w-[640px]' : 'w-[85%] max-w-[340px] sm:w-80'}`}>
-            <div className={`flex items-center justify-between px-3 py-2.5 border-b ${isDark ? "border-slate-800/90 bg-slate-950/40" : "border-slate-200 bg-white"}`}>
-              <div className={`flex items-center gap-1 p-1 rounded-xl border shadow-inner ${isDark ? "bg-slate-950/80 border-slate-800/80" : "bg-slate-200/50 border-slate-300/50"}`}>
-                <button
-                  onClick={() => setSidebarTab('thumbnails')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sidebarTab === 'thumbnails'
-                      ? isDark ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm' : 'bg-white text-indigo-600 border border-slate-200 shadow-sm'
-                      : isDark ? 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-800'
-                    }`}
-                >
-                  <LayoutGrid size={14} />
-                  Pages
-                </button>
-                <button
-                  onClick={() => setSidebarTab('search')}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-lg transition-all ${sidebarTab === 'search'
-                      ? isDark ? 'bg-indigo-600/30 text-indigo-300 border border-indigo-500/30 shadow-sm' : 'bg-white text-indigo-600 border border-slate-200 shadow-sm'
-                      : isDark ? 'text-slate-400 hover:bg-slate-800/60 hover:text-slate-200' : 'text-slate-500 hover:bg-slate-200 hover:text-slate-800'
-                    }`}
-                >
-                  <Search size={14} />
-                  Search
-                </button>
-              </div>
-
-              <div className="flex items-center gap-1.5 flex-shrink-0">
-                {/* Expand / Fullscreen Toggle Button */}
-                <button
-                  onClick={() => setIsSidebarExpanded(!isSidebarExpanded)}
-                  className={`p-1.5 rounded-lg transition-colors ${isDark ? "text-slate-400 hover:text-white hover:bg-slate-800/80" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200"}`}
-                  title={isSidebarExpanded ? 'Collapse Panel' : 'Expand Panel'}
-                >
-                  {isSidebarExpanded ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
-                </button>
-
-                <button
-                  onClick={() => setShowSidebar(false)}
-                  className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-rose-500/15 rounded-lg transition-colors"
-                  title="Close Sidebar"
-                >
-                  <X size={16} />
-                </button>
-              </div>
-            </div>
-
-            <div className="flex-1 overflow-y-auto custom-scrollbar p-3 relative">
-              {sidebarTab === 'thumbnails' && (
-                <div className="flex flex-col gap-3">
-                  {(thumbnailsReady || Object.keys(thumbnails).length > 0) && (
-                    <div className="flex items-center justify-between px-1 pb-2 border-b border-slate-800/60">
-                      <span className="text-xs font-medium text-slate-400">
-                        {orderedPages.length} Pages {selectionMode ? `(${selectedPages.size} selected)` : ''}
-                      </span>
-                      <button
-                        onClick={() => {
-                          if (selectionMode && selectedPages.size === orderedPages.length) {
-                            setSelectionMode(false);
-                            setSelectedPages(new Set());
-                          } else {
-                            setSelectionMode(true);
-                            setSelectedPages(new Set(orderedPages));
-                          }
-                        }}
-                        className={`px-2.5 py-1 text-[11px] font-semibold rounded-lg transition-all border ${selectionMode && selectedPages.size === orderedPages.length
-                            ? 'bg-slate-800 border-indigo-500/50 text-indigo-300 hover:bg-slate-700'
-                            : 'bg-slate-800/80 border-slate-700/80 text-slate-300 hover:bg-slate-700/80 hover:text-white'
-                          }`}
-                      >
-                        {selectionMode && selectedPages.size === orderedPages.length ? 'Deselect All' : 'Select All'}
-                      </button>
-                    </div>
-                  )}
-
-                  {Object.keys(thumbnails).length === 0 && !thumbnailsGenerating && !thumbnailsReady && (
-                    <div className={`flex flex-col items-center justify-center p-6 text-center h-52 border rounded-2xl backdrop-blur-sm ${isDark ? "bg-slate-950/40 border-slate-800/80" : "bg-white border-slate-200"}`}>
-                      <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center text-indigo-400 mb-3">
-                        <LayoutGrid size={22} />
-                      </div>
-                      <p className="text-xs font-medium text-slate-400 mb-4 max-w-xs">Generate page thumbnails for visual navigation, reordering, and multi-page export.</p>
-                      <button
-                        onClick={() => {
-                          setThumbnailsReady(true);
-                        }}
-                        className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 to-indigo-500 hover:from-indigo-500 hover:to-indigo-400 text-white text-xs font-bold rounded-xl shadow-lg shadow-indigo-500/25 flex items-center gap-2 transition-all active:scale-95"
-                      >
-                        <Play size={14} /> Generate Thumbnails
-                      </button>
-                    </div>
-                  )}
-
-                  {thumbnailsGenerating && (
-                    <div className="flex items-center gap-2.5 text-xs text-indigo-300 font-semibold mb-2 justify-center bg-indigo-500/15 p-2.5 rounded-xl border border-indigo-500/30 backdrop-blur-sm">
-                      <Loader2 size={15} className="animate-spin text-indigo-400" />
-                      Generating page previews...
-                    </div>
-                  )}
-
-                  <DndContext 
-                    sensors={sensors} 
-                    collisionDetection={closestCenter} 
-                    onDragStart={handleDragStart}
-                    onDragEnd={handleDragEnd}
-                    onDragCancel={() => setActiveId(null)}
-                  >
-                    <SortableContext items={orderedPages.map(String)} strategy={rectSortingStrategy}>
-                      <div ref={thumbnailGridRef} className={`grid gap-2.5 sm:gap-3.5 pb-4 ${isSidebarExpanded ? 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4' : 'grid-cols-2'}`}>
-                        {thumbnailsReady && orderedPages.map((pageNum) => (
-                          <VirtualizedThumbnailSlot
-                            key={pageNum}
-                            pageNum={pageNum}
-                            isDark={isDark}
-                            thumbnailUrl={thumbnails[pageNum] || null}
-                            currentPage={currentPage}
-                            selectionMode={selectionMode}
-                            isSelected={selectedPages.has(pageNum)}
-                            defaultFormat={defaultDownloadFormat}
-                            isDownloadingThisPage={downloadingPageNum === pageNum}
-                            isFormatMenuOpen={formatMenuPageNum === pageNum}
-                            onRequestThumbnail={requestThumbnail}
-                            onSelect={(p) => {
-                              setSelectedPages(prev => {
-                                const newSet = new Set(prev);
-                                if (newSet.has(p)) newSet.delete(p);
-                                else newSet.add(p);
-                                return newSet;
-                              });
-                            }}
-                            onGoToPage={goToPage}
-                            onLongPress={(p) => {
-                              if (!selectionMode) {
-                                setSelectionMode(true);
-                                setSelectedPages(new Set([p]));
-                              }
-                            }}
-                            onDownloadPage={handleDownloadSinglePageImage}
-                            onOpenFormatMenu={(p) => setFormatMenuPageNum(p)}
-                            onCloseFormatMenu={() => setFormatMenuPageNum(null)}
-                          />
-                        ))}
-                      </div>
-                    </SortableContext>
-                    <DragOverlay dropAnimation={{ duration: 150, easing: 'cubic-bezier(0.18, 0.67, 0.6, 1.22)' }}>
-                      {activeId ? (
-                        <ThumbnailCard
-                          pageNum={activeId}
-                          isDark={isDark}
-                          url={thumbnails[activeId]}
-                          currentPage={currentPage}
-                          selectionMode={selectionMode}
-                          isSelected={selectedPages.has(activeId)}
-                          defaultFormat={defaultDownloadFormat}
-                          isOverlay
-                        />
-                      ) : null}
-                    </DragOverlay>
-                  </DndContext>
-                </div>
-              )}
-
-              {sidebarTab === 'search' && (
-                <div className="flex flex-col gap-4">
-                  <form onSubmit={handleSearch} className="flex gap-2">
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setSearchQuery(val);
-                        setHasSearched(false);
-                        if (val.trim() === '') {
-                          setSearchResults([]);
-                        }
-                      }}
-                      placeholder="Search in PDF..."
-                      className={`flex-1 border text-xs rounded-lg px-3 py-2 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-colors ${isDark ? "bg-slate-950 border-slate-700 text-white" : "bg-white border-slate-200 text-slate-900"}`}
-                    />
-                    <button
-                      type="submit"
-                      disabled={isSearching || !searchQuery.trim()}
-                      className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white p-2 rounded-lg transition-colors"
-                    >
-                      {isSearching ? <Loader2 size={14} className="animate-spin" /> : <Search size={14} />}
-                    </button>
-                  </form>
-
-                  <div className="flex flex-col gap-2 pb-4">
-                    {hasSearched && searchResults.length === 0 && !isSearching && (
-                      <p className="text-xs text-slate-500 text-center py-4">No results found.</p>
-                    )}
-                    {searchResults.map((result, i) => (
-                      <div
-                        key={`${result.pageNumber}-${i}`}
-                        onClick={() => goToPage(result.pageNumber)}
-                        className={`p-3 border rounded-lg cursor-pointer transition-colors ${isDark ? "bg-slate-950/50 hover:bg-indigo-500/10 border-slate-800 hover:border-indigo-500/30" : "bg-white hover:bg-indigo-50 border-slate-200 hover:border-indigo-300 shadow-sm"}`}
-                      >
-                        <div className={`text-[10px] font-bold mb-1 ${isDark ? "text-indigo-400" : "text-indigo-600"}`}>Page {result.pageNumber}</div>
-                        <p className={`text-xs line-clamp-3 leading-relaxed ${isDark ? "text-slate-300" : "text-slate-600"}`}>{result.snippet}</p>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Pinned Bottom Action Bar */}
-            {(selectionMode || orderedPages.some((p, i) => p !== i + 1)) && (thumbnailsReady || Object.keys(thumbnails).length > 0) && sidebarTab === 'thumbnails' && (
-              <div className={`flex-none p-3.5 backdrop-blur-xl border-t flex flex-col gap-2.5 z-20 shadow-2xl ${isDark ? "bg-slate-950/95 border-slate-800/90" : "bg-white/95 border-slate-200"}`}>
-                {selectionMode && (
-                  <div className="flex justify-between items-center px-0.5">
-                    <span className="text-xs font-medium text-slate-300">
-                      {selectedPages.size} page{selectedPages.size !== 1 ? 's' : ''} selected
-                    </span>
-                    <button
-                      onClick={() => { setSelectionMode(false); setSelectedPages(new Set()); }}
-                      className="text-xs text-slate-400 hover:text-slate-200 font-medium transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                )}
-                {!selectionMode && orderedPages.some((p, i) => p !== i + 1) && (
-                  <div className="flex justify-between items-center px-0.5">
-                    <span className="text-xs font-medium text-slate-300">Custom page order active</span>
-                    <button
-                      onClick={() => setOrderedPages(Array.from({ length: totalPages }, (_, i) => i + 1))}
-                      className="text-xs text-indigo-400 hover:text-indigo-300 font-medium transition-colors"
-                    >
-                      Reset Order
-                    </button>
-                  </div>
-                )}
-                <div className="flex gap-2.5">
-                  <button
-                    onClick={downloadAsPdf}
-                    disabled={(selectionMode && selectedPages.size === 0) || downloadingType !== null}
-                    className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-40 text-white text-xs font-semibold rounded-xl shadow-md shadow-indigo-600/20 flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-                  >
-                    {downloadingType === 'pdf' ? <Loader2 size={15} className="animate-spin" /> : <FileDown size={15} />}
-                    {downloadingType === 'pdf' ? 'Generating...' : (selectionMode ? `PDF (${selectedPages.size})` : 'Download PDF')}
-                  </button>
-                  <div className="flex-1 relative" ref={zipMenuRef}>
-                    <button
-                      onClick={() => setZipMenuOpen(!zipMenuOpen)}
-                      disabled={(selectionMode && selectedPages.size === 0) || downloadingType !== null}
-                      className="w-full py-2.5 bg-slate-800 hover:bg-slate-700/90 border border-slate-700/80 disabled:opacity-40 text-slate-200 text-xs font-semibold rounded-xl shadow-sm flex items-center justify-center gap-1.5 transition-all active:scale-[0.98]"
-                    >
-                      {downloadingType?.startsWith('zip-') ? <Loader2 size={14} className="animate-spin text-indigo-400" /> : <Archive size={14} className="text-slate-400" />}
-                      <span>{downloadingType?.startsWith('zip-') ? 'Zipping...' : (selectionMode ? `ZIP (${selectedPages.size})` : 'Download ZIP')}</span>
-                      {!downloadingType?.startsWith('zip-') && <ChevronDown size={13} className={`text-slate-400 transition-transform duration-200 ${zipMenuOpen ? 'rotate-180' : ''}`} />}
-                    </button>
-                    {zipMenuOpen && (
-                      <div className="absolute bottom-full right-0 mb-2 w-52 bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-xl shadow-2xl overflow-hidden z-30 p-1 divide-y divide-slate-800/80 animate-in fade-in slide-in-from-bottom-2 duration-150">
-                        <button
-                          onClick={() => downloadAsZip('images')}
-                          className="w-full px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-indigo-600 hover:text-white flex items-center gap-2.5 rounded-lg transition-colors group"
-                        >
-                          <FileImage size={15} className="text-emerald-400 group-hover:text-white transition-colors flex-shrink-0" />
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-xs leading-tight">PNG Images</span>
-                            <span className="text-[10px] text-slate-400 group-hover:text-indigo-100 transition-colors">Individual page files</span>
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => downloadAsZip('pdfs')}
-                          className="w-full px-3 py-2 text-left text-xs font-medium text-slate-200 hover:bg-indigo-600 hover:text-white flex items-center gap-2.5 rounded-lg transition-colors group"
-                        >
-                          <FileText size={15} className="text-indigo-400 group-hover:text-white transition-colors flex-shrink-0" />
-                          <div className="flex flex-col">
-                            <span className="font-semibold text-xs leading-tight">Single PDF</span>
-                            <span className="text-[10px] text-slate-400 group-hover:text-indigo-100 transition-colors">Combined PDF inside ZIP</span>
-                          </div>
-                        </button>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </>
-      )}
-
-      {/* Main Canvas Area */}
-      <div
-        ref={containerRef}
-        className={`flex-1 w-full h-full overflow-auto custom-scrollbar touch-pan-x touch-pan-y relative z-0 flex flex-col ${alignMode === 'top' ? 'items-center pt-2 sm:pt-4' : ''} px-0 sm:px-4 pb-16 sm:pb-20`}
-        style={{ overscrollBehavior: 'contain' }}
-        onTouchStart={handleTouchStart}
-        onTouchMove={handleTouchMove}
-        onTouchEnd={handleTouchEnd}
-      >
-        {viewMode === 'vertical' ? (
-          <div className="flex flex-col gap-6 py-4 items-center w-full min-h-full">
-            {orderedPages.map((pageNum) => {
-              // Fixed window virtualization: render active canvases only for currentPage ± 2 pages
-              const renderWindow = 2;
-              const isWithinWindow = Math.abs(pageNum - currentPage) <= renderWindow;
-
-              if (isWithinWindow) {
-                return (
-                  <PdfPageCanvas
-                    key={pageNum}
-                    pdfDoc={pdfDoc}
-                    pageNum={pageNum}
-                    scale={scale}
-                    rotation={rotations[pageNum] || 0}
-                    onVisible={(p) => {
-                      if (!isProgrammaticScrollRef.current) {
-                        setCurrentPage(p);
-                        setPageInput(String(p));
-                      }
-                    }}
-                  />
-                );
-              }
-
-              const isRotated = (rotations[pageNum] || 0) % 180 !== 0;
-              const pWidth = isRotated ? baseViewportHeight : baseViewportWidth;
-              const pHeight = isRotated ? baseViewportWidth : baseViewportHeight;
-
-              return (
-                <PdfPlaceholderCanvas
-                  key={pageNum}
-                  pageNum={pageNum}
-                  width={pWidth ? pWidth * scale : 0}
-                  height={pHeight ? pHeight * scale : 600}
-                  onVisible={(p) => {
-                    if (!isProgrammaticScrollRef.current) {
-                      setCurrentPage(p);
-                      setPageInput(String(p));
-                    }
-                  }}
+            ref={pagesRef}
+            className={`relative mx-auto flex w-max min-w-full flex-col items-center gap-4 px-2 pb-24 pt-4 sm:px-8 sm:pt-6 ${
+              viewMode === "single" && alignMode === "center" ? "min-h-full justify-center" : ""
+            }`}
+          >
+            {pdfDoc &&
+              (viewMode === "single" ? (
+                <PdfPage
+                  pdfDoc={pdfDoc}
+                  pageNum={currentPage}
+                  scale={scale}
+                  rotation={rotations[currentPage] || 0}
+                  fallbackSize={firstPageSize}
+                  maxPixels={MAX_PIXELS_SINGLE}
+                  highlights={highlightsByPage.get(currentPage)}
                 />
-              );
-            })}
+              ) : (
+                orderedPages.map((page, index) => {
+                  if (Math.abs(index - currentIndex) <= RENDER_WINDOW) {
+                    return (
+                      <PdfPage
+                        key={page}
+                        pdfDoc={pdfDoc}
+                        pageNum={page}
+                        scale={scale}
+                        rotation={rotations[page] || 0}
+                        fallbackSize={firstPageSize}
+                        maxPixels={MAX_PIXELS_CONTINUOUS}
+                        highlights={highlightsByPage.get(page)}
+                      />
+                    );
+                  }
+                  const turned = (rotations[page] || 0) % 180 !== 0;
+                  return (
+                    <PdfPagePlaceholder
+                      key={page}
+                      pageNum={page}
+                      width={(turned ? firstPageSize.height : firstPageSize.width) * scale}
+                      height={(turned ? firstPageSize.width : firstPageSize.height) * scale}
+                    />
+                  );
+                })
+              ))}
           </div>
-        ) : (
-          <div
-            className={`shadow-md sm:border border-slate-700/30 bg-white overflow-hidden flex-shrink-0 relative ${alignMode === 'center' ? 'm-auto' : 'mx-auto'}`}
-            style={{
-              width: baseViewportWidth ? `${baseViewportWidth * scale}px` : 'auto',
-              height: baseViewportHeight ? `${baseViewportHeight * scale}px` : 'auto',
-            }}
-          >
-            <canvas ref={canvasRef} className="w-full h-full block max-w-none relative z-0" />
-
-            {baseViewportWidth > 0 && (
-              <div
-                className="absolute top-0 left-0 origin-top-left pointer-events-none z-10"
-                style={{
-                  width: `${baseViewportWidth}px`,
-                  height: `${baseViewportHeight}px`,
-                  transform: `scale(${scale})`
-                }}
-              >
-                {renderedHighlights}
-              </div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* Floating Controls */}
-      <div
-        className={`absolute bottom-3 sm:bottom-6 left-1/2 -translate-x-1/2 flex items-center gap-1 sm:gap-3 backdrop-blur-md border px-2 sm:px-4 py-1.5 sm:py-2 rounded-xl sm:rounded-2xl z-10 shadow-2xl transition-all duration-300 ${showControls ? "opacity-100 translate-y-0" : "opacity-0 translate-y-4 pointer-events-none"} ${isDark ? "bg-slate-950/85 border-slate-700/80 text-slate-200" : "bg-white/90 border-slate-200 text-slate-800"}`}
-      >
-        <button
-          onClick={() => setShowSidebar(!showSidebar)}
-          className={`p-1.5 rounded-md sm:rounded-lg transition-colors flex-shrink-0 ${showSidebar ? 'bg-indigo-500 text-white' : isDark ? 'hover:bg-slate-800' : 'hover:bg-slate-200'}`}
-          title="Toggle Sidebar"
-        >
-          <Sidebar size={15} />
-        </button>
-
-        <div className={`w-px h-5 flex-shrink-0 hidden sm:block ${isDark ? "bg-slate-700" : "bg-slate-300"}`} />
-
-        {/* View Mode Toggle Button (Single vs Continuous Vertical) */}
-        <button
-          onClick={() => {
-            const nextMode = viewMode === 'single' ? 'vertical' : 'single';
-            setViewMode(nextMode);
-            if (nextMode === 'vertical') {
-              setTimeout(() => {
-                const el = document.getElementById(`pdf-page-${currentPage}`);
-                if (el) el.scrollIntoView({ behavior: 'auto', block: 'start' });
-              }, 60);
-            }
-          }}
-          className={`p-1.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold flex-shrink-0 ${viewMode === 'vertical' ? 'bg-indigo-600 text-white shadow-sm' : isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-200 text-slate-700'}`}
-          title={viewMode === 'vertical' ? "Switch to Single Page View" : "Switch to Continuous Vertical Scroll View"}
-        >
-          {viewMode === 'vertical' ? <Layers size={15} /> : <BookOpen size={15} />}
-          <span className="hidden sm:inline text-[11px] font-semibold">{viewMode === 'vertical' ? 'Vertical' : 'Single'}</span>
-        </button>
-
-        {/* Alignment Toggle Button (Top vs Center) */}
-        <button
-          onClick={() => setAlignMode(alignMode === 'top' ? 'center' : 'top')}
-          className={`p-1.5 sm:px-2.5 sm:py-1 rounded-md sm:rounded-lg transition-colors flex items-center gap-1.5 text-xs font-semibold flex-shrink-0 ${isDark ? 'hover:bg-slate-800 text-slate-300' : 'hover:bg-slate-200 text-slate-700'}`}
-          title={alignMode === 'top' ? "Switch to Center Alignment" : "Switch to Top Alignment"}
-        >
-          {alignMode === 'top' ? <AlignStartVertical size={15} /> : <AlignCenterVertical size={15} />}
-          <span className="hidden sm:inline text-[11px] font-semibold">{alignMode === 'top' ? 'Top' : 'Center'}</span>
-        </button>
-
-        <div className={`w-px h-5 flex-shrink-0 hidden sm:block ${isDark ? "bg-slate-700" : "bg-slate-300"}`} />
-
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button
-            onClick={handlePrevPage}
-            disabled={currentPage <= 1 || (viewMode === 'single' && rendering)}
-            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
-            title="Previous Page"
-          >
-            <ChevronLeft size={16} />
-          </button>
-
-          <form onSubmit={handlePageSubmit} className="flex items-center gap-0.5">
-            <input
-              type="text"
-              value={pageInput}
-              onChange={(e) => setPageInput(e.target.value)}
-              onBlur={handlePageSubmit}
-              className={`w-8 sm:w-11 border text-center text-[11px] sm:text-xs font-mono font-bold rounded px-0.5 py-0.5 sm:py-1 outline-none focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 transition-all ${isDark ? "bg-slate-900 border-slate-700" : "bg-white border-slate-300 text-slate-800"}`}
-            />
-            <span className={`text-[11px] sm:text-xs font-mono font-medium select-none ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-              /{totalPages}
-            </span>
-          </form>
-
-          <button
-            onClick={handleNextPage}
-            disabled={currentPage >= totalPages || (viewMode === 'single' && rendering)}
-            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
-            title="Next Page"
-          >
-            <ChevronRight size={16} />
-          </button>
         </div>
 
-        <div className={`w-px h-5 flex-shrink-0 hidden sm:block ${isDark ? "bg-slate-700" : "bg-slate-300"}`} />
-
-        <div className="flex items-center gap-0.5 flex-shrink-0">
-          <button
-            onClick={handleRotateCcw}
-            disabled={viewMode === 'single' && rendering}
-            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
-            title="Rotate Counter-Clockwise"
-          >
-            <RotateCcw size={14} />
-          </button>
-          <button
-            onClick={handleRotateCw}
-            disabled={viewMode === 'single' && rendering}
-            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
-            title="Rotate Clockwise"
-          >
-            <RotateCw size={14} />
-          </button>
-          <button
-            onClick={handleZoomOut}
-            disabled={scale <= 0.4 || (viewMode === 'single' && rendering)}
-            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
-            title="Zoom Out"
-          >
-            <ZoomOut size={14} />
-          </button>
-          <span className="text-[10px] sm:text-xs font-mono font-medium min-w-[28px] sm:min-w-[36px] text-center select-none text-slate-400">
-            {Math.round(scale * 100)}%
-          </span>
-          <button
-            onClick={handleZoomIn}
-            disabled={scale >= 3.0 || (viewMode === 'single' && rendering)}
-            className={`p-1 sm:p-1.5 rounded-md disabled:opacity-40 transition-colors ${isDark ? "hover:bg-slate-800" : "hover:bg-slate-200"}`}
-            title="Zoom In"
-          >
-            <ZoomIn size={14} />
-          </button>
+        {/* Toolbar */}
+        <div
+          className={`pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-2 transition-all duration-300 sm:bottom-5 ${
+            controlsVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+          }`}
+        >
+          <div className={pill} role="toolbar" aria-label="Document controls">
+            <button
+              onClick={() => setSidebarOpen((o) => !o)}
+              className={`${ICON_BUTTON} ${sidebarOpen ? "bg-(--pv-accent-soft) text-(--pv-accent) hover:text-(--pv-accent)" : ""}`}
+              aria-pressed={sidebarOpen}
+              aria-label="Pages and search"
+              title="Pages and search"
+            >
+              <PanelLeft size={17} />
+            </button>
+            {divider}
+            <button onClick={() => goToPage(currentPage - 1)} disabled={currentPage <= 1} className={ICON_BUTTON} aria-label="Previous page" title="Previous page (←)">
+              <ChevronLeft size={18} />
+            </button>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                const n = parseInt(pageInput, 10);
+                if (Number.isNaN(n)) setPageInput(String(currentPage));
+                else goToPage(n);
+                (e.currentTarget.elements[0] as HTMLInputElement)?.blur();
+              }}
+              className="flex items-center gap-1 px-0.5 text-[13px] tabular-nums"
+            >
+              <input
+                value={pageInput}
+                onChange={(e) => setPageInput(e.target.value.replace(/\D/g, ""))}
+                onFocus={(e) => e.currentTarget.select()}
+                onBlur={() => setPageInput(String(currentPage))}
+                inputMode="numeric"
+                aria-label="Page number"
+                style={{ width: pageInputWidth }}
+                className="h-8 rounded-md border border-(--pv-line) bg-(--pv-chip) text-center font-medium text-(--pv-text) outline-none focus:border-(--pv-accent)"
+              />
+              <span className="whitespace-nowrap text-(--pv-muted)">/ {numPages.toLocaleString()}</span>
+            </form>
+            <button onClick={() => goToPage(currentPage + 1)} disabled={currentPage >= numPages} className={ICON_BUTTON} aria-label="Next page" title="Next page (→)">
+              <ChevronRight size={18} />
+            </button>
+            {divider}
+            <button onClick={zoomOut} disabled={scale <= MIN_SCALE} className={`${ICON_BUTTON} max-sm:hidden`} aria-label="Zoom out" title="Zoom out (−)">
+              <ZoomOut size={16} />
+            </button>
+            <CustomSelect
+              value={zoomValue}
+              options={zoomOptions}
+              onChange={(v) => {
+                if (v === "auto" || v === "fit-width" || v === "fit-page") void applyZoomMode(v);
+                else setCustomScale(Number(v));
+              }}
+              menuTitle="Zoom"
+              open={openMenu === "zoom"}
+              onOpenChange={(o) => setOpenMenu(o ? "zoom" : null)}
+              renderTrigger={({ ref, isOpen, props }) => (
+                <button
+                  ref={ref}
+                  type="button"
+                  {...props}
+                  onClick={() => setOpenMenu((m) => (m === "zoom" ? null : "zoom"))}
+                  className={`h-8 min-w-15 rounded-full px-2 text-[13px] font-medium tabular-nums transition-colors hover:bg-(--pv-hover) ${isOpen ? "bg-(--pv-hover)" : ""}`}
+                  aria-label={`Zoom ${Math.round(scale * 100)}%`}
+                  title="Zoom"
+                >
+                  {Math.round(scale * 100)}%
+                </button>
+              )}
+            />
+            <button onClick={zoomIn} disabled={scale >= MAX_SCALE} className={`${ICON_BUTTON} max-sm:hidden`} aria-label="Zoom in" title="Zoom in (+)">
+              <ZoomIn size={16} />
+            </button>
+            {divider}
+            <CustomSelect
+              value={viewMode}
+              options={moreOptions}
+              onChange={onMore}
+              menuTitle="View and export"
+              open={openMenu === "more"}
+              onOpenChange={(o) => setOpenMenu(o ? "more" : null)}
+              renderTrigger={({ ref, isOpen, props }) => (
+                <button
+                  ref={ref}
+                  type="button"
+                  {...props}
+                  onClick={() => setOpenMenu((m) => (m === "more" ? null : "more"))}
+                  className={`${ICON_BUTTON} ${isOpen ? "bg-(--pv-hover) text-(--pv-text)" : ""}`}
+                  aria-label="More options"
+                  title="More options"
+                >
+                  <Ellipsis size={18} />
+                </button>
+              )}
+            />
+          </div>
         </div>
       </div>
     </div>

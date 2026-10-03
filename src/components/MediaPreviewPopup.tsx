@@ -6,7 +6,9 @@ import {
   Download,
   ExternalLink,
   Globe,
+  FileText,
   Image as ImageIcon,
+  Link2,
   Loader2,
   Maximize2,
   Music,
@@ -33,10 +35,36 @@ const getFileName = (url: string) => {
   return decodeURIComponent(lastPart || 'media-preview');
 };
 
+/** "youtube.com/watch?v=…" rather than "watch": the last path segment alone rarely names a page */
+const getWebTitle = (url: string) => {
+  try {
+    const u = new URL(url);
+    const last = u.pathname.split('/').filter(Boolean).pop() || '';
+    if (/\.[a-z0-9]{2,5}$/i.test(last)) return decodeURIComponent(last);
+    const v = u.searchParams.get('v');
+    return `${u.hostname.replace(/^www\./, '')}${u.pathname.replace(/\/$/, '')}${v ? `?v=${v}` : ''}`;
+  } catch {
+    return getFileName(url);
+  }
+};
+
 const getReadableType = (type: string) => {
   if (type === '3d-model') return '3D model';
+  if (type === 'pdf') return 'PDF';
+  if (type === 'smart') return 'Web';
   return type.charAt(0).toUpperCase() + type.slice(1);
 };
+
+const formatBytes = (bytes?: number) => {
+  if (!bytes) return null;
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / 1024 / 1024).toFixed(1)} MB`;
+};
+
+/** Plain header action: just an icon, with a label only where it earns the room */
+const HEADER_BUTTON =
+  'inline-flex h-8 min-w-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 disabled:pointer-events-none disabled:opacity-40 dark:text-slate-400 dark:hover:bg-white/7 dark:hover:text-white';
 
 const getBlobForClipboard = async (url: string) => {
   const response = await fetch(url, { mode: 'cors', credentials: 'omit' });
@@ -74,6 +102,7 @@ const MediaPreviewPopup: React.FC = () => {
   const [isCopyingImage, setIsCopyingImage] = React.useState(false);
   const [isDownloading, setIsDownloading] = React.useState(false);
   const [rotation, setRotation] = React.useState(0);
+  const [assetInfo, setAssetInfo] = React.useState<{ filename?: string; size?: number } | null>(null);
   const [isUIHidden, setIsUIHidden] = React.useState(false);
 
   React.useEffect(() => {
@@ -90,8 +119,12 @@ const MediaPreviewPopup: React.FC = () => {
     const cleanUrl = url.split('?')[0].split('#')[0];
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+    setAssetInfo(null);
     if (cleanUrl.startsWith('img_') || cleanUrl.startsWith('thumb_')) {
       setResolvedAssetUrl(null);
+      getOriginalAsset(cleanUrl).then((asset) => {
+        if (!cancelled && asset) setAssetInfo({ filename: asset.filename, size: asset.size });
+      });
       // Canvas nodes show a small thumbnail: preview (and copy, and save) the original it came from.
       resolveOriginalAssetId(cleanUrl)
         .then((id) => resolveAssetUrl(id))
@@ -151,8 +184,23 @@ const MediaPreviewPopup: React.FC = () => {
   const isResolvingAsset =
     (originalUrl.startsWith('img_') || originalUrl.startsWith('thumb_')) && resolvedAssetUrl === null;
   const metadata = uploadedMediaMetadata[originalUrl] || uploadedMediaMetadata[resolvedUrl];
-  const fileName = metadata?.filename || getFileName(originalUrl);
+  const isWebUrl = /^https?:\/\//i.test(originalUrl);
+  const fileName =
+    metadata?.filename ||
+    assetInfo?.filename ||
+    (isWebUrl && activePreviewMedia.type === 'smart' ? getWebTitle(originalUrl) : getFileName(originalUrl));
   const sourceLabel = originalUrl.length > 80 ? `${originalUrl.slice(0, 77)}...` : originalUrl;
+  let host: string | null = null;
+  try {
+    if (isWebUrl) host = new URL(originalUrl).hostname.replace(/^www\./, '');
+  } catch {
+    host = null;
+  }
+  // One quiet line under the name: what it is, how big, where it is from
+  const headerMeta = [getReadableType(activePreviewMedia.type), formatBytes(metadata?.size ?? assetInfo?.size), host && !fileName.includes(host) ? host : null]
+    .filter(Boolean)
+    .join(' · ');
+  const canDownload = ['image', 'video', 'pdf', '3d-model'].includes(activePreviewMedia.type);
   const isAudioPreview = activePreviewMedia.type === 'audio';
   const isDocumentPreview = activePreviewMedia.type === 'pdf' || activePreviewMedia.type === 'smart' || activePreviewMedia.type === '3d-model';
   const metadataItems = [
@@ -161,12 +209,13 @@ const MediaPreviewPopup: React.FC = () => {
     metadata?.size ? `${(metadata.size / 1024).toFixed(1)} KB` : null,
   ].filter((item): item is string => Boolean(item));
 
-  const copySource = async () => {
+  // Only offered for web addresses: an uploaded file's id means nothing outside this app
+  const copyLink = async () => {
     try {
       await navigator.clipboard.writeText(originalUrl);
-      setNotification({ message: 'Source copied to clipboard', type: 'success' });
+      setNotification({ message: 'Link copied', type: 'success' });
     } catch {
-      setNotification({ message: 'Failed to copy source', type: 'error' });
+      setNotification({ message: 'Could not copy the link', type: 'error' });
     }
   };
 
@@ -219,17 +268,63 @@ const MediaPreviewPopup: React.FC = () => {
     }
   };
 
-  const getIcon = () => {
-    switch (activePreviewMedia?.type) {
-      case 'image': return <ImageIcon size={20} />;
-      case 'video': return <Video size={20} />;
-      case 'audio': return <Music size={20} />;
-      case 'pdf': return <span className="font-black text-[12px] tracking-widest mt-[1px] ml-[1px]">PDF</span>;
-      case 'smart': return <Globe size={20} />;
-      case '3d-model': return <Box size={20} />;
-      default: return <Maximize2 size={20} />;
+  /** Saves the original file - for uploads the stored file itself, never a thumbnail */
+  const downloadOriginal = async () => {
+    if (activePreviewMedia.type === 'image') return downloadCurrentImage();
+    if (isResolvingAsset) return;
+    setIsDownloading(true);
+    try {
+      const cleanId = originalUrl.split('?')[0].split('#')[0];
+      let blob: Blob | null = null;
+      let name = fileName;
+      if (cleanId.startsWith('img_') || cleanId.startsWith('thumb_')) {
+        const original = await getOriginalAsset(cleanId);
+        blob = original ? await getAssetBlob(original.assetId) : null;
+        name = original?.filename || fileName;
+      }
+      if (!blob) {
+        try {
+          const response = await fetch(resolvedUrl);
+          if (response.ok) blob = await response.blob();
+        } catch {
+          // Cross-origin without CORS: handled below
+        }
+      }
+      if (blob) {
+        downloadBlob(blob, name);
+      } else if (isWebUrl) {
+        // The page can't read it, but the browser can still fetch it in a new tab
+        window.open(originalUrl, '_blank', 'noopener');
+      } else {
+        setNotification({ message: 'Could not download this file', type: 'error' });
+      }
+    } finally {
+      setIsDownloading(false);
     }
   };
+
+  const getIcon = () => {
+    switch (activePreviewMedia?.type) {
+      case 'image': return <ImageIcon size={16} />;
+      case 'video': return <Video size={16} />;
+      case 'audio': return <Music size={16} />;
+      case 'pdf': return <FileText size={16} />;
+      case 'smart': return <Globe size={16} />;
+      case '3d-model': return <Box size={16} />;
+      default: return <Maximize2 size={16} />;
+    }
+  };
+
+  /** A soft tint per kind of file, so the type reads at a glance without a badge */
+  const iconTint =
+    ({
+      image: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
+      video: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
+      audio: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
+      pdf: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+      smart: 'bg-indigo-500/10 text-indigo-600 dark:text-indigo-400',
+      '3d-model': 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
+    } as Record<string, string>)[activePreviewMedia.type] ?? 'bg-slate-500/10 text-slate-600 dark:text-slate-400';
 
   const renderContent = () => {
     const { type } = activePreviewMedia;
@@ -362,7 +457,7 @@ const MediaPreviewPopup: React.FC = () => {
           {resolvedAssetUrl === null && originalUrl.startsWith('img_') ? (
             <div className="flex w-full h-full justify-center items-center text-slate-500">Loading asset...</div>
           ) : (
-            <PdfViewer url={resolvedUrl} isDark={isDark} />
+            <PdfViewer url={resolvedUrl} fileName={fileName} isDark={isDark} />
           )}
         </div>
       );
@@ -420,122 +515,113 @@ const MediaPreviewPopup: React.FC = () => {
           onKeyUp={(e) => e.stopPropagation()}
           onWheel={(e) => e.stopPropagation()}
         >
-          {/* FLOATING CONTROLS WHEN UI IS HIDDEN */}
+          {/* With the header hidden, two small buttons stay in the corner */}
           <AnimatePresence>
             {isUIHidden && (
-              <>
-                <motion.button
-                  initial={{ opacity: 0, y: -20 }}
-                  animate={{ opacity: 0.7, y: 0 }}
-                  whileHover={{ opacity: 1 }}
-                  exit={{ opacity: 0, y: -20 }}
-                  onClick={() => setIsUIHidden(false)}
-                  className="absolute top-4 left-1/2 -translate-x-1/2 z-[20050] flex items-center gap-2 rounded-full border border-slate-300 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/90 px-4 py-2 text-sm font-medium text-slate-700 dark:text-slate-300 shadow-2xl backdrop-blur-md transition-colors hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-slate-950 dark:hover:text-white"
-                >
+              <motion.div
+                initial={{ opacity: 0, y: -8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -8 }}
+                className="absolute right-3 top-3 z-[20050] flex items-center gap-0.5 rounded-lg border border-slate-200 bg-white/90 p-0.5 shadow-lg backdrop-blur-md dark:border-white/10 dark:bg-[#0d1118]/90"
+              >
+                <button onClick={() => setIsUIHidden(false)} className={HEADER_BUTTON} title="Show header" aria-label="Show header">
                   <ChevronDown size={16} />
-                  Show Header
-                </motion.button>
-                <motion.button
-                  initial={{ opacity: 0, scale: 0.8 }}
-                  animate={{ opacity: 0.7, scale: 1 }}
-                  whileHover={{ opacity: 1 }}
-                  exit={{ opacity: 0, scale: 0.8 }}
-                  onClick={() => setActivePreviewMedia(null)}
-                  className="absolute top-4 right-4 z-[20050] flex h-10 w-10 items-center justify-center rounded-full border border-slate-300 dark:border-slate-700/80 bg-white/90 dark:bg-slate-900/90 text-slate-500 dark:text-slate-400 shadow-2xl backdrop-blur-md transition-all hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400 hover:border-rose-500/50"
-                >
-                  <X size={20} />
-                </motion.button>
-              </>
+                </button>
+                <button onClick={() => setActivePreviewMedia(null)} className={HEADER_BUTTON} title="Close" aria-label="Close preview">
+                  <X size={16} />
+                </button>
+              </motion.div>
             )}
           </AnimatePresence>
 
           <AnimatePresence initial={false}>
             {!isUIHidden && (
-              <motion.div
+              <motion.header
                 key="header"
                 initial={{ height: 0, opacity: 0 }}
                 animate={{ height: 'auto', opacity: 1 }}
                 exit={{ height: 0, opacity: 0 }}
-                className="z-50 shrink-0 border-b border-slate-200 dark:border-slate-800/80 bg-white/95 dark:bg-[#0b0f17]/95 shadow-sm overflow-hidden"
+                className="z-50 shrink-0 overflow-hidden border-b border-slate-200 bg-white dark:border-white/7 dark:bg-[#0b0e14]"
               >
-                <div className="flex min-h-[48px] sm:min-h-[56px] items-center justify-between gap-2.5 px-3 py-1.5 sm:px-5 sm:py-2">
-                  <div className="flex min-w-0 items-center gap-2.5">
-                    <div className={`flex h-8 w-8 sm:h-9 sm:w-9 shrink-0 items-center justify-center rounded-lg border ${activePreviewMedia.type === 'pdf' ? 'border-rose-500/40 bg-rose-500/15 text-rose-500 dark:text-rose-400 shadow-[0_0_15px_rgba(244,63,94,0.15)]' : 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 text-indigo-600 dark:text-indigo-300'}`}>
-                      {getIcon()}
-                    </div>
-                    <div className="min-w-0">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <h3 className="truncate text-xs font-semibold text-slate-900 dark:text-white sm:text-sm">{fileName}</h3>
-                        <span className="hidden shrink-0 rounded-md border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-600 dark:text-slate-400 sm:inline-flex">
-                          {getReadableType(activePreviewMedia.type)}
-                        </span>
-                      </div>
-                      <p className="hidden sm:block truncate text-[11px] text-slate-500 dark:text-slate-400">{sourceLabel}</p>
-                    </div>
+                <div className="flex h-12 items-center gap-3 pl-3 pr-2 sm:pl-4">
+                  <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconTint}`}>{getIcon()}</div>
+                  <div className="min-w-0 flex-1 leading-tight">
+                    <h3 className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100" title={fileName}>
+                      {fileName}
+                    </h3>
+                    <p className="truncate text-[11px] text-slate-500" title={isWebUrl ? sourceLabel : undefined}>
+                      {headerMeta}
+                    </p>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-2">
+                  <div className="flex shrink-0 items-center">
                     {activePreviewMedia.type === 'image' && (
-                      <div className="flex items-center gap-0.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-slate-100/80 dark:bg-slate-900/60 p-1 shadow-sm">
+                      <>
                         <button
                           onClick={() => setRotation((prev) => (prev + 90) % 360)}
                           disabled={isResolvingAsset}
-                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Rotate image"
+                          className={HEADER_BUTTON}
+                          title="Rotate"
+                          aria-label="Rotate image"
                         >
-                          <RotateCw size={14} />
-                          <span className="hidden sm:inline">Rotate</span>
+                          <RotateCw size={15} />
                         </button>
                         <button
                           onClick={copyImage}
                           disabled={isCopyingImage || isResolvingAsset}
-                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
+                          className={HEADER_BUTTON}
                           title="Copy image"
+                          aria-label="Copy image"
                         >
-                          {isCopyingImage ? <Loader2 size={14} className="animate-spin" /> : <Copy size={14} />}
-                          <span className="hidden sm:inline">Copy image</span>
+                          {isCopyingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
                         </button>
-                        <button
-                          onClick={downloadCurrentImage}
-                          disabled={isDownloading || isResolvingAsset}
-                          className="inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100 disabled:cursor-not-allowed disabled:opacity-50"
-                          title="Download image"
-                        >
-                          {isDownloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
-                          <span className="hidden sm:inline">Download</span>
-                        </button>
-                      </div>
+                      </>
                     )}
-
-                    {activePreviewMedia.type !== 'pdf' && activePreviewMedia.type !== 'image' && (
+                    {canDownload && (
                       <button
-                        onClick={copySource}
-                        className="inline-flex h-8 items-center gap-2 rounded-md border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 px-3 text-xs font-medium text-slate-700 dark:text-slate-300 transition-colors hover:bg-slate-200 dark:hover:bg-slate-700/50 hover:text-slate-900 dark:hover:text-slate-100"
-                        title="Copy source"
+                        onClick={downloadOriginal}
+                        disabled={isDownloading || isResolvingAsset}
+                        className={HEADER_BUTTON}
+                        title="Download"
+                        aria-label="Download"
                       >
-                        <ExternalLink size={14} />
-                        <span className="hidden sm:inline">Copy source</span>
+                        {isDownloading ? <Loader2 size={15} className="animate-spin" /> : <Download size={15} />}
+                        <span className="hidden md:inline">Download</span>
                       </button>
                     )}
+                    {isWebUrl && (
+                      <>
+                        <button onClick={copyLink} className={HEADER_BUTTON} title="Copy link" aria-label="Copy link">
+                          <Link2 size={15} />
+                        </button>
+                        <a
+                          href={originalUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={HEADER_BUTTON}
+                          title="Open in new tab"
+                          aria-label="Open in new tab"
+                        >
+                          <ExternalLink size={15} />
+                        </a>
+                      </>
+                    )}
 
-                    <button
-                      onClick={() => setIsUIHidden(true)}
-                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 transition-all hover:bg-slate-200 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-slate-100"
-                      title="Hide Header"
-                    >
+                    <span className="mx-1.5 h-5 w-px bg-slate-200 dark:bg-white/10" aria-hidden />
+                    <button onClick={() => setIsUIHidden(true)} className={HEADER_BUTTON} title="Hide header" aria-label="Hide header">
                       <ChevronUp size={16} />
                     </button>
-
                     <button
                       onClick={() => setActivePreviewMedia(null)}
-                      className="inline-flex h-8 w-8 sm:h-9 sm:w-9 items-center justify-center rounded-full border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-900/60 text-slate-500 dark:text-slate-400 transition-all hover:border-rose-500/40 hover:bg-rose-500/10 hover:text-rose-600 dark:hover:text-rose-400"
-                      title="Close preview"
+                      className={`${HEADER_BUTTON} hover:bg-rose-500/10 hover:text-rose-600 dark:hover:bg-rose-500/10 dark:hover:text-rose-400`}
+                      title="Close"
+                      aria-label="Close preview"
                     >
-                      <X size={16} />
+                      <X size={17} />
                     </button>
                   </div>
                 </div>
-              </motion.div>
+              </motion.header>
             )}
           </AnimatePresence>
 
