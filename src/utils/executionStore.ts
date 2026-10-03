@@ -149,10 +149,13 @@ export const getLogCount = async (path: string): Promise<{logCount: number, star
   return session ? { logCount: session.logCount, startOffset: session.startOffset || 0 } : { logCount: 0, startOffset: 0 };
 };
 
+/** The `count` logs from `startIndex` on. */
 export const loadLogsOffset = async (path: string, startIndex: number, count: number) => {
   return await db.logs
     .where('[path+index]')
-    .between([path, startIndex], [path, startIndex + count - 1])
+    // Both ends included: between() leaves the upper one out unless told otherwise, which lost
+    // the last log asked for - every 500th console line, and a lone log entirely.
+    .between([path, startIndex], [path, startIndex + count - 1], true, true)
     .toArray();
 };
 

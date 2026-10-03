@@ -42,6 +42,7 @@ import {
   Rows2,
   ArrowLeftRight,
   Pin,
+  Globe,
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { usePackageTypes } from "../utils/npmEditorSupport";
@@ -51,6 +52,8 @@ import { usePyPackageStore } from "../store/usePyPackageStore";
 import { PyPackagesPanel } from "./PyPackagesPanel";
 import { NpmPackagesPanel } from "./NpmPackagesPanel";
 import { ConsoleValue, consoleValueToText, logArgsToText } from "./console/ConsoleValue";
+import { HtmlPreview } from "./console/HtmlPreview";
+import { useHtmlOutputs } from "../utils/htmlOutputs";
 import { useLineCopyMenu } from "./console/useLineCopyMenu";
 import MediaFileViewer from "./MediaFileViewer";
 import { detectMediaFile, mediaFileName } from "../utils/mediaFiles";
@@ -702,7 +705,8 @@ export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
     if (terminalState === "hidden") {
       setTerminalState("normal");
     }
-    setActiveTab("console");
+    // A preview being looked at stays: it refreshes in place when the run prints a new page.
+    setActiveTab((tab) => (tab === "html" ? tab : "console"));
 
     // The kind comes from the file being run, which need not be the one on the toolbar.
     const kind = executableKindFor(targetPath);
@@ -1027,6 +1031,8 @@ declare const console: {
 
   const { logCount, getLog, clearLogs, startOffset } =
     useExecutionLogs(currentFilePath);
+  // HTML pages the run printed, for the Preview tab.
+  const htmlOutputs = useHtmlOutputs(currentFilePath, resultData);
 
   // Right-click a line, or hold it on a touch screen, to copy it.
   const copyMenu = useLineCopyMenu({
@@ -1182,7 +1188,11 @@ declare const console: {
     }
   });
 
-  const [activeTab, setActiveTab] = useState<"result" | "console">("console");
+  const [activeTab, setActiveTab] = useState<"result" | "console" | "html">("console");
+  // The Preview tab only exists while there is HTML to show.
+  useEffect(() => {
+    if (activeTab === "html" && htmlOutputs.length === 0) setActiveTab("console");
+  }, [activeTab, htmlOutputs.length]);
   const [sidebarTab, setSidebarTab] = useState<"files" | "packages">("files");
   const [terminalInput, setTerminalInput] = useState("");
   const [copiedConsole, setCopiedConsole] = useState(false);
@@ -2932,6 +2942,22 @@ declare const console: {
                   >
                     Output Result
                   </button>
+
+                  {htmlOutputs.length > 0 && (
+                    <button
+                      onClick={() => setActiveTab("html")}
+                      className={panelTab(activeTab === "html")}
+                      title="Render the HTML this run printed"
+                    >
+                      <Globe size={12} className="shrink-0" />
+                      <span>Preview</span>
+                      {htmlOutputs.length > 1 && (
+                        <span className="bg-[var(--vsc-badge)] text-[var(--vsc-badge-fg)] text-[10px] font-semibold px-1.5 rounded-full shrink-0 normal-case">
+                          {htmlOutputs.length}
+                        </span>
+                      )}
+                    </button>
+                  )}
                 </div>
 
                 {/* Right controls */}
@@ -3069,6 +3095,10 @@ declare const console: {
 
               {/* Tab views content area */}
               <div className="flex-1 overflow-auto custom-scrollbar p-0 bg-[var(--vsc-panel-body)] relative">
+                {activeTab === "html" && htmlOutputs.length > 0 && (
+                  <HtmlPreview outputs={htmlOutputs} />
+                )}
+
                 {activeTab === "result" && (
                   <div className="p-4 h-full">
                     {lastError ? (
