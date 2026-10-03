@@ -5,10 +5,32 @@ import { AudioTrack } from '../types/audio';
 class AudioEngine {
   private sound: Howl | null = null;
   private timer: number | null = null;
+  /** Bumped on every playTrack, so a slow upload read cannot start after a newer choice */
+  private loadToken = 0;
 
   playTrack(track: AudioTrack) {
+    const token = ++this.loadToken;
+    if (track.origin !== 'upload') {
+      this.startTrack(track);
+      return;
+    }
+
+    // Uploaded files live on the device; a URL saved before a reload no longer works
     this.stop();
-    
+    useAudioStore.getState().setCurrentTrack(track);
+    import('./audioUploads')
+      .then(({ resolveUploadSource }) => resolveUploadSource(track))
+      .then((source) => {
+        if (token === this.loadToken) this.startTrack({ ...track, source });
+      })
+      .catch((err) => {
+        console.error('Could not load uploaded audio:', track.title, err);
+      });
+  }
+
+  private startTrack(track: AudioTrack) {
+    this.stop();
+
     const getFormat = (type?: string, url?: string) => {
       if (type) {
         const baseType = type.split(';')[0];

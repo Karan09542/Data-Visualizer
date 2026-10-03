@@ -33,6 +33,7 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
     playTrack,
     queue,
     queueIndex,
+    stop,
   } = useAudioPlayer();
   const isCurrentTrack = isQueueItem
     ? currentTrack?.id === track.id && queueIndex === index
@@ -58,6 +59,23 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
     setTimeout(() => setAdded(false), 2000);
   };
 
+  /** Uploads only: removes the track and deletes its file from this device */
+  const handleDeleteUpload = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!window.confirm(`Delete "${track.title}" from this device?`)) return;
+
+    const audio = useAudioStore.getState();
+    if (audio.currentTrack?.id === track.id) stop();
+    for (let i = audio.queue.length - 1; i >= 0; i--) {
+      if (audio.queue[i].id === track.id) useAudioStore.getState().removeFromQueue(i);
+    }
+
+    const { removeUploadedTrack } = await import("../services/audioUploads");
+    const { discoverAudio } = await import("../services/audioDiscovery");
+    await removeUploadedTrack(track);
+    window.dispatchEvent(new CustomEvent("audio-library-updated", { detail: await discoverAudio() }));
+  };
+
   const handleRemoveFromQueue = (e: React.MouseEvent) => {
     e.stopPropagation();
     useAudioStore.getState().removeFromQueue(index);
@@ -68,7 +86,9 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
     day: "numeric",
   });
   const durationLabel = formatDuration(track.duration) || dateLabel;
-  const metaLabel = [track.artist, dateLabel].filter(Boolean).join(" - ") || "Workspace audio";
+  const isUpload = track.origin === "upload";
+  const metaLabel =
+    [track.artist, isUpload ? "On this device" : null, dateLabel].filter(Boolean).join(" · ") || "Workspace audio";
 
   return (
     <div
@@ -141,6 +161,17 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
           title="Add to Queue"
         >
           {added ? <Check size={18} /> : <Plus size={18} />}
+        </button>
+      )}
+
+      {!isQueueItem && isUpload && (
+        <button
+          onClick={handleDeleteUpload}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-(--ap-muted) transition-all hover:bg-red-500/10 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 dark:hover:text-red-300"
+          title="Delete from this device"
+          aria-label={`Delete ${track.title} from this device`}
+        >
+          <Trash2 size={17} />
         </button>
       )}
 

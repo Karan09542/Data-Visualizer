@@ -1,4 +1,5 @@
-import Dexie, { type EntityTable } from 'dexie';
+import Dexie, { type EntityTable, type Table } from 'dexie';
+import type { StoredFileRecord } from '../utils/deviceFileStore';
 
 export interface SavedDocument {
   id: number;
@@ -55,7 +56,13 @@ export interface Asset {
   size: number;
   width?: number;
   height?: number;
-  data: ArrayBuffer | Blob;
+  /**
+   * The bytes, for assets saved before files moved to device storage. Newer assets leave this
+   * empty and keep their bytes under storageKey; read either way with readAssetBlob.
+   */
+  data?: ArrayBuffer | Blob;
+  /** Key of the bytes in the media file store: OPFS where available, else the assetFiles table */
+  storageKey?: string;
   createdAt: number;
 }
 
@@ -169,6 +176,12 @@ export interface AudioTrack {
   type: string;
   thumbnail?: string;
   createdAt: number;
+  artist?: string;
+  /** "upload" tracks were added in the audio player and are kept out of the workspace data */
+  origin?: 'workspace' | 'upload';
+  storageKey?: string;
+  hasCover?: boolean;
+  size?: number;
 }
 
 export interface StickyNote {
@@ -230,6 +243,10 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   stickyNotes: EntityTable<StickyNote, 'id'>;
   stickyNoteMedia: EntityTable<StickyNoteMedia, 'id'>;
   sharedFiles: EntityTable<SharedFileRecord, 'id'>;
+  /** Uploaded audio, on devices where OPFS cannot be written */
+  audioFiles: Table<StoredFileRecord, string>;
+  /** Media bytes, on devices where OPFS cannot be written */
+  assetFiles: Table<StoredFileRecord, string>;
 };
 
 db.version(8).stores({
@@ -281,6 +298,14 @@ db.version(16).stores({
 
 db.version(17).stores({
   mathScenes: '++id, name, createdAt, updatedAt'
+});
+
+db.version(18).stores({
+  audioFiles: 'url, cachedAt'
+});
+
+db.version(19).stores({
+  assetFiles: 'url, cachedAt'
 });
 
 export { db };

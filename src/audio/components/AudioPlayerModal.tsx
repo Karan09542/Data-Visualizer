@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   X,
   Search,
@@ -9,12 +9,14 @@ import {
   Loader2,
   Play,
   Pause,
+  Upload,
 } from "lucide-react";
 import { useAudioStore } from "../stores/audioStore";
 import { useAudioLibrary } from "../hooks/useAudioLibrary";
 import { AudioTrackCard } from "./AudioTrackCard";
 import { AudioControls } from "./AudioControls";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
+import { UPLOAD_ACCEPT, isPlayableMedia, uploadAudioFiles } from "../services/audioUploads";
 
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -46,6 +48,10 @@ const AudioPlayerModal: React.FC = () => {
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   const [draggedOverIndex, setDraggedOverIndex] = useState<number | null>(null);
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
+  const [uploadNote, setUploadNote] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
+  const [isDroppingFiles, setIsDroppingFiles] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const libraryCount = tracks.length;
   const queueCount = queue.length;
@@ -68,6 +74,32 @@ const AudioPlayerModal: React.FC = () => {
     if (!currentTrack && tracks.length > 0) playQueue(tracks, 0);
     else togglePlay();
   };
+
+  /** Saves the files on this device and adds them to the library; they never touch the canvas */
+  const handleUpload = async (files: File[]) => {
+    if (files.length === 0 || isUploading) return;
+    setIsUploading(true);
+    setUploadNote(null);
+    try {
+      const { tracks: added, skipped, backend } = await uploadAudioFiles(files);
+      await refreshLibrary();
+      setActiveTab("library");
+      setSearchQuery("");
+      const where = backend === "opfs" ? "device storage" : "browser storage";
+      const parts = [];
+      if (added.length) parts.push(`Added ${added.length} ${added.length === 1 ? "track" : "tracks"} to ${where}.`);
+      if (skipped.length === 1) parts.push(`Skipped ${skipped[0].name}: ${skipped[0].reason.toLowerCase()}.`);
+      else if (skipped.length > 1) parts.push(`Skipped ${skipped.length} files that could not be added.`);
+      setUploadNote({ text: parts.join(" "), tone: added.length ? "ok" : "error" });
+    } catch (err) {
+      console.error("Audio upload failed", err);
+      setUploadNote({ text: "Upload failed. Please try again.", tone: "error" });
+    } finally {
+      setIsUploading(false);
+    }
+  };
+
+  const hasFiles = (e: React.DragEvent) => Array.from(e.dataTransfer.types).includes("Files");
 
   const openSheet = (tab: "library" | "queue") => {
     setActiveTab(tab);
@@ -153,10 +185,10 @@ const AudioPlayerModal: React.FC = () => {
         ) : (
           emptyState(
             <Disc3 className="h-6 w-6" />,
-            searchQuery ? "Nothing matches that search" : "No audio found",
+            searchQuery ? "Nothing matches that search" : "No audio yet",
             searchQuery
               ? "Try a different word, or clear the search."
-              : "Audio links found in your workspace data will be listed here.",
+              : "Upload audio from this device, or drop files here. Audio links in your workspace data show up too.",
           )
         )
       ) : queue.length > 0 ? (
@@ -216,7 +248,9 @@ const AudioPlayerModal: React.FC = () => {
       </div>
 
       {activeTab === "library" ? (
-        <div className="relative mt-3">
+        <>
+        <div className="mt-3 flex gap-2">
+        <div className="relative min-w-0 flex-1">
           <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-(--ap-muted)" />
           <input
             type="text"
@@ -236,6 +270,40 @@ const AudioPlayerModal: React.FC = () => {
             </button>
           )}
         </div>
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isUploading}
+            title="Upload audio from this device"
+            className="flex h-10 shrink-0 items-center gap-1.5 rounded-full bg-(--ap-accent) px-4 text-[13px] font-semibold text-white transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) disabled:opacity-60 dark:text-[#1b2116]"
+          >
+            {isUploading ? <Loader2 size={15} className="animate-spin" /> : <Upload size={15} />}
+            {isUploading ? "Saving…" : "Upload"}
+          </button>
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept={UPLOAD_ACCEPT}
+            multiple
+            hidden
+            onChange={(e) => {
+              handleUpload(Array.from(e.target.files ?? []));
+              e.target.value = "";
+            }}
+          />
+        </div>
+        {uploadNote ? (
+          <p
+            role="status"
+            className={`mt-2 px-1 text-[12px] ${uploadNote.tone === "error" ? "text-red-600 dark:text-red-400" : "text-(--ap-accent-strong)"}`}
+          >
+            {uploadNote.text}
+          </p>
+        ) : (
+          <p className="mt-2 px-1 text-[12px] text-(--ap-muted)">
+            Uploads stay on this device and are not added to your canvas.
+          </p>
+        )}
+        </>
       ) : (
         <p className="mt-3 px-1 text-[12px] text-(--ap-muted)">
           {queueCount > 1 ? "Drag a track to change the order." : "Tracks play in the order you add them."}
@@ -359,7 +427,22 @@ const AudioPlayerModal: React.FC = () => {
 
         {/* Library and queue: a side panel on desktop, a bottom sheet on a phone */}
         <aside
-          className={`fixed inset-x-0 bottom-0 top-[8vh] z-30 flex flex-col overflow-hidden rounded-t-[28px] bg-(--ap-surface) shadow-2xl transition-[translate,visibility] duration-300 ease-out lg:static lg:z-auto lg:translate-y-0 lg:rounded-none lg:border-l lg:border-(--ap-line) lg:shadow-none ${
+          onDragOver={(e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setIsDroppingFiles(true);
+          }}
+          onDragLeave={(e) => {
+            if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setIsDroppingFiles(false);
+          }}
+          onDrop={(e) => {
+            if (!hasFiles(e)) return;
+            e.preventDefault();
+            setIsDroppingFiles(false);
+            handleUpload(Array.from(e.dataTransfer.files).filter(isPlayableMedia));
+          }}
+          className={`fixed inset-x-0 bottom-0 top-[8vh] z-30 flex flex-col overflow-hidden rounded-t-[28px] bg-(--ap-surface) shadow-2xl transition-[translate,visibility] duration-300 ease-out lg:relative lg:inset-auto lg:z-auto lg:translate-y-0 lg:rounded-none lg:border-l lg:border-(--ap-line) lg:shadow-none ${
             isMobileLibraryOpen ? "translate-y-0" : "translate-y-full max-lg:invisible"
           }`}
         >
@@ -380,6 +463,14 @@ const AudioPlayerModal: React.FC = () => {
 
           {listControls}
           {trackList}
+
+          {isDroppingFiles && (
+            <div className="pointer-events-none absolute inset-3 z-10 flex flex-col items-center justify-center gap-2 rounded-3xl border-2 border-dashed border-(--ap-accent) bg-(--ap-surface)/90 text-center backdrop-blur-sm">
+              <Upload size={26} className="text-(--ap-accent)" />
+              <p className="text-sm font-semibold">Drop audio to add it to your library</p>
+              <p className="text-xs text-(--ap-muted)">It stays on this device and is not added to your canvas</p>
+            </div>
+          )}
         </aside>
       </main>
     </div>

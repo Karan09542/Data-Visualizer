@@ -1,4 +1,32 @@
 import { db, Asset } from "../lib/db";
+import { createDeviceFileStore } from "./deviceFileStore";
+
+/**
+ * Where media bytes live: OPFS where the device can write it, the assetFiles IndexedDB table
+ * where it cannot. db.assets keeps only each file's details and its storageKey.
+ */
+const mediaFiles = createDeviceFileStore({
+  opfsPath: ["media"],
+  table: () => db.assetFiles,
+});
+
+const storageKeyFor = (assetId: string) => `asset://${assetId}`;
+
+/** Which store new media goes to on this device */
+export const mediaStorageBackend = () => mediaFiles.backend();
+
+/**
+ * The bytes behind an asset. Assets saved before device storage carry them inline in `data`;
+ * newer ones are read from OPFS or IndexedDB by storageKey.
+ */
+export async function readAssetBlob(asset: Asset): Promise<Blob | null> {
+  if (asset.data) {
+    return asset.data instanceof Blob ? asset.data : new Blob([asset.data], { type: asset.mimeType });
+  }
+  if (!asset.storageKey) return null;
+  const bytes = await mediaFiles.read(asset.storageKey);
+  return bytes ? new Blob([bytes], { type: asset.mimeType }) : null;
+}
 
 /**
  * Computes a standard SHA-256 hex string hash from an ArrayBuffer natively.
@@ -125,15 +153,22 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
     const thumbnailId = ext ? `thumb_${randomHex()}.${ext}` : `thumb_${randomHex()}`;
 
 
-    // 4. Generate Thumbnail
-    let thumbnailBlob: Blob;
+    // 4. Generate Thumbnail. Files that cannot be drawn (audio, PDF…) have none, and the
+    // thumbnail record points at the original's bytes instead of storing a second copy.
+    let thumbnailBlob: Blob | null = null;
     try {
       thumbnailBlob = await generateThumbnail(originalBlob);
+      if (thumbnailBlob === originalBlob) thumbnailBlob = null; // it could not be shrunk
     } catch {
-      thumbnailBlob = originalBlob; // fallback
+      thumbnailBlob = null;
     }
 
-    // 5. Store both original and thumbnail
+    // 5. Bytes go to device storage, details to db.assets
+    const originalKey = storageKeyFor(assetId);
+    const thumbnailKey = thumbnailBlob ? storageKeyFor(thumbnailId) : originalKey;
+    await mediaFiles.write(originalKey, arrayBuffer);
+    if (thumbnailBlob) await mediaFiles.write(thumbnailKey, await thumbnailBlob.arrayBuffer());
+
     const originalAsset: Asset = {
       assetId,
       thumbnailId,
@@ -143,20 +178,26 @@ export async function importFile(file: File): Promise<{ assetId: string; thumbna
       size: file.size,
       width: dims.width,
       height: dims.height,
-      data: originalBlob,
+      storageKey: originalKey,
       createdAt: Date.now()
     };
 
     const thumbnailAsset: Asset = {
       assetId: thumbnailId,
-      mimeType: "image/jpeg",
-      size: thumbnailBlob.size,
-      data: thumbnailBlob,
+      mimeType: thumbnailBlob ? "image/jpeg" : file.type,
+      size: thumbnailBlob ? thumbnailBlob.size : file.size,
+      storageKey: thumbnailKey,
       createdAt: Date.now()
     };
 
-    await db.assets.add(originalAsset);
-    await db.assets.add(thumbnailAsset);
+    try {
+      await db.assets.bulkAdd([originalAsset, thumbnailAsset]);
+    } catch (err) {
+      // Don't leave orphaned files behind if the details could not be saved
+      await mediaFiles.remove(originalKey);
+      if (thumbnailKey !== originalKey) await mediaFiles.remove(thumbnailKey);
+      throw err;
+    }
 
     return { assetId, thumbnailId };
   } catch (err) {
@@ -196,10 +237,7 @@ export async function getAssetBlob(assetId: string): Promise<Blob | null> {
   try {
     const asset = await db.assets.get(assetId);
     if (!asset) return null;
-    if (asset.data instanceof Blob) {
-      return asset.data;
-    }
-    return new Blob([asset.data], { type: asset.mimeType });
+    return await readAssetBlob(asset);
   } catch {
     return null;
   }
@@ -361,6 +399,14 @@ export async function deleteUnusedAssets(parsedData: any, historyCodes: string[]
 
     if (toDelete.length > 0) {
       await db.assets.bulkDelete(toDelete);
+
+      // Remove stored bytes no surviving record still points at (a thumbnail can share its original's)
+      const deleted = new Set(toDelete);
+      const stillUsed = new Set(allAssets.filter((a) => !deleted.has(a.assetId) && a.storageKey).map((a) => a.storageKey!));
+      const orphaned = new Set(
+        allAssets.filter((a) => deleted.has(a.assetId) && a.storageKey && !stillUsed.has(a.storageKey)).map((a) => a.storageKey!),
+      );
+      await Promise.all([...orphaned].map((key) => mediaFiles.remove(key).catch(() => {})));
     }
     return toDelete.length;
   } catch (err) {

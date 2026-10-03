@@ -7,6 +7,17 @@ export interface AudioTrack {
   type: string;
   thumbnail?: string;
   createdAt: number;
+  /**
+   * "upload" tracks were added in the audio player. They live only in the library, never in the
+   * workspace data, so they never become canvas nodes and workspace cleanup leaves them alone.
+   */
+  origin?: "workspace" | "upload";
+  /** Uploads: the file's key in the on-device store (OPFS, or IndexedDB where OPFS is missing) */
+  storageKey?: string;
+  /** Uploads: whether cover art was saved beside the file */
+  hasCover?: boolean;
+  /** Uploads: file size in bytes */
+  size?: number;
 }
 
 export interface AudioState {

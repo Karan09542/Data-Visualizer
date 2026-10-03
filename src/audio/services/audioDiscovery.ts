@@ -2,9 +2,10 @@ import { db } from "../../lib/db";
 import { useStore } from "../../store/useStore";
 import { useAudioStore } from "../stores/audioStore";
 import { AudioTrack } from "../types/audio";
-import { collectReferencedAssetIds } from "../../utils/assetManager";
+import { collectReferencedAssetIds, readAssetBlob } from "../../utils/assetManager";
 import { v4 as uuidv4 } from "uuid";
 import * as mm from "music-metadata";
+import { resolveUploadCover } from "./audioUploads";
 
 export const discoverAudio = async () => {
   const tracks: AudioTrack[] = [];
@@ -49,8 +50,9 @@ export const discoverAudio = async () => {
     validIds.add(id);
   }
 
-  // 3. Remove obsolete tracks
-  const invalidTracks = storedTracks.filter((t) => !validIds.has(t.id));
+  // 3. Remove obsolete tracks. Uploads are never in the workspace data, so they are kept
+  // until someone deletes them from the library.
+  const invalidTracks = storedTracks.filter((t) => t.origin !== "upload" && !validIds.has(t.id));
   if (invalidTracks.length > 0) {
     const invalidIds = invalidTracks.map((t) => t.id);
     await db.audio_tracks.bulkDelete(invalidIds);
@@ -84,16 +86,17 @@ export const discoverAudio = async () => {
 
   // Update blob URLs for stored tracks
   for (const track of storedTracks) {
+    if (track.origin === "upload") {
+      // The file itself is read when it is played; only the small cover is loaded here
+      track.source = "";
+      track.thumbnail = await resolveUploadCover(track);
+      continue;
+    }
     let updated = false;
     if (track.source && track.source.startsWith("blob:")) {
       const asset = assets.find((a) => a.assetId === track.id);
-      if (asset && asset.data) {
-        let blob: Blob;
-        if (asset.data instanceof Blob) {
-          blob = asset.data;
-        } else {
-          blob = new Blob([asset.data], { type: asset.mimeType || track.type });
-        }
+      const blob = asset ? await readAssetBlob(asset) : null;
+      if (blob) {
         track.source = URL.createObjectURL(blob);
         updated = true;
 
@@ -127,15 +130,8 @@ export const discoverAudio = async () => {
 
   for (const asset of audioAssets) {
     if (!storedIds.has(asset.assetId)) {
-      let source = "";
-      let blob: Blob | null = null;
-      if (asset.data instanceof Blob) {
-        blob = asset.data;
-        source = URL.createObjectURL(asset.data);
-      } else if (asset.data instanceof ArrayBuffer) {
-        blob = new Blob([asset.data], { type: asset.mimeType });
-        source = URL.createObjectURL(blob);
-      }
+      const blob = await readAssetBlob(asset);
+      const source = blob ? URL.createObjectURL(blob) : "";
 
       let title = asset.filename || "Unknown Audio File";
       let artist = undefined;

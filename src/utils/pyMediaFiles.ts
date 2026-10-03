@@ -8,7 +8,7 @@
  */
 import { cleanNodeName } from "./vfs";
 import { detectMediaFile, mediaFileName } from "./mediaFiles";
-import { getOriginalAsset } from "./assetManager";
+import { getOriginalAsset, readAssetBlob } from "./assetManager";
 
 /** Larger files are left out: every run copies them into the Python worker. */
 export const MAX_MEDIA_BYTES = 64 * 1024 * 1024;
@@ -30,7 +30,7 @@ async function readMedia(source: string, isAsset: boolean): Promise<Blob | null>
     if (isAsset) {
         const asset = await getOriginalAsset(source);
         if (!asset) return null;
-        return asset.data instanceof Blob ? asset.data : new Blob([asset.data], { type: asset.mimeType });
+        return await readAssetBlob(asset);
     }
     // data: and blob: URLs live in this page. Remote URLs are left to the script to download.
     if (/^(data|blob):/i.test(source)) {

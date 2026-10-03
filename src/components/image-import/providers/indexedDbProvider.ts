@@ -1,4 +1,5 @@
 import { db } from '../../../lib/db';
+import { readAssetBlob } from '../../../utils/assetManager';
 
 export interface GalleryAsset {
   id: string;
@@ -23,25 +24,16 @@ export async function getIndexedDbAssets(): Promise<GalleryAsset[]> {
     const thumbnailsMap = new Map<string, Blob>();
     for (const a of dbAssets) {
       if (a.assetId.startsWith('thumb_')) {
-        let blob: Blob;
-        if (a.data instanceof Blob) {
-          blob = a.data;
-        } else {
-          blob = new Blob([a.data], { type: a.mimeType });
-        }
-        thumbnailsMap.set(a.assetId, blob);
+        const blob = await readAssetBlob(a);
+        if (blob) thumbnailsMap.set(a.assetId, blob);
       }
     }
     
     for (const a of dbAssets) {
       // Ignore standalone thumbnail records to prevent duplicates
       if (a.mimeType.startsWith('image/') && !a.assetId.startsWith('thumb_')) {
-        let blob: Blob;
-        if (a.data instanceof Blob) {
-          blob = a.data;
-        } else {
-          blob = new Blob([a.data], { type: a.mimeType });
-        }
+        const blob = await readAssetBlob(a);
+        if (!blob) continue;
         
         let thumbnailUrl: string | undefined;
         if (a.thumbnailId && thumbnailsMap.has(a.thumbnailId)) {
