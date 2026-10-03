@@ -22,7 +22,11 @@ interface CustomSelectProps {
   disabled?: boolean;
   placeholder?: string;
   searchable?: boolean;
-  variant?: "default" | "toolbar";
+  /**
+   * "inline": no border, rounding or background of its own, filling the height of a joined input
+   * group - the colour comes from className.
+   */
+  variant?: "default" | "toolbar" | "inline";
   /**
    * Called with an option while it is hovered or held, and with null on release. Wire it up to
    * show the choice on the canvas before committing to it; omit it for a plain select.
@@ -246,7 +250,9 @@ export default function CustomSelect({
         aria-controls={isOpen ? listId : undefined}
         aria-label={label ? `${label}: ${selectedOption?.label ?? placeholder}` : undefined}
         className={`flex items-center justify-between gap-2 text-xs font-semibold transition-all outline-none w-full focus-visible:ring-2 focus-visible:ring-blue-500/40
-          ${variant === "toolbar"
+          ${variant === "inline"
+            ? `self-stretch px-3 rounded-none border-0 bg-transparent hover:bg-black/[0.06] dark:hover:bg-white/[0.08] ${isOpen ? "bg-black/[0.06] dark:bg-white/[0.08]" : ""}`
+            : variant === "toolbar"
             ? `px-2.5 py-1 rounded-md border border-slate-200 dark:border-white/[0.08] bg-slate-100/60 dark:bg-transparent hover:bg-slate-200/80 dark:hover:bg-white/[0.08] hover:border-slate-300 dark:hover:border-white/[0.12] text-slate-800 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white ${isOpen ? "bg-slate-200/90 dark:bg-white/[0.12] border-slate-300 dark:border-white/[0.15] text-slate-900 dark:text-white" : ""
             }`
             : `px-3 py-2 rounded-xl border ${isOpen
@@ -259,7 +265,7 @@ export default function CustomSelect({
       >
         <div className="flex min-w-0 items-center gap-1.5">
           {triggerIcon && (
-            <span className="flex flex-shrink-0 items-center text-slate-400 dark:text-slate-500">{triggerIcon}</span>
+            <span className={`flex flex-shrink-0 items-center ${variant === "inline" ? "" : "text-slate-400 dark:text-slate-500"}`}>{triggerIcon}</span>
           )}
           <span className="truncate">
             {selectedOption ? selectedOption.label : placeholder}
@@ -267,7 +273,7 @@ export default function CustomSelect({
         </div>
         <ChevronDown
           size={12}
-          className={`text-slate-400 dark:text-slate-500 transition-transform duration-200 flex-shrink-0 ${isOpen ? "rotate-180" : ""
+          className={`${variant === "inline" ? "opacity-70" : "text-slate-400 dark:text-slate-500"} transition-transform duration-200 flex-shrink-0 ${isOpen ? "rotate-180" : ""
             }`}
         />
       </button>

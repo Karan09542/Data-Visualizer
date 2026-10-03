@@ -39,6 +39,7 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
     status, 
     reason, 
     rawText,
+    proxy,
     isMedia,
     mediaType,
     mediaUrl,
@@ -113,6 +114,13 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
           title: 'Network Timeout',
           icon: <Clock className="w-5 h-5 text-orange-500" />,
           colorTheme: 'from-orange-500/10 to-amber-500/5 border-orange-500/20 dark:border-orange-500/30'
+        };
+      case 'http-error':
+        return {
+          title: `Server answered ${status ?? ''}`.trim(),
+          icon: <ShieldAlert className="w-5 h-5 text-rose-500" />,
+          colorTheme: 'from-rose-500/10 to-orange-500/5 border-rose-500/20 dark:border-rose-500/30',
+          showPreview: true
         };
       case 'non-json':
         return {
@@ -305,7 +313,7 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
                   srcDoc={rawText}
                   className="w-full flex-1 border-0 rounded-md bg-white shadow-inner"
                   title="HTML Preview"
-                  sandbox="allow-same-origin"
+                  sandbox=""
                 />
               </div>
             ) : (
@@ -338,7 +346,7 @@ export default function SmartFetchErrorUI({ result, onRetry }: SmartFetchErrorUI
             <div className="flex justify-between border-b border-slate-200/20 dark:border-slate-800/30 pb-1">
               <span className="text-slate-550 dark:text-slate-500">Source:</span>
               <span className="font-semibold text-slate-800 dark:text-slate-300">
-                {source === 'fallback' ? 'Cloudflare Worker Proxy' : source === 'native' ? 'Native Browser Fetch' : 'Pre-flight check'}
+                {source === 'fallback' ? `Proxy${proxy ? ` (${proxy})` : ''}` : source === 'native' ? 'Direct browser request' : 'Pre-flight check'}
               </span>
             </div>
             <div className="flex justify-between border-b border-slate-200/20 dark:border-slate-800/30 pb-1">

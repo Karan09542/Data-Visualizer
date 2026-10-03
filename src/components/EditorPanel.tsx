@@ -1,5 +1,7 @@
 import { useStore } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
+import CustomSelect from "./CustomSelect";
+import MergeConfigDialog from "./MergeConfigDialog";
 import React, { useEffect, useRef, useState, Suspense } from "react";
 import { lazyWithRetry } from "../utils/lazyWithRetry";
 import {
@@ -8,9 +10,6 @@ import {
   Loader2,
   Globe,
   CheckCircle2,
-  AlertTriangle,
-  X,
-  Check,
   SlidersHorizontal,
   FolderOpen,
 } from "lucide-react";
@@ -18,7 +17,47 @@ import {
   smartJsonFetch,
   SmartFetchOptions,
   SmartFetchResult,
+  normalizeUrl,
+  proxyRoutesFromSettings,
 } from "../utils/smartJsonFetch";
+
+/** Each method's colour, as API tools usually show them: a dot on the picker and in its menu. */
+const METHOD_DOT: Record<string, string> = {
+  GET: "bg-emerald-400",
+  POST: "bg-amber-400",
+  PUT: "bg-sky-300",
+  PATCH: "bg-violet-400",
+  DELETE: "bg-rose-400",
+  HEAD: "bg-slate-300",
+  OPTIONS: "bg-slate-300",
+};
+
+const methodDot = (method: string) => (
+  <span className={`inline-block h-2 w-2 rounded-full ring-2 ring-white/25 ${METHOD_DOT[method]}`} />
+);
+
+const METHOD_OPTIONS = [
+  { value: "GET", label: "GET", description: "Read data" },
+  { value: "POST", label: "POST", description: "Send data, create something" },
+  { value: "PUT", label: "PUT", description: "Replace something" },
+  { value: "PATCH", label: "PATCH", description: "Change part of something" },
+  { value: "DELETE", label: "DELETE", description: "Remove something" },
+  { value: "HEAD", label: "HEAD", description: "Status and headers only" },
+  { value: "OPTIONS", label: "OPTIONS", description: "What the server allows" },
+].map((option) => ({ ...option, icon: methodDot(option.value) }));
+
+/** Methods whose request may carry a body. */
+const BODY_METHODS = ["POST", "PUT", "PATCH", "DELETE"];
+
+const FORMAT_LABEL: Record<string, string> = {
+  json: "JSON",
+  ndjson: "NDJSON as an array",
+  yaml: "YAML as JSON",
+  csv: "CSV as rows",
+  text: "text (in body)",
+  empty: "empty body",
+  head: "status and headers",
+};
 
 const SmartFetchErrorUI = lazyWithRetry(() => import("./SmartFetchErrorUI"), "SmartFetchErrorUI");
 const GuiEditorPanel = lazyWithRetry(() => import("./GuiEditorPanel"), "GuiEditorPanel");
@@ -45,6 +84,8 @@ export default function EditorPanel() {
   const activeTab = useStore((state) => state.activeTab);
   const setActiveTab = useStore((state) => state.setActiveTab);
   const resetApiConfig = useStore((state) => state.resetApiConfig);
+  const proxyServers = useStore((state) => state.proxyServers);
+  const useDefaultProxy = useStore((state) => state.useDefaultProxy);
   const isAIPaletteOpen = useStore((state) => state.isAIPaletteOpen);
   const setIsAIPaletteOpen = useStore((state) => state.setIsAIPaletteOpen);
   const editorRef = useRef<any>(null);
@@ -108,6 +149,17 @@ export default function EditorPanel() {
     if (!key || ["__proto__", "constructor", "prototype"].includes(key))
       return "fetched_data";
     return key;
+  }
+
+  /** The key a rename gives: key_2, key_3... the first not taken - as executeMerge picks it. */
+  function nextFreeKey(key: string) {
+    const taken =
+      parsedData !== null && typeof parsedData === "object" && !Array.isArray(parsedData)
+        ? (parsedData as Record<string, unknown>)
+        : {};
+    let counter = 2;
+    while (`${key}_${counter}` in taken) counter++;
+    return `${key}_${counter}`;
   }
 
   function checkCollision(key: string) {
@@ -348,18 +400,46 @@ export default function EditorPanel() {
   };
 
   const handleFetch = async () => {
-    if (!apiUrl) {
-      setApiError("URL is required");
+    if (isLoading) return;
+    const url = normalizeUrl(apiUrl);
+    if (!url) {
+      setApiError(apiUrl.trim() ? "That is not a valid http(s) URL." : "Enter a URL to fetch.");
+      setFetchResult(null);
+      return;
+    }
+    // Show what is actually requested: "api.x.com/a" becomes "https://api.x.com/a".
+    if (url !== apiUrl.trim()) setApiUrl(url);
+
+    const headers: Record<string, string> = {};
+    try {
+      const parsed = apiHeaders.trim() ? JSON.parse(apiHeaders) : {};
+      if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+        throw new Error("not an object");
+      }
+      for (const [name, value] of Object.entries(parsed)) {
+        if (value === undefined || value === null) continue;
+        headers[name] = typeof value === "string" ? value : JSON.stringify(value);
+      }
+    } catch {
+      setApiError('Headers must be a JSON object, e.g. { "Authorization": "Bearer <token>" }.');
       setFetchResult(null);
       return;
     }
 
-    if (apiUrl.startsWith("http://") || (apiUrl && !apiUrl.includes("://"))) {
-      setApiError(
-        "Secure Connection Required: To protect your data, only HTTPS sources are supported. Please use a secure (https://) URL.",
-      );
-      setFetchResult(null);
-      return;
+    const hasHeader = (name: string) =>
+      Object.keys(headers).some((h) => h.toLowerCase() === name.toLowerCase());
+    let body: string | undefined;
+    if (BODY_METHODS.includes(apiMethod) && apiBody.trim()) {
+      body = apiBody;
+      // A JSON body without a declared type would go out as text/plain, which most APIs reject.
+      if (!hasHeader("Content-Type")) {
+        try {
+          JSON.parse(apiBody);
+          headers["Content-Type"] = "application/json";
+        } catch {
+          headers["Content-Type"] = "text/plain;charset=UTF-8";
+        }
+      }
     }
 
     setIsLoading(true);
@@ -367,7 +447,7 @@ export default function EditorPanel() {
     setFetchResult(null);
     setFetchProgress({
       phase: "native-fetch",
-      message: "Attempting to fetch directly from the source API...",
+      message: `Requesting ${url}...`,
       usingFallback: false,
     });
 
@@ -375,31 +455,16 @@ export default function EditorPanel() {
     abortControllerRef.current = controller;
 
     try {
-      let headers = {};
-      try {
-        if (apiHeaders.trim()) {
-          headers = JSON.parse(apiHeaders);
-        }
-      } catch (e) {
-        throw new Error(
-          "Invalid JSON in Headers: Please check that your headers use standard double-quoted JSON formatting.",
-        );
-      }
-
       const options: SmartFetchOptions = {
         method: apiMethod,
         headers,
+        body,
         signal: controller.signal,
-        onProgress: (p) => {
-          setFetchProgress(p);
-        },
+        proxies: proxyRoutesFromSettings(proxyServers, useDefaultProxy),
+        onProgress: (p) => setFetchProgress(p),
       };
 
-      if (apiMethod !== "GET" && apiMethod !== "HEAD" && apiBody.trim()) {
-        options.body = apiBody;
-      }
-
-      const result = await smartJsonFetch(apiUrl, options);
+      const result = await smartJsonFetch(url, options);
       setFetchResult(result);
 
       if (result.success && result.data !== undefined) {
@@ -416,11 +481,8 @@ export default function EditorPanel() {
         } else {
           await executeMerge(result.data, appendData, null);
         }
-      } else {
-        setApiError(result.errorMessage);
       }
     } catch (e: any) {
-      setApiError(e.message || "Fetch failed");
       setFetchResult({
         success: false,
         data: null,
@@ -428,9 +490,9 @@ export default function EditorPanel() {
         source: null,
         phase: "initial",
         status: null,
-        reason: e.message,
+        reason: e?.message || String(e),
         errorType: "generic",
-        errorMessage: e.message || "Fetch failed",
+        errorMessage: e?.message || "The request failed.",
       });
     } finally {
       setIsLoading(false);
@@ -672,22 +734,26 @@ export default function EditorPanel() {
                 Request URL
               </label>
               <div className="flex rounded-md overflow-hidden border border-slate-300 dark:border-slate-700 shadow-sm focus-within:ring-1 focus-within:ring-blue-500 focus-within:border-blue-500">
-                <select
+                <CustomSelect
                   value={apiMethod}
-                  onChange={(e) => setApiMethod(e.target.value)}
-                  className="bg-slate-200 dark:bg-slate-800 border-r border-slate-300 dark:border-slate-700 px-3 py-2 text-sm font-medium outline-none text-blue-600 dark:text-blue-400"
-                >
-                  <option value="GET">GET</option>
-                  <option value="POST">POST</option>
-                  <option value="PUT">PUT</option>
-                  <option value="PATCH">PATCH</option>
-                  <option value="DELETE">DELETE</option>
-                </select>
+                  onChange={setApiMethod}
+                  options={METHOD_OPTIONS}
+                  variant="inline"
+                  className="shrink-0 w-[116px] border-r border-blue-700 bg-blue-600 text-white font-mono"
+                />
                 <input
                   type="text"
                   value={apiUrl}
                   onChange={(e) => setApiUrl(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      handleFetch();
+                    }
+                  }}
                   placeholder="https://api.example.com/data"
+                  spellCheck={false}
+                  autoComplete="off"
                   className="flex-1 bg-white dark:bg-[#0f172a] px-3 py-2 text-sm outline-none font-mono"
                 />
               </div>
@@ -733,7 +799,7 @@ export default function EditorPanel() {
               </div>
             </div>
 
-            {["POST", "PUT", "PATCH"].includes(apiMethod) && (
+            {BODY_METHODS.includes(apiMethod) && (
               <div className="flex flex-col gap-1 h-40">
                 <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                   Body Request
@@ -778,13 +844,41 @@ export default function EditorPanel() {
                     <Loader2 size={15} className="text-blue-500 animate-spin" />
                     <span className="text-xs font-semibold text-blue-600 dark:text-blue-400">
                       {fetchProgress.usingFallback
-                        ? "Securing Fallback Connection..."
-                        : "Connecting..."}
+                        ? "Retrying through a proxy..."
+                        : fetchProgress.phase === "json-parse"
+                          ? "Reading the response..."
+                          : "Connecting..."}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-normal">
                     {fetchProgress.message}
                   </p>
+                </div>
+              )}
+
+              {fetchResult && fetchResult.success && (
+                <div className="text-[11px] flex flex-wrap items-center gap-x-3 gap-y-1 px-3 py-2 rounded-lg border border-emerald-500/20 bg-emerald-500/5 text-emerald-700 dark:text-emerald-400 animate-in fade-in duration-200">
+                  <span className="flex items-center gap-1.5 font-semibold">
+                    <CheckCircle2 size={13} />
+                    {fetchResult.status} OK
+                  </span>
+                  {fetchResult.format && (
+                    <span className="text-slate-600 dark:text-slate-400">
+                      Loaded as {FORMAT_LABEL[fetchResult.format] || fetchResult.format}
+                    </span>
+                  )}
+                  {fetchResult.contentType && (
+                    <span className="font-mono text-slate-500 truncate max-w-[220px]" title={fetchResult.contentType}>
+                      {fetchResult.contentType.split(";")[0]}
+                    </span>
+                  )}
+                  <span className="text-slate-500">
+                    {fetchResult.source === "fallback"
+                      ? `via proxy ${fetchResult.proxy || ""}`.trim()
+                      : "direct"}
+                    {typeof fetchResult.durationMs === "number" ? ` · ${fetchResult.durationMs} ms` : ""}
+                    {fetchResult.rawText ? ` · ${(new Blob([fetchResult.rawText]).size / 1024).toFixed(1)} KB` : ""}
+                  </span>
                 </div>
               )}
 
@@ -813,17 +907,7 @@ export default function EditorPanel() {
                       <path d="M12 17h.01" />
                     </svg>
                   </div>
-                  <div>
-                    {apiError}
-                    <a
-                      href="https://developer.mozilla.org/en-US/docs/Web/Security/Mixed_content"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="block mt-1 font-bold underline hover:text-amber-700 dark:hover:text-amber-300 transition-colors"
-                    >
-                      Learn more about secure connections
-                    </a>
-                  </div>
+                  <div>{apiError}</div>
                 </div>
               )}
 
@@ -886,214 +970,28 @@ export default function EditorPanel() {
         )}
       </div>
 
-      {/* Merge Configuration Modal */}
-      {pendingMergeResult && (
-        <div className="absolute inset-0 z-50 bg-slate-900/40 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
-              <h3 className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-                Merge Configuration
-              </h3>
-              <button
-                onClick={() => setPendingMergeResult(null)}
-                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            <div className="p-5 flex flex-col gap-5 overflow-y-auto max-h-[70vh]">
-              <div className="flex flex-col gap-3">
-                <label className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
-                  Target Key Strategy
-                </label>
-
-                <div className="flex flex-col gap-2">
-                  <label
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${mergeStrategy === "default" ? "bg-blue-50/50 dark:bg-blue-900/10 border-blue-500/30" : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}
-                  >
-                    <input
-                      type="radio"
-                      name="mergeStrategy"
-                      checked={mergeStrategy === "default"}
-                      onChange={() => setMergeStrategy("default")}
-                      className="text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex flex-col flex-1">
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Default Key
-                      </span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                        "fetched_data"
-                      </span>
-                    </div>
-                  </label>
-
-                  <label
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${mergeStrategy === "url" ? "bg-blue-50/50 dark:bg-blue-900/10 border-blue-500/30" : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}
-                  >
-                    <input
-                      type="radio"
-                      name="mergeStrategy"
-                      checked={mergeStrategy === "url"}
-                      onChange={() => setMergeStrategy("url")}
-                      className="text-blue-600 focus:ring-blue-500"
-                    />
-                    <div className="flex flex-col flex-1">
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Generate from URL
-                      </span>
-                      <span className="text-xs text-slate-500 dark:text-slate-400 font-mono mt-0.5">
-                        "{generateUrlKey(apiUrl)}"
-                      </span>
-                    </div>
-                  </label>
-
-                  <label
-                    className={`flex flex-col gap-2 p-3 rounded-lg border cursor-pointer transition-colors ${mergeStrategy === "custom" ? "bg-blue-50/50 dark:bg-blue-900/10 border-blue-500/30" : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}
-                  >
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="radio"
-                        name="mergeStrategy"
-                        checked={mergeStrategy === "custom"}
-                        onChange={() => setMergeStrategy("custom")}
-                        className="text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Custom Key
-                      </span>
-                    </div>
-                    {mergeStrategy === "custom" && (
-                      <input
-                        type="text"
-                        value={customMergeKey}
-                        onChange={(e) => setCustomMergeKey(e.target.value)}
-                        placeholder="e.g. analytics_data"
-                        className="mt-1 ml-7 bg-white dark:bg-[#0d1117] border border-slate-300 dark:border-slate-700 px-3 py-1.5 rounded text-sm outline-none focus:border-blue-500 dark:focus:border-blue-500 font-mono"
-                      />
-                    )}
-                  </label>
-                </div>
-              </div>
-
-              {checkCollision(getActiveMergeKey()) && (
-                <div className="flex flex-col gap-3 pt-3 border-t border-slate-200 dark:border-slate-800 animate-in fade-in slide-in-from-top-2">
-                  <div className="flex gap-2 p-3 rounded-lg bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-amber-800 dark:text-amber-500">
-                    <AlertTriangle size={16} className="shrink-0 mt-0.5" />
-                    <div className="flex flex-col">
-                      <span className="text-sm font-semibold">
-                        Key Collision Detected
-                      </span>
-                      <span className="text-xs mt-0.5">
-                        The key "
-                        <span className="font-mono font-bold">
-                          {getActiveMergeKey()}
-                        </span>
-                        " already exists in your root structure. How would you
-                        like to handle this?
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 gap-2">
-                    <label
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${conflictAction === "replace" ? "bg-amber-50 dark:bg-amber-900/20 border-amber-300 dark:border-amber-500/40" : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}
-                    >
-                      <input
-                        type="radio"
-                        name="conflictAction"
-                        checked={conflictAction === "replace"}
-                        onChange={() => setConflictAction("replace")}
-                        className="text-amber-600 focus:ring-amber-500"
-                      />
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Replace existing data
-                      </span>
-                    </label>
-                    <label
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${conflictAction === "rename" ? "bg-blue-50/50 dark:bg-blue-900/10 border-blue-500/30" : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}
-                    >
-                      <input
-                        type="radio"
-                        name="conflictAction"
-                        checked={conflictAction === "rename"}
-                        onChange={() => setConflictAction("rename")}
-                        className="text-blue-600 focus:ring-blue-500"
-                      />
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Auto-rename (e.g. {getActiveMergeKey()}_2)
-                      </span>
-                    </label>
-                    <label
-                      className={`flex items-center gap-3 p-2.5 rounded-lg border cursor-pointer transition-colors ${conflictAction === "deep-merge" ? "bg-indigo-50 dark:bg-indigo-900/20 border-indigo-300 dark:border-indigo-500/40" : "border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-800/50"}`}
-                    >
-                      <input
-                        type="radio"
-                        name="conflictAction"
-                        checked={conflictAction === "deep-merge"}
-                        onChange={() => setConflictAction("deep-merge")}
-                        className="text-indigo-600 focus:ring-indigo-500"
-                      />
-                      <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-                        Deep merge (objects only)
-                      </span>
-                    </label>
-                  </div>
-                </div>
-              )}
-
-              <div className="flex flex-col gap-2 p-3 bg-slate-50 dark:bg-slate-800/30 rounded-lg border border-slate-200 dark:border-slate-800">
-                <span className="text-[10px] font-semibold uppercase tracking-widest text-slate-500">
-                  Live Preview
-                </span>
-                <div className="font-mono text-xs text-slate-700 dark:text-slate-300">
-                  <span className="text-slate-400 dark:text-slate-500">
-                    root.
-                  </span>
-                  <span
-                    className={
-                      checkCollision(getActiveMergeKey())
-                        ? conflictAction === "replace"
-                          ? "text-amber-600 dark:text-amber-400 font-bold"
-                          : conflictAction === "rename"
-                            ? "text-blue-600 dark:text-blue-400 font-bold"
-                            : "text-indigo-600 dark:text-indigo-400 font-bold"
-                        : "text-green-600 dark:text-green-400 font-bold"
-                    }
-                  >
-                    {checkCollision(getActiveMergeKey()) &&
-                      conflictAction === "rename"
-                      ? `${getActiveMergeKey()}_2`
-                      : getActiveMergeKey()}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="p-4 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-3 bg-slate-50 dark:bg-slate-900/50">
-              <button
-                onClick={() => setPendingMergeResult(null)}
-                className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() =>
-                  executeMerge(
-                    pendingMergeResult.data,
-                    true,
-                    getActiveMergeKey(),
-                  )
-                }
-                className="flex items-center gap-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-md text-sm font-medium transition-colors shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:focus:ring-offset-[#161b22]"
-              >
-                <Check size={16} /> Merge Data
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Where fetched data goes when added to the current document */}
+      {pendingMergeResult && (() => {
+        const activeKey = getActiveMergeKey();
+        return (
+          <MergeConfigDialog
+            data={pendingMergeResult.data}
+            urlKey={generateUrlKey(apiUrl)}
+            activeKey={activeKey}
+            renamedKey={nextFreeKey(activeKey)}
+            existing={checkCollision(activeKey) ? (parsedData as any)[activeKey] : undefined}
+            hasCollision={checkCollision(activeKey)}
+            strategy={mergeStrategy}
+            onStrategyChange={setMergeStrategy}
+            customKey={customMergeKey}
+            onCustomKeyChange={setCustomMergeKey}
+            conflictAction={conflictAction}
+            onConflictActionChange={setConflictAction}
+            onCancel={() => setPendingMergeResult(null)}
+            onConfirm={() => executeMerge(pendingMergeResult.data, true, activeKey)}
+          />
+        );
+      })()}
 
     </div>
   );

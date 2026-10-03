@@ -1,6 +1,18 @@
 /**
- * Reusable Smart JSON Fetching Helper with Automatic Cloudflare Worker Fallback
+ * Fetches a URL for the editor: directly when the browser allows it, through the user's proxies
+ * (then the default one) when it does not, and turns whatever comes back into data the editor
+ * can hold.
+ *
+ * - A proxy is only used when the direct request could not be made at all - blocked by CORS, a
+ *   network failure, or an http:// URL the https app may not call. A server's own answer, a 404
+ *   included, is reported as it is: asking again through a proxy would not change it, and would
+ *   send a POST twice.
+ * - JSON, NDJSON, YAML and CSV become data. HTML, XML and other text load as
+ *   { url, status, contentType, body }, so the editor still holds valid JSON. Images, video, audio
+ *   and PDFs are shown as a preview.
  */
+
+export type FetchFormat = 'json' | 'ndjson' | 'yaml' | 'csv' | 'text' | 'empty' | 'head';
 
 export interface SmartFetchResult {
   success: boolean;
@@ -10,7 +22,7 @@ export interface SmartFetchResult {
   phase: 'native-fetch' | 'fallback-fetch' | 'json-parse' | 'initial' | null;
   status: number | null;
   reason: string | null;
-  errorType: 'invalid-url' | 'cors-blocked' | 'invalid-json' | 'empty-response' | 'timeout' | 'non-json' | 'generic' | null;
+  errorType: 'invalid-url' | 'cors-blocked' | 'invalid-json' | 'empty-response' | 'timeout' | 'non-json' | 'http-error' | 'generic' | null;
   errorMessage: string;
   // Media Preview properties
   isMedia?: boolean;
@@ -18,10 +30,25 @@ export interface SmartFetchResult {
   mediaUrl?: string | null;
   contentType?: string | null;
   fileSize?: number;
+  /** What the body was read as. */
+  format?: FetchFormat;
+  /** The proxy the answer came through, when it did. */
+  proxy?: string;
+  /** The URL actually requested, after adding a missing https://. */
+  url?: string;
+  durationMs?: number;
+}
+
+/** A proxy to try: `base` followed by the target URL, encoded or as-is. */
+export interface ProxyRoute {
+  base: string;
+  encode: boolean;
 }
 
 export interface SmartFetchOptions extends RequestInit {
   timeout?: number;
+  /** Tried in order when the direct request is blocked. */
+  proxies?: ProxyRoute[];
   onProgress?: (progress: {
     phase: 'native-fetch' | 'fallback-fetch' | 'json-parse';
     message: string;
@@ -29,21 +56,46 @@ export interface SmartFetchOptions extends RequestInit {
   }) => void;
 }
 
+export const DEFAULT_PROXY = 'https://go.data-visualizer.workers.dev/?url=';
+
 /**
- * Validates whether a URL has a correct protocol and structure
+ * The proxies from the user's settings, in their order, then the default one when it is on.
+ * User proxies get the target appended as-is - the form the code nodes use and the Go server
+ * expects; the default proxy gets it encoded.
  */
-function isValidUrl(urlString: string): boolean {
+export function proxyRoutesFromSettings(
+  proxyServers: { url: string; isEnabled: boolean }[],
+  useDefaultProxy: boolean,
+): ProxyRoute[] {
+  const routes: ProxyRoute[] = proxyServers
+    .filter((p) => p.isEnabled && p.url.trim())
+    .map((p) => ({ base: p.url.trim(), encode: false }));
+  if (useDefaultProxy && !routes.some((r) => r.base === DEFAULT_PROXY)) {
+    routes.push({ base: DEFAULT_PROXY, encode: true });
+  }
+  return routes;
+}
+
+/** Adds https:// to a URL typed without a scheme; null when it is not an http(s) URL. */
+export function normalizeUrl(input: string): string | null {
+  let url = (input || '').trim();
+  if (!url) return null;
+  if (url.startsWith('//')) url = 'https:' + url;
+  else if (!/^[a-z][a-z0-9+.-]*:/i.test(url)) url = 'https://' + url;
   try {
-    const parsed = new URL(urlString);
-    return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+    const parsed = new URL(url);
+    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return null;
+    if (!parsed.hostname) return null;
+    parsed.hash = ''; // never sent; would also confuse a proxy given the URL raw
+    return parsed.toString();
   } catch {
-    return false;
+    return null;
   }
 }
 
 export function getMediaTypeFromMime(mime: string): 'image' | 'video' | 'audio' | 'pdf' | null {
   const m = mime.toLowerCase();
-  if (m.startsWith('image/')) return 'image';
+  if (m.startsWith('image/') && !m.startsWith('image/svg')) return 'image';
   if (m.startsWith('video/')) return 'video';
   if (m.startsWith('audio/')) return 'audio';
   if (m.startsWith('application/pdf') || m === 'pdf') return 'pdf';
@@ -53,389 +105,333 @@ export function getMediaTypeFromMime(mime: string): 'image' | 'video' | 'audio' 
 export function getMediaTypeFromUrl(url: string): 'image' | 'video' | 'audio' | 'pdf' | null {
   try {
     const pathname = new URL(url).pathname.toLowerCase();
-    if (/\.(png|jpe?g|gif|svg|webp|bmp|ico)$/i.test(pathname)) return 'image';
-    if (/\.(mp4|webm|ogg|mov)$/i.test(pathname)) return 'video';
-    if (/\.(mp3|wav|ogg|aac|m4a)$/i.test(pathname)) return 'audio';
+    if (/\.(png|jpe?g|gif|webp|bmp|ico|avif)$/i.test(pathname)) return 'image';
+    if (/\.(mp4|webm|mov|m4v)$/i.test(pathname)) return 'video';
+    if (/\.(mp3|wav|ogg|aac|m4a|flac|opus)$/i.test(pathname)) return 'audio';
     if (/\.(pdf)$/i.test(pathname)) return 'pdf';
   } catch {}
   return null;
 }
 
+const failure = (fields: Partial<SmartFetchResult> & Pick<SmartFetchResult, 'errorType' | 'errorMessage'>): SmartFetchResult => ({
+  success: false,
+  data: null,
+  rawText: '',
+  source: null,
+  phase: 'initial',
+  status: null,
+  reason: null,
+  ...fields,
+});
+
+/** Whether a failed request was blocked or never reached a server (rather than answered). */
+const isNetworkError = (err: any) => err && err.name === 'TypeError';
+
 /**
- * Smart JSON Fetcher: attempts browser direct fetch first, and falls back to
- * a Cloudflare Worker proxy if CORS limits, status failures, or network errors persist.
+ * A proxy's own refusal or failure, rather than the target's answer: worth trying the next one.
+ * The Go proxy marks these with X-Proxy-Error. For other proxies, only requests that are safe to
+ * repeat move on after a gateway-style status.
  */
+function isProxyFailure(response: Response, method: string): boolean {
+  if (response.headers.get('x-proxy-error')) return true;
+  const repeatable = ['GET', 'HEAD', 'OPTIONS'].includes(method);
+  return repeatable && [401, 403, 407, 429, 500, 502, 503, 504, 520, 521, 522, 523, 524].includes(response.status);
+}
+
 export async function smartJsonFetch(
   url: string,
   options: SmartFetchOptions = {}
 ): Promise<SmartFetchResult> {
-  const { timeout = 10000, onProgress, ...fetchOptions } = options;
+  const { timeout = 30000, onProgress, proxies = [], signal: parentSignal, ...fetchOptions } = options;
+  const method = (fetchOptions.method || 'GET').toUpperCase();
+  const started = performance.now();
 
-  // 1. Validate URL
-  if (!url || !url.trim()) {
-    return {
-      success: false,
-      data: null,
-      rawText: '',
-      source: null,
-      phase: 'initial',
-      status: null,
-      reason: 'Empty URL',
+  const target = normalizeUrl(url);
+  if (!target) {
+    return failure({
+      reason: url && url.trim() ? 'Malformed URL' : 'Empty URL',
       errorType: 'invalid-url',
-      errorMessage: 'Please enter a valid API URL.'
-    };
-  }
-
-  const trimmedUrl = url.trim();
-  if (!isValidUrl(trimmedUrl)) {
-    return {
-      success: false,
-      data: null,
-      rawText: '',
-      source: null,
-      phase: 'initial',
-      status: null,
-      reason: 'Malformed URL',
-      errorType: 'invalid-url',
-      errorMessage: 'Please enter a valid API URL.'
-    };
-  }
-
-  let nativeFetchError: any = null;
-  let responseText = '';
-  let responseStatus: number | null = null;
-  let success = false;
-  let responseData: any = null;
-  let fetchSource: 'native' | 'fallback' | null = null;
-  let currentPhase: 'native-fetch' | 'fallback-fetch' | 'json-parse' | 'initial' = 'initial';
-
-  // Helper helper to check for timeout abort
-  const createAbortController = () => {
-    const controller = new AbortController();
-    const id = setTimeout(() => controller.abort(), timeout);
-    return { controller, cleanup: () => clearTimeout(id) };
-  };
-
-  // 2. Try Native Browser Fetch
-  currentPhase = 'native-fetch';
-  if (onProgress) {
-    onProgress({
-      phase: 'native-fetch',
-      message: 'Attempting to fetch directly from the source API...',
-      usingFallback: false,
+      errorMessage: 'Please enter a valid http(s) URL, e.g. https://api.example.com/data',
     });
   }
 
-  const nativeAbort = createAbortController();
-  const onParentAbort = () => {
-    nativeAbort.controller.abort();
-  };
-  if (options.signal) {
-    options.signal.addEventListener('abort', onParentAbort);
-  }
-
-  try {
-    const nativeOptions: RequestInit = {
-      ...fetchOptions,
-      signal: nativeAbort.controller.signal,
-    };
-
-    const response = await fetch(trimmedUrl, nativeOptions);
-    responseStatus = response.status;
-
-    const contentType = response.headers.get('content-type') || '';
-    const mediaType = getMediaTypeFromMime(contentType) || getMediaTypeFromUrl(trimmedUrl);
-
-    if (mediaType) {
-      const blob = await response.blob();
-      const mediaUrl = URL.createObjectURL(blob);
-      nativeAbort.cleanup();
-      if (options.signal) {
-        options.signal.removeEventListener('abort', onParentAbort);
-      }
-      return {
-        success: false,
-        data: null,
-        rawText: `[Binary ${mediaType} content, Content-Type: ${contentType}, Size: ${blob.size} bytes]`,
-        source: 'native',
-        phase: 'native-fetch',
-        status: response.status,
-        reason: `Endpoint returned direct media of type ${mediaType}`,
-        errorType: 'non-json',
-        errorMessage: `This endpoint returned ${contentType || mediaType} content instead of JSON.`,
-        isMedia: true,
-        mediaType,
-        mediaUrl,
-        contentType,
-        fileSize: blob.size
-      };
-    }
-
-    responseText = await response.text();
-    nativeAbort.cleanup();
-    if (options.signal) {
-      options.signal.removeEventListener('abort', onParentAbort);
-    }
-
-    if (!response.ok) {
-      throw new Error(`HTTP Error Status: ${response.status}`);
-    }
-
-    // Attempt JSON Parse
-    currentPhase = 'json-parse';
-    if (onProgress) {
-      onProgress({
-        phase: 'json-parse',
-        message: 'Parsing and validating JSON response...',
-        usingFallback: false,
-      });
-    }
-
-    const parseResult = validateAndParseJson(responseText);
-    if (!parseResult.success) {
-      throw parseResult.error; // triggers fallback to see if proxy works or gives better endpoint result
-    }
-
-    responseData = parseResult.data;
-    success = true;
-    fetchSource = 'native';
-
-  } catch (err: any) {
-    nativeAbort.cleanup();
-    if (options.signal) {
-      options.signal.removeEventListener('abort', onParentAbort);
-    }
-    nativeFetchError = err;
-    
-    // Check for explicit timeout or user abort
-    if (err.name === 'AbortError') {
-      const isUserAborted = options.signal?.aborted;
-      return {
-        success: false,
-        data: null,
-        rawText: '',
-        source: 'native',
-        phase: 'native-fetch',
-        status: null,
-        reason: isUserAborted ? 'Aborted' : 'Request Timed Out',
-        errorType: isUserAborted ? 'generic' : 'timeout',
-        errorMessage: isUserAborted ? 'The request was cancelled by the user.' : 'The request took too long to respond.'
-      };
-    }
-  }
-
-  // 3. Fallback to Cloudflare Worker if native fails
-  if (!success) {
-    currentPhase = 'fallback-fetch';
-    if (onProgress) {
-      onProgress({
-        phase: 'fallback-fetch',
-        message: 'We couldn’t access this API directly. Retrying securely through our cloud fetch layer...',
-        usingFallback: true,
-      });
-    }
-
-    const fallbackUrl = `https://go.data-visualizer.workers.dev/?url=${encodeURIComponent(trimmedUrl)}`;
-    const fallbackAbort = createAbortController();
-    const onFallbackParentAbort = () => {
-      fallbackAbort.controller.abort();
-    };
-    if (options.signal) {
-      options.signal.addEventListener('abort', onFallbackParentAbort);
-    }
-
+  /** One request with its own timeout, cancelled with the caller's signal too. */
+  const attempt = async (requestUrl: string) => {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(new DOMException('Timed out', 'TimeoutError')), timeout);
+    const onParentAbort = () => controller.abort(parentSignal?.reason);
+    parentSignal?.addEventListener('abort', onParentAbort);
     try {
-      const fallbackOptions: RequestInit = {
-        ...fetchOptions,
-        // Cloudflare proxies typically expect simpler option handling
-        headers: {
-          ...fetchOptions.headers,
-          'Accept': 'application/json',
-        },
-        signal: fallbackAbort.controller.signal,
-      };
+      const response = await fetch(requestUrl, { ...fetchOptions, method, signal: controller.signal });
+      return { response, done: () => { clearTimeout(timer); parentSignal?.removeEventListener('abort', onParentAbort); } };
+    } catch (err) {
+      clearTimeout(timer);
+      parentSignal?.removeEventListener('abort', onParentAbort);
+      throw err;
+    }
+  };
 
-      const response = await fetch(fallbackUrl, fallbackOptions);
-      responseStatus = response.status;
+  const aborted = (err: any, source: 'native' | 'fallback'): SmartFetchResult | null => {
+    if (err?.name !== 'AbortError' && err?.name !== 'TimeoutError') return null;
+    const byUser = parentSignal?.aborted;
+    return failure({
+      source,
+      phase: source === 'native' ? 'native-fetch' : 'fallback-fetch',
+      reason: byUser ? 'Aborted' : 'Request Timed Out',
+      errorType: byUser ? 'generic' : 'timeout',
+      errorMessage: byUser
+        ? 'The request was cancelled.'
+        : `No answer within ${Math.round(timeout / 1000)} seconds.`,
+    });
+  };
 
-      const contentType = response.headers.get('content-type') || '';
-      const mediaType = getMediaTypeFromMime(contentType) || getMediaTypeFromUrl(trimmedUrl);
+  // An https page may not call http:// directly (mixed content): straight to the proxies.
+  const pageIsHttps = typeof location !== 'undefined' && location.protocol === 'https:';
+  const directBlocked = pageIsHttps && target.startsWith('http://');
+  let directError: any = null;
 
-      if (mediaType) {
-        const blob = await response.blob();
-        const mediaUrl = URL.createObjectURL(blob);
-        fallbackAbort.cleanup();
-        if (options.signal) {
-          options.signal.removeEventListener('abort', onFallbackParentAbort);
-        }
-        return {
-          success: false,
-          data: null,
-          rawText: `[Binary ${mediaType} content, Content-Type: ${contentType}, Size: ${blob.size} bytes]`,
-          source: 'fallback',
-          phase: 'fallback-fetch',
-          status: response.status,
-          reason: `Endpoint returned media of type ${mediaType} through fallback`,
-          errorType: 'non-json',
-          errorMessage: `This endpoint returned ${contentType || mediaType} content instead of JSON.`,
-          isMedia: true,
-          mediaType,
-          mediaUrl,
-          contentType,
-          fileSize: blob.size
-        };
+  if (!directBlocked) {
+    onProgress?.({ phase: 'native-fetch', message: `Requesting ${target} directly...`, usingFallback: false });
+    try {
+      const { response, done } = await attempt(target);
+      try {
+        return await readResponse(response, { target, method, source: 'native', started, onProgress });
+      } finally {
+        done();
       }
-
-      responseText = await response.text();
-      fallbackAbort.cleanup();
-      if (options.signal) {
-        options.signal.removeEventListener('abort', onFallbackParentAbort);
-      }
-
-      if (!response.ok) {
-        return {
-          success: false,
-          data: null,
-          rawText: responseText,
-          source: 'fallback',
-          phase: 'fallback-fetch',
-          status: response.status,
-          reason: `Proxy HTTP-${response.status}`,
-          errorType: 'cors-blocked',
-          errorMessage: 'This API blocked external access or is currently unavailable.'
-        };
-      }
-
-      // Try to parse JSON from the proxy's response
-      currentPhase = 'json-parse';
-      const parseResult = validateAndParseJson(responseText);
-      if (!parseResult.success) {
-        // Return structured non-JSON error
-        return {
-          success: false,
-          data: null,
-          rawText: responseText,
-          source: 'fallback',
-          phase: 'json-parse',
-          status: responseStatus,
-          reason: parseResult.reason,
-          errorType: parseResult.errorType,
-          errorMessage: parseResult.errorMessage
-        };
-      }
-
-      responseData = parseResult.data;
-      success = true;
-      fetchSource = 'fallback';
-
     } catch (err: any) {
-      fallbackAbort.cleanup();
-      if (options.signal) {
-        options.signal.removeEventListener('abort', onFallbackParentAbort);
+      const stopped = aborted(err, 'native');
+      if (stopped) return stopped;
+      if (!isNetworkError(err)) {
+        return failure({ source: 'native', phase: 'native-fetch', reason: err?.message || String(err), errorType: 'generic', errorMessage: err?.message || 'The request failed.' });
       }
-      
-      if (err.name === 'AbortError') {
-        const isUserAborted = options.signal?.aborted;
-        return {
-          success: false,
-          data: null,
-          rawText: '',
-          source: 'fallback',
-          phase: 'fallback-fetch',
-          status: null,
-          reason: isUserAborted ? 'Aborted' : 'Proxy Request Timed Out',
-          errorType: isUserAborted ? 'generic' : 'timeout',
-          errorMessage: isUserAborted ? 'The request was cancelled by the user.' : 'The request took too long to respond.'
-        };
-      }
-
-      // If native failed and proxy fell back and failed too, we reportblocked/unavailable
-      return {
-        success: false,
-        data: null,
-        rawText: '',
-        source: 'fallback',
-        phase: 'fallback-fetch',
-        status: responseStatus,
-        reason: err.message || 'CORS / Proxy Failure',
-        errorType: 'cors-blocked',
-        errorMessage: 'This API blocked external access or is currently unavailable.'
-      };
+      directError = err; // blocked by CORS or the network: try the proxies
     }
   }
 
-  // Double check success
-  if (success) {
+  if (proxies.length === 0) {
+    return failure({
+      source: 'native',
+      phase: 'native-fetch',
+      reason: directBlocked ? 'http:// from an https page' : directError?.message || 'Failed to fetch',
+      errorType: 'cors-blocked',
+      errorMessage: directBlocked
+        ? 'This page is served over https, so the browser does not allow requests to http:// URLs. Turn on a proxy in Proxy settings to reach it.'
+        : 'The browser blocked this request (CORS), or the server could not be reached. Turn on a proxy in Proxy settings to retry through it.',
+    });
+  }
+
+  let lastResult: SmartFetchResult | null = null;
+  let lastError: any = directError;
+  for (const proxy of proxies) {
+    const host = proxyLabel(proxy.base);
+    onProgress?.({
+      phase: 'fallback-fetch',
+      message: directBlocked
+        ? `http:// URLs go through a proxy. Requesting via ${host}...`
+        : `The browser blocked the direct request. Retrying via ${host}...`,
+      usingFallback: true,
+    });
+    try {
+      const { response, done } = await attempt(proxy.base + (proxy.encode ? encodeURIComponent(target) : target));
+      try {
+        if (isProxyFailure(response, method)) {
+          lastResult = await readResponse(response, { target, method, source: 'fallback', started, onProgress, proxy: host });
+          continue;
+        }
+        return await readResponse(response, { target, method, source: 'fallback', started, onProgress, proxy: host });
+      } finally {
+        done();
+      }
+    } catch (err: any) {
+      const stopped = aborted(err, 'fallback');
+      if (stopped && parentSignal?.aborted) return stopped;
+      lastError = err; // this proxy is down or refused us: the next one
+    }
+  }
+
+  if (lastResult) return lastResult;
+  return failure({
+    source: 'fallback',
+    phase: 'fallback-fetch',
+    reason: lastError?.message || 'All proxies failed',
+    errorType: 'cors-blocked',
+    errorMessage: `The request was blocked, and none of the ${proxies.length} prox${proxies.length === 1 ? 'y' : 'ies'} could reach it either. Check Proxy settings, or whether the server is up.`,
+  });
+}
+
+const proxyLabel = (base: string) => {
+  try {
+    return new URL(base).host;
+  } catch {
+    return base;
+  }
+};
+
+interface ReadContext {
+  target: string;
+  method: string;
+  source: 'native' | 'fallback';
+  started: number;
+  proxy?: string;
+  onProgress?: SmartFetchOptions['onProgress'];
+}
+
+const headersObject = (headers: Headers) => {
+  const out: Record<string, string> = {};
+  headers.forEach((value, key) => (out[key] = value));
+  return out;
+};
+
+/** Turns a response into a result: data in the best format the body allows. */
+async function readResponse(response: Response, ctx: ReadContext): Promise<SmartFetchResult> {
+  const contentType = response.headers.get('content-type') || '';
+  const phase = ctx.source === 'native' ? 'native-fetch' : 'fallback-fetch';
+  const base = {
+    source: ctx.source,
+    status: response.status,
+    contentType,
+    proxy: ctx.proxy,
+    url: ctx.target,
+  } as const;
+  const elapsed = () => Math.round(performance.now() - ctx.started);
+  const meta = () => ({ url: ctx.target, status: response.status, statusText: response.statusText, headers: headersObject(response.headers) });
+
+  // No body to read: the answer is its status and headers.
+  if (ctx.method === 'HEAD' || response.status === 204 || response.status === 205 || response.status === 304) {
     return {
-      success: true,
-      data: responseData,
-      rawText: responseText,
-      source: fetchSource,
-      phase: currentPhase,
-      status: responseStatus,
-      reason: null,
-      errorType: null,
-      errorMessage: ''
+      ...base, success: response.ok || response.status === 304, data: meta(), rawText: '', phase, reason: null,
+      errorType: response.ok || response.status === 304 ? null : 'http-error',
+      errorMessage: response.ok || response.status === 304 ? '' : `The server answered ${response.status} ${response.statusText}.`,
+      format: 'head', durationMs: elapsed(),
     };
   }
 
+  const mediaType = getMediaTypeFromMime(contentType) || (response.ok && !contentType ? getMediaTypeFromUrl(ctx.target) : null);
+  if (mediaType && response.ok) {
+    const blob = await response.blob();
+    return {
+      ...base, success: false, data: null, phase, durationMs: elapsed(),
+      rawText: `[Binary ${mediaType} content, Content-Type: ${contentType}, Size: ${blob.size} bytes]`,
+      reason: `Endpoint returned ${mediaType} content`,
+      errorType: 'non-json',
+      errorMessage: `This endpoint returned ${contentType || mediaType} content instead of data.`,
+      isMedia: true, mediaType, mediaUrl: URL.createObjectURL(blob), fileSize: blob.size,
+    };
+  }
+
+  if (/^(application\/(octet-stream|zip|gzip|x-tar|x-7z|vnd\.)|font\/)/i.test(contentType) && !/json|xml|csv|yaml/i.test(contentType)) {
+    const blob = await response.blob();
+    return {
+      ...base, success: false, data: null, phase, durationMs: elapsed(), fileSize: blob.size,
+      rawText: `[Binary content, Content-Type: ${contentType}, Size: ${blob.size} bytes]`,
+      reason: 'Binary response', errorType: 'non-json',
+      errorMessage: `This endpoint returned a binary file (${contentType}, ${blob.size} bytes), which cannot be loaded as data.`,
+    };
+  }
+
+  const text = await response.text();
+
+  if (!response.ok) {
+    return {
+      ...base, success: false, data: null, rawText: text, phase, durationMs: elapsed(),
+      reason: `HTTP ${response.status} ${response.statusText}`.trim(),
+      errorType: 'http-error',
+      errorMessage: `The server answered ${response.status}${response.statusText ? ` ${response.statusText}` : ''}${ctx.proxy ? ` (via ${ctx.proxy})` : ''}.`,
+    };
+  }
+
+  ctx.onProgress?.({ phase: 'json-parse', message: 'Reading the response...', usingFallback: ctx.source === 'fallback' });
+  const parsed = await parseBody(text, contentType, ctx.target);
+  if (!parsed.ok) {
+    const bad = parsed as Extract<Parsed, { ok: false }>;
+    return {
+      ...base, success: false, data: null, rawText: text, phase: 'json-parse', durationMs: elapsed(),
+      reason: bad.reason, errorType: bad.errorType, errorMessage: bad.message,
+    };
+  }
   return {
-    success: false,
-    data: null,
-    rawText: responseText,
-    source: fetchSource,
-    phase: currentPhase,
-    status: responseStatus,
-    reason: 'Fetch failed unexpectedly',
-    errorType: 'generic',
-    errorMessage: 'An unexpected connection issue occurred.'
+    ...base, success: true, data: parsed.format === 'text' || parsed.format === 'empty'
+      ? { ...meta(), body: text }
+      : parsed.data,
+    rawText: text, phase: 'json-parse', reason: null, errorType: null, errorMessage: '',
+    format: parsed.format, durationMs: elapsed(),
   };
 }
 
-/**
- * Validates string content, verifying if it is empty, matches HTML structures, or parses correctly.
- */
-function validateAndParseJson(text: string): {
-  success: boolean;
-  data?: any;
-  reason?: string;
-  error?: Error;
-  errorType?: 'empty-response' | 'non-json' | 'invalid-json';
-  errorMessage?: string;
-} {
-  const trimmed = text.trim();
-  if (!trimmed) {
-    return {
-      success: false,
-      reason: 'Empty body',
-      errorType: 'empty-response',
-      errorMessage: 'The API returned an empty response.'
-    };
+type Parsed =
+  | { ok: true; data: any; format: FetchFormat }
+  | { ok: false; reason: string; errorType: 'invalid-json'; message: string };
+
+/** Reads a body as the format its Content-Type, URL or content says it is. */
+async function parseBody(text: string, contentType: string, url: string): Promise<Parsed> {
+  // A BOM, and the anti-hijacking prefixes some APIs put before JSON.
+  const body = text.replace(/^﻿/, '').replace(/^\)\]\}',?\s*\n?/, '').replace(/^while\s*\(1\);\s*/, '');
+  const trimmed = body.trim();
+  const type = contentType.toLowerCase();
+  const path = (() => { try { return new URL(url).pathname.toLowerCase(); } catch { return ''; } })();
+
+  if (!trimmed) return { ok: true, data: null, format: 'empty' };
+
+  const declaredNdjson = /ndjson|jsonl|json-seq|jsonlines/.test(type) || /\.(ndjson|jsonl)$/.test(path);
+  const declaredJson = !declaredNdjson && (/[/+]json\b/.test(type) || /\.json$/.test(path));
+  const looksJson = /^[[{"]/.test(trimmed) || /^(-?\d|true$|false$|null$)/.test(trimmed);
+
+  if (declaredNdjson) {
+    const lines = parseNdjson(trimmed);
+    if (lines) return { ok: true, data: lines, format: 'ndjson' };
   }
 
-  // Detect HTML response body proxy errors or fallback errors
-  if (trimmed.startsWith('<!DOCTYPE html') || trimmed.toLowerCase().startsWith('<html') || trimmed.startsWith('<div')) {
-    return {
-      success: false,
-      reason: 'HTML content instead of JSON',
-      errorType: 'non-json',
-      errorMessage: 'This endpoint returned HTML or unsupported content instead of JSON.'
-    };
+  if (declaredJson || looksJson) {
+    try {
+      return { ok: true, data: JSON.parse(trimmed), format: 'json' };
+    } catch (err: any) {
+      const lines = parseNdjson(trimmed);
+      if (lines) return { ok: true, data: lines, format: 'ndjson' };
+      if (declaredJson) {
+        return { ok: false, reason: err?.message || 'JSON parsing failed', errorType: 'invalid-json', message: 'The server said this is JSON, but it is not valid JSON.' };
+      }
+      // Looked like JSON but is something else (text starting with "{"): falls through to text.
+    }
   }
 
-  try {
-    const data = JSON.parse(trimmed);
-    return {
-      success: true,
-      data,
-    };
-  } catch (err: any) {
-    return {
-      success: false,
-      error: err,
-      reason: err.message || 'JSON parsing failed',
-      errorType: 'invalid-json',
-      errorMessage: 'This endpoint did not return valid JSON data.'
-    };
+  if (/yaml|yml/.test(type) || /\.(ya?ml)$/.test(path)) {
+    try {
+      const yaml = (await import('js-yaml')).default;
+      const data = yaml.load(trimmed);
+      if (data !== undefined && typeof data === 'object') return { ok: true, data, format: 'yaml' };
+    } catch {
+      // Not valid YAML after all: kept as text.
+    }
   }
+
+  if (/text\/csv|text\/tab-separated|application\/csv/.test(type) || /\.(csv|tsv)$/.test(path)) {
+    try {
+      const Papa = (await import('papaparse')).default;
+      const result = Papa.parse(trimmed, { header: true, dynamicTyping: true, skipEmptyLines: true });
+      if (Array.isArray(result.data) && result.data.length > 0 && (result.meta.fields?.length ?? 0) > 0) {
+        return { ok: true, data: result.data, format: 'csv' };
+      }
+    } catch {
+      // Kept as text.
+    }
+  }
+
+  // HTML, XML, plain text and anything else readable.
+  return { ok: true, data: null, format: 'text' };
+}
+
+/** Newline-delimited JSON: every non-empty line a JSON value. Null when it is not. */
+function parseNdjson(text: string): any[] | null {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+  if (lines.length < 2) return null;
+  const out: any[] = [];
+  for (const line of lines) {
+    try {
+      out.push(JSON.parse(line));
+    } catch {
+      return null;
+    }
+  }
+  return out;
 }

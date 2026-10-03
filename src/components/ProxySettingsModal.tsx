@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore, ProxyServer } from '../store/useStore';
-import { X, Plus, Trash2, Check, ArrowUp, ArrowDown, Shield } from 'lucide-react';
+import { X, Plus, Trash2, Check, ArrowUp, ArrowDown, Shield, Pencil } from 'lucide-react';
 import { createPortal } from 'react-dom';
 
 const checkbox = (checked: boolean) =>
@@ -21,6 +21,9 @@ export function ProxySettingsModal() {
   const useDefaultProxy = useStore((state) => state.useDefaultProxy);
   const setUseDefaultProxy = useStore((state) => state.setUseDefaultProxy);
   const [newUrl, setNewUrl] = useState("");
+  // The proxy whose address is being edited, and the text in its box.
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editingUrl, setEditingUrl] = useState("");
 
   if (!isProxyModalOpen) return null;
 
@@ -37,19 +40,34 @@ export function ProxySettingsModal() {
 
   const handleToggle = (index: number, e: React.MouseEvent) => {
     const isShift = e.shiftKey;
-    const newServers = [...proxyServers];
+    setProxyServers(
+      proxyServers.map((p, i) =>
+        isShift
+          ? // Enable all proxies from top (0) to this index
+            i <= index ? { ...p, isEnabled: true } : p
+          : // Toggle just this one
+            i === index ? { ...p, isEnabled: !p.isEnabled } : p,
+      ),
+    );
+  };
 
-    if (isShift) {
-      // Enable all proxies from top (0) to this index
-      for (let i = 0; i <= index; i++) {
-        newServers[i].isEnabled = true;
-      }
-    } else {
-      // Toggle just this one
-      newServers[index].isEnabled = !newServers[index].isEnabled;
+  const startEdit = (proxy: ProxyServer) => {
+    setEditingId(proxy.id);
+    setEditingUrl(proxy.url);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditingUrl("");
+  };
+
+  const saveEdit = () => {
+    const url = editingUrl.trim();
+    // An emptied box is not a change: delete is its own button.
+    if (editingId && url) {
+      setProxyServers(proxyServers.map((p) => (p.id === editingId ? { ...p, url } : p)));
     }
-
-    setProxyServers(newServers);
+    cancelEdit();
   };
 
   const handleRemove = (id: string) => {
@@ -183,12 +201,57 @@ export function ProxySettingsModal() {
                   </button>
 
                   <div className="flex-1 min-w-0">
-                    <div className={`text-[13px] truncate font-mono ${proxy.isEnabled ? "text-[var(--vsc-fg,#3b3b3b)]" : "text-[var(--vsc-fg-muted,#616161)] line-through"}`} title={proxy.url}>
-                      {proxy.url}
-                    </div>
+                    {editingId === proxy.id ? (
+                      <input
+                        autoFocus
+                        type="text"
+                        value={editingUrl}
+                        onChange={(e) => setEditingUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') saveEdit();
+                          else if (e.key === 'Escape') {
+                            // Esc leaves the edit, not the whole dialog.
+                            e.stopPropagation();
+                            cancelEdit();
+                          }
+                        }}
+                        onFocus={(e) => e.currentTarget.select()}
+                        spellCheck={false}
+                        className="w-full min-w-0 bg-[var(--vsc-input,#ffffff)] border border-[var(--vsc-accent,#005fb8)] rounded-[3px] px-1.5 py-0.5 text-[13px] font-mono text-[var(--vsc-fg,#3b3b3b)] focus:outline-none focus:ring-1 focus:ring-[var(--vsc-accent,#005fb8)]"
+                      />
+                    ) : (
+                      <div
+                        onDoubleClick={() => startEdit(proxy)}
+                        className={`text-[13px] truncate font-mono cursor-text ${proxy.isEnabled ? "text-[var(--vsc-fg,#3b3b3b)]" : "text-[var(--vsc-fg-muted,#616161)] line-through"}`}
+                        title={`${proxy.url}
+(double-click to edit)`}
+                      >
+                        {proxy.url}
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-0.5 shrink-0">
+                    {editingId === proxy.id ? (
+                      <>
+                        <button
+                          onClick={saveEdit}
+                          disabled={!editingUrl.trim()}
+                          className={iconBtn}
+                          title="Save (Enter)"
+                        >
+                          <Check size={14} />
+                        </button>
+                        <button onClick={cancelEdit} className={iconBtn} title="Cancel (Esc)">
+                          <X size={14} />
+                        </button>
+                        <div className="w-px h-4 bg-[var(--vsc-border,#e5e5e5)] mx-1"></div>
+                      </>
+                    ) : (
+                      <button onClick={() => startEdit(proxy)} className={iconBtn} title="Edit address">
+                        <Pencil size={13} />
+                      </button>
+                    )}
                     <button
                       onClick={() => moveProxy(index, 'up')}
                       disabled={index === 0}

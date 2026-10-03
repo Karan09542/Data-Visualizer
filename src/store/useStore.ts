@@ -1621,6 +1621,9 @@ export const useStore = create<StoreState>()(
           "stickyNotesEnabled",
           // Resized nodes keep their size; their saved positions already allow for it.
           "nodeSizes",
+          // Proxy settings are the user's own setup, not session state.
+          "proxyServers",
+          "useDefaultProxy",
         ];
         const persistedEntries = Object.fromEntries(
           Object.entries(state).filter(([key]) => persistedKeys.includes(key)),
