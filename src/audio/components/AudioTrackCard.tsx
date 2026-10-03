@@ -72,16 +72,16 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
 
   return (
     <div
-      className={`group flex min-h-[68px] cursor-pointer items-center gap-3 rounded-xl border p-2.5 transition-all ${
+      className={`group flex min-h-[64px] cursor-pointer items-center gap-3 rounded-2xl border p-2 transition-colors ${
         isCurrentTrack
-          ? "border-cyan-500 bg-cyan-50/90 shadow-md shadow-cyan-500/10 ring-1 ring-cyan-400/30 dark:border-cyan-300/35 dark:bg-cyan-300/10 dark:shadow-[0_0_0_1px_rgba(34,211,238,0.08),0_18px_40px_-26px_rgba(34,211,238,0.55)] dark:ring-0"
-          : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/90 dark:border-white/10 dark:bg-white/[0.035] dark:hover:border-white/15 dark:hover:bg-white/[0.06] shadow-sm dark:shadow-none"
+          ? "border-(--ap-accent-line) bg-(--ap-accent-soft)"
+          : "border-transparent hover:bg-(--ap-hover)"
       }`}
       onClick={handlePlayClick}
     >
       {isQueueItem && (
         <div
-          className="flex h-9 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-slate-500 transition-colors hover:bg-white/5 hover:text-slate-200 active:cursor-grabbing"
+          className="flex h-9 w-7 shrink-0 cursor-grab items-center justify-center rounded-md text-(--ap-muted) transition-colors hover:bg-(--ap-hover) hover:text-(--ap-ink) active:cursor-grabbing"
           onClick={(e) => e.stopPropagation()}
         >
           <GripVertical size={16} />
@@ -89,9 +89,7 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
       )}
 
       <div
-        className={`relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-lg bg-slate-100 text-slate-400 dark:bg-[#121824] ${
-          isCurrentTrack ? "ring-2 ring-cyan-300/35" : ""
-        }`}
+        className="relative flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-(--ap-chip)"
       >
         {track.thumbnail ? (
           <img
@@ -100,10 +98,10 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
             className="h-full w-full object-cover opacity-90 transition-opacity group-hover:opacity-100"
           />
         ) : (
-          <Music size={20} className="text-cyan-600/70 dark:text-cyan-200/70" />
+          <Music size={20} className="text-(--ap-accent)" />
         )}
         <div
-          className={`absolute inset-0 flex items-center justify-center bg-black/45 transition-opacity ${
+          className={`absolute inset-0 flex items-center justify-center bg-black/40 transition-opacity ${
             isCurrentTrack ? "opacity-100" : "opacity-0 group-hover:opacity-100"
           }`}
         >
@@ -116,36 +114,29 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
       </div>
 
       <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <h4
-            className={`truncate text-sm font-semibold ${
-              isCurrentTrack ? "text-cyan-900 dark:text-cyan-100" : "text-slate-900 dark:text-slate-100"
-            }`}
-          >
-            {track.title}
-          </h4>
-          {isCurrentTrack && (
-            <span className="hidden rounded bg-cyan-100 dark:bg-cyan-300/10 px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-cyan-800 dark:text-cyan-200 sm:inline">
-              Live
-            </span>
-          )}
-        </div>
-        <p className="mt-1 truncate text-xs font-medium text-slate-500 dark:text-slate-400">
+        <h4
+          className={`truncate text-sm font-semibold ${
+            isCurrentTrack ? "text-(--ap-accent-strong)" : "text-(--ap-ink)"
+          }`}
+        >
+          {track.title}
+        </h4>
+        <p className="mt-0.5 truncate text-xs text-(--ap-muted)">
           {metaLabel}
         </p>
       </div>
 
-      <span className="hidden shrink-0 text-xs font-bold tabular-nums text-slate-500 sm:block">
+      <span className="hidden shrink-0 text-xs font-medium tabular-nums text-(--ap-muted) sm:block">
         {durationLabel}
       </span>
 
       {!isQueueItem && (
         <button
           onClick={handleAddToQueue}
-          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border transition-all sm:opacity-0 sm:group-hover:opacity-100 ${
+          className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-full transition-all sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 ${
             added
-              ? "border-emerald-400 bg-emerald-50 text-emerald-600 sm:opacity-100 dark:border-emerald-300/30 dark:bg-emerald-300/10 dark:text-emerald-200"
-              : "border-transparent text-slate-400 hover:border-cyan-500/30 hover:bg-cyan-50 hover:text-cyan-700 dark:hover:border-cyan-300/20 dark:hover:bg-cyan-300/10 dark:hover:text-cyan-200"
+              ? "bg-(--ap-accent-soft) text-(--ap-accent) sm:opacity-100"
+              : "text-(--ap-muted) hover:bg-(--ap-hover) hover:text-(--ap-ink)"
           }`}
           title="Add to Queue"
         >
@@ -156,7 +147,7 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
       {isQueueItem && (
         <button
           onClick={handleRemoveFromQueue}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-transparent text-slate-500 transition-all hover:border-red-400 hover:bg-red-50 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 dark:hover:border-red-300/20 dark:hover:bg-red-400/10 dark:hover:text-red-300"
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-(--ap-muted) transition-all hover:bg-red-500/10 hover:text-red-600 sm:opacity-0 sm:group-hover:opacity-100 sm:focus-visible:opacity-100 dark:hover:text-red-300"
           title="Remove from Queue"
         >
           <Trash2 size={17} />
@@ -165,9 +156,9 @@ export const AudioTrackCard: React.FC<AudioTrackCardProps> = ({
 
       {isCurrentTrack && isPlaying && !isQueueItem && (
         <div className="hidden h-5 shrink-0 items-end gap-1 px-1 sm:flex">
-          <div className="h-full w-1 rounded-full bg-cyan-400 dark:bg-cyan-300 animate-[bounce_1s_infinite]" />
-          <div className="h-3/5 w-1 rounded-full bg-emerald-400 dark:bg-emerald-300 animate-[bounce_1.2s_infinite]" />
-          <div className="h-4/5 w-1 rounded-full bg-amber-400 dark:bg-amber-200 animate-[bounce_0.8s_infinite]" />
+          <div className="h-full w-1 rounded-full bg-(--ap-accent) animate-[bounce_1s_infinite]" />
+          <div className="h-3/5 w-1 rounded-full bg-(--ap-accent) animate-[bounce_1.2s_infinite]" />
+          <div className="h-4/5 w-1 rounded-full bg-(--ap-accent) animate-[bounce_0.8s_infinite]" />
         </div>
       )}
     </div>

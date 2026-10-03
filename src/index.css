@@ -7388,3 +7388,131 @@ body.sticky-previewing-selection [contenteditable] *::selection,
   color: inherit !important;
   text-shadow: none !important;
 }
+/* Audio player: a calm sage palette, scoped to the player so the rest of the app keeps its own. */
+.audio-player {
+  --ap-bg: #f6f5ef;
+  --ap-surface: #fbfaf6;
+  --ap-stage: #e8ecdc;
+  --ap-ink: #3a2e28;
+  --ap-muted: #8b8579;
+  --ap-line: rgb(58 46 40 / 0.08);
+  --ap-chip: rgb(58 46 40 / 0.05);
+  --ap-hover: rgb(58 46 40 / 0.04);
+  --ap-track: rgb(58 46 40 / 0.12);
+  --ap-accent: #7c8f55;
+  --ap-accent-strong: #5f7039;
+  --ap-accent-soft: rgb(124 143 85 / 0.12);
+  --ap-accent-line: rgb(124 143 85 / 0.35);
+  --ap-ring-1: rgb(124 143 85 / 0.06);
+  --ap-ring-2: rgb(124 143 85 / 0.09);
+  --ap-ring-3: rgb(124 143 85 / 0.13);
+  --ap-ring-4: rgb(124 143 85 / 0.2);
+  --ap-button: #ffffff;
+  --ap-on-button: #7c8f55;
+  --ap-button-shadow: 0 14px 34px -12px rgb(95 112 57 / 0.55);
+}
+
+.dark .audio-player {
+  --ap-bg: #0e100d;
+  --ap-surface: #131611;
+  --ap-stage: #1b2116;
+  --ap-ink: #f2f1ea;
+  --ap-muted: rgb(242 241 234 / 0.5);
+  --ap-line: rgb(255 255 255 / 0.08);
+  --ap-chip: rgb(255 255 255 / 0.06);
+  --ap-hover: rgb(255 255 255 / 0.04);
+  --ap-track: rgb(255 255 255 / 0.12);
+  --ap-accent: #a9bb7f;
+  --ap-accent-strong: #c3d39d;
+  --ap-accent-soft: rgb(169 187 127 / 0.12);
+  --ap-accent-line: rgb(169 187 127 / 0.3);
+  --ap-ring-1: rgb(169 187 127 / 0.04);
+  --ap-ring-2: rgb(169 187 127 / 0.06);
+  --ap-ring-3: rgb(169 187 127 / 0.09);
+  --ap-ring-4: rgb(169 187 127 / 0.14);
+  --ap-button: #f2f1ea;
+  --ap-on-button: #3d4a26;
+  --ap-button-shadow: 0 14px 34px -12px rgb(0 0 0 / 0.7);
+}
+
+.audio-player .ap-stage {
+  background: radial-gradient(120% 70% at 50% 0%, var(--ap-stage), transparent 70%);
+}
+
+/* Thin seek and volume bars. --ap-fill is set inline to the filled percentage. */
+.ap-range {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 20px;
+  background: transparent;
+  cursor: pointer;
+  outline: none;
+}
+.ap-range:disabled {
+  cursor: default;
+}
+.ap-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 999px;
+  background: linear-gradient(to right, var(--ap-accent) var(--ap-fill, 0%), var(--ap-track) var(--ap-fill, 0%));
+}
+.ap-range::-moz-range-track {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ap-track);
+}
+.ap-range::-moz-range-progress {
+  height: 4px;
+  border-radius: 999px;
+  background: var(--ap-accent);
+}
+.ap-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 14px;
+  height: 14px;
+  margin-top: -5px;
+  border-radius: 50%;
+  border: 3px solid var(--ap-accent);
+  background: var(--ap-button);
+  transition: transform 150ms ease;
+}
+.ap-range::-moz-range-thumb {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 3px solid var(--ap-accent);
+  background: var(--ap-button);
+  transition: transform 150ms ease;
+}
+.ap-range:hover::-webkit-slider-thumb,
+.ap-range:focus-visible::-webkit-slider-thumb {
+  transform: scale(1.25);
+}
+.ap-range:hover::-moz-range-thumb,
+.ap-range:focus-visible::-moz-range-thumb {
+  transform: scale(1.25);
+}
+.ap-range:disabled::-webkit-slider-thumb {
+  opacity: 0;
+}
+.ap-range:disabled::-moz-range-thumb {
+  opacity: 0;
+}
+.ap-range:focus-visible::-webkit-slider-runnable-track {
+  box-shadow: 0 0 0 3px var(--ap-accent-soft);
+}
+
+/* The rings around the play button breathe slowly while audio plays */
+@keyframes ap-breathe {
+  0%, 100% { transform: scale(1); }
+  50% { transform: scale(1.04); }
+}
+.ap-breathe {
+  animation: ap-breathe 4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .ap-breathe {
+    animation: none;
+  }
+}

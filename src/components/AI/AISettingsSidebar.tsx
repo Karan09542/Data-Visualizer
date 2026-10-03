@@ -51,11 +51,11 @@ export default function AISettingsSidebar() {
 
       {/* Panel */}
       <div
-        className={`fixed top-0 right-0 bottom-0 z-[10010] transform transition-transform duration-300 ease-out flex flex-col shadow-2xl border-l backdrop-blur-2xl ${
-          isDark 
-            ? 'bg-black/70 border-neutral-800 text-white' 
+        className={`fixed top-0 right-0 bottom-0 z-[10010] transform transition-transform duration-300 ease-out flex flex-col border-l backdrop-blur-2xl ${
+          isDark
+            ? 'bg-black/70 border-neutral-800 text-white'
             : 'bg-white/80 border-neutral-200 text-black'
-        } ${isAISettingsPanelOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        } ${isAISettingsPanelOpen ? 'translate-x-0 shadow-2xl' : 'translate-x-full'}`}
         style={{ width: windowWidth < 640 ? '100%' : `${panelWidth}px` }}
       >
         {/* Resize Handle */}

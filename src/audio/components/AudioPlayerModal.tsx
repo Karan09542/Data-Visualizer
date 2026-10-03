@@ -5,8 +5,10 @@ import {
   ListMusic,
   Disc3,
   Layers,
-  ChevronLeft,
+  ChevronDown,
   Loader2,
+  Play,
+  Pause,
 } from "lucide-react";
 import { useAudioStore } from "../stores/audioStore";
 import { useAudioLibrary } from "../hooks/useAudioLibrary";
@@ -20,22 +22,23 @@ const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   year: "numeric",
 });
 
-const SURFACE = "bg-white dark:bg-[#0f1116]";
-const PANEL = "bg-slate-50 dark:bg-[#0b0d12]";
-const HAIRLINE = "border-black/8 dark:border-white/10";
+/** Inset of each ring around the play button, outermost first, as a percentage of the stage */
+const RINGS = [0, 10, 20];
+
+const ROUND_BUTTON =
+  "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-(--ap-muted) transition-colors hover:bg-(--ap-hover) hover:text-(--ap-ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line)";
 
 const TAB_BASE =
-  "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg text-[13px] font-semibold transition-colors";
-const TAB_ACTIVE = "bg-white text-slate-900 shadow-sm dark:bg-white/14 dark:text-white";
-const TAB_IDLE =
-  "text-slate-500 hover:text-slate-800 dark:text-white/50 dark:hover:text-white/80";
+  "flex h-9 flex-1 items-center justify-center gap-1.5 rounded-full text-[13px] font-semibold transition-colors";
+const TAB_ACTIVE = "bg-(--ap-surface) text-(--ap-ink) shadow-sm dark:bg-white/10";
+const TAB_IDLE = "text-(--ap-muted) hover:text-(--ap-ink)";
 
 const AudioPlayerModal: React.FC = () => {
   const isPlayerOpen = useAudioStore((state) => state.isPlayerOpen);
   const togglePlayer = useAudioStore((state) => state.togglePlayer);
   const queue = useAudioStore((state) => state.queue);
   const queueIndex = useAudioStore((state) => state.queueIndex);
-  const { currentTrack, isPlaying } = useAudioPlayer();
+  const { currentTrack, isPlaying, togglePlay, playQueue } = useAudioPlayer();
   const { tracks, isLoading, searchQuery, setSearchQuery, refreshLibrary } =
     useAudioLibrary();
 
@@ -47,12 +50,29 @@ const AudioPlayerModal: React.FC = () => {
   const libraryCount = tracks.length;
   const queueCount = queue.length;
   const currentPosition = queueIndex >= 0 ? queueIndex + 1 : 0;
+  const nextTrack = queueIndex >= 0 ? queue[queueIndex + 1] : undefined;
 
-  /** One quiet line instead of a row of competing badges */
-  const trackMeta = [
-    currentPosition ? `${currentPosition} of ${queueCount}` : queueCount ? `${queueCount} queued` : null,
-    currentTrack?.createdAt ? `Added ${DATE_FORMAT.format(currentTrack.createdAt)}` : null,
-  ].filter(Boolean).join("  ·  ");
+  const headerMeta = currentPosition
+    ? `Track ${currentPosition} of ${queueCount}`
+    : `${libraryCount} ${libraryCount === 1 ? "track" : "tracks"} in library`;
+
+  const artistLine = currentTrack
+    ? [
+        currentTrack.artist || "Workspace audio",
+        currentTrack.createdAt ? `Added ${DATE_FORMAT.format(currentTrack.createdAt)}` : null,
+      ].filter(Boolean).join("  ·  ")
+    : "Choose a track from your library to start";
+
+  /** With nothing loaded yet, the big button starts the library from the top */
+  const handlePlayButton = () => {
+    if (!currentTrack && tracks.length > 0) playQueue(tracks, 0);
+    else togglePlay();
+  };
+
+  const openSheet = (tab: "library" | "queue") => {
+    setActiveTab(tab);
+    setIsMobileLibraryOpen(true);
+  };
 
   const handleDragStart = (e: React.DragEvent, index: number) => {
     setDraggedItemIndex(index);
@@ -92,7 +112,7 @@ const AudioPlayerModal: React.FC = () => {
     }
   }, [isPlayerOpen]);
 
-  // Escape closes the player, the same as the button in the corner
+  // Escape closes the sheet first, then the player
   useEffect(() => {
     if (!isPlayerOpen) return;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -108,35 +128,31 @@ const AudioPlayerModal: React.FC = () => {
 
   const emptyState = (icon: React.ReactNode, title: string, detail: string) => (
     <div className="flex h-full min-h-[240px] flex-col items-center justify-center px-6 text-center">
-      <div className={`flex h-14 w-14 items-center justify-center rounded-2xl border ${HAIRLINE} bg-black/[0.03] text-slate-400 dark:bg-white/5 dark:text-white/30`}>
+      <div className="flex h-14 w-14 items-center justify-center rounded-full bg-(--ap-accent-soft) text-(--ap-accent)">
         {icon}
       </div>
-      <p className="mt-4 text-sm font-semibold text-slate-800 dark:text-white/90">{title}</p>
-      <p className="mt-1 max-w-xs text-[13px] leading-relaxed text-slate-500 dark:text-white/40">
-        {detail}
-      </p>
+      <p className="mt-4 text-sm font-semibold text-(--ap-ink)">{title}</p>
+      <p className="mt-1 max-w-xs text-[13px] leading-relaxed text-(--ap-muted)">{detail}</p>
     </div>
   );
 
   const trackList = (
-    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto p-3 sm:p-4">
+    <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-3 pb-[max(env(safe-area-inset-bottom),12px)] pt-2 sm:px-4">
       {activeTab === "library" ? (
         isLoading ? (
           <div className="flex h-full min-h-[240px] flex-col items-center justify-center gap-3">
-            <Loader2 className="h-6 w-6 animate-spin text-cyan-500 dark:text-cyan-300" />
-            <p className="text-[13px] font-medium text-slate-500 dark:text-white/50">
-              Scanning your workspace…
-            </p>
+            <Loader2 className="h-6 w-6 animate-spin text-(--ap-accent)" />
+            <p className="text-[13px] font-medium text-(--ap-muted)">Scanning your workspace…</p>
           </div>
         ) : tracks.length > 0 ? (
-          <div className="flex flex-col gap-2">
+          <div className="flex flex-col gap-1">
             {tracks.map((track, idx) => (
               <AudioTrackCard key={track.id} track={track} index={idx} contextTracks={tracks} />
             ))}
           </div>
         ) : (
           emptyState(
-            <Disc3 className="h-7 w-7" />,
+            <Disc3 className="h-6 w-6" />,
             searchQuery ? "Nothing matches that search" : "No audio found",
             searchQuery
               ? "Try a different word, or clear the search."
@@ -144,7 +160,7 @@ const AudioPlayerModal: React.FC = () => {
           )
         )
       ) : queue.length > 0 ? (
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-1">
           {queue.map((track, idx) => (
             <div
               key={`${track.id}-${idx}`}
@@ -154,11 +170,11 @@ const AudioPlayerModal: React.FC = () => {
               onDragLeave={handleDragLeave}
               onDrop={(e) => handleDrop(e, idx)}
               onDragEnd={handleDragEnd}
-              className={`rounded-xl transition-all duration-150 ${draggedItemIndex === idx ? "scale-[0.98] opacity-50" : ""} ${
+              className={`rounded-2xl transition-all duration-150 ${draggedItemIndex === idx ? "scale-[0.98] opacity-50" : ""} ${
                 draggedOverIndex === idx && draggedItemIndex !== null
                   ? draggedItemIndex < idx
-                    ? "border-b-2 border-b-cyan-400 pb-2"
-                    : "border-t-2 border-t-cyan-400 pt-2"
+                    ? "border-b-2 border-b-(--ap-accent) pb-2"
+                    : "border-t-2 border-t-(--ap-accent) pt-2"
                   : ""
               }`}
             >
@@ -168,7 +184,7 @@ const AudioPlayerModal: React.FC = () => {
         </div>
       ) : (
         emptyState(
-          <Layers className="h-7 w-7" />,
+          <Layers className="h-6 w-6" />,
           "Nothing queued",
           "Tracks you add play one after another. Add one from the library.",
         )
@@ -177,8 +193,8 @@ const AudioPlayerModal: React.FC = () => {
   );
 
   const listControls = (
-    <div className={`shrink-0 border-b ${HAIRLINE} p-3 sm:p-4`}>
-      <div className={`flex gap-1 rounded-xl border ${HAIRLINE} bg-black/[0.03] p-1 dark:bg-white/5`}>
+    <div className="shrink-0 px-3 pb-2 pt-1 sm:px-4 lg:pt-5">
+      <div className="flex gap-1 rounded-full bg-(--ap-chip) p-1">
         <button
           onClick={() => setActiveTab("library")}
           aria-pressed={activeTab === "library"}
@@ -201,18 +217,18 @@ const AudioPlayerModal: React.FC = () => {
 
       {activeTab === "library" ? (
         <div className="relative mt-3">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 dark:text-white/35" />
+          <Search className="pointer-events-none absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-(--ap-muted)" />
           <input
             type="text"
             placeholder="Search audio"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className={`h-10 w-full rounded-xl border ${HAIRLINE} bg-black/[0.03] pl-9 pr-9 text-sm text-slate-800 outline-none transition-colors placeholder:text-slate-400 focus:border-cyan-400/60 focus:bg-transparent dark:bg-white/5 dark:text-white/90 dark:placeholder:text-white/35`}
+            className="h-10 w-full rounded-full border border-transparent bg-(--ap-chip) pl-10 pr-9 text-sm text-(--ap-ink) outline-none transition-colors placeholder:text-(--ap-muted) focus:border-(--ap-accent-line) focus:bg-transparent"
           />
           {searchQuery && (
             <button
               onClick={() => setSearchQuery("")}
-              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-slate-400 transition-colors hover:bg-black/6 hover:text-slate-700 dark:text-white/40 dark:hover:bg-white/10 dark:hover:text-white/70"
+              className="absolute right-2 top-1/2 flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-full text-(--ap-muted) transition-colors hover:bg-(--ap-hover) hover:text-(--ap-ink)"
               title="Clear search"
               aria-label="Clear search"
             >
@@ -221,7 +237,7 @@ const AudioPlayerModal: React.FC = () => {
           )}
         </div>
       ) : (
-        <p className="mt-3 px-1 text-[12px] text-slate-500 dark:text-white/40">
+        <p className="mt-3 px-1 text-[12px] text-(--ap-muted)">
           {queueCount > 1 ? "Drag a track to change the order." : "Tracks play in the order you add them."}
         </p>
       )}
@@ -229,101 +245,137 @@ const AudioPlayerModal: React.FC = () => {
   );
 
   return (
-    <div className={`fixed inset-0 z-[10000] flex flex-col ${PANEL} text-slate-900 animate-in fade-in duration-200 dark:text-white`}>
-      {/* Header */}
-      <header className={`flex h-14 shrink-0 items-center justify-between gap-3 border-b ${HAIRLINE} ${SURFACE} px-3 sm:h-16 sm:px-5`}>
-        <div className="flex min-w-0 items-center gap-3">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-500/12 text-cyan-600 ring-1 ring-inset ring-cyan-500/20 dark:text-cyan-300">
-            <ListMusic className="h-[18px] w-[18px]" />
-          </div>
-          <div className="min-w-0">
-            <h2 className="truncate text-[15px] font-semibold tracking-tight sm:text-base">Audio</h2>
-            <p className="truncate text-xs text-slate-500 dark:text-white/40">
-              {libraryCount} {libraryCount === 1 ? "track" : "tracks"} found
-              {queueCount > 0 ? ` · ${queueCount} queued` : ""}
-            </p>
-          </div>
-        </div>
-
-        <button
-          onClick={togglePlayer}
-          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-black/6 hover:text-slate-900 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
-          title="Close"
-          aria-label="Close audio player"
-        >
-          <X size={19} />
-        </button>
-      </header>
-
-      <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(340px,400px)]">
+    <div className="audio-player fixed inset-0 z-[10000] flex flex-col bg-(--ap-bg) text-(--ap-ink) animate-in fade-in duration-200">
+      <main className="grid min-h-0 flex-1 grid-cols-1 lg:grid-cols-[minmax(0,1fr)_minmax(360px,420px)]">
         {/* Now playing */}
-        <section className={`flex min-h-0 flex-col overflow-y-auto custom-scrollbar ${SURFACE} lg:border-r ${HAIRLINE}`}>
-          <div className="flex flex-1 flex-col items-center justify-center gap-5 px-5 py-6 sm:gap-7 sm:px-8 sm:py-10">
-            {/* Artwork. The disc only stands in when there is no picture, rather than covering one */}
-            <div className={`relative aspect-square w-full max-w-[220px] overflow-hidden rounded-2xl border ${HAIRLINE} bg-slate-100 shadow-xl shadow-black/10 dark:bg-[#151922] dark:shadow-black/40 sm:max-w-[300px]`}>
-              {currentTrack?.thumbnail ? (
-                <img
-                  src={currentTrack.thumbnail}
-                  alt=""
-                  className="h-full w-full object-cover"
-                />
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-cyan-500/15 via-indigo-500/10 to-transparent">
-                  <Disc3
-                    className={`h-20 w-20 text-slate-400/70 dark:text-white/25 sm:h-28 sm:w-28 ${isPlaying ? "animate-[spin_6s_linear_infinite]" : ""}`}
-                  />
-                </div>
-              )}
-            </div>
-
-            <div className="w-full max-w-lg text-center">
-              <h3 className="text-balance text-xl font-semibold tracking-tight sm:text-2xl">
-                {currentTrack ? currentTrack.title : "Nothing playing"}
-              </h3>
-              <p className="mt-1.5 truncate text-sm text-slate-500 dark:text-white/45">
-                {currentTrack
-                  ? currentTrack.artist || "Workspace audio"
-                  : "Choose a track from your library to start"}
+        <section className="ap-stage relative flex min-h-0 flex-col">
+          <header className="grid h-14 shrink-0 grid-cols-[40px_1fr_40px] items-center gap-2 px-3 sm:h-16 sm:px-5">
+            <button
+              onClick={togglePlayer}
+              className={ROUND_BUTTON}
+              title="Close"
+              aria-label="Close audio player"
+            >
+              <ChevronDown size={22} className="lg:hidden" />
+              <X size={19} className="hidden lg:block" />
+            </button>
+            <div className="min-w-0 text-center">
+              <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-(--ap-muted)">
+                Now playing
               </p>
-              {currentTrack && trackMeta && (
-                <p className="mt-2 text-xs text-slate-400 dark:text-white/30">{trackMeta}</p>
-              )}
+              <p className="truncate text-xs text-(--ap-muted) opacity-80">{headerMeta}</p>
             </div>
+            <span aria-hidden />
+          </header>
 
-            <div className={`w-full max-w-2xl rounded-2xl border ${HAIRLINE} ${PANEL} p-1`}>
+          <div className="custom-scrollbar flex min-h-0 flex-1 flex-col overflow-y-auto">
+            <div className="mx-auto flex w-full max-w-[420px] flex-1 flex-col items-center justify-center gap-6 px-6 pb-6 pt-2 sm:gap-8 sm:pb-10 [@media(max-height:720px)]:gap-4">
+              <div className="w-full text-center">
+                <h2 className="line-clamp-2 text-balance text-[26px] font-semibold leading-tight tracking-tight sm:text-[32px]">
+                  {currentTrack ? currentTrack.title : "Nothing playing"}
+                </h2>
+                <div className="mt-3 flex items-center justify-center gap-2 text-sm text-(--ap-muted)">
+                  {currentTrack && (
+                    <span className="flex h-6 w-6 shrink-0 items-center justify-center overflow-hidden rounded-full bg-(--ap-accent-soft) text-[11px] font-semibold uppercase text-(--ap-accent-strong)">
+                      {currentTrack.thumbnail ? (
+                        <img src={currentTrack.thumbnail} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        (currentTrack.artist || currentTrack.title).charAt(0)
+                      )}
+                    </span>
+                  )}
+                  <span className="truncate">{artistLine}</span>
+                </div>
+              </div>
+
+              {/* Soft rings around the play button, in place of a square cover */}
+              <div className="relative aspect-square w-full max-w-[280px] sm:max-w-[340px] [@media(max-height:720px)]:max-w-[220px]">
+                {RINGS.map((inset, i) => (
+                  <div
+                    key={inset}
+                    className={`absolute rounded-full ${isPlaying ? "ap-breathe" : ""}`}
+                    style={{
+                      inset: `${inset}%`,
+                      background: `var(--ap-ring-${i + 1})`,
+                      animationDelay: `${i * 0.4}s`,
+                    }}
+                  />
+                ))}
+                <div className="absolute inset-[30%] overflow-hidden rounded-full bg-(--ap-ring-4)">
+                  {currentTrack?.thumbnail && (
+                    <img src={currentTrack.thumbnail} alt="" className="h-full w-full object-cover opacity-70" />
+                  )}
+                </div>
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <button
+                    onClick={handlePlayButton}
+                    title={isPlaying ? "Pause" : "Play"}
+                    aria-label={isPlaying ? "Pause" : "Play"}
+                    className="flex h-[72px] w-[72px] items-center justify-center rounded-full bg-(--ap-button) text-(--ap-on-button) shadow-(--ap-button-shadow) transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-4 focus-visible:ring-(--ap-accent-line) active:scale-95 sm:h-20 sm:w-20"
+                  >
+                    {isPlaying ? (
+                      <Pause size={28} fill="currentColor" strokeWidth={0} />
+                    ) : (
+                      <Play size={28} className="ml-1" fill="currentColor" strokeWidth={0} />
+                    )}
+                  </button>
+                </div>
+              </div>
+
               <AudioControls />
             </div>
-          </div>
 
-          {/* Only route to the list on small screens, where the panel is a sheet */}
-          <div className={`shrink-0 border-t ${HAIRLINE} p-3 lg:hidden`}>
-            <button
-              onClick={() => setIsMobileLibraryOpen(true)}
-              className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-cyan-500/12 text-sm font-semibold text-cyan-700 ring-1 ring-inset ring-cyan-500/20 transition-colors active:scale-[0.99] dark:text-cyan-300"
-            >
-              <ListMusic size={17} />
-              Browse library
-              <span className="text-xs tabular-nums opacity-70">{libraryCount}</span>
-            </button>
+            {/* Phones reach the list from a floating pill; on desktop it sits alongside */}
+            <div className="sticky bottom-0 flex shrink-0 justify-center px-6 pb-[max(env(safe-area-inset-bottom),16px)] pt-2 lg:hidden">
+              <button
+                onClick={() => openSheet(nextTrack ? "queue" : "library")}
+                className="flex h-12 max-w-full items-center gap-2.5 rounded-full border border-(--ap-line) bg-(--ap-surface) pl-4 pr-5 text-sm shadow-lg shadow-black/5 transition-transform active:scale-[0.98] dark:shadow-black/40"
+              >
+                <ListMusic size={17} className="shrink-0 text-(--ap-accent)" />
+                {nextTrack ? (
+                  <span className="min-w-0 truncate">
+                    <span className="text-(--ap-muted)">Up next · </span>
+                    <span className="font-semibold">{nextTrack.title}</span>
+                  </span>
+                ) : (
+                  <span className="font-semibold">
+                    Browse library
+                    <span className="ml-1.5 font-normal tabular-nums text-(--ap-muted)">{libraryCount}</span>
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
         </section>
 
-        {/* Library and queue: a side panel on desktop, a sheet on a phone */}
+        {/* Dims the player behind the sheet on phones */}
+        <div
+          onClick={() => setIsMobileLibraryOpen(false)}
+          aria-hidden
+          className={`fixed inset-0 z-20 bg-black/35 transition-opacity duration-300 lg:hidden ${
+            isMobileLibraryOpen ? "opacity-100" : "pointer-events-none opacity-0"
+          }`}
+        />
+
+        {/* Library and queue: a side panel on desktop, a bottom sheet on a phone */}
         <aside
-          className={`fixed inset-0 z-30 flex flex-col ${PANEL} transition-transform duration-300 ease-out lg:static lg:z-auto lg:translate-y-0 ${
-            isMobileLibraryOpen ? "translate-y-0" : "translate-y-full lg:translate-y-0"
-          } ${isMobileLibraryOpen ? "" : "pointer-events-none lg:pointer-events-auto"}`}
+          className={`fixed inset-x-0 bottom-0 top-[8vh] z-30 flex flex-col overflow-hidden rounded-t-[28px] bg-(--ap-surface) shadow-2xl transition-[translate,visibility] duration-300 ease-out lg:static lg:z-auto lg:translate-y-0 lg:rounded-none lg:border-l lg:border-(--ap-line) lg:shadow-none ${
+            isMobileLibraryOpen ? "translate-y-0" : "translate-y-full max-lg:invisible"
+          }`}
         >
-          <div className={`flex h-14 shrink-0 items-center gap-2 border-b ${HAIRLINE} ${SURFACE} px-3 lg:hidden`}>
-            <button
-              onClick={() => setIsMobileLibraryOpen(false)}
-              className="flex h-9 w-9 items-center justify-center rounded-xl text-slate-500 transition-colors hover:bg-black/6 hover:text-slate-900 dark:text-white/50 dark:hover:bg-white/10 dark:hover:text-white"
-              title="Back to player"
-              aria-label="Back to player"
-            >
-              <ChevronLeft size={19} />
-            </button>
-            <h3 className="text-[15px] font-semibold">Library</h3>
+          <div className="shrink-0 lg:hidden">
+            <div className="mx-auto mt-2.5 h-1 w-10 rounded-full bg-(--ap-track)" />
+            <div className="flex h-12 items-center justify-between px-4">
+              <h3 className="text-[15px] font-semibold">Your audio</h3>
+              <button
+                onClick={() => setIsMobileLibraryOpen(false)}
+                className={ROUND_BUTTON}
+                title="Back to player"
+                aria-label="Back to player"
+              >
+                <ChevronDown size={20} />
+              </button>
+            </div>
           </div>
 
           {listControls}
