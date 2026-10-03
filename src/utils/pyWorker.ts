@@ -460,6 +460,7 @@ const MAX_SYNC_FILES = 2000;
 function collectWorkspaceFileChanges(
   sent: Record<string, string>,
   entryPath: string,
+  media: Record<string, unknown> = {},
 ): { path: string; content: string | null }[] {
   const changes: { path: string; content: string | null }[] = [];
   const seen = new Set<string>();
@@ -478,6 +479,7 @@ function collectWorkspaceFileChanges(
     }
   };
   Object.keys(sent).forEach(noteDir);
+  Object.keys(media).forEach(noteDir);
   if (entryPath) noteDir(entryPath);
 
   const walk = (dir: string, depth: number) => {
@@ -506,6 +508,8 @@ function collectWorkspaceFileChanges(
         continue;
       }
       if (!pyodide.FS.isFile(stat.mode) || seen.has(full)) continue;
+      // The workspace's own media, copied in for the run; it keeps the original.
+      if (media[full] !== undefined) continue;
       // A file the run never wrote is not a change, whoever put it there.
       if (!ours && !touchedThisRun(stat)) continue;
       seen.add(full);
@@ -540,7 +544,7 @@ function collectWorkspaceFileChanges(
 function reportWorkspaceFileChanges(data: any) {
   if (!data?.vfs || !pyodide) return;
   try {
-    const changes = collectWorkspaceFileChanges(data.vfs, data.entryPath || "");
+    const changes = collectWorkspaceFileChanges(data.vfs, data.entryPath || "", data.binaryFiles || {});
     if (changes.length) post({ type: "fs_changes", id: data.id, changes });
   } catch (err) {
     console.warn("[Pyodide]: Could not read back the workspace files", err);
@@ -775,7 +779,12 @@ importlib.invalidate_caches()
           pySysCode += `\nimport os\nos.makedirs('${scriptDir}', exist_ok=True)\nif '${scriptDir}' not in sys.path:\n    sys.path.append('${scriptDir}')\nos.chdir('${scriptDir}')`;
         }
         pyodide.runPython(pySysCode);
-        for (const [vPath, vCode] of Object.entries(e.data.vfs)) {
+        // Text files, then media (images, sound...) as their real bytes - see pyMediaFiles.ts.
+        const files: [string, string | Uint8Array][] = [
+          ...Object.entries(e.data.vfs as Record<string, string>),
+          ...Object.entries((e.data.binaryFiles || {}) as Record<string, Uint8Array>),
+        ];
+        for (const [vPath, vCode] of files) {
           const parts = vPath.split("/").filter(Boolean);
           let dir = "";
           for (let i = 0; i < parts.length - 1; i++) {

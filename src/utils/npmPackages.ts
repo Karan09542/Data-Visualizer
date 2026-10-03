@@ -317,12 +317,13 @@ export async function loadPackages(
       }
       modules[specifier] = entry;
       await recordPackage(specifier, entryUrl, stats);
-      log(
-        "log",
-        stats.downloaded
-          ? `[npm] "${specifier}" saved on this device (${stats.downloaded} file${stats.downloaded === 1 ? "" : "s"}); it loads offline from now on.`
-          : `[npm] "${specifier}" loaded from this device (no download).`,
-      );
+      // Only a download is worth a line; loading what is already kept is every run's normal case.
+      if (stats.downloaded) {
+        log(
+          "log",
+          `[npm] "${specifier}" saved on this device (${stats.downloaded} file${stats.downloaded === 1 ? "" : "s"}); it loads offline from now on.`,
+        );
+      }
     } catch (err) {
       errors[specifier] = explainFailure(specifier, err);
     }

@@ -185,10 +185,16 @@ export function registerPyIntelliSense(monaco: any) {
           endColumn: word.endColumn
         };
 
-        const suggestions = (results || []).map((item: any) => {
+        const suggestions = (results || []).map((item: any, index: number) => {
+          // Monaco orders by sortText, else by label - and "_" sorts before letters, which put
+          // every __dunder__ above the methods people actually use. Public names come first,
+          // then _private, then __dunder__; within each, Jedi's own order.
+          const name: string = item.name || "";
+          const rank = name.startsWith("__") ? 2 : name.startsWith("_") ? 1 : 0;
           return {
             label: item.name,
             kind: mapJediTypeToCompletionKind(item.type, monaco),
+            sortText: `${rank}${String(index).padStart(5, "0")}`,
             insertText: item.name,
             detail: item.description,
             documentation: item.docstring

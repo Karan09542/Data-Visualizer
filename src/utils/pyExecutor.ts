@@ -5,7 +5,8 @@ import { appendLogs, resetNodeSession, abortExecutionQueue } from './executionSt
 import { buildVirtualFS, getVirtualPath, buildVfsMap } from './vfs';
 import { applyFileChanges, describeFileChanges, type WorkspaceFileChange } from './pyFileSync';
 import { getValueAtPath } from './pathUtils';
-import { stdinBridgeAvailable } from './stdinBridge';
+import { stdinBridgeAvailable, cancelStdin } from './stdinBridge';
+import { collectPyMediaFiles, withoutReplaced, MAX_MEDIA_BYTES, type PyMediaFiles } from './pyMediaFiles';
 
 /**
  * Puts what a Python run wrote back into the workspace: changed files, new ones, removed ones.
@@ -132,7 +133,54 @@ export const abortPyNode = (
     }
 };
 
+/** Each file's run in progress, until it has fully wound down. */
+const activeRuns: Record<string, Promise<void>> = {};
+/** Counts the runs started per file; a run whose number is no longer the latest was replaced. */
+const runGenerations: Record<string, number> = {};
+
+/**
+ * Ends a run that a new run of the same file replaces. One waiting on input() is ended there -
+ * input() gets end-of-file - so the runtime stays loaded for the next run. One that is busy
+ * computing can only be stopped by terminating the worker, which then has to start over.
+ */
+async function endReplacedRun(path: string, run: Promise<void>) {
+    const prompt = useStore.getState().activePrompts[path];
+    if (prompt && currentExecutingPath === path && activePyWorkers[SHARED_KEY]) {
+        cancelStdin(prompt.sessionId);
+        dismissPrompt(path);
+        const ended = await Promise.race([
+            run.then(() => true, () => true),
+            new Promise<boolean>((resolve) => setTimeout(() => resolve(false), 3000)),
+        ]);
+        if (ended) return;
+    }
+    abortPyNode(path, false, false);
+    await run.catch(() => {});
+}
+
+/** Runs a Python file. Running it again while a run is still going replaces that run. */
 export const executePyNode = async (path: string, codeToRun: string) => {
+    const generation = (runGenerations[path] || 0) + 1;
+    runGenerations[path] = generation;
+
+    const previous = activeRuns[path];
+    if (previous) await endReplacedRun(path, previous);
+    // Run again while this one waited: the newest one goes ahead.
+    if (runGenerations[path] !== generation) return;
+
+    const run = runPyNode(path, codeToRun, generation);
+    activeRuns[path] = run;
+    try {
+        await run;
+    } finally {
+        if (activeRuns[path] === run) delete activeRuns[path];
+    }
+};
+
+const runPyNode = async (path: string, codeToRun: string, generation: number) => {
+    /** False once a newer run of this file replaced this one: it then ends without reporting. */
+    const isCurrent = () => runGenerations[path] === generation;
+
     // Safely abort any previous execution first to prevent concurrent overlapping state and solve execution sequence conflicts.
     // Installs started elsewhere keep running - only a user stop cancels those.
     abortPyNode(path, false, false);
@@ -308,6 +356,23 @@ export const executePyNode = async (path: string, codeToRun: string) => {
     
     if (await bailIfAborted()) return;
 
+    // Images and other media hold an asset id in the tree; Python gets their real bytes.
+    let media: PyMediaFiles = { files: {}, replaced: [], skipped: [] };
+    try {
+        media = await collectPyMediaFiles(parsedData, store.uploadedMediaMetadata);
+    } catch (err) {
+        console.warn("[PyMedia]: Could not collect media files", err);
+    }
+    const tooLarge = media.skipped.filter((p) => codeToRun.includes(p.split('/').pop() || p));
+    if (tooLarge.length) {
+        await appendLogs(path, [{
+            type: "warn",
+            args: [`[Pyodide]: Not available to Python - larger than ${MAX_MEDIA_BYTES / (1024 * 1024)} MB: ${tooLarge.join(', ')}`],
+            time: new Date().toISOString()
+        }]).catch(() => {});
+    }
+    if (await bailIfAborted()) return;
+
     try {
       let worker = activePyWorkers[SHARED_KEY];
       if (!worker) {
@@ -421,7 +486,7 @@ export const executePyNode = async (path: string, codeToRun: string) => {
          worker.addEventListener("message", messageHandler);
          worker.addEventListener("error", errorHandler);
 
-         const vfs = buildVirtualFS(parsedData);
+         let vfs = buildVirtualFS(parsedData);
          const state = useStore.getState();
          for (const [objPath, codeOverride] of Object.entries(state.jsNodeCodeOverrides)) {
              if (codeOverride !== undefined) {
@@ -429,6 +494,7 @@ export const executePyNode = async (path: string, codeToRun: string) => {
                  if (vPath) vfs[vPath] = codeOverride;
              }
          }
+         vfs = withoutReplaced(vfs, media.replaced);
          const entryPath = getVirtualPath(path, parsedData);
          const enabledProxies = state.proxyServers.filter(p => p.isEnabled).map(p => p.url);
          if (state.useDefaultProxy) {
@@ -442,8 +508,9 @@ export const executePyNode = async (path: string, codeToRun: string) => {
             entryPath,
             cacheEnabled: usePyPackageStore.getState().pyPackageCacheEnabled,
             enabledProxies,
-            stdinBridge: stdinBridgeAvailable()
-         });
+            stdinBridge: stdinBridgeAvailable(),
+            binaryFiles: media.files
+         }, Object.values(media.files).map((bytes) => bytes.buffer as ArrayBuffer));
       });
 
       const response: any = await executionPromise;
@@ -454,6 +521,8 @@ export const executePyNode = async (path: string, codeToRun: string) => {
       store.setJsNodeRunMetadata(path, duration, "Just now");
       
     } catch (err: any) {
+       // Replaced by a newer run: ending was asked for, so it is not an error.
+       if (!isCurrent()) return;
        let errMsg = err.message || "Unknown error";
        const endTime = performance.now();
        const duration = Math.round(endTime - startTime);
