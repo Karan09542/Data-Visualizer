@@ -1,7 +1,7 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { createContext, useContext, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { X, Search, Check, Copy, type LucideIcon } from 'lucide-react';
+import { X, Search, Check, Copy, Plus, type LucideIcon } from 'lucide-react';
 
 /*
  * One dialog for every help popup in the app. Each popup is just a HelpContent object
@@ -23,7 +23,22 @@ export type HelpBlock =
   /** Feature cards in a two-column grid */
   | { type: 'cards'; items: { icon: LucideIcon; title: string; text: string }[] }
   /** A copyable code sample */
-  | { type: 'code'; title?: string; language?: string; code: string };
+  | { type: 'code'; title?: string; language?: string; code: string }
+  /**
+   * Formulas or snippets to copy, each optionally with a rendered preview (see renderPreview) and a
+   * payload for the dialog's exampleAction, such as "Insert into graph"
+   */
+  | { type: 'examples'; items: HelpExample[] };
+
+export interface HelpExample {
+  code: string;
+  title?: string;
+  text?: string;
+  /** Source for renderPreview, e.g. LaTeX */
+  preview?: string;
+  /** Handed to exampleAction.onRun; items without one only offer Copy */
+  payload?: unknown;
+}
 
 export interface HelpSection {
   id: string;
@@ -49,7 +64,89 @@ export interface HelpDialogProps {
   content: HelpContent;
   /** An optional extra button beside "Done", such as inserting an example */
   action?: { label: string; icon?: LucideIcon; onClick: () => void };
+  /** A button on each example that has a payload, e.g. "Insert" into the open graph */
+  exampleAction?: { label: string; icon?: LucideIcon; onRun: (payload: unknown) => void };
+  /** Draws an example's preview, e.g. LaTeX with KaTeX; kept out of here so other help needs no KaTeX */
+  renderPreview?: (preview: string) => React.ReactNode;
+  /** Stacking order, for dialogs opened over something already high (a fullscreen editor) */
+  zIndex?: number;
 }
+
+const ExampleContext = createContext<Pick<HelpDialogProps, 'exampleAction' | 'renderPreview'>>({});
+
+/** A small button that briefly confirms what it did */
+const ConfirmButton: React.FC<{
+  onClick: () => void | Promise<void>;
+  icon: LucideIcon;
+  label: string;
+  done: string;
+  primary?: boolean;
+}> = ({ onClick, icon: Icon, label, done, primary }) => {
+  const [confirmed, setConfirmed] = useState(false);
+  return (
+    <button
+      onClick={async () => {
+        try {
+          await onClick();
+          setConfirmed(true);
+          setTimeout(() => setConfirmed(false), 1500);
+        } catch {
+          // Clipboard can be blocked; the text stays selectable
+        }
+      }}
+      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${
+        primary
+          ? 'bg-indigo-600 text-white hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400'
+          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white'
+      }`}
+      aria-label={label}
+      title={label}
+    >
+      {confirmed ? <Check size={13} className={primary ? '' : 'text-emerald-500'} /> : <Icon size={13} />}
+      <span className={primary ? '' : 'sr-only sm:not-sr-only'}>{confirmed ? done : label}</span>
+    </button>
+  );
+};
+
+const Examples: React.FC<{ items: HelpExample[]; codeClass: string }> = ({ items, codeClass }) => {
+  const { exampleAction, renderPreview } = useContext(ExampleContext);
+  return (
+    <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-white/8 dark:border-white/10">
+      {items.map((item, i) => (
+        <li key={i} className="space-y-2 px-3.5 py-3">
+          {(item.title || item.text) && (
+            <div>
+              {item.title && <p className="text-[13px] font-semibold text-slate-900 dark:text-white">{item.title}</p>}
+              {item.text && (
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                  <RichText text={item.text} />
+                </p>
+              )}
+            </div>
+          )}
+          <div className="flex items-start gap-1.5">
+            <div className="min-w-0 flex-1 rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-white/4">
+              {item.preview && renderPreview && (
+                <div className="mb-1 overflow-x-auto text-[15px] text-slate-900 dark:text-slate-100">{renderPreview(item.preview)}</div>
+              )}
+              <code className={`block whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed ${codeClass}`}>{item.code}</code>
+            </div>
+            <ConfirmButton onClick={() => navigator.clipboard.writeText(item.code)} icon={Copy} label="Copy" done="Copied" />
+            {exampleAction && item.payload !== undefined && (
+              <ConfirmButton
+                onClick={() => exampleAction.onRun(item.payload)}
+                icon={exampleAction.icon ?? Plus}
+                label={exampleAction.label}
+                done="Added"
+                primary
+              />
+            )}
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+};
 
 /** Tailwind needs whole class names, so each tone spells its classes out */
 const TONES: Record<HelpTone, { icon: string; soft: string; code: string }> = {
@@ -196,6 +293,9 @@ const Block: React.FC<{ block: HelpBlock; tone: HelpTone }> = ({ block, tone }) 
 
     case 'code':
       return <CodeSample block={block} />;
+
+    case 'examples':
+      return <Examples items={block.items} codeClass={t.code} />;
   }
 };
 
@@ -227,13 +327,17 @@ const filterSections = (sections: HelpSection[], query: string): HelpSection[] =
           const items = block.items.filter((i) => has(i.title, i.text));
           return items.length ? [{ ...block, items }] : [];
         }
+        case 'examples': {
+          const items = block.items.filter((i) => has(i.title, i.text, i.code));
+          return items.length ? [{ ...block, items }] : [];
+        }
       }
     });
     return blocks.length ? [{ ...section, blocks }] : [];
   });
 };
 
-export default function HelpDialog({ open, onClose, content, action }: HelpDialogProps) {
+export default function HelpDialog({ open, onClose, content, action, exampleAction, renderPreview, zIndex }: HelpDialogProps) {
   const titleId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -322,6 +426,7 @@ export default function HelpDialog({ open, onClose, content, action }: HelpDialo
       {open && (
         <div
           className="fixed inset-0 z-10000 flex items-end justify-center sm:items-center sm:p-6"
+          style={zIndex ? { zIndex } : undefined}
           // The popups open from inside the canvas; keep its pan and zoom from reacting
           onWheel={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
@@ -437,9 +542,11 @@ export default function HelpDialog({ open, onClose, content, action }: HelpDialo
                             </p>
                           )}
                           <div className="flex flex-col gap-3">
-                            {s.blocks.map((b, i) => (
-                              <Block key={i} block={b} tone={tone} />
-                            ))}
+                            <ExampleContext.Provider value={{ exampleAction, renderPreview }}>
+                              {s.blocks.map((b, i) => (
+                                <Block key={i} block={b} tone={tone} />
+                              ))}
+                            </ExampleContext.Provider>
                           </div>
                         </section>
                       );

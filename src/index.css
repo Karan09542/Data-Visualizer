@@ -7516,3 +7516,48 @@ body.sticky-previewing-selection [contenteditable] *::selection,
     animation: none;
   }
 }
+
+/*
+ * Inline audio player (CustomAudioPlayer). Follows the app's dark class, or data-theme when a
+ * caller passes isDark. The seek and volume bars reuse .ap-range, which reads the --ap-* colours.
+ */
+.cap {
+  --cp-bg: #f8fafc;
+  --cp-line: rgb(15 23 42 / 0.08);
+  --cp-text: #0f172a;
+  --cp-muted: #64748b;
+  --cp-hover: rgb(15 23 42 / 0.06);
+  --cp-menu: #ffffff;
+  --ap-accent: #2563eb;
+  --ap-accent-soft: rgb(37 99 235 / 0.16);
+  --ap-track: rgb(15 23 42 / 0.12);
+  --ap-button: #ffffff;
+  --cp-on-accent: #ffffff;
+}
+.dark .cap,
+.cap[data-theme="dark"] {
+  --cp-bg: rgb(255 255 255 / 0.04);
+  --cp-line: rgb(255 255 255 / 0.08);
+  --cp-text: #e2e8f0;
+  --cp-muted: #94a3b8;
+  --cp-hover: rgb(255 255 255 / 0.07);
+  --cp-menu: #141922;
+  --ap-accent: #60a5fa;
+  --ap-accent-soft: rgb(96 165 250 / 0.18);
+  --ap-track: rgb(255 255 255 / 0.14);
+  --ap-button: #0f172a;
+  --cp-on-accent: #0b1220;
+}
+.cap[data-theme="light"] {
+  --cp-bg: #f8fafc;
+  --cp-line: rgb(15 23 42 / 0.08);
+  --cp-text: #0f172a;
+  --cp-muted: #64748b;
+  --cp-hover: rgb(15 23 42 / 0.06);
+  --cp-menu: #ffffff;
+  --ap-accent: #2563eb;
+  --ap-accent-soft: rgb(37 99 235 / 0.16);
+  --ap-track: rgb(15 23 42 / 0.12);
+  --ap-button: #ffffff;
+  --cp-on-accent: #ffffff;
+}

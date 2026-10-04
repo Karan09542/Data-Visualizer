@@ -1,112 +1,58 @@
 import React, { useState, useEffect, useRef, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Play, Pause, Volume1, Volume2, VolumeX, Repeat, MoreHorizontal } from 'lucide-react';
+import { X, Play, Pause, Volume1, Volume2, VolumeX, Repeat, Ellipsis, Loader2, AlertCircle, Check } from 'lucide-react';
 
 export interface CustomAudioPlayerProps {
   src: string;
   onDelete?: (e: React.MouseEvent) => void;
   className?: string;
+  /** Forces a theme; left out, the player follows the app's dark class */
   isDark?: boolean;
 }
 
-export default function CustomAudioPlayer({ src, onDelete, className = "", isDark }: CustomAudioPlayerProps) {
+const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
+
+const formatTime = (seconds: number) => {
+  if (typeof seconds !== 'number' || !isFinite(seconds) || seconds < 0) return '0:00';
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = Math.floor(seconds % 60).toString().padStart(2, '0');
+  return h ? `${h}:${m.toString().padStart(2, '0')}:${s}` : `${m}:${s}`;
+};
+
+const ICON_BUTTON =
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-(--cp-muted) transition-colors hover:bg-(--cp-hover) hover:text-(--cp-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-soft) nodrag';
+
+export default function CustomAudioPlayer({ src, onDelete, className = '', isDark }: CustomAudioPlayerProps) {
   const [howl, setHowl] = useState<any>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [isBuffering, setIsBuffering] = useState(false);
+  const [failed, setFailed] = useState(false);
   const [progress, setProgress] = useState(0);
   const [duration, setDuration] = useState(0);
   const [speed, setSpeed] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isLooping, setIsLooping] = useState(false);
   const requestRef = useRef<number | null>(null);
-  
-  const [isVolOpen, setIsVolOpen] = useState(false);
-  const volBtnRef = useRef<HTMLDivElement>(null);
-  const [volPos, setVolPos] = useState({ top: 0, left: 0, isTop: true });
-  const volPopupRef = useRef<HTMLDivElement>(null);
 
-  const [isMoreOpen, setIsMoreOpen] = useState(false);
-  const moreBtnRef = useRef<HTMLButtonElement>(null);
-  const [morePos, setMorePos] = useState({ top: 0, left: 0, isTop: true });
-  const morePopupRef = useRef<HTMLDivElement>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
+  const menuBtnRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  useLayoutEffect(() => {
-    if (isVolOpen && volBtnRef.current) {
-      const rect = volBtnRef.current.getBoundingClientRect();
-      let left = rect.left + rect.width / 2;
-      const halfWidth = 16;
-      if (left + halfWidth > window.innerWidth) left = window.innerWidth - halfWidth - 10;
-      if (left - halfWidth < 0) left = halfWidth + 10;
-      const isTop = rect.top > 120;
-      setVolPos({ top: isTop ? rect.top : rect.bottom, left, isTop });
-    }
-  }, [isVolOpen, volume]);
-
-  useLayoutEffect(() => {
-    if (isMoreOpen && moreBtnRef.current) {
-      const rect = moreBtnRef.current.getBoundingClientRect();
-      let left = rect.left + rect.width / 2;
-      const halfWidth = 96;
-      if (left + halfWidth > window.innerWidth) left = window.innerWidth - halfWidth - 10;
-      if (left - halfWidth < 0) left = halfWidth + 10;
-      const isTop = rect.top > 180;
-      setMorePos({ top: isTop ? rect.top : rect.bottom, left, isTop });
-    }
-  }, [isMoreOpen]);
-
-  useEffect(() => {
-    const handleClickOutside = (e: Event) => {
-      const target = e.target as Node;
-      const clickedVolBtn = volBtnRef.current?.contains(target);
-      const clickedVolPopup = volPopupRef.current?.contains(target);
-      if (!clickedVolBtn && !clickedVolPopup) setIsVolOpen(false);
-      
-      const clickedMoreBtn = moreBtnRef.current?.contains(target);
-      const clickedMorePopup = morePopupRef.current?.contains(target);
-      if (!clickedMoreBtn && !clickedMorePopup) setIsMoreOpen(false);
-    };
-    if (isVolOpen || isMoreOpen) {
-      document.addEventListener('pointerdown', handleClickOutside, { capture: true });
-    }
-    return () => document.removeEventListener('pointerdown', handleClickOutside, { capture: true });
-  }, [isVolOpen, isMoreOpen]);
-
-  const toggleVolOpen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isVolOpen && volBtnRef.current) {
-      const rect = volBtnRef.current.getBoundingClientRect();
-      let left = rect.left + rect.width / 2;
-      const halfWidth = 16;
-      if (left + halfWidth > window.innerWidth) left = window.innerWidth - halfWidth - 10;
-      if (left - halfWidth < 0) left = halfWidth + 10;
-      const isTop = rect.top > 120;
-      setVolPos({ top: isTop ? rect.top : rect.bottom, left, isTop });
-    }
-    setIsVolOpen(prev => !prev);
-    setIsMoreOpen(false);
-  };
-
-  const toggleMoreOpen = (e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!isMoreOpen && moreBtnRef.current) {
-      const rect = moreBtnRef.current.getBoundingClientRect();
-      let left = rect.left + rect.width / 2;
-      const halfWidth = 96;
-      if (left + halfWidth > window.innerWidth) left = window.innerWidth - halfWidth - 10;
-      if (left - halfWidth < 0) left = halfWidth + 10;
-      const isTop = rect.top > 180;
-      setMorePos({ top: isTop ? rect.top : rect.bottom, left, isTop });
-    }
-    setIsMoreOpen(prev => !prev);
-    setIsVolOpen(false);
-  };
-
-  // Initialize Howler
+  // Load with Howler (HTML5 audio, so long files stream instead of downloading first)
   useEffect(() => {
     let sound: any = null;
     let tempAudio: HTMLAudioElement | null = null;
-    
+    let cancelled = false;
+    setFailed(false);
+    setProgress(0);
+    setDuration(0);
+    setIsPlaying(false);
+
     if (src) {
       import('howler').then(({ Howl }) => {
+        if (cancelled) return;
         sound = new Howl({
           src: [src],
           html5: true,
@@ -115,291 +61,309 @@ export default function CustomAudioPlayer({ src, onDelete, className = "", isDar
             const d = sound.duration();
             if (d && isFinite(d) && d > 0) setDuration(d);
           },
-          onplay: () => setIsPlaying(true),
+          onloaderror: () => setFailed(true),
+          onplayerror: () => {
+            setIsBuffering(false);
+            // Mobile browsers may refuse until audio is unlocked by a tap; retry then
+            sound.once('unlock', () => sound.play());
+          },
+          onplay: () => {
+            setIsPlaying(true);
+            setIsBuffering(false);
+          },
           onpause: () => setIsPlaying(false),
+          onstop: () => setIsPlaying(false),
           onend: () => {
             if (!sound.loop()) {
               setIsPlaying(false);
               setProgress(0);
             }
           },
-          onseek: () => setProgress(sound.seek() as number)
+          onseek: () => setProgress(sound.seek() as number),
         });
         setHowl(sound);
-        
-        // Also setup a temp Audio element just to get duration properly for weird WebM blobs
+
+        // A plain <audio> reads the length of WebM recordings, which often report Infinity
         tempAudio = new Audio(src);
+        tempAudio.preload = 'metadata';
         tempAudio.addEventListener('loadedmetadata', () => {
-          if (tempAudio && (tempAudio.duration === Infinity || isNaN(tempAudio.duration))) {
+          if (!tempAudio) return;
+          if (tempAudio.duration === Infinity || isNaN(tempAudio.duration)) {
             tempAudio.currentTime = 1e99;
-            tempAudio.addEventListener('durationchange', () => {
-              if (tempAudio) {
-                  tempAudio.currentTime = 0;
-                  if (isFinite(tempAudio.duration)) setDuration(tempAudio.duration);
-              }
-            }, { once: true });
-          } else if (tempAudio && isFinite(tempAudio.duration)) {
+            tempAudio.addEventListener(
+              'durationchange',
+              () => {
+                if (!tempAudio) return;
+                tempAudio.currentTime = 0;
+                if (isFinite(tempAudio.duration)) setDuration(tempAudio.duration);
+              },
+              { once: true },
+            );
+          } else if (isFinite(tempAudio.duration)) {
             setDuration(tempAudio.duration);
           }
         });
       });
     }
-    
+
     return () => {
+      cancelled = true;
       if (sound) sound.unload();
       if (tempAudio) {
-          tempAudio.src = "";
-          tempAudio.load();
+        tempAudio.src = '';
+        tempAudio.load();
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [src]);
 
-  const updateProgress = () => {
-    if (howl && howl.playing()) {
-      setProgress(howl.seek() as number);
-      requestRef.current = requestAnimationFrame(updateProgress);
-    }
-  };
-
+  // Follow the playhead while playing
   useEffect(() => {
-    if (isPlaying) {
-      requestRef.current = requestAnimationFrame(updateProgress);
-    } else if (requestRef.current) {
-      cancelAnimationFrame(requestRef.current);
-    }
+    if (!isPlaying || !howl) return;
+    const tick = () => {
+      if (howl.playing()) setProgress(howl.seek() as number);
+      requestRef.current = requestAnimationFrame(tick);
+    };
+    requestRef.current = requestAnimationFrame(tick);
     return () => {
       if (requestRef.current) cancelAnimationFrame(requestRef.current);
     };
   }, [isPlaying, howl]);
 
+  // Place the menu by its button, above it when there is room, and close it on outside clicks
+  useLayoutEffect(() => {
+    if (!menuOpen || !menuBtnRef.current) return;
+    const rect = menuBtnRef.current.getBoundingClientRect();
+    const width = 232;
+    const height = menuRef.current?.offsetHeight ?? 200;
+    const above = rect.top > height + 16;
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+    setMenuPos({ top: above ? rect.top - 8 : rect.bottom + 8, left, above });
+  }, [menuOpen]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: PointerEvent) => {
+      const t = e.target as Node;
+      if (menuRef.current?.contains(t) || menuBtnRef.current?.contains(t)) return;
+      setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
+    const onScroll = (e: Event) => {
+      if (!menuRef.current?.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [menuOpen]);
+
   const togglePlay = () => {
-    if (!howl) return;
+    if (!howl || failed) return;
     if (isPlaying) {
       howl.pause();
     } else {
+      setIsBuffering(true);
       howl.play();
     }
   };
 
-  const handleSeek = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setProgress(val);
-    if (howl) howl.seek(val);
+  const seek = (value: number) => {
+    setProgress(value);
+    howl?.seek(value);
   };
 
-  const handleVolume = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = parseFloat(e.target.value);
-    setVolume(val);
-    if (howl) howl.volume(val);
+  const changeVolume = (value: number) => {
+    setVolume(value);
+    howl?.volume(value);
   };
 
-  const cycleSpeed = () => {
-    const next = speed === 1 ? 1.5 : speed === 1.5 ? 2 : speed === 2 ? 0.5 : 1;
-    setSpeed(next);
-    if (howl) howl.rate(next);
+  const changeSpeed = (value: number) => {
+    setSpeed(value);
+    howl?.rate(value);
   };
 
-  const formatTime = (seconds: number) => {
-    if (typeof seconds !== 'number' || !isFinite(seconds) || isNaN(seconds)) return "0:00";
-    const m = Math.floor(seconds / 60);
-    const s = Math.floor(seconds % 60).toString().padStart(2, '0');
-    return `${m}:${s}`;
-  };
+  /** The chip steps through the common speeds; the menu offers all of them */
+  const cycleSpeed = () => changeSpeed(speed === 1 ? 1.5 : speed === 1.5 ? 2 : speed === 2 ? 0.5 : 1);
 
   const toggleLoop = () => {
     const next = !isLooping;
     setIsLooping(next);
-    if (howl) howl.loop(next);
+    howl?.loop(next);
   };
 
-  if (!src) return <div className="animate-pulse bg-black/10 rounded-lg h-12 w-full flex items-center justify-center text-xs opacity-50">Loading audio...</div>;
+  const theme = isDark === undefined ? undefined : isDark ? 'dark' : 'light';
+
+  if (!src) {
+    return (
+      <div className="cap my-2 flex h-12 w-full max-w-md items-center justify-center rounded-xl border border-(--cp-line) bg-(--cp-bg) text-xs text-(--cp-muted)" data-theme={theme}>
+        Loading audio…
+      </div>
+    );
+  }
+
+  const canSeek = isFinite(duration) && duration > 0;
+  const pct = canSeek ? Math.min(100, (progress / duration) * 100) : 0;
+  const VolumeIcon = volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+  const speedLabel = `${speed}×`;
 
   return (
-    <div className={`relative group my-2 flex w-full max-w-[340px] sm:max-w-md ${className}`} contentEditable={false}>
-      <div 
-        className={`flex flex-nowrap items-center gap-1.5 sm:gap-2 px-2.5 py-1.5 rounded-full border shadow-sm w-full h-11 transition-colors ${
-          isDark
-            ? "bg-slate-900/80 border-slate-700/60 text-slate-100"
-            : "bg-slate-100 dark:bg-white/10 border-slate-200 dark:border-white/15 text-slate-800 dark:text-slate-100"
-        }`} 
-        onPointerDown={e => e.stopPropagation()}
-      >
-        <button 
-          onClick={togglePlay} 
-          className="w-8 h-8 rounded-full bg-blue-500 text-white flex items-center justify-center hover:bg-blue-600 transition-transform active:scale-95 shadow-md shadow-blue-500/20 shrink-0 nodrag"
+    <div
+      className={`cap nodrag group relative my-2 flex w-full max-w-md ${className}`}
+      data-theme={theme}
+      contentEditable={false}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      <div className="flex h-12 w-full items-center gap-2.5 rounded-xl border border-(--cp-line) bg-(--cp-bg) pl-2 pr-1 text-(--cp-text)">
+        <button
+          onClick={togglePlay}
+          disabled={failed}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--ap-accent) text-(--cp-on-accent) transition-transform hover:brightness-110 active:scale-95 disabled:opacity-40 nodrag"
+          aria-label={isPlaying ? 'Pause' : 'Play'}
+          title={isPlaying ? 'Pause' : 'Play'}
         >
-          {isPlaying ? <Pause size={14} className="fill-current" /> : <Play size={14} className="fill-current ml-0.5" />}
+          {isBuffering && !isPlaying ? (
+            <Loader2 size={14} className="animate-spin" />
+          ) : isPlaying ? (
+            <Pause size={14} fill="currentColor" strokeWidth={0} />
+          ) : (
+            <Play size={14} fill="currentColor" strokeWidth={0} className="ml-0.5" />
+          )}
         </button>
-        
-        <span className={`text-xs font-mono min-w-[32px] text-right shrink-0 ${
-          isDark ? "text-slate-200" : "text-slate-600 dark:text-slate-300"
-        }`}>
-          {formatTime(progress)}
-        </span>
-        
-        <input 
-          type="range" 
-          min={0} 
-          max={isFinite(duration) && duration > 0 ? duration : 100} 
-          step="0.1"
-          value={progress} 
-          onChange={handleSeek}
-          onPointerDown={e => e.stopPropagation()}
-          className={`flex-1 w-16 min-w-[40px] h-1.5 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full cursor-pointer transition-all nodrag ${
-            isDark ? "bg-slate-700/80" : "bg-slate-200 dark:bg-white/20"
-          }`}
-        />
-        
-        <span className={`text-xs font-mono min-w-[32px] shrink-0 ${
-          isDark ? "text-slate-300" : "text-slate-500 dark:text-slate-400"
-        }`}>
-          {formatTime(duration)}
-        </span>
-        
-        <div className={`w-px h-5 mx-0.5 shrink-0 hidden sm:block ${
-          isDark ? "bg-slate-700/60" : "bg-slate-200 dark:bg-white/15"
-        }`} />
-        
-        <div className="hidden sm:flex items-center gap-1 ml-auto shrink-0 pr-1">
-          <button 
-            onClick={cycleSpeed} 
-            className={`text-[10px] font-bold w-7 h-7 rounded-full flex items-center justify-center transition-colors shrink-0 nodrag ${
-              isDark 
-                ? "text-slate-200 hover:bg-white/10" 
-                : "text-slate-600 dark:text-white/80 hover:bg-slate-200/80 dark:hover:bg-white/10"
-            }`}
-            title="Playback Speed"
-          >
-            {speed}x
-          </button>
-          
-          <button 
-            onClick={toggleLoop} 
-            className={`w-6 h-6 sm:w-7 sm:h-7 rounded-full flex items-center justify-center transition-colors shrink-0 nodrag ${
-              isLooping 
-                ? 'text-blue-500' 
-                : isDark 
-                  ? 'text-slate-300 hover:bg-white/10' 
-                  : 'text-slate-600 dark:text-white/80 hover:bg-slate-200/80 dark:hover:bg-white/10'
-            }`}
-            title="Toggle Repeat"
-          >
-            <Repeat size={14} />
-          </button>
-          
-          <div 
-            className="relative flex items-center justify-center shrink-0 nodrag"
-            ref={volBtnRef}
-          >
-            <div 
-              className={`w-6 h-6 sm:w-7 sm:h-7 flex items-center justify-center cursor-pointer rounded-full transition-colors ${
-                isDark 
-                  ? "text-slate-300 hover:bg-white/10" 
-                  : "text-slate-600 dark:text-white/80 hover:bg-slate-200/80 dark:hover:bg-white/10"
-              }`} 
-              onClick={toggleVolOpen}
-            >
-              {volume === 0 ? <VolumeX size={14} /> : volume < 0.5 ? <Volume1 size={14} /> : <Volume2 size={14} />}
-            </div>
-          </div>
+
+        <div className="min-w-0 flex-1">
+          {failed ? (
+            <p className="flex items-center gap-1.5 text-xs text-red-500">
+              <AlertCircle size={13} /> This audio can't be played
+            </p>
+          ) : (
+            <>
+              <input
+                type="range"
+                min={0}
+                max={canSeek ? duration : 0}
+                step="any"
+                value={canSeek ? Math.min(progress, duration) : 0}
+                onChange={(e) => seek(parseFloat(e.target.value))}
+                onPointerDown={(e) => e.stopPropagation()}
+                disabled={!canSeek}
+                aria-label="Seek"
+                aria-valuetext={`${formatTime(progress)} of ${formatTime(duration)}`}
+                className="ap-range block h-4 nodrag"
+                style={{ '--ap-fill': `${pct}%` } as React.CSSProperties}
+              />
+              <div className="-mt-0.5 flex items-center justify-between text-[10.5px] font-medium tabular-nums text-(--cp-muted)">
+                <span>{formatTime(progress)}</span>
+                <span className="flex items-center gap-1">
+                  {isLooping && <Repeat size={10} className="text-(--ap-accent)" aria-label="Repeat on" />}
+                  {canSeek ? formatTime(duration) : '--:--'}
+                </span>
+              </div>
+            </>
+          )}
         </div>
 
         <button
-          ref={moreBtnRef}
-          onClick={toggleMoreOpen}
-          className={`sm:hidden w-8 h-8 rounded-full flex items-center justify-center transition-colors shrink-0 ml-auto mr-1 nodrag ${
-            isDark 
-              ? "text-slate-200 hover:bg-white/10" 
-              : "text-slate-600 dark:text-white/80 hover:bg-slate-200/80 dark:hover:bg-white/10"
-          }`}
-          title="More Options"
+          onClick={cycleSpeed}
+          className={`${ICON_BUTTON} w-auto min-w-8 px-1.5 text-[11px] font-semibold tabular-nums ${speed !== 1 ? 'text-(--ap-accent)' : ''}`}
+          aria-label={`Playback speed ${speedLabel}`}
+          title="Playback speed"
         >
-          <MoreHorizontal size={16} />
+          {speedLabel}
         </button>
-        
-        {isVolOpen && createPortal(
-          <div 
-            className="fixed z-[999999]"
-            style={{
-              top: volPos.isTop ? volPos.top - 8 : volPos.top + 8,
-              left: volPos.left,
-              transform: volPos.isTop ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
-            }}
-          >
-            <div 
-              ref={volPopupRef}
-              className={"w-8 h-24 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-full flex items-center justify-center shadow-lg animate-in fade-in zoom-in-95 duration-100 nodrag " + (volPos.isTop ? "origin-bottom" : "origin-top")}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-            <input 
-              type="range" 
-              min={0} 
-              max={1} 
-              step="0.05"
-              value={volume} 
-              onChange={handleVolume}
-              className="w-16 h-1.5 bg-slate-200 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full cursor-pointer -rotate-90 nodrag"
-            />
-            </div>
-          </div>,
-          document.body
-        )}
 
-        {isMoreOpen && createPortal(
-          <div 
-            className="fixed z-[999999]"
-            style={{
-              top: morePos.isTop ? morePos.top - 8 : morePos.top + 8,
-              left: morePos.left,
-              transform: morePos.isTop ? 'translate(-50%, -100%)' : 'translate(-50%, 0)'
-            }}
+        <button
+          ref={menuBtnRef}
+          onClick={() => setMenuOpen((o) => !o)}
+          className={`${ICON_BUTTON} ${menuOpen ? 'bg-(--cp-hover) text-(--cp-text)' : ''}`}
+          aria-label="More audio options"
+          aria-expanded={menuOpen}
+          title="More options"
+        >
+          <Ellipsis size={16} />
+        </button>
+
+        {onDelete && (
+          <button
+            onClick={onDelete}
+            className={`${ICON_BUTTON} hover:bg-red-500/10 hover:text-red-500 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover:flex`}
+            aria-label="Remove audio"
+            title="Remove audio"
           >
-            <div 
-              ref={morePopupRef}
-              className={"w-48 p-3 bg-white/95 dark:bg-[#1a1a1a]/95 backdrop-blur-xl border border-slate-200 dark:border-white/10 rounded-2xl flex flex-col gap-3 shadow-2xl animate-in fade-in zoom-in-95 duration-100 text-slate-900 dark:text-white " + (morePos.isTop ? "origin-bottom" : "origin-top")}
-              onPointerDown={(e) => e.stopPropagation()}
-            >
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Playback Speed</span>
-              <button onClick={cycleSpeed} className="text-xs font-bold w-8 h-8 rounded-full bg-slate-100 dark:bg-white/10 hover:bg-slate-200 dark:hover:bg-white/20 transition-colors flex items-center justify-center text-slate-900 dark:text-white">
-                {speed}x
-              </button>
-            </div>
-            
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Repeat</span>
-              <button onClick={toggleLoop} className={`w-8 h-8 rounded-full hover:bg-slate-100 dark:hover:bg-white/20 transition-colors flex items-center justify-center ${isLooping ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400' : 'bg-slate-100 dark:bg-white/10 text-slate-700 dark:text-slate-200'}`}>
-                <Repeat size={14} />
-              </button>
-            </div>
-            
-            <div className="flex flex-col gap-2 pt-2 border-t border-slate-200 dark:border-white/10">
-              <div className="flex items-center justify-between">
-                 <span className="text-sm font-medium text-slate-800 dark:text-slate-200">Volume</span>
-                 <span className="text-xs text-slate-500 dark:text-slate-400">{Math.round(volume * 100)}%</span>
-              </div>
-              <input 
-                type="range" 
-                min={0} max={1} step="0.05"
-                value={volume} onChange={handleVolume}
-                className="w-full h-1.5 bg-slate-200 dark:bg-white/20 rounded-full appearance-none [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:bg-blue-500 [&::-webkit-slider-thumb]:rounded-full cursor-pointer transition-all nodrag"
-              />
-            </div>
-            </div>
-          </div>,
-          document.body
+            <X size={15} />
+          </button>
         )}
       </div>
-      {onDelete && (
-        <button 
-          onClick={onDelete}
-          className="absolute right-1 top-1/2 -translate-y-1/2 p-1.5 bg-black/10 dark:bg-white/10 hover:bg-red-500/90 text-black/60 dark:text-white/60 hover:text-white rounded-full opacity-0 group-hover:opacity-100 transition-all duration-200"
-          title="Delete Audio"
-        >
-          <X size={14} />
-        </button>
-      )}
+
+      {menuOpen &&
+        createPortal(
+          <div
+            ref={menuRef}
+            className="cap fixed z-[999999] w-58 rounded-xl border border-(--cp-line) bg-(--cp-menu) p-3 text-(--cp-text) shadow-xl shadow-black/15 nodrag"
+            data-theme={theme}
+            style={{
+              top: menuPos?.top ?? -9999,
+              left: menuPos?.left ?? -9999,
+              transform: menuPos?.above ? 'translateY(-100%)' : undefined,
+            }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <p className="mb-2 text-[11px] font-medium text-(--cp-muted)">Speed</p>
+            <div className="mb-3 grid grid-cols-6 gap-1">
+              {SPEEDS.map((s) => (
+                <button
+                  key={s}
+                  onClick={() => changeSpeed(s)}
+                  className={`h-7 rounded-md text-[11px] font-semibold tabular-nums transition-colors ${
+                    s === speed ? 'bg-(--ap-accent) text-(--cp-on-accent)' : 'bg-(--cp-hover) hover:text-(--ap-accent)'
+                  }`}
+                  aria-pressed={s === speed}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+
+            <button
+              onClick={toggleLoop}
+              className="mb-2 flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-[13px] transition-colors hover:bg-(--cp-hover)"
+              aria-pressed={isLooping}
+            >
+              <span className="flex items-center gap-2">
+                <Repeat size={14} className={isLooping ? 'text-(--ap-accent)' : 'text-(--cp-muted)'} />
+                Repeat
+              </span>
+              {isLooping && <Check size={14} className="text-(--ap-accent)" />}
+            </button>
+
+            <div className="flex items-center gap-2 border-t border-(--cp-line) pt-2.5">
+              <button
+                onClick={() => changeVolume(volume === 0 ? 1 : 0)}
+                className={`${ICON_BUTTON} h-7 w-7`}
+                aria-label={volume === 0 ? 'Unmute' : 'Mute'}
+              >
+                <VolumeIcon size={15} />
+              </button>
+              <input
+                type="range"
+                min={0}
+                max={1}
+                step={0.05}
+                value={volume}
+                onChange={(e) => changeVolume(parseFloat(e.target.value))}
+                aria-label="Volume"
+                className="ap-range block flex-1"
+                style={{ '--ap-fill': `${volume * 100}%` } as React.CSSProperties}
+              />
+              <span className="w-8 text-right text-[11px] tabular-nums text-(--cp-muted)">{Math.round(volume * 100)}%</span>
+            </div>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }
