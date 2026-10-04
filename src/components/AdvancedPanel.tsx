@@ -16,8 +16,8 @@ import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 
 const canvasThemes = ['none', 'dots', 'grid', 'lines'] as const;
-const nodeThemes: NodeTheme[] = ['vscode', 'github', 'glassmorphism', 'cyberpunk', 'minimal', 'gradient', 'pastel', 'terminal', 'material', 'blueprint', 'retro', 'holographic', 'notebook', 'custom', 'nature', 'circuit', 'galaxy', 'glass', 'neon', 'math', 'neural', 'river', 'tree', 'pixel', 'hacker', 'cloud', 'dna', 'lava', 'ocean', 'rhythm', 'rune', 'zen', 'abstract', 'architect', 'ludo', 'chess', 'octopus', 'nature2', 'hydrogen', 'seed', 'banyan', 'peepal', 'chalk'];
-const edgeStyles: EdgeStyle[] = ['curved', 'bezier', 'straight', 'step', 'animated', 'dashed', 'neon', 'double', 'pipe', 'thin', 'orgChart', 'circuit', 'glow', 'zigzag', 'pulse', 'ludo', 'chess', 'octopus', 'nature2', 'hydrogen', 'seed', 'metro', 'angled-step'];
+const nodeThemes: NodeTheme[] = ['vscode', 'github', 'nord', 'dracula', 'solarized', 'catppuccin', 'tokyo-night', 'rose-pine', 'graphite', 'paper', 'minimal', 'gradient', 'terminal', 'retro', 'notebook', 'custom', 'glass', 'math', 'tree', 'hacker', 'ocean', 'rune', 'zen', 'architect', 'nature', 'seed', 'chalk'];
+const edgeStyles: EdgeStyle[] = ['curved', 'arrow', 'dotted', 'fade', 'arc', 'ribbon', 'straight', 'step', 'dashed', 'pipe', 'circuit', 'seed', 'metro', 'angled-step'];
 
 const FILL_PRESETS = [
   'rgba(30, 41, 59, 1)', 'rgba(59, 130, 246, 1)', 'rgba(16, 185, 129, 1)', 'rgba(79, 70, 229, 1)',
@@ -30,9 +30,9 @@ const TEXT_PICKER_PRESETS = ['rgba(255, 255, 255, 1)', 'rgba(241, 245, 249, 1)',
 const HIDDEN_PICKER: CSSProperties = { position: 'fixed', top: -9999, left: -9999, opacity: 0 };
 const PICKER_CLASS = 'rounded-2xl border border-slate-200 bg-white p-3 shadow-2xl dark:border-slate-800 dark:bg-[#121A2F] z-[10000]';
 
-const NAME_OVERRIDES: Record<string, string> = { vscode: 'VS Code', github: 'GitHub', dna: 'DNA' };
+const NAME_OVERRIDES: Record<string, string> = { vscode: 'VS Code', github: 'GitHub', 'rose-pine': 'Rosé Pine' };
 
-/** "orgChart" → "Org Chart", "nature2" → "Nature 2", "angled-step" → "Angled Step" */
+/** "tokyo-night" → "Tokyo Night", "angled-step" → "Angled Step" */
 const formatName = (value: string) =>
   NAME_OVERRIDES[value] ??
   value

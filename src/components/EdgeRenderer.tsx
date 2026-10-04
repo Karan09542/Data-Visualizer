@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { useStore } from '../store/useStore';
+import { PALETTE_EDGE_COLORS } from '../constants/visualizer';
 
 interface EdgeProps {
   key?: React.Key;
@@ -20,6 +21,8 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
   const isHovered = isHoveredState[0];
   const setIsHovered = isHoveredState[1];
   const edgeWidth = useStore(state => state.edgeWidth ?? 1.0);
+  // For this edge's own arrowhead marker and fade gradient
+  const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
   const appTheme = useStore(state => state.appTheme);
   const jsNodeErrors = useStore(state => state.jsNodeErrors);
   const jsNodeResponses = useStore(state => state.jsNodeResponses);
@@ -38,34 +41,21 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
   // Base style logic
   if (style === 'dashed') {
     strokeDasharray = "5,5";
-  } else if (style === 'neon') {
-    stroke = "#0ea5e9";
-    inlines.filter = "drop-shadow(0 0 4px rgba(14,165,233,0.8))";
-  } else if (style === 'glow') {
-    stroke = "#f59e0b";
-    strokeWidth = 2.5;
-    inlines.filter = "drop-shadow(0 0 8px rgba(245,158,11,1)) drop-shadow(0 0 12px rgba(245,158,11,0.6))";
-  } else if (style === 'pulse') {
-    strokeDasharray = "4,4";
-    strokeWidth = 2;
-    inlines.filter = "drop-shadow(0 0 4px " + stroke + ")";
-    inlines.animation = "pulse 1.5s ease-in-out infinite";
   } else if (style === 'circuit') {
     stroke = "#10b981";
     strokeWidth = 1.2;
     inlines.filter = "drop-shadow(1px 1px 0 rgba(0,0,0,0.5))";
     strokeDasharray = "30,10,5,10";
-  } else if (style === 'zigzag' || style === 'metro' || style === 'angled-step') {
+  } else if (style === 'metro' || style === 'angled-step') {
     stroke = "#ec4899";
     strokeWidth = 2;
-  } else if (style === 'double') {
-    strokeWidth = 4;
-    strokeDasharray = "2,2";
-  } else if (style === 'thin') {
-    strokeWidth = 0.5;
-  } else if (style === 'animated') {
-    strokeDasharray = "8,8";
-    inlines.animation = "flow 1.5s linear infinite"; 
+  }
+
+  // Fine round dots (a near-zero dash with round caps draws a dot)
+  if (style === 'dotted') {
+    strokeDasharray = "0.1 5";
+    strokeWidth = 2;
+    inlines.strokeLinecap = 'round';
   }
 
   // JS Node Edge Override
@@ -90,78 +80,38 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     }
   }
 
+  // Palette themes tint the neutral edge styles to match the nodes
+  const paletteEdge =
+    PALETTE_EDGE_COLORS[nodeTheme as keyof typeof PALETTE_EDGE_COLORS] ?? STYLED_THEME_EDGE_COLORS[nodeTheme];
+  if (paletteEdge && ['curved', 'straight', 'step', 'dashed', 'pipe', 'arrow', 'dotted', 'fade', 'arc', 'ribbon'].includes(style)) {
+    stroke = paletteEdge[appTheme === 'dark' ? 0 : 1];
+  }
+
   // Theme-specific overrides if style is default or specifically requested
-  if (nodeTheme === 'nature') {
-    stroke = "#6b8e23";
-    strokeWidth = 2;
-    // Living branches logic: more organic feel
-  } else if (nodeTheme === 'circuit') {
-    stroke = "#00f3ff";
-    strokeWidth = 1;
-    strokeDasharray = "50,10,5,10";
-    inlines.filter = "drop-shadow(0 0 2px rgba(0,243,255,0.5))";
-  } else if (nodeTheme === 'galaxy') {
-    stroke = "rgba(168, 85, 247, 0.4)";
-    strokeWidth = 1;
-    inlines.filter = "drop-shadow(0 0 5px rgba(168, 85, 247, 0.3))";
-  } else if (nodeTheme === 'neon') {
-    stroke = "#ff00ff";
-    inlines.filter = "drop-shadow(0 0 8px #ff00ff)";
-  } else if (nodeTheme === 'lava') {
-    stroke = "#ff4500";
-    strokeWidth = 2.5;
-    inlines.filter = "drop-shadow(0 0 10px #ff4500)";
-  } else if (nodeTheme === 'ocean') {
-    stroke = "#005f73";
-    strokeWidth = 1.5;
-    inlines.filter = "drop-shadow(0 0 8px rgba(0,95,115,0.4))";
-  } else if (nodeTheme === 'hacker') {
-    stroke = "#00ff41";
-    strokeWidth = 0.8;
-  } else if (nodeTheme === 'neural') {
-    stroke = "rgba(96, 165, 250, 0.5)";
+  if (nodeTheme === 'hacker') {
+    // A thin dashed data stream drifting toward the child
+    stroke = appTheme === 'dark' ? 'rgba(0, 255, 65, 0.55)' : 'rgba(10, 143, 60, 0.6)';
+    strokeWidth = 1.2;
     strokeDasharray = "2,4";
-    inlines.animation = "flow 5s linear infinite";
-  } else if (nodeTheme === 'river') {
-    stroke = "#00b4d8";
-    strokeWidth = 3;
-    inlines.opacity = 0.6;
-    strokeDasharray = "10,5";
-    inlines.animation = "flow 2s linear infinite";
-  } else if (nodeTheme === 'abstract') {
-    stroke = "url(#abstract-gradient)"; // Need to define this in GraphVisualizer
-    strokeWidth = 2;
-  } else if (nodeTheme === 'nature2') {
-    const vineColors = ['#95b876', '#4a7c59', '#3d5a40', '#6c8f5c', '#839e6a', '#a67c52', '#417b7a'];
-    const idx = target ? (Math.floor(target.x) + Math.floor(target.y)) % vineColors.length : 0;
-    stroke = vineColors[Math.abs(idx)];
-    strokeWidth = 3;
-    inlines.strokeLinecap = 'round';
-    inlines.filter = "drop-shadow(0 2px 3px rgba(0,0,0,0.1))";
-  } else if (style === 'hydrogen' || nodeTheme === 'hydrogen') {
-    stroke = '#93c5fd'; // blue-300
+    inlines.animation = "flow 6s linear infinite";
+    inlines.filter = "none";
+  } else if (nodeTheme === 'terminal') {
+    stroke = appTheme === 'dark' ? 'rgba(63, 185, 80, 0.65)' : 'rgba(26, 127, 55, 0.55)';
     strokeWidth = 1.5;
-    strokeDasharray = "3, 8";
+    inlines.filter = "none";
+  } else if (nodeTheme === 'nature') {
+    stroke = appTheme === 'dark' ? '#5e8a55' : '#9dbd8f';
+    strokeWidth = 2;
     inlines.strokeLinecap = 'round';
-    inlines.animation = "flow 3s linear infinite";
-    inlines.filter = "drop-shadow(0 0 4px rgba(147,197,253,0.6))";
+    inlines.filter = "none";
   } else if (style === 'seed' || nodeTheme === 'seed') {
-    const vineColors = ['#5a8c33', '#71a044', '#467c26', '#699938'];
-    const idx = target ? (Math.floor(target.x) + Math.floor(target.y)) % vineColors.length : 0;
-    stroke = vineColors[Math.abs(idx)];
-    strokeWidth = 2.5;
+    // Two close greens, so neighbouring stems read as separate without looking busy
+    const vineColors = appTheme === 'dark' ? ['#7cab5c', '#6c9b4f'] : ['#8db174', '#7aa45f'];
+    const idx = target ? Math.abs(Math.floor(target.x) + Math.floor(target.y)) % 2 : 0;
+    stroke = vineColors[idx];
+    strokeWidth = 2;
     inlines.strokeLinecap = 'round';
-    inlines.filter = "drop-shadow(0 2px 3px rgba(90,140,51,0.2))";
-  } else if (style === 'peepal' || nodeTheme === 'peepal') {
-    stroke = "#daf379";
-    strokeWidth = 2.4;
-    inlines.strokeLinecap = 'round';
-    inlines.filter = "drop-shadow(0 2px 4px rgba(0,0,0,0.2))";
-  } else if (style === 'banyan' || nodeTheme === 'banyan') {
-    stroke = "#e2f97c";
-    strokeWidth = 3.2;
-    inlines.strokeLinecap = 'round';
-    inlines.filter = "drop-shadow(0 2px 5px rgba(0,0,0,0.25))";
+    inlines.filter = "none";
   } else if (style === 'chalk' || nodeTheme === 'chalk') {
     stroke = appTheme === 'dark' ? "#cbd5e1" : "#334155";
     strokeWidth = 2;
@@ -170,41 +120,18 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     inlines.filter = "none";
   }
 
-  if (style === 'ludo' || nodeTheme === 'ludo') {
-    const ludoColors = ['#ff4d4d', '#2ecc71', '#f1c40f', '#3498db'];
-    // Try to get a consistent color based on target data if source is not available enough
-    // For now we'll use a neutral slate or a random-but-deterministic color if we can
-    stroke = '#94a3b8'; // default
-    strokeWidth = 14;
-    inlines.strokeLinecap = 'butt';
-  }
-
-  if (style === 'chess' || nodeTheme === 'chess') {
-    stroke = '#d4af37'; // gold
-    strokeWidth = 1.5;
-    inlines.opacity = 0.6;
-    inlines.filter = "drop-shadow(0 0 4px rgba(212,175,55,0.4))";
-  }
-
-  if (style === 'octopus' || nodeTheme === 'octopus') {
-    stroke = '#4f46e5'; // Deep Indigo glow base
-    strokeWidth = 8;
-    inlines.strokeLinecap = 'round';
-    inlines.filter = "drop-shadow(0 0 6px rgba(79,70,229,0.5))";
-  }
-
   strokeWidth = strokeWidth * edgeWidth;
 
   if (isSelected) {
     stroke = "#a855f7"; // purple-500
-    strokeWidth = style === 'thin' ? 1.5 : strokeWidth + 1.5;
+    strokeWidth = strokeWidth + 1.5;
     inlines.filter = "drop-shadow(0 0 6px rgba(168,85,247,0.6))";
     inlines.zIndex = 10;
   }
 
   if (isHighlighted) {
     stroke = "#38bdf8"; // sky-400
-    strokeWidth = style === 'thin' ? 1.5 : strokeWidth + 1;
+    strokeWidth = strokeWidth + 1;
     inlines.filter = "drop-shadow(0 0 6px rgba(56,189,248,0.5))";
     inlines.zIndex = 20;
   } else if (isDimmed && !isHovered && !isSelected) {
@@ -219,8 +146,10 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     inlines.zIndex = 30;
   }
 
+  const showFade = style === 'fade' && !!source && !!target && !isSelected && !isHovered && !isHighlighted;
+
   return (
-    <g 
+    <g
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
       style={{ cursor: 'pointer', pointerEvents: 'auto' }}
@@ -233,133 +162,82 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
         strokeWidth={30}
         style={{ pointerEvents: 'stroke' }}
       />
+      {showFade && (
+        <defs>
+          {/* Strong at the parent, fading toward the child */}
+          {showFade && source && target && (
+            <linearGradient
+              id={`edge-fade-${uid}`}
+              gradientUnits="userSpaceOnUse"
+              x1={source.x}
+              y1={source.y}
+              x2={target.x}
+              y2={target.y}
+            >
+              <stop offset="0%" stopColor={stroke} stopOpacity={1} />
+              <stop offset="100%" stopColor={stroke} stopOpacity={0.12} />
+            </linearGradient>
+          )}
+        </defs>
+      )}
+      {/* Ribbon: a soft translucent band under the line */}
+      {style === 'ribbon' && (
+        <path
+          d={d}
+          fill="none"
+          stroke={stroke}
+          strokeWidth={strokeWidth * 6}
+          strokeLinecap="round"
+          style={{ transition: inlines.transition, opacity: Number(inlines.opacity ?? 1) * 0.16, pointerEvents: 'none' }}
+        />
+      )}
       {/* Visible path */}
       <path
         d={d}
         fill="none"
-        stroke={stroke}
+        stroke={showFade ? `url(#edge-fade-${uid})` : stroke}
         strokeWidth={strokeWidth}
         strokeDasharray={strokeDasharray}
         style={{ ...inlines, pointerEvents: 'none' }}
       />
-      {(style === 'ludo' || nodeTheme === 'ludo') && (
-        <>
-           {/* White middle track */}
-           <path
-             d={d}
-             fill="none"
-             stroke="white"
-             strokeWidth={strokeWidth * 0.4}
-             style={{ ...inlines, pointerEvents: 'none', opacity: 0.8 }}
-           />
-           {/* Ladder steps */}
-           <path
-             d={d}
-             fill="none"
-             stroke="#000"
-             strokeWidth={strokeWidth}
-             strokeDasharray={`1, 10`}
-             style={{ ...inlines, pointerEvents: 'none', opacity: 0.2 }}
-           />
-        </>
-      )}
-      {(style === 'octopus' || nodeTheme === 'octopus') && (
-        <>
-           {/* Tentacle texture / suction cups */}
-           <path
-             d={d}
-             fill="none"
-             stroke="#c7d2fe"
-             strokeWidth={strokeWidth * 0.4}
-             strokeDasharray="0, 10"
-             strokeLinecap="round"
-             style={{ ...inlines, pointerEvents: 'none', filter: "drop-shadow(0 0 4px #818cf8)", opacity: 0.8 }}
-           />
-           {/* Inner luminescent core */}
-           <path
-             d={d}
-             fill="none"
-             stroke="#a5b4fc"
-             strokeWidth={strokeWidth * 0.15}
-             style={{ ...inlines, opacity: 0.9, pointerEvents: 'none', filter: "drop-shadow(0 0 3px #6366f1)" }}
-           />
-        </>
-      )}
-      {style === 'orgChart' && source && target && (
-        <>
-          <circle 
-            cx={layoutMode === 'vertical' ? source.x : (source.x + target.x) / 2}
-            cy={layoutMode === 'vertical' ? (source.y + target.y) / 2 : source.y}
-            r={5}
-            fill="#0d1117"
-            stroke={stroke}
-            strokeWidth={1.5}
-            style={{ ...inlines, pointerEvents: 'none' }}
+      {style === 'arrow' && source && target && (() => {
+        // The curve passes through the midpoint; its direction there depends on how the layout bends it
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
+        const mode = layoutMode ?? '';
+        const [tx, ty] = ['force', 'molecule', 'radial'].includes(mode)
+          ? [dx, dy]
+          : mode === 'vertical' || mode === 'compact' || mode === 'grid'
+            ? [2 * dx, dy]
+            : [dx, 2 * dy];
+        const angle = (Math.atan2(ty, tx) * 180) / Math.PI;
+        const size = 4 + edgeWidth;
+        return (
+          <path
+            d={`M ${-size} ${-size} L ${size * 0.9} 0 L ${-size} ${size} Z`}
+            transform={`translate(${(source.x + target.x) / 2}, ${(source.y + target.y) / 2}) rotate(${angle})`}
+            fill={stroke}
+            style={{ transition: inlines.transition, opacity: inlines.opacity, pointerEvents: 'none' }}
           />
-          <circle 
-            cx={layoutMode === 'vertical' ? target.x : (source.x + target.x) / 2}
-            cy={layoutMode === 'vertical' ? (source.y + target.y) / 2 : target.y}
-            r={5}
-            fill="#0d1117"
-            stroke={stroke}
-            strokeWidth={1.5}
-            style={{ ...inlines, pointerEvents: 'none' }}
-          />
-        </>
-      )}
-      {(style === 'nature2' || nodeTheme === 'nature2') && source && target && (
-        <>
-           <path 
-             d={`M ${(source.x + target.x)/2} ${(source.y + target.y)/2} Q ${(source.x + target.x)/2 - 12} ${(source.y + target.y)/2 - 12} ${(source.x + target.x)/2 + 2} ${(source.y + target.y)/2 - 15} Q ${(source.x + target.x)/2 + 10} ${(source.y + target.y)/2} ${(source.x + target.x)/2} ${(source.y + target.y)/2}`}
-             fill={stroke}
-             opacity={0.85}
-             style={{pointerEvents: 'none'}}
-           />
-        </>
-      )}
-      {(style === 'hydrogen' || nodeTheme === 'hydrogen') && source && target && (
-        <>
-           <circle
-             cx={(source.x + target.x) / 2}
-             cy={(source.y + target.y) / 2}
-             r={2.5}
-             fill="#bfdbfe"
-             style={{ filter: "drop-shadow(0 0 6px rgba(191,219,254,1))", pointerEvents: 'none' }}
-           >
-             <animate attributeName="cx" values={`${source.x};${target.x}`} dur="4s" repeatCount="indefinite" />
-             <animate attributeName="cy" values={`${source.y};${target.y}`} dur="4s" repeatCount="indefinite" />
-           </circle>
-           <circle
-             cx={target.x}
-             cy={target.y}
-             r={3.5}
-             fill="#93c5fd"
-             style={{ filter: "drop-shadow(0 0 5px rgba(147,197,253,0.8))", pointerEvents: 'none' }}
-           />
-        </>
-      )}    
-      {(style === 'seed' || nodeTheme === 'seed') && source && target && (
-        <g style={{pointerEvents: 'none'}}>
-           <circle cx={target.x} cy={target.y} r={4} fill="#f4f7f0" stroke={stroke} strokeWidth={2} />
-           {/* Draw a little leaf near the target */}
-           <path 
-             d={`M ${target.x} ${target.y} Q ${target.x - 12} ${target.y - 18}, ${target.x - 18} ${target.y - 6} Q ${target.x - 6} ${target.y}, ${target.x} ${target.y}`}
-             fill={stroke} opacity={0.9}
-           />
-        </g>
-      )}
-      {(style === 'peepal' || nodeTheme === 'peepal') && source && target && (
-        <g style={{pointerEvents: 'none'}}>
-           {/* Draw a beautiful yellow-green petiole connection joint swelling at the base of the leaf */}
-           <circle cx={target.x} cy={target.y} r={3.5} fill="#daf379" stroke="#3a5a40" strokeWidth={1} />
-        </g>
-      )}
-      {(style === 'banyan' || nodeTheme === 'banyan') && source && target && (
-        <g style={{pointerEvents: 'none'}}>
-           {/* Draw a robust golden-green woody petiole sheath swelling at the base of the banyan leaf */}
-           <circle cx={target.x} cy={target.y} r={4.5} fill="#e2f97c" stroke="#1b4332" strokeWidth={1.5} />
-        </g>
-      )}
+        );
+      })()}
+      {(style === 'seed' || nodeTheme === 'seed') && source && target && (() => {
+        // A small leaf halfway along the stem (curved and step paths both pass through the midpoint),
+        // on alternating sides, and a bud where the stem meets the node
+        const mx = (source.x + target.x) / 2;
+        const my = (source.y + target.y) / 2;
+        const angle = (Math.atan2(target.y - source.y, target.x - source.x) * 180) / Math.PI;
+        const side = Math.abs(Math.floor(target.x + target.y)) % 2 ? 1 : -1;
+        return (
+          <g style={{ pointerEvents: 'none', opacity: inlines.opacity }}>
+            <g transform={`translate(${mx}, ${my}) rotate(${angle + side * 38})`}>
+              <path d="M 0 0 Q 7 -7.5 17 0 Q 7 7.5 0 0 Z" fill={stroke} />
+              <path d="M 1 0 L 14 0" stroke={appTheme === 'dark' ? '#17241b' : '#ffffff'} strokeWidth={0.6} opacity={0.5} />
+            </g>
+            <circle cx={target.x} cy={target.y} r={3.5} fill={stroke} />
+          </g>
+        );
+      })()}
       {isJsNodeEdge && target && source && (
         <g transform={`translate(${layoutMode === 'vertical' ? target.x : target.x - 30}, ${layoutMode === 'vertical' ? target.y - 20 : target.y - 12})`} style={{ pointerEvents: 'none' }}>
            <text
@@ -374,5 +252,21 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
     </g>
   );
 }
+
+/** Edge colour for other themes that tint their lines: [dark, light] */
+const STYLED_THEME_EDGE_COLORS: Record<string, [string, string]> = {
+  glass: ["rgba(255, 255, 255, 0.32)", "rgba(15, 23, 42, 0.22)"],
+  math: ["rgba(96, 165, 250, 0.6)", "rgba(37, 99, 235, 0.45)"],
+  architect: ["rgba(125, 167, 214, 0.65)", "rgba(71, 85, 105, 0.55)"],
+  minimal: ["#3a3a3a", "#d6d6d3"],
+  gradient: ["rgba(139, 92, 246, 0.7)", "rgba(139, 92, 246, 0.5)"],
+  ocean: ["rgba(34, 165, 196, 0.6)", "rgba(14, 116, 144, 0.45)"],
+  tree: ["#7a5c3e", "#c2a27e"],
+  zen: ["#4a4640", "#d8d2c6"],
+  // Like the editor's indent guides
+  vscode: ["#4b4b4b", "#c4c4c4"],
+  notebook: ["rgba(107, 143, 199, 0.75)", "rgba(59, 91, 146, 0.65)"],
+  rune: ["rgba(201, 162, 74, 0.55)", "rgba(150, 110, 40, 0.5)"],
+};
 
 export default React.memo(EdgeRenderer);

@@ -360,22 +360,12 @@ export const getEdgePath = (source: { x: number, y: number }, target: { x: numbe
     }
 
     // 1. STRAIGHT & SOLID STYLES
-    if (edgeStyle === 'straight' || edgeStyle === 'double' || edgeStyle === 'thin') {
+    if (edgeStyle === 'straight') {
         return `M ${x1},${y1} L ${x2},${y2}`;
     }
 
-    // 2. TECHNICAL ELBOW ROUTING (Clean hard-corners with custom offset)
-    if (edgeStyle === 'orgChart' || edgeStyle === 'elbow') {
-        if (layoutMode === 'vertical' || ['compact', 'grid'].includes(layoutMode)) {
-            const midY = y1 + 35;
-            return `M ${x1},${y1} L ${x1},${midY} L ${x2},${midY} L ${x2},${y2}`;
-        }
-        const midX = x1 + 45;
-        return `M ${x1},${y1} L ${midX},${y1} L ${midX},${y2} L ${x2},${y2}`;
-    }
-
-    // 3. STEP / DASHED / NEON / CIRCUIT (Orthogonal mid-point splitter)
-    if (edgeStyle === 'step' || edgeStyle === 'dashed' || edgeStyle === 'neon' || edgeStyle === 'circuit') {
+    // 3. STEP / DASHED / CIRCUIT (Orthogonal mid-point splitter)
+    if (edgeStyle === 'step' || edgeStyle === 'dashed' || edgeStyle === 'circuit') {
         if (layoutMode === 'vertical' || ['compact', 'grid'].includes(layoutMode)) {
             return `M ${x1},${y1} L ${x1},${(y1 + y2) / 2} L ${x2},${(y1 + y2) / 2} L ${x2},${y2}`;
         }
@@ -443,58 +433,6 @@ export const getEdgePath = (source: { x: number, y: number }, target: { x: numbe
         }
     }
 
-    // 8. ELECTRIC PULSE ZIGZAG (Smooth sinusoidal wave geometry)
-    if (edgeStyle === 'zigzag' || edgeStyle === 'pulse') {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const dist = Math.hypot(dx, dy) || 1;
-        const nx = -dy / dist;
-        const ny = dx / dist;
-
-        // Use fewer, wider waves for a smoother look
-        const waveCount = Math.max(3, Math.floor(dist / 50));
-        const amp = edgeStyle === 'pulse' ? 12 : 14;
-        let path = `M ${x1},${y1}`;
-
-        for (let i = 0; i < waveCount; i++) {
-            const t0 = i / waveCount;
-            const t1 = (i + 0.5) / waveCount;
-            const t2 = (i + 1) / waveCount;
-
-            // Midpoint of this half-wave (the peak/valley)
-            const peakX = x1 + dx * t1;
-            const peakY = y1 + dy * t1;
-            const side = (i % 2 === 0 ? 1 : -1) * amp;
-
-            // Control point at the peak, displaced perpendicular
-            const cpX = peakX + nx * side;
-            const cpY = peakY + ny * side;
-
-            // End point of this wave segment
-            const endX = x1 + dx * t2;
-            const endY = y1 + dy * t2;
-
-            // Quadratic bezier for smooth rounded peaks
-            path += ` Q ${cpX},${cpY} ${endX},${endY}`;
-        }
-        return path;
-    }
-
-    // 9. ORGANIC OCTOPUS WAVES
-    if (edgeStyle === 'octopus') {
-        const dx = x2 - x1;
-        const dy = y2 - y1;
-        const dist = Math.hypot(dx, dy) || 1;
-        const nx = -dy / dist;
-        const ny = dx / dist;
-        const shift = Math.sin(dist / 40) * 35;
-        const mx1 = x1 + dx * 0.33 + nx * shift;
-        const my1 = y1 + dy * 0.33 + ny * shift;
-        const mx2 = x1 + dx * 0.66 - nx * shift;
-        const my2 = y1 + dy * 0.66 - ny * shift;
-        return `M ${x1},${y1} C ${mx1},${my1} ${mx2},${my2} ${x2},${y2}`;
-    }
-
     // 11. METRO / ANGLED-STEP (Double-bend slanted transitions centered at the middle)
     if (edgeStyle === 'metro' || edgeStyle === 'angled-step') {
         const dx = x2 - x1;
@@ -539,10 +477,24 @@ export const getEdgePath = (source: { x: number, y: number }, target: { x: numbe
         }
     }
 
+    // ARC: a gentle circular arc that leaves the parent heading outward and curves in to the child,
+    // so it doesn't cut back across siblings. Children on either side mirror each other.
+    if (edgeStyle === 'arc') {
+        const dx = x2 - x1, dy = y2 - y1;
+        const d = Math.hypot(dx, dy);
+        // Bend depth peaks at 45° and falls to zero for level or aligned children,
+        // so near-straight edges stay straight instead of humping over their siblings
+        const s = (0.3 * Math.abs(dx * dy)) / (d || 1);
+        if (s < 1) return `M ${x1},${y1} L ${x2},${y2}`;
+        const r = (d * d) / (8 * s) + s / 2;
+        const sweep = dx * dy >= 0 ? 1 : 0;
+        return `M ${x1},${y1} A ${r},${r} 0 0 ${sweep} ${x2},${y2}`;
+    }
+
     // 10. DEFAULT CURVED / DIRECT CONNECTIONS
     // For force, molecule, and radial: clean direct/spline connections (never horizontal S-curves)
     if (layoutMode === 'force' || layoutMode === 'molecule' || layoutMode === 'radial') {
-        if (edgeStyle === 'straight' || edgeStyle === 'double' || edgeStyle === 'thin' || layoutMode === 'molecule') {
+        if (edgeStyle === 'straight' || layoutMode === 'molecule') {
             return `M ${x1},${y1} L ${x2},${y2}`;
         }
         // Smooth gentle direct curve

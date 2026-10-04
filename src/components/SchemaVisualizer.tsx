@@ -336,50 +336,22 @@ const CustomSchemaEdge = ({
 
   if (styleKey === 'dashed') {
     strokeDasharray = "5,5";
-  } else if (styleKey === 'neon') {
-    stroke = "#0ea5e9";
-    filter = "drop-shadow(0 0 5px rgba(14,165,233,0.85))";
-  } else if (styleKey === 'glow') {
-    stroke = "#f59e0b";
-    strokeWidth = 2.6;
-    filter = "drop-shadow(0 0 6px rgba(245,158,11,0.9)) drop-shadow(0 0 10px rgba(245,158,11,0.5))";
-  } else if (styleKey === 'pulse') {
-    stroke = "#10b981";
-    strokeDasharray = "5,5";
-    strokeWidth = 2.2;
-    filter = "drop-shadow(0 0 4px #10b981)";
-    animation = "flow 1.5s linear infinite, pulse 1.5s ease-in-out infinite";
   } else if (styleKey === 'circuit') {
     stroke = "#06b6d4";
     strokeWidth = 1.6;
     filter = "drop-shadow(1px 1px 0 rgba(0,0,0,0.5))";
     strokeDasharray = "35,10,5,10";
-  } else if (styleKey === 'zigzag' || styleKey === 'metro' || styleKey === 'angled-step') {
+  } else if (styleKey === 'metro' || styleKey === 'angled-step') {
     stroke = "#ec4899";
     strokeWidth = 2.2;
     filter = "drop-shadow(0 0 3px rgba(236,72,153,0.5))";
-  } else if (styleKey === 'double') {
-    strokeWidth = 4.5;
-    strokeDasharray = "3,3";
-  } else if (styleKey === 'thin') {
-    strokeWidth = 0.65;
-  } else if (styleKey === 'animated') {
-    strokeDasharray = "8,8";
-    animation = "flow 15s linear infinite"; 
-  } else if (styleKey === 'hydrogen') {
-    stroke = '#93c5fd';
-    strokeWidth = 1.8;
-    strokeDasharray = "3,8";
-    animation = "flow 3s linear infinite";
-    filter = "drop-shadow(0 0 4px rgba(147,197,253,0.6))";
+  } else if (styleKey === 'dotted') {
+    strokeDasharray = "0.1 5";
+    strokeWidth = 2;
   } else if (styleKey === 'seed') {
     stroke = "#84cc16";
     strokeWidth = 2.4;
     filter = "drop-shadow(0 2px 3px rgba(132,204,22,0.25))";
-  } else if (styleKey === 'octopus') {
-    stroke = '#6366f1';
-    strokeWidth = 5.5;
-    filter = "drop-shadow(0 0 6px rgba(99,102,241,0.6))";
   } else if (styleKey === 'chalk' || nodeTheme === 'chalk') {
     stroke = appTheme === 'dark' ? "#cbd5e1" : "#334155";
     strokeWidth = 2;
@@ -399,13 +371,36 @@ const CustomSchemaEdge = ({
     transition: 'stroke 0.3s, stroke-width 0.3s, filter 0.3s'
   };
 
+  const safeId = String(id).replace(/[^a-zA-Z0-9_-]/g, '');
   return (
     <g className="react-flow__edge-container pointer-events-none">
-      <BaseEdge 
-        id={id} 
-        path={path} 
-        style={mergedStyle} 
-        markerEnd={markerEnd} 
+      {(styleKey === 'arrow' || styleKey === 'fade') && (
+        <defs>
+          {styleKey === 'arrow' && (
+            <marker id={`schema-arrow-${safeId}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" markerUnits="userSpaceOnUse" orient="auto">
+              <path d="M 0 1 L 10 5 L 0 9 z" fill={stroke} />
+            </marker>
+          )}
+          {styleKey === 'fade' && (
+            <linearGradient id={`schema-fade-${safeId}`} gradientUnits="userSpaceOnUse" x1={sourceX} y1={sourceY} x2={targetX} y2={targetY}>
+              <stop offset="0%" stopColor={stroke} stopOpacity={1} />
+              <stop offset="100%" stopColor={stroke} stopOpacity={0.12} />
+            </linearGradient>
+          )}
+        </defs>
+      )}
+      {styleKey === 'ribbon' && (
+        <path d={path} fill="none" stroke={stroke} strokeWidth={strokeWidth * 6} strokeLinecap="round" opacity={0.16} />
+      )}
+      <BaseEdge
+        id={id}
+        path={path}
+        style={{
+          ...mergedStyle,
+          ...(styleKey === 'fade' ? { stroke: `url(#schema-fade-${safeId})` } : {}),
+          ...(styleKey === 'dotted' ? { strokeLinecap: 'round' as const } : {}),
+        }}
+        markerEnd={styleKey === 'arrow' ? `url(#schema-arrow-${safeId})` : markerEnd}
       />
     </g>
   );
@@ -768,25 +763,16 @@ const nodeTypes = {
 
 const edgeTypes = {
   curved: CustomSchemaEdge,
-  bezier: CustomSchemaEdge,
+  arrow: CustomSchemaEdge,
+  dotted: CustomSchemaEdge,
+  fade: CustomSchemaEdge,
+  arc: CustomSchemaEdge,
+  ribbon: CustomSchemaEdge,
   straight: CustomSchemaEdge,
   step: CustomSchemaEdge,
-  animated: CustomSchemaEdge,
   dashed: CustomSchemaEdge,
-  neon: CustomSchemaEdge,
-  double: CustomSchemaEdge,
   pipe: CustomSchemaEdge,
-  thin: CustomSchemaEdge,
-  orgChart: CustomSchemaEdge,
   circuit: CustomSchemaEdge,
-  glow: CustomSchemaEdge,
-  zigzag: CustomSchemaEdge,
-  pulse: CustomSchemaEdge,
-  ludo: CustomSchemaEdge,
-  chess: CustomSchemaEdge,
-  octopus: CustomSchemaEdge,
-  nature2: CustomSchemaEdge,
-  hydrogen: CustomSchemaEdge,
   seed: CustomSchemaEdge,
   metro: CustomSchemaEdge,
   'angled-step': CustomSchemaEdge,

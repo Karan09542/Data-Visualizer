@@ -137,7 +137,7 @@ function spellingScore(said: string[], phrase: string[]): number {
 
 /**
  * The option named in `text`, comparing runs of one to three words with spaces and punctuation
- * dropped ("angled step" → "angled-step", "org chart" → "orgChart"), allowing one wrong letter in
+ * dropped ("angled step" → "angled-step"), allowing one wrong letter in
  * longer names since speech recognition misspells them ("circles" → "circle").
  */
 export function findOption(text: string, options: readonly string[]): string | null {
@@ -208,7 +208,7 @@ export class IntentIndex<C extends MatchableCommand> {
 
   /**
    * The best command for any of the recognition alternatives. `match` is null when nothing is close
-   * enough, or when two commands are about equally close ("neon" is both a theme and an edge style):
+   * enough, or when two commands are about equally close ("seed" is both a theme and an edge style):
    * `candidates` then holds them, to ask which was meant rather than guess.
    */
   async match(alternatives: string[], minScore = MIN_SCORE): Promise<{ match: IntentMatch<C> | null; candidates: IntentMatch<C>[] }> {

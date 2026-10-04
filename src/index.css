@@ -228,21 +228,47 @@
   animation: flow 2s linear infinite;
 }
 
-.animate-scanline {
+/* Hacker theme card: four targeting-bracket corners over a dark (or light) panel, and a faint
+   scan line sweeping down. The corners are gradients, so they follow the card at any size. */
+.hacker-node {
+  --hud: #00ff41;
+  --hud-bg: rgba(4, 14, 8, 0.92);
   position: relative;
   overflow: hidden;
+  background:
+    linear-gradient(var(--hud), var(--hud)) top left / 10px 1.5px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) top left / 1.5px 10px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) top right / 10px 1.5px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) top right / 1.5px 10px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom left / 10px 1.5px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom left / 1.5px 10px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom right / 10px 1.5px no-repeat,
+    linear-gradient(var(--hud), var(--hud)) bottom right / 1.5px 10px no-repeat,
+    var(--hud-bg);
 }
 
-.animate-scanline::after {
+html:not(.dark) .hacker-node {
+  --hud: #0a8f3c;
+  --hud-bg: #ffffff;
+}
+
+.hacker-node::after {
   content: "";
   position: absolute;
   top: 0;
   left: 0;
   width: 100%;
   height: 2px;
-  background: rgba(0, 255, 65, 0.1);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--hud) 22%, transparent), transparent);
   animation: scanline 4s linear infinite;
   pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hacker-node::after {
+    animation: none;
+    opacity: 0;
+  }
 }
 
 /* Hide number input spinners */
@@ -697,131 +723,17 @@ input[type="number"] {
   font-family: 'Chalkboard SE', 'Chalkboard', 'Comic Sans MS', cursive, ui-monospace, monospace;
 }
 
-/* Abstract Node Theme Styles */
-.abstract-node {
+/* Nature theme root: forest-green card with a thin sand-to-moss rim. The rim is a gradient border
+   drawn under a padding-box fill, which (unlike border-image) follows the rounded corners. */
+.nature-root {
+  border: 1.5px solid transparent;
+  border-radius: 14px;
   background:
-    radial-gradient(circle at 0% 0%, rgba(255, 0, 128, 0.15) 0%, transparent 50%),
-    radial-gradient(circle at 100% 100%, rgba(0, 200, 255, 0.15) 0%, transparent 50%),
-    #050505;
-  background-size: 200% 200%;
-  animation: abstract-pulse 10s ease infinite alternate;
-}
-
-@keyframes abstract-pulse {
-  0% {
-    background-position: 0% 0%;
-  }
-
-  100% {
-    background-position: 100% 100%;
-  }
-}
-
-/* River Node Theme Styles */
-.river-node {
-  background-size: 200% 200%;
-  animation: river-flow 8s ease infinite;
-}
-
-@keyframes river-flow {
-  0% {
-    background-position: 0% 50%;
-  }
-
-  50% {
-    background-position: 100% 50%;
-  }
-
-  100% {
-    background-position: 0% 50%;
-  }
-}
-
-/* Math Node Theme Styles */
-.math-node-light {
-  background-image:
-    linear-gradient(rgba(59, 130, 246, 0.1) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(59, 130, 246, 0.1) 1px, transparent 1px);
-  background-size: 15px 15px;
-  background-position: -1px -1px;
-}
-
-.math-node-dark {
-  background-image:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 15px 15px;
-  background-position: -1px -1px;
-}
-
-/* Cloud Node Theme Styles */
-.cloud-node {
-  position: relative;
-  overflow: visible !important;
-  margin-top: 2.5rem;
-  /* Increased space for scalable top bumps */
-}
-
-.cloud-node::before,
-.cloud-node::after {
-  content: '';
-  position: absolute;
-  background-color: inherit;
-  border-radius: 50%;
-  z-index: -1;
-}
-
-.cloud-node::before {
-  width: 45%;
-  max-width: 130px;
-  aspect-ratio: 1;
-  top: 0;
-  transform: translateY(-40%);
-  left: 12%;
-}
-
-.cloud-node::after {
-  width: 55%;
-  max-width: 150px;
-  aspect-ratio: 1;
-  top: 0;
-  transform: translateY(-45%);
-  right: 12%;
-}
-
-@keyframes lightning-flash {
-
-  0%,
-  95%,
-  98% {
-    filter: brightness(1);
-  }
-
-  96%,
-  99% {
-    filter: brightness(1.4) contrast(1.2);
-  }
-}
-
-.thunder-cloud {
-  animation: lightning-flash 5s infinite;
-}
-
-.thunder-cloud::before,
-.thunder-cloud::after {
-  /* Ensure the lightning flash effect applies to the cloud bumps as well */
-  animation: lightning-flash 5s infinite;
-}
-
-/* Nature2 Border Image Styles */
-.nature2-border-root {
-  border: 10px solid;
-  border-image: linear-gradient(to bottom right, #5c4033, #8b5a2b, #cd853f, #8b5a2b, #5c4033) 1;
-}
-
-.nature2-border-child {
-  border: 6px solid;
-  border-image: linear-gradient(to bottom right, #4a7c59, #6c8f5c, #95b876, #6c8f5c, #4a7c59) 1;
+    linear-gradient(135deg, #3c6a45, #284a30) padding-box,
+    linear-gradient(135deg, #d6b47c, #8fb57a 55%, #4f7d4a) border-box;
+  box-shadow:
+    0 12px 26px -12px rgba(20, 40, 24, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.12);
 }
 
 /* Enable touch scrolling and mobile interactions in Monaco Editor */
@@ -7560,4 +7472,37 @@ body.sticky-previewing-selection [contenteditable] *::selection,
   --ap-track: rgb(15 23 42 / 0.12);
   --ap-button: #ffffff;
   --cp-on-accent: #ffffff;
+}
+
+/* Seed theme: the root's sprout sways gently from its base */
+@keyframes seed-sway {
+  0%, 100% { transform: rotate(-3deg); }
+  50% { transform: rotate(3deg); }
+}
+.seed-sprout {
+  transform-origin: 50% 100%;
+  animation: seed-sway 5s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+  .seed-sprout {
+    animation: none;
+  }
+}
+
+/* Gradient theme. The root is a vivid fill; other cards get a thin gradient border, drawn as a
+   gradient behind a padding-box fill so it follows the rounded corners. */
+.gradient-root {
+  border-color: transparent;
+  background: linear-gradient(135deg, #6366f1, #8b5cf6 50%, #ec4899);
+  box-shadow: 0 10px 28px -10px rgba(139, 92, 246, 0.6);
+}
+.gradient-card {
+  --gradient-card-fill: #12121c;
+  border: 1.5px solid transparent;
+  background:
+    linear-gradient(var(--gradient-card-fill), var(--gradient-card-fill)) padding-box,
+    linear-gradient(135deg, #6366f1, #a855f7 50%, #ec4899) border-box;
+}
+html:not(.dark) .gradient-card {
+  --gradient-card-fill: #ffffff;
 }

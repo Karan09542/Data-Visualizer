@@ -75,7 +75,7 @@ if (typeof window !== "undefined") {
   searchWorkerInstance = new SearchWorker();
 }
 
-import { LayoutMode, CodeFormat, NodeTheme, EdgeStyle, NodeShape } from "../constants/visualizer";
+import { NODE_THEMES, EDGE_STYLES, LayoutMode, CodeFormat, NodeTheme, EdgeStyle, NodeShape } from "../constants/visualizer";
 export type { LayoutMode, CodeFormat, NodeTheme, EdgeStyle, NodeShape };
 export type CanvasTheme = "none" | "dots" | "grid" | "lines";
 export type AppTheme = "dark" | "light";
@@ -1169,8 +1169,13 @@ export const useStore = create<StoreState>()(
         },
         setLayoutMode: (mode: LayoutMode) =>
           set({ layoutMode: mode, dragOverrides: {}, nodeLayoutOverrides: {} }),
-        setNodeTheme: (theme: NodeTheme) => set({ nodeTheme: theme }),
-        setEdgeStyle: (style: EdgeStyle) => set({ edgeStyle: style }),
+        // Themes come from saved state, share links and voice: anything no longer offered becomes the default
+        setNodeTheme: (theme: NodeTheme) => {
+          const name = (theme as string) === "nature2" ? "nature" : theme; // renamed
+          set({ nodeTheme: (NODE_THEMES as readonly string[]).includes(name) ? (name as NodeTheme) : "vscode" });
+        },
+        setEdgeStyle: (style: EdgeStyle) =>
+          set({ edgeStyle: (EDGE_STYLES as readonly string[]).includes(style) ? style : "curved" }),
         setNodeShape: (shape: NodeShape) =>
           set({ nodeShape: shape, dragOverrides: {} }),
         setCanvasTheme: (theme: CanvasTheme) => set({ canvasTheme: theme }),
@@ -1643,10 +1648,22 @@ export const useStore = create<StoreState>()(
         } else {
           collapsedNodes = new Set();
         }
+        // A theme or edge style that has since been removed would draw unstyled; use the default instead
+        const savedTheme = p?.nodeTheme === "nature2" ? "nature" : p?.nodeTheme; // renamed
+        const nodeTheme =
+          typeof savedTheme === "string" && (NODE_THEMES as readonly string[]).includes(savedTheme)
+            ? savedTheme
+            : currentState.nodeTheme;
+        const edgeStyle =
+          typeof p?.edgeStyle === "string" && (EDGE_STYLES as readonly string[]).includes(p.edgeStyle)
+            ? p.edgeStyle
+            : currentState.edgeStyle;
         return {
           ...currentState,
           ...p,
           collapsedNodes,
+          nodeTheme,
+          edgeStyle,
         };
       },
       onRehydrateStorage: () => (state) => {

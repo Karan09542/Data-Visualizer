@@ -31,6 +31,161 @@ import NodeQueryEngine from "./NodeQueryEngine";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { NodeEditingModal } from "./NodeEditingModal";
 
+/**
+ * Canvas backdrops for themes that bring their own, as [dark, light]; other themes use the canvas
+ * settings. Each image is CSS background layers; `size` lines up with them.
+ */
+const THEME_CANVAS: Record<string, { color: [string, string]; image: [string, string]; size?: string }> = {
+  // Forest floor (soft light through the canopy) / parchment with a hint of green and soil
+  seed: {
+    color: ["#0f1913", "#f6f4ec"],
+    image: [
+      "radial-gradient(ellipse at 20% 0%, rgba(163, 201, 138, 0.10) 0%, transparent 55%), radial-gradient(ellipse at 85% 90%, rgba(96, 140, 80, 0.08) 0%, transparent 50%), radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.35) 100%)",
+      "radial-gradient(ellipse at 15% 0%, rgba(143, 177, 116, 0.16) 0%, transparent 55%), radial-gradient(ellipse at 90% 100%, rgba(214, 190, 150, 0.22) 0%, transparent 55%)",
+    ],
+  },
+  nature: {
+    color: ["#0d1410", "#f3f6f0"],
+    image: [
+      "radial-gradient(ellipse at 15% 0%, rgba(110, 160, 100, 0.10) 0%, transparent 55%), radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.3) 100%)",
+      "radial-gradient(ellipse at 20% 0%, rgba(190, 215, 180, 0.35) 0%, transparent 55%), radial-gradient(ellipse at 85% 100%, rgba(175, 200, 160, 0.25) 0%, transparent 55%)",
+    ],
+  },
+  // A faint dot grid, like a terminal's character cells
+  terminal: {
+    color: ["#090c10", "#fbfcfd"],
+    image: [
+      "radial-gradient(rgba(125, 133, 144, 0.16) 1px, transparent 1.2px)",
+      "radial-gradient(rgba(89, 99, 110, 0.14) 1px, transparent 1.2px)",
+    ],
+    size: "18px 18px",
+  },
+  // Very faint scan lines and a soft vignette
+  hacker: {
+    color: ["#030805", "#f5faf6"],
+    image: [
+      "repeating-linear-gradient(0deg, rgba(0, 255, 65, 0.035) 0 1px, transparent 1px 4px), radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.45) 100%)",
+      "repeating-linear-gradient(0deg, rgba(10, 143, 60, 0.04) 0 1px, transparent 1px 4px), radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(10, 60, 30, 0.06) 100%)",
+    ],
+  },
+  // Soft colour glows for the frosted cards to blur
+  glass: {
+    color: ["#0a0c14", "#eef1f7"],
+    image: [
+      "radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.28) 0%, transparent 40%), radial-gradient(circle at 85% 25%, rgba(20, 184, 166, 0.20) 0%, transparent 40%), radial-gradient(circle at 60% 90%, rgba(236, 72, 153, 0.18) 0%, transparent 45%)",
+      "radial-gradient(circle at 15% 20%, rgba(99, 102, 241, 0.22) 0%, transparent 40%), radial-gradient(circle at 85% 25%, rgba(20, 184, 166, 0.18) 0%, transparent 40%), radial-gradient(circle at 60% 90%, rgba(236, 72, 153, 0.16) 0%, transparent 45%)",
+    ],
+  },
+  // Graph paper: fine squares with a heavier line every five
+  math: {
+    color: ["#0b1220", "#fcfdff"],
+    image: [
+      "linear-gradient(rgba(96, 165, 250, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(96, 165, 250, 0.06) 1px, transparent 1px), linear-gradient(rgba(96, 165, 250, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(96, 165, 250, 0.12) 1px, transparent 1px)",
+      "linear-gradient(rgba(37, 99, 235, 0.06) 1px, transparent 1px), linear-gradient(90deg, rgba(37, 99, 235, 0.06) 1px, transparent 1px), linear-gradient(rgba(37, 99, 235, 0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(37, 99, 235, 0.12) 1px, transparent 1px)",
+    ],
+    size: "24px 24px, 24px 24px, 120px 120px, 120px 120px",
+  },
+  // Plain, like a page
+  minimal: {
+    color: ["#111111", "#fbfbfa"],
+    image: ["none", "none"],
+  },
+  // A faint violet and pink glow
+  gradient: {
+    color: ["#0b0b12", "#fafaff"],
+    image: [
+      "radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.16) 0%, transparent 45%), radial-gradient(circle at 85% 85%, rgba(236, 72, 153, 0.10) 0%, transparent 45%)",
+      "radial-gradient(circle at 20% 15%, rgba(99, 102, 241, 0.10) 0%, transparent 45%), radial-gradient(circle at 85% 85%, rgba(236, 72, 153, 0.08) 0%, transparent 45%)",
+    ],
+  },
+  // Light from the surface, deepening toward the edges
+  ocean: {
+    color: ["#04121a", "#f2f9fb"],
+    image: [
+      "radial-gradient(ellipse at 50% -10%, rgba(34, 165, 196, 0.16) 0%, transparent 60%), radial-gradient(ellipse at 50% 50%, transparent 55%, rgba(0, 0, 0, 0.4) 100%)",
+      "radial-gradient(ellipse at 50% -10%, rgba(34, 165, 196, 0.14) 0%, transparent 60%), radial-gradient(ellipse at 90% 100%, rgba(14, 116, 144, 0.08) 0%, transparent 50%)",
+    ],
+  },
+  // Warm light over dark wood / a pale oak floor
+  tree: {
+    color: ["#14110d", "#f8f4ec"],
+    image: [
+      "radial-gradient(ellipse at 20% 0%, rgba(160, 122, 82, 0.12) 0%, transparent 55%), radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.35) 100%)",
+      "radial-gradient(ellipse at 20% 0%, rgba(214, 180, 138, 0.25) 0%, transparent 55%), radial-gradient(ellipse at 90% 100%, rgba(194, 162, 126, 0.15) 0%, transparent 50%)",
+    ],
+  },
+  // A kraft-paper desk with a faint dot grid
+  notebook: {
+    color: ["#16140f", "#efe9dd"],
+    image: [
+      "radial-gradient(rgba(235, 227, 210, 0.07) 1px, transparent 1.2px)",
+      "radial-gradient(rgba(110, 90, 50, 0.12) 1px, transparent 1.2px)",
+    ],
+    size: "22px 22px",
+  },
+  // A soft golden glow in the middle of a dark (or parchment) field
+  rune: {
+    color: ["#0d0c0a", "#f6f0e0"],
+    image: [
+      "radial-gradient(ellipse at 50% 45%, rgba(201, 162, 74, 0.10) 0%, transparent 55%), radial-gradient(ellipse at 50% 50%, transparent 60%, rgba(0, 0, 0, 0.45) 100%)",
+      "radial-gradient(ellipse at 50% 45%, rgba(201, 162, 74, 0.14) 0%, transparent 55%), radial-gradient(ellipse at 50% 50%, transparent 65%, rgba(120, 90, 30, 0.08) 100%)",
+    ],
+  },
+  // The editor background
+  vscode: {
+    color: ["#1e1e1e", "#f3f3f3"],
+    image: ["none", "none"],
+  },
+  // Polar Night / Snow Storm with a faint frost glow
+  nord: {
+    color: ["#242933", "#e5e9f0"],
+    image: [
+      "radial-gradient(ellipse at 20% 0%, rgba(136, 192, 208, 0.07) 0%, transparent 55%)",
+      "radial-gradient(ellipse at 20% 0%, rgba(136, 192, 208, 0.18) 0%, transparent 55%)",
+    ],
+  },
+  // Still and warm, with the faintest light
+  zen: {
+    color: ["#121110", "#f3f0ea"],
+    image: [
+      "radial-gradient(ellipse at 30% 20%, rgba(232, 228, 220, 0.04) 0%, transparent 60%)",
+      "radial-gradient(ellipse at 30% 20%, rgba(255, 255, 255, 0.7) 0%, transparent 60%)",
+    ],
+  },
+  // A page with a fine paper grain
+  paper: {
+    color: ["#1b1b19", "#f1efe9"],
+    image: [
+      "radial-gradient(rgba(236, 235, 230, 0.035) 1px, transparent 1px)",
+      "radial-gradient(rgba(43, 42, 39, 0.05) 1px, transparent 1px)",
+    ],
+    size: "4px 4px",
+  },
+  // A fine dot grid, like Vercel's canvas
+  graphite: {
+    color: ["#09090b", "#fafafa"],
+    image: [
+      "radial-gradient(rgba(161, 161, 170, 0.14) 1px, transparent 1.2px)",
+      "radial-gradient(rgba(113, 113, 122, 0.16) 1px, transparent 1.2px)",
+    ],
+    size: "20px 20px",
+  },
+  // Solarized base03 / base3, a shade beyond the cards
+  solarized: {
+    color: ["#00212b", "#f5efdc"],
+    image: ["none", "none"],
+  },
+  // Blueprint grid
+  architect: {
+    color: ["#0b1522", "#f7f9fc"],
+    image: [
+      "linear-gradient(rgba(125, 167, 214, 0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(125, 167, 214, 0.07) 1px, transparent 1px), linear-gradient(rgba(125, 167, 214, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(125, 167, 214, 0.15) 1px, transparent 1px)",
+      "linear-gradient(rgba(71, 85, 105, 0.07) 1px, transparent 1px), linear-gradient(90deg, rgba(71, 85, 105, 0.07) 1px, transparent 1px), linear-gradient(rgba(71, 85, 105, 0.14) 1px, transparent 1px), linear-gradient(90deg, rgba(71, 85, 105, 0.14) 1px, transparent 1px)",
+    ],
+    size: "20px 20px, 20px 20px, 100px 100px, 100px 100px",
+  },
+};
+
 export default function GraphVisualizer() {
   const treeData = useStore((s) => s.treeData);
   const rawCollapsedNodes = useStore((s) => s.collapsedNodes);
@@ -994,251 +1149,16 @@ export default function GraphVisualizer() {
       onContextMenu={handleBackgroundContextMenu}
       className={`relative w-full h-full overflow-hidden outline-none touch-none ${getCursorClass()}`}
     >
-      {nodeTheme === "hydrogen" && (
-        <div
-          className="absolute inset-0 pointer-events-none opacity-40"
-          style={{ zIndex: 0 }}
-        >
-          <svg width="100%" height="100%">
-            <defs>
-              <radialGradient id="h-bg-glow" cx="50%" cy="50%" r="50%">
-                <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.1" />
-                <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-              </radialGradient>
-            </defs>
-            {/* Core ambient glows */}
-            <circle cx="20%" cy="80%" r="200" fill="url(#h-bg-glow)" />
-            <circle cx="85%" cy="15%" r="300" fill="url(#h-bg-glow)" />
-            <circle
-              cx="50%"
-              cy="50%"
-              r="400"
-              fill="url(#h-bg-glow)"
-              opacity="0.5"
-            />
-
-            {/* Grid layout */}
-            <g
-              stroke={
-                appTheme === "dark"
-                  ? "rgba(255,255,255,0.03)"
-                  : "rgba(0,0,0,0.03)"
-              }
-              strokeWidth="1"
-            >
-              <path d="M 0 0 L 100 100" strokeDasharray="5,5" />
-              <pattern
-                id="dotGrid"
-                width="40"
-                height="40"
-                patternUnits="userSpaceOnUse"
-              >
-                <circle
-                  cx="2"
-                  cy="2"
-                  r="1.5"
-                  fill={
-                    appTheme === "dark"
-                      ? "rgba(147,197,253,0.15)"
-                      : "rgba(59,130,246,0.15)"
-                  }
-                />
-              </pattern>
-              <rect width="100%" height="100%" fill="url(#dotGrid)" />
-            </g>
-
-            {/* Atomic structures */}
-            <g
-              stroke={
-                appTheme === "dark"
-                  ? "rgba(147,197,253,0.15)"
-                  : "rgba(59,130,246,0.15)"
-              }
-              strokeWidth="1"
-              fill="none"
-            >
-              {/* Bottom left atom */}
-              <g transform="translate(200, 800)">
-                <ellipse
-                  cx="0"
-                  cy="0"
-                  rx="100"
-                  ry="40"
-                  transform="rotate(30)"
-                />
-                <ellipse
-                  cx="0"
-                  cy="0"
-                  rx="100"
-                  ry="40"
-                  transform="rotate(-30)"
-                />
-                <ellipse
-                  cx="0"
-                  cy="0"
-                  rx="100"
-                  ry="40"
-                  transform="rotate(90)"
-                />
-                <circle
-                  cx="0"
-                  cy="0"
-                  r="25"
-                  fill={
-                    appTheme === "dark"
-                      ? "rgba(147,197,253,0.2)"
-                      : "rgba(59,130,246,0.1)"
-                  }
-                />
-                <circle
-                  cx="60"
-                  cy="-60"
-                  r="4"
-                  fill={appTheme === "dark" ? "#93c5fd" : "#3b82f6"}
-                />
-                <circle
-                  cx="-30"
-                  cy="90"
-                  r="3"
-                  fill={appTheme === "dark" ? "#93c5fd" : "#3b82f6"}
-                />
-              </g>
-
-              {/* Top right atom */}
-              <g transform="translate(1400, 200)">
-                <ellipse
-                  cx="0"
-                  cy="0"
-                  rx="150"
-                  ry="60"
-                  transform="rotate(45)"
-                />
-                <ellipse
-                  cx="0"
-                  cy="0"
-                  rx="150"
-                  ry="60"
-                  transform="rotate(-45)"
-                />
-                <circle
-                  cx="0"
-                  cy="0"
-                  r="40"
-                  fill={
-                    appTheme === "dark"
-                      ? "rgba(147,197,253,0.2)"
-                      : "rgba(59,130,246,0.1)"
-                  }
-                />
-                <circle
-                  cx="106"
-                  cy="106"
-                  r="5"
-                  fill={appTheme === "dark" ? "#93c5fd" : "#3b82f6"}
-                />
-              </g>
-
-              {/* Water molecule shape loosely */}
-              <g transform="translate(800, 600)">
-                <line
-                  x1="0"
-                  y1="0"
-                  x2="-60"
-                  y2="50"
-                  strokeWidth="2"
-                  strokeDasharray="4,4"
-                />
-                <line
-                  x1="0"
-                  y1="0"
-                  x2="60"
-                  y2="50"
-                  strokeWidth="2"
-                  strokeDasharray="4,4"
-                />
-                <circle
-                  cx="0"
-                  cy="0"
-                  r="30"
-                  fill={
-                    appTheme === "dark"
-                      ? "rgba(147,197,253,0.15)"
-                      : "rgba(59,130,246,0.15)"
-                  }
-                />
-                <circle
-                  cx="-60"
-                  cy="50"
-                  r="15"
-                  fill={
-                    appTheme === "dark"
-                      ? "rgba(147,197,253,0.1)"
-                      : "rgba(59,130,246,0.1)"
-                  }
-                />
-                <circle
-                  cx="60"
-                  cy="50"
-                  r="15"
-                  fill={
-                    appTheme === "dark"
-                      ? "rgba(147,197,253,0.1)"
-                      : "rgba(59,130,246,0.1)"
-                  }
-                />
-              </g>
-            </g>
-          </svg>
-        </div>
-      )}
       <div
         id="graph-background-layer"
         className="absolute inset-0 z-0 pointer-events-none"
         style={{
           backgroundColor:
-            nodeTheme === "seed"
-              ? appTheme === "dark"
-                ? "#1c2419"
-                : "#f8f9f4"
-              : nodeTheme === "hydrogen"
-                ? appTheme === "dark"
-                  ? "#0f172a"
-                  : "#eef6fe"
-                : nodeTheme === "ludo"
-                  ? appTheme === "dark"
-                    ? "#0f172a"
-                    : "#fdfbf7"
-                  : nodeTheme === "nature2" && appTheme !== "dark"
-                    ? "#f4f7f0"
-                    : nodeTheme === "chess"
-                      ? "#0b101e"
-                      : nodeTheme === "octopus"
-                        ? "#050a1f"
-                        : canvasBackgroundColor || "transparent",
+            THEME_CANVAS[nodeTheme]?.color[appTheme === "dark" ? 0 : 1] ?? (canvasBackgroundColor || "transparent"),
           backgroundImage:
-            nodeTheme === "seed"
-              ? `radial-gradient(circle at 70% 30%, rgba(250, 240, 210, 0.4) 0%, transparent 60%), radial-gradient(circle at 100% 100%, rgba(120, 160, 110, 0.15) 0%, transparent 50%), radial-gradient(circle at 0% 100%, rgba(139, 105, 80, 0.2) 0%, transparent 60%)`
-              : nodeTheme === "hydrogen"
-                ? `radial-gradient(circle at 10% 20%, rgba(99, 179, 237, 0.15) 0%, transparent 40%), radial-gradient(circle at 90% 80%, rgba(99, 179, 237, 0.1) 0%, transparent 40%), radial-gradient(circle at 50% 50%, transparent 49%, rgba(99, 179, 237, 0.05) 50%, transparent 51%), radial-gradient(circle at 50% 50%, transparent 69%, rgba(99, 179, 237, 0.03) 70%, transparent 71%)`
-                : nodeTheme === "ludo"
-                  ? `linear-gradient(${appTheme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} 2px, transparent 2px), linear-gradient(90deg, ${appTheme === "dark" ? "rgba(255,255,255,0.05)" : "rgba(0,0,0,0.05)"} 2px, transparent 2px), radial-gradient(circle at 0% 0%, rgba(239, 68, 68, 0.15) 0%, transparent 50%), radial-gradient(circle at 100% 0%, rgba(34, 197, 94, 0.15) 0%, transparent 50%), radial-gradient(circle at 100% 100%, rgba(234, 179, 8, 0.15) 0%, transparent 50%), radial-gradient(circle at 0% 100%, rgba(59, 130, 246, 0.15) 0%, transparent 50%)`
-                  : nodeTheme === "nature2" && appTheme !== "dark"
-                    ? `radial-gradient(circle at 20% 0%, rgba(200, 220, 190, 0.3) 0%, transparent 50%), radial-gradient(circle at 80% 100%, rgba(180, 200, 160, 0.3) 0%, transparent 50%)`
-                    : nodeTheme === "chess"
-                      ? `linear-gradient(rgba(255,255,255,0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.03) 1px, transparent 1px)`
-                      : nodeTheme === "octopus"
-                        ? `radial-gradient(circle at 30% 20%, rgba(10,30,80,0.9) 0%, rgba(4,8,25,1) 70%)`
-                        : canvasBackgroundImage
-                          ? `url(${canvasBackgroundImage})`
-                          : "none",
-          backgroundSize:
-            nodeTheme === "ludo"
-              ? "80px 80px, 80px 80px, 100% 100%, 100% 100%, 100% 100%, 100% 100%"
-              : nodeTheme === "chess"
-                ? "100px 100px"
-                : nodeTheme === "hydrogen"
-                  ? "100% 100%, 100% 100%, 400px 400px, 600px 600px"
-                  : "cover",
+            THEME_CANVAS[nodeTheme]?.image[appTheme === "dark" ? 0 : 1] ??
+            (canvasBackgroundImage ? `url(${canvasBackgroundImage})` : "none"),
+          backgroundSize: THEME_CANVAS[nodeTheme]?.size ?? "cover",
           backgroundPosition: "center",
           filter:
             canvasBackgroundBlur > 0
@@ -1303,17 +1223,6 @@ export default function GraphVisualizer() {
             />
           </pattern>
 
-          <linearGradient
-            id="abstract-gradient"
-            x1="0%"
-            y1="0%"
-            x2="100%"
-            y2="100%"
-          >
-            <stop offset="0%" stopColor="#6366f1" />
-            <stop offset="50%" stopColor="#d946ef" />
-            <stop offset="100%" stopColor="#f43f5e" />
-          </linearGradient>
         </defs>
 
         <g ref={svgGRef} className="pointer-events-auto graph-g">

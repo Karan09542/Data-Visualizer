@@ -4,6 +4,7 @@ import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
 import { useStore, NodeTheme } from "../store/useStore";
+import { PALETTE_THEMES } from "../constants/visualizer";
 import { db } from "../lib/db";
 import { liveQuery } from "dexie";
 import {
@@ -20,6 +21,21 @@ import {
   Minimize2,
   Eye,
   FileText,
+  Sprout,
+  TreeDeciduous,
+  Wheat,
+  Leaf,
+  Flower2,
+  Clover,
+  Bean,
+  TreePine,
+  Trees,
+  Sun,
+  Droplet,
+  Feather,
+  FolderTree,
+  ListTree,
+  CircleDashed,
 } from "lucide-react";
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
@@ -552,159 +568,148 @@ function NodeRenderer({
 
   const getThemeClasses = (theme: NodeTheme) => {
     switch (theme) {
-      // Dark: VS Code Dark+ / GitHub Dark. Light: VS Code Light+ / GitHub Light.
+      // VS Code Dark+ / Light+: editor panels in the editor font, keys in the JSON key colour and
+      // values coloured like syntax highlighting (see valText).
       case "vscode":
         return appTheme === "dark"
-          ? "bg-[#1e1e1e] border-[#3c3c3c] text-[#d4d4d4] shadow-md"
-          : "bg-[#ffffff] border-[#e5e5e5] text-[#3b3b3b] shadow-sm";
+          ? "bg-[#252526] border-[#3c3c3c] text-[#9cdcfe] shadow-[0_4px_12px_-8px_rgba(0,0,0,0.8)] font-mono"
+          : "bg-white border-[#e5e5e5] text-[#0451a5] shadow-[0_2px_8px_-6px_rgba(0,0,0,0.2)] font-mono";
       case "github":
         return appTheme === "dark"
           ? "bg-[#0d1117] border-[#30363d] text-[#c9d1d9] shadow-sm"
           : "bg-[#ffffff] border-[#d1d9e0] text-[#1f2328] shadow-sm";
-      // Dark: clear glass with white text. Light: frosted white glass with dark text (white text
-      // on a see-through card vanished against the light canvas).
-      case "glassmorphism":
+      // Editor palettes, each with its own dark and light variant, and a calm neutral and paper look.
+      // Nord: Polar Night / Snow Storm cards, Frost and Aurora accents on the type badges.
+      case "nord":
         return appTheme === "dark"
-          ? "bg-white/10 border-white/20 text-white backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.37)]"
-          : "bg-white/55 border-white/80 text-slate-800 backdrop-blur-md shadow-[0_8px_32px_0_rgba(31,38,135,0.12)] ring-1 ring-slate-900/5";
-      // Dark: black with neon green. Light: pale green-tinted card with a deeper neon border and
-      // dark green text, so it keeps the look without glaring on the light canvas.
-      case "cyberpunk":
+          ? "bg-[#2e3440] border-[#3b4252] text-[#eceff4] shadow-[0_6px_16px_-10px_rgba(0,0,0,0.6)]"
+          : "bg-[#f8f9fb] border-[#d8dee9] text-[#2e3440] shadow-[0_4px_14px_-10px_rgba(46,52,64,0.3)]";
+      // Dracula / Alucard, with the purple accent as a left bar.
+      case "dracula":
         return appTheme === "dark"
-          ? "bg-[#000000] border-[#00ff2a] text-[#00ff2a] shadow-[0_0_10px_#00ff2a]"
-          : "bg-[#f4fff6] border-[#00a01e] text-[#006b14] shadow-[0_0_10px_rgba(0,160,30,0.35)]";
+          ? "bg-[#282a36] border-[#44475a] border-l-4 border-l-[#bd93f9] text-[#f8f8f2] shadow-[0_4px_14px_rgba(189,147,249,0.12)]"
+          : "bg-[#fffbeb] border-[#e2dfd0] border-l-4 border-l-[#644ac9] text-[#1f1f1f] shadow-sm";
+      // Solarized dark / light.
+      case "solarized":
+        return appTheme === "dark"
+          ? "bg-[#002b36] border-[#0b4352] text-[#c5d2d2] shadow-md"
+          : "bg-[#fdf6e3] border-[#e8dfc4] text-[#3d4f55] shadow-sm";
+      // Catppuccin Mocha / Latte.
+      case "catppuccin":
+        return appTheme === "dark"
+          ? "bg-[#1e1e2e] border-[#45475a] text-[#cdd6f4] shadow-md"
+          : "bg-[#eff1f5] border-[#ccd0da] text-[#4c4f69] shadow-sm";
+      // Tokyo Night / Tokyo Night Day.
+      case "tokyo-night":
+        return appTheme === "dark"
+          ? "bg-[#1a1b26] border-[#2f334d] text-[#c0caf5] shadow-md"
+          : "bg-[#e9e9ed] border-[#c4c8da] text-[#343b58] shadow-sm";
+      // Rosé Pine Moon / Dawn.
+      case "rose-pine":
+        return appTheme === "dark"
+          ? "bg-[#232136] border-[#44415a] text-[#e0def4] shadow-md"
+          : "bg-[#fffaf3] border-[#efe4d9] text-[#575279] shadow-sm";
+      // Neutral zinc with a hairline border, like Linear or Vercel: quiet and professional.
+      case "graphite":
+        return appTheme === "dark"
+          ? "bg-[#18181b] border-white/10 text-zinc-200 shadow-[0_1px_2px_rgba(0,0,0,0.4)]"
+          : "bg-white border-zinc-200 text-zinc-800 shadow-[0_1px_2px_rgba(0,0,0,0.06)]";
+      // Editorial print: serif type, sharp corners, an ink rule across the top, stacked-paper shadow.
+      case "paper":
+        return appTheme === "dark"
+          ? "bg-[#262624] border-[#3a3935] border-t-2 border-t-[#d8d4c8] text-[#ecebe6] shadow-[0_1px_0_rgba(255,255,255,0.03),0_8px_18px_-12px_rgba(0,0,0,0.8)] font-serif"
+          : "bg-[#fffefb] border-[#e6e3db] border-t-2 border-t-[#2b2a27] text-[#2b2a27] shadow-[0_1px_0_rgba(0,0,0,0.04),0_8px_16px_-12px_rgba(60,50,30,0.35)] font-serif";
+      // Quiet, document-like cards in the style of Notion or Linear: hairline borders, no colour.
       case "minimal":
-        return "bg-white border-transparent text-slate-800 shadow-sm";
-      // Dark: saturated indigo→purple with white text. Light: soft pastel gradient with dark text,
-      // so it doesn't sit as a heavy dark block on the light canvas.
+        return appTheme === "dark"
+          ? "bg-[#191919] border-white/[0.08] text-[#e6e6e6] shadow-none"
+          : "bg-white border-[#e9e9e7] text-[#37352f] shadow-[0_1px_2px_rgba(0,0,0,0.04)]";
+      // The root is a vivid indigo→violet→pink fill; the rest are clean cards with a thin gradient
+      // border (both drawn by .gradient-root / .gradient-card, which follow the app theme).
       case "gradient":
-        return appTheme === "dark"
-          ? "bg-gradient-to-br from-indigo-500 to-purple-600 border-transparent text-white shadow-lg"
-          : "bg-gradient-to-br from-indigo-100 via-violet-100 to-fuchsia-100 border-indigo-200/70 text-indigo-950 shadow-md ring-1 ring-indigo-900/5";
-      case "pastel":
-        return appTheme === "dark"
-          ? "bg-gradient-to-br from-[#2a1b38] to-[#1a233a] border-[#3b2d4a] text-[#e5b3fe] shadow-lg"
-          : "bg-gradient-to-br from-rose-50 via-pink-50 to-purple-50 border-pink-100 text-purple-900 shadow-md ring-1 ring-purple-100/50";
-      // Dark: black CRT with phosphor green. Light: pale green paper with deep green mono text.
+        return data.id === "root"
+          ? "gradient-root text-white"
+          : appTheme === "dark"
+            ? "gradient-card text-[#ececf4] shadow-[0_8px_24px_-14px_rgba(139,92,246,0.55)]"
+            : "gradient-card text-[#1e1b3a] shadow-[0_6px_18px_-12px_rgba(139,92,246,0.4)]";
+      // A modern terminal pane: neutral card, green top rule, green output text.
+      // Dark: charcoal like the VS Code / GitHub terminals. Light: pale grey with GitHub's green.
       case "terminal":
         return appTheme === "dark"
-          ? "bg-black border-[#33ff00] text-[#33ff00] shadow-none font-mono"
-          : "bg-[#f3fbf1] border-[#2f9e00] text-[#1d5e00] shadow-none font-mono";
-      // Dark: Material dark surface. Light: Material light surface with its elevation shadow.
-      case "material":
-        return appTheme === "dark"
-          ? "bg-[#212121] border-transparent text-white shadow-[0_3px_6px_rgba(0,0,0,0.16),0_3px_6px_rgba(0,0,0,0.23)]"
-          : "bg-white border-transparent text-[#212121] shadow-[0_1px_3px_rgba(0,0,0,0.12),0_1px_2px_rgba(0,0,0,0.24)]";
-      // Dark: navy blueprint with cyan lines. Light: white drafting paper with blue ink lines.
-      case "blueprint":
-        return appTheme === "dark"
-          ? "bg-[#003366] border-[#4fa8fb] text-[#4fa8fb] shadow-none"
-          : "bg-[#f4f9ff] border-[#1f6fd1] text-[#0b4a99] shadow-none";
+          ? "bg-[#0d1117] border-[#30363d] border-t-2 border-t-[#3fb950] text-[#e6edf3] shadow-[0_6px_16px_-10px_rgba(0,0,0,0.8)] font-mono"
+          : "bg-[#f6f8fa] border-[#d0d7de] border-t-2 border-t-[#1a7f37] text-[#1f2328] shadow-[0_4px_12px_-8px_rgba(31,35,40,0.25)] font-mono";
       // 80s retro. Dark: deep purple card, orange border, hard pink offset shadow.
       // Light: cream card, purple border, hard orange offset shadow. (Was purple text on orange: low contrast.)
       case "retro":
         return appTheme === "dark"
           ? "bg-[#1b1433] border-[#ff9e3d] text-[#ffd9a8] shadow-[4px_4px_0_#ff5fa2]"
           : "bg-[#fff3dc] border-[#7b3fe4] text-[#3b1f73] shadow-[4px_4px_0_#ff8a3d]";
-      // Dark: deep forest leaf with white text. Light: fresh leaf-green with dark green text.
+      // Nature: a deep forest-green root with a thin sand-to-moss rim, and clean cards with a green
+      // accent bar. Dark: moss cards on a green-black canvas. Light: white cards on pale sage.
       case "nature":
+        if (data.id === "root") {
+          return nodeShape === "default"
+            ? "nature-root text-[#f2f7ec]"
+            : "bg-gradient-to-br from-[#3c6a45] to-[#284a30] border-2 border-[#c9a46b]/60 text-[#f2f7ec] shadow-lg";
+        }
         return appTheme === "dark"
-          ? "bg-gradient-to-br from-[#2d6a4f] to-[#1b4332] border-[#4a7c44] text-white shadow-xl backdrop-blur-md ring-1 ring-white/20 font-bold"
-          : "bg-gradient-to-br from-[#e3f4df] to-[#c7e8c0] border-[#7fb77e] text-[#1b4332] shadow-lg ring-1 ring-[#2d6a4f]/15 font-bold";
-      case "banyan":
-        return "bg-gradient-to-br from-[#1a4d2e] via-[#2d6a4f] to-[#1a4d2e] border-white/20 text-white shadow-2xl backdrop-blur-md ring-1 ring-emerald-400/30 font-bold";
-      case "peepal":
-        return "bg-gradient-to-br from-[#124219] via-[#1a5b28] to-[#0b2911] border-white/15 text-white shadow-[0_20px_45px_rgba(0,0,0,0.5)] backdrop-blur-md ring-1 ring-emerald-300/20 font-bold";
-      case "nature2":
-        return data.id === "root"
-          ? `bg-[#36573c] text-white shadow-xl ${nodeShape === 'default' ? 'nature2-border-root' : 'border-4 border-[#5c4033]'}`
-          : `bg-[#eaf1e2] text-[#1c3821] shadow-sm ${nodeShape === 'default' ? 'nature2-border-child' : 'border-4 border-[#4a7c59]'}`;
+          ? "bg-[#141d17] border-[#27382c] border-l-[3px] border-l-[#6f9a5c] text-[#dde9d6] shadow-[0_6px_16px_-10px_rgba(0,0,0,0.7)]"
+          : "bg-white border-[#dbe6d4] border-l-[3px] border-l-[#5f8f4e] text-[#1f3322] shadow-[0_4px_14px_-8px_rgba(50,80,45,0.3)]";
       case "seed":
-        return data.id === "root"
-          ? "bg-[#3b5336] text-white shadow-[0_10px_20px_rgba(59,83,54,0.4)] border-none"
-          : "bg-[#f4f7f0]/90 backdrop-blur border border-[#d6e0cc] text-[#294025] shadow-sm";
-      case "hydrogen":
+        if (data.id === "root") {
+          return appTheme === "dark"
+            ? "bg-gradient-to-br from-[#3d6b43] to-[#2a4d31] border-[#5b8a5f]/40 text-[#f4f8ee] shadow-[0_10px_28px_-8px_rgba(10,25,14,0.9)]"
+            : "bg-gradient-to-br from-[#4a7c50] to-[#365f3c] border-[#2f5535]/30 text-white shadow-[0_10px_24px_-10px_rgba(54,95,60,0.6)]";
+        }
         return appTheme === "dark"
-          ? "bg-[#0a192f]/70 border border-[#3b82f6]/40 text-[#bfdbfe] shadow-[0_4px_24px_rgba(59,130,246,0.15),_inset_0_0_15px_rgba(59,130,246,0.1)] backdrop-blur-xl ring-1 ring-white/5"
-          : "bg-white/60 border border-blue-200/60 text-[#1e3a8a] shadow-[0_8px_32px_rgba(59,130,246,0.1),_inset_0_0_20px_rgba(255,255,255,0.7)] backdrop-blur-xl ring-1 ring-blue-100/50";
-      // Circuit board with a faint trace grid (the octagon clip-path hides outer shadows, so none).
-      // Dark: black board, cyan traces. Light: pale board, teal traces and dark teal mono text.
-      case "circuit":
-        return appTheme === "dark"
-          ? "bg-[#0b0e14] bg-[linear-gradient(rgba(0,243,255,0.07)_1px,transparent_1px),linear-gradient(90deg,rgba(0,243,255,0.07)_1px,transparent_1px)] bg-[size:12px_12px] border-[#00f3ff] text-[#7ff9ff] font-mono border-2"
-          : "bg-[#f2fbfc] bg-[linear-gradient(rgba(8,145,178,0.09)_1px,transparent_1px),linear-gradient(90deg,rgba(8,145,178,0.09)_1px,transparent_1px)] bg-[size:12px_12px] border-[#0891b2] text-[#0e4f5c] font-mono border-2";
-      // Galaxy with a few stars. Dark: deep purple space, near-white text.
-      // Light: pale violet/indigo/pink nebula, violet stars, dark violet text.
-      case "galaxy":
-        return appTheme === "dark"
-          ? "bg-[radial-gradient(circle_at_20%_30%,rgba(255,255,255,0.8)_0_1px,transparent_1.5px),radial-gradient(circle_at_72%_62%,rgba(255,255,255,0.6)_0_1px,transparent_1.5px),radial-gradient(circle_at_42%_82%,rgba(255,255,255,0.5)_0_1px,transparent_1.5px),linear-gradient(135deg,#0b0014,#1a0033_55%,#2d004d)] border-purple-400/40 text-purple-50 shadow-[0_0_25px_rgba(168,85,247,0.45)] ring-1 ring-purple-300/20"
-          : "bg-[radial-gradient(circle_at_22%_30%,rgba(139,92,246,0.45)_0_1px,transparent_1.5px),radial-gradient(circle_at_72%_64%,rgba(139,92,246,0.35)_0_1px,transparent_1.5px),radial-gradient(circle_at_44%_82%,rgba(236,72,153,0.3)_0_1px,transparent_1.5px),linear-gradient(135deg,#ede9fe,#e0e7ff_50%,#fae8ff)] border-violet-300/70 text-violet-950 shadow-[0_0_22px_rgba(139,92,246,0.25)] ring-1 ring-violet-200/60";
-      // Dark: clear glass, white text. Light: frosted white glass with dark slate text.
+          ? "bg-[#17241b] border-[#2d4433] text-[#e1ebd9] shadow-[0_4px_14px_-6px_rgba(0,0,0,0.6)]"
+          : "bg-white border-[#dbe5d0] text-[#22351d] shadow-[0_4px_14px_-8px_rgba(60,90,50,0.35)]";
+      // Frosted glass over the coloured glows on the canvas, with a light inner top edge.
       case "glass":
         return appTheme === "dark"
-          ? "bg-white/5 border-white/30 text-white backdrop-blur-xl shadow-2xl ring-1 ring-white/10"
-          : "bg-white/60 border-white/90 text-slate-800 backdrop-blur-xl shadow-[0_10px_30px_rgba(15,23,42,0.12)] ring-1 ring-slate-900/10";
-      // Dark: black with glowing magenta. Light: pale pink card, deep magenta border and text, soft glow.
-      case "neon":
-        return appTheme === "dark"
-          ? "bg-black border-[#ff00ff] text-[#ff00ff] shadow-[0_0_20px_#ff00ff] font-bold tracking-wider"
-          : "bg-[#fff0fb] border-[#e600c8] text-[#a3008c] shadow-[0_0_14px_rgba(230,0,200,0.35)] font-bold tracking-wider";
+          ? "bg-white/[0.06] border-white/15 text-white/90 backdrop-blur-xl shadow-[0_8px_32px_-12px_rgba(0,0,0,0.6),inset_0_1px_0_rgba(255,255,255,0.12)]"
+          : "bg-white/70 border-white text-slate-800 backdrop-blur-xl shadow-[0_8px_30px_-12px_rgba(15,23,42,0.18),inset_0_1px_0_rgba(255,255,255,0.9)] ring-1 ring-slate-900/[0.06]";
+      // A clean card with a blue rule, on graph paper (drawn on the canvas, not in every node).
       case "math":
         return appTheme === "dark"
-          ? "bg-[#0f172a] border-[#1e293b] border-l-[#3b82f6] text-slate-200 math-node-dark shadow-lg font-serif ring-1 ring-black/50"
-          : "bg-white border-blue-200 border-l-blue-500 text-slate-800 math-node-light shadow-md font-serif";
-      case "neural":
-        return "bg-[#0a192f] border-blue-400/50 text-blue-200 shadow-[0_0_15px_rgba(96,165,250,0.2)] rounded-full animate-pulse-subtle";
-      case "river":
-        return "bg-gradient-to-r from-[#003049] via-[#023e8a] to-[#0077b6] text-[#e0fbfc] shadow-[0_4px_15px_rgba(0,119,182,0.5),inset_0_-4px_15px_rgba(0,150,199,0.4)] ring-1 ring-cyan-300/30 river-node";
+          ? "bg-[#0f1729] border-[#23324d] border-l-[#60a5fa] text-[#e2e8f0] shadow-[0_6px_18px_-10px_rgba(0,0,0,0.7)] font-serif"
+          : "bg-white border-[#cfdcee] border-l-[#2563eb] text-[#0f172a] shadow-[0_4px_14px_-8px_rgba(37,99,235,0.25)] font-serif";
+      // Walnut: warm wood-toned cards with a bark-brown accent bar and hierarchy icons.
       case "tree":
-        return "bg-[#2d3a3a] border-[#6b8e23] text-[#f5f5dc] border-b-4 border-r-2";
-      case "pixel":
-        return "bg-[#3a4466] border-[#1a1c2c] text-[#f4f4f4] shadow-[4px_4px_0_#1a1c2c] rounded-none";
-      case "hacker":
-        return "bg-black border-[#00ff41] text-[#00ff41] shadow-[0_0_5px_#00ff41] font-mono lowercase animate-scanline";
-      case "cloud":
         return appTheme === "dark"
-          ? "bg-slate-800 text-yellow-400 drop-shadow-[0_10px_25px_rgba(250,204,21,0.2)] thunder-cloud"
-          : "bg-white text-sky-900 drop-shadow-xl";
-      case "dna":
-        return "bg-[#1a1a2e] border-fuchsia-500/60 text-fuchsia-200 shadow-[0_0_15px_rgba(217,70,239,0.3),inset_0_0_15px_rgba(59,130,246,0.3)] ring-1 ring-blue-500/50";
-      case "lava":
-        return "bg-[#2a0800] border-[#ff4500] text-[#ff4500] shadow-[0_0_25px_#ff4500] border-t-2";
+          ? "bg-[#1f1a15] border-[#3b3127] border-l-[3px] border-l-[#a07a52] text-[#efe6da] shadow-[0_8px_20px_-12px_rgba(0,0,0,0.8)]"
+          : "bg-[#fffaf3] border-[#e8dccb] border-l-[3px] border-l-[#8b5e34] text-[#3b2f22] shadow-[0_6px_16px_-12px_rgba(110,80,45,0.35)]";
+      // A heads-up display: targeting-bracket corners and a faint scan line (both drawn by .hacker-node).
+      case "hacker":
+        return appTheme === "dark"
+          ? "hacker-node border-[#00ff41]/20 text-[#d7ffe1] shadow-[0_0_24px_-8px_rgba(0,255,65,0.25)] font-mono"
+          : "hacker-node border-[#0a8f3c]/25 text-[#0b2e18] shadow-[0_4px_14px_-8px_rgba(10,143,60,0.3)] font-mono";
+      // Deep sea: calm cards with a teal line along the bottom like a waterline.
       case "ocean":
-        return "bg-[#001219]/80 border-[#005f73] text-[#94d2bd] shadow-[0_0_20px_rgba(0,18,25,0.8)] backdrop-blur-lg";
-      case "rhythm":
-        return "bg-[#1a1a1a] border-[#ff0055] text-white shadow-[0_0_30px_rgba(255,0,85,0.4)] animate-pulse-subtle";
+        return appTheme === "dark"
+          ? "bg-[#0a1f2b] border-[#14455a] border-b-2 border-b-[#22a5c4] text-[#d6eef5] shadow-[0_10px_24px_-14px_rgba(0,0,0,0.8)]"
+          : "bg-white border-[#c7e3ec] border-b-2 border-b-[#0e7490] text-[#0b3a4a] shadow-[0_6px_18px_-12px_rgba(14,116,144,0.35)]";
+      // Obsidian (or parchment) inside a fine double gold frame: an outer border and an inset hairline.
       case "rune":
-        return "bg-gradient-to-br from-[#1c1c1c] to-[#2a2a2a] border-[#d4af37]/60 text-[#d4af37] shadow-[inset_0_0_20px_rgba(212,175,55,0.15)] ring-1 ring-[#d4af37]/30 font-serif font-semibold tracking-wider";
+        return appTheme === "dark"
+          ? "bg-[#14120f] border-[#c9a24a]/55 text-[#efe3c2] shadow-[inset_0_0_0_3px_#14120f,inset_0_0_0_4px_rgba(201,162,74,0.28),0_10px_24px_-14px_rgba(0,0,0,0.9)] font-serif tracking-wide"
+          : "bg-[#fbf6e9] border-[#b8913f]/70 text-[#3d2f14] shadow-[inset_0_0_0_3px_#fbf6e9,inset_0_0_0_4px_rgba(160,120,40,0.28),0_8px_18px_-12px_rgba(120,90,30,0.35)] font-serif tracking-wide";
+      // Calm and airy: soft borderless stone (or rice-paper) cards with generous space.
       case "zen":
         return appTheme === "dark"
-          ? "bg-[#18181b] border-slate-700 text-slate-400 shadow-none hover:text-slate-200 transition-all"
-          : "bg-white border-slate-300 text-slate-500 shadow-sm hover:text-slate-900 transition-all";
-      case "abstract":
-        return "abstract-node border-white/10 text-[#f8fafc] shadow-[0_0_25px_rgba(255,0,128,0.15)] ring-1 ring-white/10";
+          ? "bg-[#1c1b19] border-transparent text-[#e8e4dc] shadow-[0_10px_30px_-18px_rgba(0,0,0,0.9)]"
+          : "bg-[#fdfcf9] border-transparent text-[#3a3631] shadow-[0_10px_30px_-18px_rgba(90,80,60,0.35)]";
+      // A drafting sheet: fine border, a dashed offset line like a dimension guide, blueprint grid canvas.
       case "architect":
         return appTheme === "dark"
-          ? "bg-slate-900 border-slate-600 text-slate-300 shadow-none font-mono"
-          : "bg-slate-50 border-slate-400 text-slate-800 shadow-none font-mono";
-      case "ludo":
-        return "bg-white/80 border-2 text-slate-900 shadow-xl backdrop-blur-md";
-      case "chess":
-        return "bg-[#151b29] border border-[#bfa76f]/40 text-[#e2d8c3] shadow-lg font-serif";
-      case "octopus":
-        return "bg-gradient-to-br from-[#0f172a]/90 to-[#1e1b4b]/90 backdrop-blur-md border border-[#38bdf8]/50 text-[#e0f2fe] shadow-[0_0_20px_rgba(56,189,248,0.25)]";
-      // Iridescent glass. Dark: soft fuchsia/cyan/violet sheen with near-white cyan text.
-      // Light: pale frosted sheen with dark slate text (cyan-100 text vanished on the light canvas).
-      case "holographic":
-        return appTheme === "dark"
-          ? "bg-gradient-to-tr from-fuchsia-500/25 via-cyan-400/20 to-violet-500/25 border-cyan-300/50 text-cyan-50 backdrop-blur-xl shadow-[0_0_18px_rgba(34,211,238,0.35)] ring-1 ring-white/10"
-          : "bg-gradient-to-tr from-fuchsia-100/90 via-cyan-50/90 to-violet-100/90 border-cyan-300/70 text-slate-800 backdrop-blur-xl shadow-[0_0_18px_rgba(34,211,238,0.25)] ring-1 ring-white/70";
-      // Ruled notebook paper with a red margin. Light: cream paper, faint blue rules.
-      // Dark: dark paper, dim rules, muted red margin, warm light text.
+          ? "bg-[#0e1a2a] border-[#7da7d6]/45 text-[#dbe7f3] shadow-none font-mono"
+          : "bg-white border-[#94a3b8] text-[#1e293b] shadow-none font-mono";
+      // A page of ruled notebook paper: faint blue rules, a thin red margin, paper-sharp corners,
+      // lying on a kraft-paper desk (the canvas). Dark: dim paper with soft rules.
       case "notebook":
         return appTheme === "dark"
-          ? "bg-[#1f1d1a] bg-[linear-gradient(transparent_19px,rgba(148,163,184,0.12)_20px)] bg-[length:100%_20px] border-[#3a352c] text-[#e8e0cf] border-l-4 border-l-[#c05555] shadow-[0_4px_14px_rgba(0,0,0,0.45)] font-serif"
-          : "bg-[#fffdf5] bg-[linear-gradient(transparent_19px,#dbe7f3_20px)] bg-[length:100%_20px] border-[#e7dcc0] text-[#3f3a33] border-l-4 border-l-[#e06666] shadow-[0_2px_8px_rgba(120,100,60,0.15)] font-serif";
+          ? "bg-[#1d1b17] bg-[linear-gradient(transparent_19px,rgba(148,163,184,0.10)_20px)] bg-[length:100%_20px] border-[#36312a] border-l-2 border-l-[#b85450] text-[#ebe3d2] shadow-[0_1px_0_rgba(255,255,255,0.03),0_8px_18px_-10px_rgba(0,0,0,0.8)] font-serif"
+          : "bg-[#fffdf7] bg-[linear-gradient(transparent_19px,rgba(59,91,146,0.13)_20px)] bg-[length:100%_20px] border-[#e8e0cc] border-l-2 border-l-[#e06666] text-[#33302a] shadow-[0_1px_0_rgba(0,0,0,0.04),0_8px_16px_-10px_rgba(110,90,50,0.35)] font-serif";
       case "chalk":
         return appTheme === "dark"
           ? "chalk-node bg-[#182220] border-2 border-dashed border-slate-300/80 text-slate-100 shadow-[0_4px_16px_rgba(0,0,0,0.5)] ring-1 ring-white/10"
@@ -722,210 +727,226 @@ function NodeRenderer({
   const getIcon = (type: string) => {
     if (nodeTheme === "seed") {
       const isRoot = data.id === "root";
-      const bgColor = isRoot
-        ? "bg-[#8c6742] text-white shadow-inner"
-        : "bg-[#739257] text-white";
-      const iconStr = isRoot
-        ? "🌱"
+      const SeedIcon = isRoot
+        ? Sprout
         : type === "object"
-          ? "🍃"
+          ? TreeDeciduous
           : type === "array"
-            ? "🌿"
+            ? Wheat
             : type === "string"
-              ? "🍂"
+              ? Leaf
               : type === "number"
-                ? "🌾"
+                ? Flower2
                 : type === "boolean"
-                  ? "🍀"
-                  : "🪴";
-
+                  ? Clover
+                  : Bean;
+      const tone = isRoot
+        ? "bg-white/15 text-[#e4f1d6] ring-1 ring-white/20"
+        : appTheme === "dark"
+          ? "bg-[#243a29] text-[#a6cf8a]"
+          : "bg-[#e8f1de] text-[#4d7a37]";
+      const size = isRoot ? 26 : 22;
       return (
-        <div className="relative flex items-center justify-center">
-          {isRoot && (
-            <div className="absolute inset-0 rounded-full border-2 border-[#5a3a1f]/30 scale-125 pointer-events-none" />
-          )}
-          <div
-            className={`rounded-full flex items-center justify-center ${bgColor} relative z-10`}
-            style={{
-              width: isRoot ? "28px" : "24px",
-              height: isRoot ? "28px" : "24px",
-              fontSize: isRoot ? "14px" : "12px",
-            }}
-          >
-            {iconStr}
-          </div>
+        <div className={`flex shrink-0 items-center justify-center rounded-full ${tone}`} style={{ width: size, height: size }}>
+          <SeedIcon size={isRoot ? 15 : 13} strokeWidth={2} />
         </div>
       );
     }
-    if (nodeTheme === "hydrogen") {
+    if (nodeTheme === "nature") {
       const isRoot = data.id === "root";
-      const innerColor =
-        appTheme === "dark"
-          ? "bg-gradient-to-br from-blue-400 to-blue-600 text-white shadow-[0_0_15px_rgba(59,130,246,0.8)] border border-blue-300"
-          : "bg-gradient-to-br from-blue-400 to-blue-600 text-white shadow-[0_0_12px_rgba(59,130,246,0.4)] border border-blue-200";
-      const initial = isRoot
-        ? "H"
+      const NatureIcon = isRoot
+        ? TreePine
         : type === "object"
-          ? "O"
+          ? TreeDeciduous
           : type === "array"
-            ? "A"
+            ? Trees
             : type === "string"
-              ? "S"
+              ? Leaf
               : type === "number"
-                ? "N"
+                ? Sun
                 : type === "boolean"
-                  ? "B"
-                  : type === "null"
-                    ? "∅"
-                    : "H";
-
+                  ? Droplet
+                  : Feather;
+      const tone = isRoot
+        ? "bg-white/15 text-[#e6f0dc] ring-1 ring-white/20"
+        : appTheme === "dark"
+          ? "bg-[#203026] text-[#9cc58a]"
+          : "bg-[#eaf2e4] text-[#4c7a3c]";
+      const size = isRoot ? 26 : 22;
       return (
-        <div className="relative flex items-center justify-center">
-          {/* Orbital rings */}
-          {isRoot && (
-            <>
-              <div
-                className="absolute rounded-full border border-blue-400/20"
-                style={{ width: "56px", height: "56px" }}
-              />
-              <div
-                className="absolute rounded-full border border-blue-400/10"
-                style={{ width: "70px", height: "70px" }}
-              />
-            </>
-          )}
-          <div
-            className={`absolute rounded-full border ${appTheme === "dark" ? "border-blue-400/30" : "border-blue-400/40"}`}
-            style={{
-              width: isRoot ? "44px" : "32px",
-              height: isRoot ? "44px" : "32px",
-            }}
-          />
-          {/* Inner core */}
-          <div
-            className={`rounded-full flex items-center justify-center font-bold ${innerColor} relative z-10`}
-            style={{
-              width: isRoot ? "28px" : "20px",
-              height: isRoot ? "28px" : "20px",
-              fontSize: isRoot ? "14px" : "10px",
-            }}
-          >
-            {initial}
-          </div>
-          {/* Electron dots */}
-          <div
-            className={`absolute rounded-full shadow-[0_0_4px_#93c5fd] bg-blue-300`}
-            style={{
-              width: isRoot ? "5px" : "3px",
-              height: isRoot ? "5px" : "3px",
-              top: "5%",
-              right: "15%",
-            }}
-          />
-          {isRoot && (
-            <div
-              className={`absolute rounded-full shadow-[0_0_4px_#93c5fd] bg-blue-200`}
-              style={{
-                width: "4px",
-                height: "4px",
-                bottom: "10%",
-                left: "10%",
-              }}
-            />
-          )}
+        <div className={`flex shrink-0 items-center justify-center rounded-full ${tone}`} style={{ width: size, height: size }}>
+          <NatureIcon size={isRoot ? 15 : 13} strokeWidth={2} />
         </div>
       );
     }
-    if (nodeTheme === "nature2") {
+    if (nodeTheme === "minimal" || nodeTheme === "gradient" || nodeTheme === "ocean") {
+      const TypeIcon =
+        type === "object" ? Braces : type === "array" ? AlignLeft : type === "string" ? Type : type === "number" ? Hash : type === "boolean" ? ToggleLeft : HelpCircle;
+      const dark = appTheme === "dark";
       const isRoot = data.id === "root";
-      const bgColor = isRoot
-        ? "bg-[#f0f4ea] text-[#36573c]"
-        : "bg-[#36573c] text-white";
-      // Use different leaf / plant icons for types
-      const iconMap: Record<string, string> = {
-        object: "🌿",
-        array: "🍃",
-        string: "🌱",
-        number: "🪴",
-        boolean: "🍀",
-        null: "🍂",
+      const tone =
+        nodeTheme === "minimal"
+          ? dark ? "text-[#8f8f8f]" : "text-[#91918e]"
+          : nodeTheme === "gradient"
+            ? isRoot
+              ? "rounded-full bg-white/20 text-white ring-1 ring-white/30"
+              : dark
+                ? "rounded-full bg-gradient-to-br from-indigo-500/20 to-pink-500/20 text-[#c4b5fd]"
+                : "rounded-full bg-gradient-to-br from-indigo-500/10 to-pink-500/10 text-[#7c3aed]"
+            : dark
+              ? "rounded-full bg-[#0f3a4a] text-[#67e8f9]"
+              : "rounded-full bg-[#e0f4f8] text-[#0e7490]";
+      return (
+        <div className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center ${tone}`}>
+          <TypeIcon size={nodeTheme === "minimal" ? 14 : 12} strokeWidth={2} />
+        </div>
+      );
+    }
+    if (nodeTheme === "vscode" || nodeTheme === "nord") {
+      const dark = appTheme === "dark";
+      const TypeIcon =
+        type === "object" ? Braces : type === "array" ? AlignLeft : type === "string" ? Type : type === "number" ? Hash : type === "boolean" ? ToggleLeft : HelpCircle;
+      const colors: Record<string, [string, string]> =
+        nodeTheme === "vscode"
+          ? {
+              object: ["#ee9d28", "#d67e00"],
+              array: ["#75beff", "#007acc"],
+              string: ["#ce9178", "#a31515"],
+              number: ["#b5cea8", "#098658"],
+              boolean: ["#569cd6", "#0000ff"],
+              null: ["#569cd6", "#0000ff"],
+            }
+          : {
+              object: ["#88c0d0", "#3b7d8f"],
+              array: ["#81a1c1", "#5e81ac"],
+              string: ["#a3be8c", "#5f8046"],
+              number: ["#b48ead", "#8a5f86"],
+              boolean: ["#ebcb8b", "#9a7419"],
+              null: ["#d08770", "#ad5c3f"],
+            };
+      const color = (colors[type] ?? ["#8a8a8a", "#6e6e6e"])[dark ? 0 : 1];
+      return (
+        <div
+          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center ${nodeTheme === "nord" ? "rounded-md" : ""}`}
+          style={{ color, backgroundColor: nodeTheme === "nord" ? `${color}24` : undefined }}
+        >
+          <TypeIcon size={nodeTheme === "vscode" ? 14 : 12} strokeWidth={2} />
+        </div>
+      );
+    }
+    if (nodeTheme === "zen" || nodeTheme === "paper" || nodeTheme === "graphite" || nodeTheme === "solarized") {
+      const dark = appTheme === "dark";
+      const TypeIcon =
+        type === "object" ? Braces : type === "array" ? AlignLeft : type === "string" ? Type : type === "number" ? Hash : type === "boolean" ? ToggleLeft : HelpCircle;
+      // Solarized gives each type its own accent; the others stay monochrome
+      const solarized: Record<string, string> = {
+        object: "#268bd2",
+        array: "#6c71c4",
+        string: "#2aa198",
+        number: "#cb4b16",
+        boolean: "#d33682",
       };
-      const iconStr = iconMap[type] || "🌱";
+      const accent = solarized[type] ?? (dark ? "#839496" : "#657b83");
+      const tone =
+        nodeTheme === "zen"
+          ? dark ? "text-[#8a847a]" : "text-[#b3ab9c]"
+          : nodeTheme === "paper"
+            ? dark ? "text-[#a8a397]" : "text-[#6b665b]"
+            : nodeTheme === "graphite"
+              ? dark ? "rounded-md bg-zinc-800 text-zinc-400 ring-1 ring-white/5" : "rounded-md bg-zinc-100 text-zinc-500 ring-1 ring-zinc-900/5"
+              : "rounded-md";
       return (
         <div
-          className={`w-7 h-7 rounded-full flex items-center justify-center text-sm shadow-sm ${bgColor}`}
+          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center ${tone}`}
+          style={nodeTheme === "solarized" ? { color: accent, backgroundColor: `${accent}1f` } : undefined}
         >
-          {iconStr}
+          <TypeIcon size={nodeTheme === "zen" ? 14 : 12} strokeWidth={nodeTheme === "zen" ? 1.5 : 2} />
         </div>
       );
     }
-    if (nodeTheme === "chess") {
-      const typeIcon =
-        type === "object"
-          ? "♔"
-          : type === "array"
-            ? "♖"
-            : type === "string"
-              ? "♘"
-              : type === "number"
-                ? "♗"
-                : type === "boolean"
-                  ? "♙"
-                  : "♙";
+    if (nodeTheme === "tree" || nodeTheme === "notebook") {
+      const dark = appTheme === "dark";
+      const TypeIcon =
+        nodeTheme === "tree"
+          ? type === "object" ? FolderTree : type === "array" ? ListTree : type === "string" ? Type : type === "number" ? Hash : type === "boolean" ? ToggleLeft : CircleDashed
+          : type === "object" ? Braces : type === "array" ? AlignLeft : type === "string" ? Type : type === "number" ? Hash : type === "boolean" ? ToggleLeft : HelpCircle;
+      const tone =
+        nodeTheme === "tree"
+          ? dark ? "rounded-full bg-[#3a2e22] text-[#d7b48a]" : "rounded-full bg-[#f3e6d4] text-[#8b5e34]"
+          // Notebook: ink on paper, no badge
+          : dark ? "text-[#8fa7d4]" : "text-[#3b5b92]";
       return (
-        <div className="w-5 h-5 flex items-center justify-center text-[#d4af37] text-lg font-serif opacity-90 drop-shadow-sm">
-          {typeIcon}
+        <div className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center ${tone}`}>
+          <TypeIcon size={nodeTheme === "notebook" ? 14 : 12} strokeWidth={2} />
         </div>
       );
     }
-    if (nodeTheme === "octopus") {
-      const typeColorText: Record<string, string> = {
-        object: "text-[#3b82f6]",
-        array: "text-[#a855f7]",
-        string: "text-[#06b6d4]",
-        number: "text-[#2dd4bf]",
-        boolean: "text-[#3b82f6]",
-        null: "text-[#ec4899]",
+    if (nodeTheme === "rune") {
+      const glyph =
+        ({ object: "◈", array: "☰", string: "✦", number: "⬡", boolean: "◐", null: "∅" } as Record<string, string>)[type] ?? "◇";
+      const dark = appTheme === "dark";
+      return (
+        <div
+          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full font-serif text-[12px] leading-none ${dark ? "bg-[#c9a24a]/10 text-[#e0bd66] ring-1 ring-[#c9a24a]/45" : "bg-[#b8913f]/10 text-[#8a6a22] ring-1 ring-[#b8913f]/50"}`}
+        >
+          {glyph}
+        </div>
+      );
+    }
+    if (nodeTheme === "glass") {
+      const GlassIcon =
+        type === "object" ? Braces : type === "array" ? AlignLeft : type === "string" ? Type : type === "number" ? Hash : type === "boolean" ? ToggleLeft : HelpCircle;
+      const dark = appTheme === "dark";
+      const color =
+        type === "string"
+          ? dark ? "text-[#6ee7b7]" : "text-[#059669]"
+          : type === "number"
+            ? dark ? "text-[#fdba74]" : "text-[#ea580c]"
+            : type === "boolean"
+              ? dark ? "text-[#93c5fd]" : "text-[#2563eb]"
+              : dark ? "text-white/70" : "text-slate-500";
+      return (
+        <div
+          className={`flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full ${dark ? "bg-white/10 ring-1 ring-white/15" : "bg-white/80 ring-1 ring-slate-900/[0.06]"} ${color}`}
+        >
+          <GlassIcon size={12} strokeWidth={2.2} />
+        </div>
+      );
+    }
+    if (nodeTheme === "math" || nodeTheme === "architect") {
+      const glyphs: Record<string, Record<string, string>> = {
+        // Mathematical notation, in serif
+        math: { object: "{ }", array: "[ ]", string: "𝑎", number: "ℝ", boolean: "∧", null: "∅" },
+        // Drafting symbols, in mono
+        architect: { object: "□", array: "≡", string: "Aa", number: "#", boolean: "◐", null: "∅" },
       };
-      const tColor = typeColorText[type] || "text-[#94a3b8]";
-
+      const glyph = glyphs[nodeTheme][type] ?? "·";
+      const dark = appTheme === "dark";
+      const tone =
+        nodeTheme === "math"
+          ? `rounded-md font-serif text-[12px] ${dark ? "bg-[#60a5fa]/12 text-[#93c5fd] ring-1 ring-[#60a5fa]/25" : "bg-[#2563eb]/[0.08] text-[#1d4ed8] ring-1 ring-[#2563eb]/20"}`
+          : `rounded-[2px] font-mono text-[11px] border ${dark ? "border-[#7da7d6]/50 text-[#9cc1e8]" : "border-[#64748b]/50 text-[#334155]"}`;
       return (
-        <div
-          className={`w-7 h-7 flex items-center justify-center text-[22px] drop-shadow-[0_0_5px_currentColor] ${tColor} opacity-90`}
-        >
-          🪼
+        <div className={`flex h-[22px] min-w-[22px] shrink-0 items-center justify-center px-1 font-semibold leading-none ${tone}`}>
+          {glyph}
         </div>
       );
     }
-    if (nodeTheme === "ludo") {
-      const ludoColors = [
-        "bg-[#ff4d4d]",
-        "bg-[#2ecc71]",
-        "bg-[#f1c40f]",
-        "bg-[#3498db]",
-      ];
-      const colorClass =
-        ludoColors[
-        Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) %
-        4
-        ];
-      const initial =
-        type === "object"
-          ? "O"
-          : type === "array"
-            ? "A"
-            : type === "string"
-              ? "T"
-              : type === "number"
-                ? "#"
-                : type === "boolean"
-                  ? "B"
-                  : "?";
+    if (nodeTheme === "terminal" || nodeTheme === "hacker") {
+      const glyph =
+        ({ object: "{}", array: "[]", string: '""', number: "#", boolean: "01", null: "∅" } as Record<string, string>)[type] ?? "·";
+      const dark = appTheme === "dark";
+      const tone =
+        nodeTheme === "terminal"
+          ? dark
+            ? "rounded bg-[#3fb950]/12 text-[#3fb950] ring-1 ring-[#3fb950]/25"
+            : "rounded bg-[#1a7f37]/10 text-[#1a7f37] ring-1 ring-[#1a7f37]/20"
+          : dark
+            ? "rounded-[2px] bg-[#00ff41]/5 text-[#00ff41] ring-1 ring-[#00ff41]/40"
+            : "rounded-[2px] bg-[#0a8f3c]/5 text-[#0a8f3c] ring-1 ring-[#0a8f3c]/35";
       return (
-        <div
-          className={`${colorClass} w-8 h-8 rounded flex items-center justify-center text-white font-bold text-sm ring-2 ${appTheme === "dark" ? "ring-white/10" : "ring-black/5"} shadow-md`}
-        >
-          {initial}
+        <div className={`flex h-[22px] min-w-[22px] shrink-0 items-center justify-center px-1 font-mono text-[10px] font-bold leading-none ${tone}`}>
+          {glyph}
         </div>
       );
     }
@@ -985,121 +1006,107 @@ function NodeRenderer({
   };
 
   const baseClasses = isSpecialNode ? "" : getThemeClasses(nodeTheme);
+  const isPaletteTheme = (PALETTE_THEMES as readonly string[]).includes(nodeTheme);
 
   // Custom tweaks per theme
   const isDarkBase =
     [
       "custom",
-      "banyan",
-      "peepal",
-      "neural",
-      "river",
-      "tree",
-      "pixel",
-      "hacker",
-      "dna",
-      "lava",
-      "ocean",
-      "rhythm",
-      "rune",
-      "abstract",
-      "chess",
-      "octopus",
       "chalk",
     ].includes(nodeTheme) ||
     (nodeTheme === "glass" && appTheme === "dark") ||
-    (nodeTheme === "neon" && appTheme === "dark") ||
-    (nodeTheme === "circuit" && appTheme === "dark") ||
-    (nodeTheme === "galaxy" && appTheme === "dark") ||
-    (nodeTheme === "nature" && appTheme === "dark") ||
     (nodeTheme === "notebook" && appTheme === "dark") ||
-    (nodeTheme === "holographic" && appTheme === "dark") ||
+    (nodeTheme === "tree" && appTheme === "dark") ||
+    (nodeTheme === "rune" && appTheme === "dark") ||
     (nodeTheme === "terminal" && appTheme === "dark") ||
-    (nodeTheme === "material" && appTheme === "dark") ||
-    (nodeTheme === "blueprint" && appTheme === "dark") ||
-    (nodeTheme === "gradient" && appTheme === "dark") ||
-    (nodeTheme === "cyberpunk" && appTheme === "dark") ||
-    (nodeTheme === "glassmorphism" && appTheme === "dark") ||
+    (nodeTheme === "hacker" && appTheme === "dark") ||
+    (nodeTheme === "gradient" && (data.id === "root" || appTheme === "dark")) ||
+    (nodeTheme === "minimal" && appTheme === "dark") ||
+    (nodeTheme === "ocean" && appTheme === "dark") ||
+    (isPaletteTheme && appTheme === "dark") ||
     (nodeTheme === "vscode" && appTheme === "dark") ||
     (nodeTheme === "github" && appTheme === "dark") ||
-    (nodeTheme === "cloud" && appTheme === "dark") ||
-    (nodeTheme === "pastel" && appTheme === "dark") ||
     (nodeTheme === "math" && appTheme === "dark") ||
     (nodeTheme === "zen" && appTheme === "dark") ||
     (nodeTheme === "architect" && appTheme === "dark") ||
-    (nodeTheme === "nature2" && data.id === "root") ||
-    (nodeTheme === "hydrogen" && appTheme === "dark") ||
-    (nodeTheme === "seed" && data.id === "root");
+    (nodeTheme === "nature" && (data.id === "root" || appTheme === "dark")) ||
+    (nodeTheme === "seed" && (data.id === "root" || appTheme === "dark"));
   const isLightBase =
-    ["minimal", "ludo"].includes(
-      nodeTheme,
-    ) ||
+    (nodeTheme === "minimal" && appTheme !== "dark") ||
+    (nodeTheme === "ocean" && appTheme !== "dark") ||
     (nodeTheme === "glass" && appTheme !== "dark") ||
-    (nodeTheme === "neon" && appTheme !== "dark") ||
-    (nodeTheme === "circuit" && appTheme !== "dark") ||
-    (nodeTheme === "galaxy" && appTheme !== "dark") ||
-    (nodeTheme === "nature" && appTheme !== "dark") ||
     (nodeTheme === "notebook" && appTheme !== "dark") ||
-    (nodeTheme === "holographic" && appTheme !== "dark") ||
+    (nodeTheme === "tree" && appTheme !== "dark") ||
+    (nodeTheme === "rune" && appTheme !== "dark") ||
     (nodeTheme === "terminal" && appTheme !== "dark") ||
-    (nodeTheme === "material" && appTheme !== "dark") ||
-    (nodeTheme === "blueprint" && appTheme !== "dark") ||
-    (nodeTheme === "gradient" && appTheme !== "dark") ||
-    (nodeTheme === "cyberpunk" && appTheme !== "dark") ||
-    (nodeTheme === "glassmorphism" && appTheme !== "dark") ||
+    (nodeTheme === "hacker" && appTheme !== "dark") ||
+    (nodeTheme === "gradient" && data.id !== "root" && appTheme !== "dark") ||
+    (isPaletteTheme && appTheme !== "dark") ||
     (nodeTheme === "vscode" && appTheme !== "dark") ||
     (nodeTheme === "github" && appTheme !== "dark") ||
     (nodeTheme === "math" && appTheme !== "dark") ||
     (nodeTheme === "zen" && appTheme !== "dark") ||
     (nodeTheme === "architect" && appTheme !== "dark") ||
-    (nodeTheme === "cloud" && appTheme !== "dark") ||
-    (nodeTheme === "pastel" && appTheme !== "dark") ||
-    (nodeTheme === "nature2" && data.id !== "root") ||
-    (nodeTheme === "hydrogen" && appTheme !== "dark") ||
-    (nodeTheme === "seed" && data.id !== "root");
+    (nodeTheme === "nature" && data.id !== "root" && appTheme !== "dark") ||
+    (nodeTheme === "seed" && data.id !== "root" && appTheme !== "dark");
 
   // Text color logic
   const isCustom = nodeTheme === "custom";
   const mutedText = isCustom
     ? ""
-    : nodeTheme === "hydrogen"
-      ? appTheme === "dark"
-        ? "text-blue-300"
-        : "text-blue-500"
-      : nodeTheme === "seed" && data.id !== "root"
-        ? "text-[#5d8048]"
-        : nodeTheme === "nature2" && data.id !== "root"
-          ? "text-[#385c40]"
-          : nodeTheme === "pastel"
-            ? appTheme === "dark" ? "text-purple-300/70" : "text-purple-600/70"
-            : isDarkBase
-              ? "text-white/50"
-              : isLightBase
-                ? "text-slate-500"
-                : nodeTheme === "retro"
-                  ? (appTheme === "dark" ? "text-[#ffb870]/80" : "text-[#6b3fc4]/80")
-                  : "text-black/50";
+    : nodeTheme === "vscode"
+      ? appTheme === "dark" ? "text-[#858585]" : "text-[#6e6e6e]"
+    : nodeTheme === "nord"
+      ? appTheme === "dark" ? "text-[#7b88a1]" : "text-[#6b7891]"
+    : nodeTheme === "zen"
+      ? appTheme === "dark" ? "text-[#8a847a]" : "text-[#a39b8c]"
+    : nodeTheme === "solarized"
+      ? appTheme === "dark" ? "text-[#657b83]" : "text-[#93a1a1]"
+    : nodeTheme === "terminal"
+      ? appTheme === "dark" ? "text-[#7d8590]" : "text-[#59636e]"
+    : nodeTheme === "hacker"
+      ? appTheme === "dark" ? "text-[#3fae5a]" : "text-[#3d7a52]"
+    : nodeTheme === "seed" && data.id !== "root"
+      ? appTheme === "dark" ? "text-[#93ab86]" : "text-[#6b8a55]"
+      : nodeTheme === "nature" && data.id !== "root"
+        ? appTheme === "dark" ? "text-[#8fa886]" : "text-[#6a8560]"
+        : isDarkBase
+          ? "text-white/50"
+          : isLightBase
+            ? "text-slate-500"
+            : nodeTheme === "retro"
+              ? (appTheme === "dark" ? "text-[#ffb870]/80" : "text-[#6b3fc4]/80")
+              : "text-black/50";
   const valText = isCustom
     ? ""
-    : nodeTheme === "hydrogen"
+    : nodeTheme === "vscode"
+      // Syntax colours: strings, numbers, and keywords (true/false/null)
       ? appTheme === "dark"
-        ? "text-blue-200"
-        : "text-blue-700"
-      : nodeTheme === "ludo"
-        ? "text-black"
-        : nodeTheme === "seed" && data.id !== "root"
-          ? "text-[#1c2e19]"
-          : nodeTheme === "nature2" && data.id !== "root"
-            ? "text-[#1a3821]"
-            : nodeTheme === "pastel"
-              ? appTheme === "dark" ? "text-purple-200" : "text-purple-800"
-              : isDarkBase
-                ? "text-white/90"
-                : isLightBase
-                  ? "text-slate-900"
-                  : nodeTheme === "retro"
-                    ? (appTheme === "dark" ? "text-[#ffe7c7]" : "text-[#2e1760]")
-                    : "text-black/90";
+        ? data.type === "string" ? "text-[#ce9178]" : data.type === "number" ? "text-[#b5cea8]" : data.type === "boolean" || data.type === "null" ? "text-[#569cd6]" : "text-[#d4d4d4]"
+        : data.type === "string" ? "text-[#a31515]" : data.type === "number" ? "text-[#098658]" : data.type === "boolean" || data.type === "null" ? "text-[#0000ff]" : "text-[#3b3b3b]"
+    : nodeTheme === "nord"
+      ? appTheme === "dark" ? "text-[#d8dee9]" : "text-[#3b4252]"
+    : nodeTheme === "zen"
+      ? appTheme === "dark" ? "text-[#c9c3b8]" : "text-[#5c564d]"
+    : nodeTheme === "solarized"
+      ? appTheme === "dark" ? "text-[#93a1a1]" : "text-[#586e75]"
+    : nodeTheme === "rune"
+      ? appTheme === "dark" ? "text-[#cdbf9c]" : "text-[#5c4a26]"
+    : nodeTheme === "terminal"
+      ? appTheme === "dark" ? "text-[#7ee787]" : "text-[#116329]"
+    : nodeTheme === "hacker"
+      ? appTheme === "dark" ? "text-[#86f7a6]" : "text-[#0b5d2a]"
+    : nodeTheme === "seed" && data.id !== "root"
+      ? appTheme === "dark" ? "text-[#e1ebd9]" : "text-[#1f3319]"
+      : nodeTheme === "nature" && data.id !== "root"
+        ? appTheme === "dark" ? "text-[#dde9d6]" : "text-[#1f3322]"
+        : isDarkBase
+          ? "text-white/90"
+          : isLightBase
+            ? "text-slate-900"
+            : nodeTheme === "retro"
+              ? (appTheme === "dark" ? "text-[#ffe7c7]" : "text-[#2e1760]")
+              : "text-black/90";
   const labelText = isCustom ? "" : ""; // Label usually inherits or has own logic
 
   let highlightClasses = "";
@@ -1156,9 +1163,7 @@ function NodeRenderer({
                     ? 420
                     : isMedia
                       ? 320
-                      : nodeTheme === "peepal" || nodeTheme === "banyan"
-                        ? 220
-                        : 260;
+                      : 260;
   const defaultHeight = isTodoNode
       ? isExpanded
         ? 360
@@ -1186,12 +1191,8 @@ function NodeRenderer({
                     : isJsTerminal || isTsTerminal || isPyTerminal
                       ? 200
                       : isExpanded
-                        ? nodeTheme === "peepal" || nodeTheme === "banyan"
-                          ? 440
-                          : 300
-                        : nodeTheme === "peepal" || nodeTheme === "banyan"
-                          ? 310
-                          : 120;
+                        ? 300
+                        : 120;
   let fWidth = customSize ? customSize.width : defaultWidth;
   let fHeight = customSize ? customSize.height : defaultHeight;
   defaultSizeRef.current = { width: defaultWidth, height: defaultHeight };
@@ -1209,181 +1210,69 @@ function NodeRenderer({
   if (isDefaultShape && !isSpecialNode) {
     switch (nodeTheme) {
       case "nature":
-        shapeClasses =
-          "px-6 py-4 min-w-[150px] flex items-center justify-center";
-        // A much smoother 12-point leaf polygon
-        shapeStyle.clipPath =
-          "polygon(50% 0%, 75% 5%, 95% 20%, 100% 45%, 95% 75%, 75% 92%, 50% 100%, 25% 92%, 5% 75%, 0% 45%, 5% 20%, 25% 5%)";
-        break;
-      case "banyan":
-        shapeClasses =
-          "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
-        shapeStyle.width = "100%";
-        shapeStyle.height = "100%";
-        shapeStyle.paddingTop = "25%";
-        shapeStyle.paddingBottom = "30%";
-        shapeStyle.paddingLeft = "15%";
-        shapeStyle.paddingRight = "15%";
-        // Beautiful 20-point elliptical Banyan leaf clipPath with slight pointed top apex and elegant stalk base
-        shapeStyle.clipPath =
-          "polygon(50% 3%, 64% 7%, 78% 16%, 88% 30%, 94% 48%, 93% 66%, 84% 81%, 70% 92%, 55% 96%, 52% 100%, 48% 100%, 45% 96%, 30% 92%, 16% 81%, 7% 66%, 6% 48%, 12% 30%, 22% 16%, 36% 7%)";
-        break;
-      case "peepal":
-        shapeClasses =
-          "w-full h-full flex flex-col items-center justify-center text-center overflow-hidden";
-        shapeStyle.width = "100%";
-        shapeStyle.height = "100%";
-        shapeStyle.paddingTop = "22%";
-        shapeStyle.paddingBottom = "36%";
-        shapeStyle.paddingLeft = "14%";
-        shapeStyle.paddingRight = "14%";
-        // Masterpiece calculated 25-point Peepal leaf polygon: smooth shoulders, top cleft, and organic S-curving long tail
-        shapeStyle.clipPath =
-          "polygon(50% 16%, 38% 6%, 24% 4%, 10% 12%, 3% 26%, 1% 42%, 6% 56%, 18% 68%, 32% 76%, 42% 82%, 45% 88%, 43% 94%, 39% 100%, 41% 100%, 46% 94%, 48% 88%, 50% 82%, 60% 76%, 74% 68%, 88% 56%, 97% 42%, 99% 26%, 90% 12%, 76% 4%, 62% 6%)";
-        break;
-      case "nature2":
-        shapeClasses = "px-6 py-4 min-w-[150px]";
+        shapeClasses = data.id === "root" ? "px-5 py-3 min-w-[150px]" : "px-4 py-2.5 min-w-[140px] rounded-xl";
         break;
       case "seed":
         shapeClasses =
           data.id === "root"
-            ? "px-6 py-3 min-w-[150px] rounded-[16px_16px_24px_24px] overflow-hidden"
-            : "px-5 py-3 min-w-[140px] rounded-[12px_12px_20px_20px] overflow-hidden";
-        break;
-      case "hydrogen":
-        shapeClasses =
-          data.id === "root"
-            ? "px-8 py-4 min-w-[180px] rounded-[24px] overflow-hidden"
-            : "px-5 py-3 min-w-[140px] rounded-[20px] overflow-hidden";
-        break;
-      case "circuit":
-        shapeClasses = "px-4 py-2 min-w-[140px]";
-        shapeStyle.clipPath =
-          "polygon(0% 15%, 15% 0%, 85% 0%, 100% 15%, 100% 85%, 85% 100%, 15% 100%, 0% 85%)";
-        break;
-      case "galaxy":
-        shapeClasses = "px-6 py-4 min-w-[150px] border";
-        shapeStyle.borderRadius = "24px";
+            ? "px-5 py-3 min-w-[150px] rounded-[18px_6px_18px_6px] overflow-visible"
+            : "px-4 py-2.5 min-w-[140px] rounded-[14px_4px_14px_4px]";
         break;
       case "glass":
-        shapeClasses = "px-4 py-2 min-w-[130px]";
-        shapeStyle.borderRadius = "12px";
-        shapeStyle.transform = "skewX(-5deg)";
-        break;
-      case "neon":
-        shapeClasses = "px-4 py-2 min-w-[130px] border-2";
-        shapeStyle.borderRadius = "0px";
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-2xl";
         break;
       case "math":
-        shapeClasses = "px-5 py-3 min-w-[140px] border-l-4";
-        shapeStyle.borderRadius = "4px";
-        break;
-      case "neural":
-        shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.borderRadius = "16px";
-        break;
-      case "river":
-        shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.borderRadius = "24px";
-        break;
-      case "pastel":
-        shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.borderRadius = "20px";
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-md border-l-[3px]";
         break;
       case "tree":
-        shapeClasses = "px-4 py-2 min-w-[130px]";
-        shapeStyle.clipPath =
-          "polygon(5% 0%, 95% 0%, 100% 20%, 100% 80%, 95% 100%, 5% 100%, 0% 80%, 0% 20%)";
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-lg";
         break;
-      case "pixel":
-        shapeClasses = "px-4 py-2 min-w-[120px]";
-        shapeStyle.boxShadow =
-          "calc(-1 * 4px) 0 0 #1a1c2c, 4px 0 0 #1a1c2c, 0 calc(-1 * 4px) 0 #1a1c2c, 0 4px 0 #1a1c2c";
+      case "notebook":
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-[3px]";
+        break;
+      case "terminal":
+        shapeClasses = "px-3.5 py-2 min-w-[140px] rounded-lg";
         break;
       case "hacker":
-        shapeClasses = "px-4 py-2 min-w-[130px] border-x-2 border-y-0";
-        break;
-      case "cloud":
-        shapeClasses = "px-6 py-4 min-w-[150px] cloud-node border-none";
-        shapeStyle.borderRadius = "40px";
-        break;
-      case "dna":
-        shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.borderRadius = "32px";
-        break;
-      case "lava":
-        shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.borderRadius = "12px 12px 24px 24px";
+        shapeClasses = "px-4 py-2 min-w-[140px] rounded-none";
         break;
       case "ocean":
-        shapeClasses = "px-5 py-4 min-w-[150px] overflow-hidden";
-        shapeStyle.borderRadius = "24px";
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-2xl";
         break;
-      case "rhythm":
-        shapeClasses = "px-4 py-2 min-w-[130px] border-l-4";
+      case "minimal":
+        shapeClasses = "px-3.5 py-2 min-w-[130px] rounded-lg";
+        break;
+      case "gradient":
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-xl";
         break;
       case "rune":
-        shapeClasses = "px-5 py-3 min-w-[140px]";
-        shapeStyle.clipPath =
-          "polygon(10px 0, calc(100% - 10px) 0, 100% 10px, 100% calc(100% - 10px), calc(100% - 10px) 100%, 10px 100%, 0 calc(100% - 10px), 0 10px)";
+        shapeClasses = "px-5 py-3 min-w-[150px] rounded-[4px]";
         break;
       case "chalk":
         shapeClasses = "px-5 py-3 min-w-[140px] chalk-node rounded-lg";
         break;
       case "zen":
-        shapeClasses = "px-8 py-2 min-w-[140px] border-b";
-        shapeStyle.borderRadius = "0px";
+        shapeClasses = "px-5 py-3 min-w-[150px] rounded-2xl";
         break;
-      case "abstract":
-        shapeClasses = "px-5 py-4 min-w-[150px] overflow-hidden";
-        shapeStyle.borderRadius = "24px";
+      case "vscode":
+        shapeClasses = "px-3.5 py-2 min-w-[140px] rounded-[5px]";
         break;
-      case "ludo": {
-        const ludoColors = [
-          "border-[#ff4d4d]",
-          "border-[#2ecc71]",
-          "border-[#f1c40f]",
-          "border-[#3498db]",
-        ];
-        const borderColor =
-          ludoColors[
-          Math.abs(
-            data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0),
-          ) % 4
-          ];
-        const isLudoNodeDark = appTheme === "dark";
-        shapeClasses = `px-4 py-3 min-w-[150px] rounded-xl border-4 ${borderColor} ${isLudoNodeDark ? "bg-[#f8fafc] shadow-[0_10px_20px_-5px_rgba(0,0,0,0.5)]" : "bg-white/95 shadow-[0_10px_20px_-5px_rgba(0,0,0,0.3)]"} backdrop-blur-md transition-transform overflow-visible`;
+      case "nord":
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-lg";
         break;
-      }
-      case "chess": {
-        shapeClasses =
-          "px-4 py-3 min-w-[150px] rounded-sm bg-[#151b29] border border-[#d4af37]/40 shadow-[0_4px_15px_-3px_rgba(0,0,0,0.5),_inset_0_0_8px_rgba(212,175,55,0.1)] transition-transform overflow-visible font-serif";
+      case "paper":
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-[2px]";
         break;
-      }
-      case "octopus": {
-        const typeColors: Record<string, string> = {
-          object:
-            "border-[#3b82f6] shadow-[0_0_15px_rgba(59,130,246,0.3),_inset_0_0_10px_rgba(59,130,246,0.2)]",
-          array:
-            "border-[#a855f7] shadow-[0_0_15px_rgba(168,85,247,0.3),_inset_0_0_10px_rgba(168,85,247,0.2)]",
-          string:
-            "border-[#06b6d4] shadow-[0_0_15px_rgba(6,182,212,0.3),_inset_0_0_10px_rgba(6,182,212,0.2)]",
-          number:
-            "border-[#2dd4bf] shadow-[0_0_15px_rgba(45,212,191,0.3),_inset_0_0_10px_rgba(45,212,191,0.2)]",
-          boolean:
-            "border-[#3b82f6] shadow-[0_0_15px_rgba(59,130,246,0.3),_inset_0_0_10px_rgba(59,130,246,0.2)]",
-          null: "border-[#ec4899] shadow-[0_0_15px_rgba(236,72,153,0.3),_inset_0_0_10px_rgba(236,72,153,0.2)]",
-        };
-        const nodeColorClass =
-          typeColors[data.type] ||
-          "border-[#94a3b8] shadow-[0_0_15px_rgba(148,163,184,0.3),_inset_0_0_10px_rgba(148,163,184,0.2)]";
-        shapeClasses = `px-5 py-3 pr-8 min-w-[150px] rounded-[24px] bg-[#050a1f]/80 backdrop-blur-xl border ${nodeColorClass} transition-transform overflow-visible relative`;
+      case "graphite":
+        shapeClasses = "px-3.5 py-2 min-w-[140px] rounded-lg";
         break;
-      }
+      case "solarized":
+        shapeClasses = "px-4 py-2.5 min-w-[140px] rounded-md";
+        break;
       case "architect":
-        shapeClasses = "px-4 py-2 min-w-[140px] border-slate-400 border-2";
-        shapeStyle.outline = "1px solid #94a3b8";
-        shapeStyle.outlineOffset = "4px";
+        shapeClasses = "px-4 py-2 min-w-[140px] rounded-[3px]";
+        shapeStyle.outline = `1px dashed ${appTheme === "dark" ? "rgba(125, 167, 214, 0.35)" : "rgba(71, 85, 105, 0.3)"}`;
+        shapeStyle.outlineOffset = "3px";
         break;
     }
 
@@ -1483,87 +1372,6 @@ function NodeRenderer({
       }}
     >
       <div className="w-full h-full flex items-center justify-center">
-        {nodeTheme === "seed" && data.id === "root" && !isSpecialNode && (
-          <div
-            className="absolute left-1/2 -translate-x-1/2 top-4 w-[240px] h-[350px] pointer-events-none"
-            style={{ zIndex: -10 }}
-          >
-            <svg viewBox="0 0 240 350" width="100%" height="100%">
-              <defs>
-                <radialGradient id="soilGrad" cx="50%" cy="50%" r="50%">
-                  <stop offset="0%" stopColor="#4a2e1b" stopOpacity="0.9" />
-                  <stop offset="60%" stopColor="#5d3921" stopOpacity="0.5" />
-                  <stop offset="100%" stopColor="#8c5836" stopOpacity="0" />
-                </radialGradient>
-                <linearGradient
-                  id="seedColor"
-                  x1="0%"
-                  y1="0%"
-                  x2="100%"
-                  y2="100%"
-                >
-                  <stop offset="0%" stopColor="#a36e3c" />
-                  <stop offset="100%" stopColor="#3d2110" />
-                </linearGradient>
-              </defs>
-
-              <ellipse
-                cx="120"
-                cy="200"
-                rx="110"
-                ry="80"
-                fill="url(#soilGrad)"
-              />
-
-              {/* Roots */}
-              <path
-                d="M 120 190 C 100 230, 50 280, 20 320 M 120 190 C 140 240, 200 300, 220 330 M 120 190 C 110 250, 90 290, 100 340 M 130 200 C 150 230, 140 280, 160 320 M 110 220 C 80 250, 70 270, 60 300"
-                stroke="#362312"
-                strokeWidth="2.5"
-                fill="none"
-                opacity="0.8"
-              />
-
-              {/* Seed */}
-              <g transform="translate(120, 170)">
-                <ellipse
-                  cx="-15"
-                  cy="0"
-                  rx="28"
-                  ry="42"
-                  fill="url(#seedColor)"
-                  transform="rotate(-15)"
-                />
-                <ellipse
-                  cx="15"
-                  cy="0"
-                  rx="28"
-                  ry="42"
-                  fill="url(#seedColor)"
-                  transform="rotate(15)"
-                />
-                <path
-                  d="M 0 -35 C -10 -15, -10 25, 0 40 C 10 25, 10 -15, 0 -35"
-                  fill="#f0d5a8"
-                  opacity="0.9"
-                />
-              </g>
-
-              {/* Stem */}
-              <path
-                d="M 120 140 C 115 100, 90 80, 120 20"
-                stroke="#7eaa54"
-                strokeWidth="6"
-                fill="none"
-                strokeLinecap="round"
-              />
-
-              {/* Leaves on stem */}
-              <path d="M 112 100 C 70 100, 50 60, 102 90" fill="#5c8a38" />
-              <path d="M 126 60 C 170 50, 190 90, 115 70" fill="#5c8a38" />
-            </svg>
-          </div>
-        )}
         <div
           className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${isMatch || isSelected ? "scale-105" : ""} ${dropShadowClass}`}
         >
@@ -1604,310 +1412,21 @@ function NodeRenderer({
               if (hasChildren) toggleNodeCollapse(data.id);
             }}
           >
-            {nodeTheme === "nature" && !isSpecialNode && (
-              <div className={`absolute inset-0 pointer-events-none overflow-hidden ${appTheme === "dark" ? "opacity-20" : "opacity-30 [&>div]:bg-[#2d6a4f]"}`}>
-                <div className="absolute top-0 bottom-0 left-1/2 w-0.5 bg-white -translate-x-1/2" />
-                <div className="absolute top-[30%] left-[55%] w-[40%] h-0.5 bg-white -rotate-[30deg]" />
-                <div className="absolute top-[30%] right-[55%] w-[40%] h-0.5 bg-white rotate-[30deg]" />
-                <div className="absolute top-[60%] left-[52%] w-[45%] h-0.5 bg-white -rotate-[20deg]" />
-                <div className="absolute top-[60%] right-[52%] w-[45%] h-0.5 bg-white rotate-[20deg]" />
-              </div>
+            {nodeTheme === "seed" && data.id === "root" && !isSpecialNode && (
+              <svg
+                className="seed-sprout pointer-events-none absolute -top-[41px] left-1/2 -translate-x-1/2"
+                width="60"
+                height="44"
+                viewBox="0 0 46 34"
+                aria-hidden
+              >
+                <path d="M23 34 C23 27 22 21 23 13" stroke="#7fae5c" strokeWidth="2.4" fill="none" strokeLinecap="round" />
+                <path d="M23 17 C17 7 7 6 3 11 C9 17 17 18 23 17 Z" fill="#8cbc66" />
+                <path d="M23 17 C16 14 9 12 4 11.5" stroke="#5f8f40" strokeWidth="0.8" fill="none" opacity="0.7" />
+                <path d="M23 13 C28 3 38 2 43 7 C37 13 29 14 23 13 Z" fill="#6fa24c" />
+                <path d="M23 13 C30 10 36 8 42 7.5" stroke="#4f7f34" strokeWidth="0.8" fill="none" opacity="0.7" />
+              </svg>
             )}
-            {nodeTheme === "banyan" && !isSpecialNode && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                <svg
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                  className="absolute inset-0 w-full h-full opacity-60"
-                >
-                  {/* Organic, straight-ish thick golden central midrib with strong vascular definition */}
-                  <path
-                    d="M 50 4 Q 50 50 50 96"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="1.3"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Beautifully spaced golden secondary veins arching up and out at ~40 degree angles */}
-                  {/* Pair 1 - top */}
-                  <path
-                    d="M 50 15 Q 68 18 84 22"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 15 Q 32 18 16 22"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Pair 2 */}
-                  <path
-                    d="M 50 28 Q 72 31 88 38"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 28 Q 28 31 12 38"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Pair 3 */}
-                  <path
-                    d="M 50 42 Q 74 46 90 54"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 42 Q 26 46 10 54"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Pair 4 */}
-                  <path
-                    d="M 50 56 Q 74 61 88 71"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 56 Q 26 61 12 71"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.55"
-                    opacity="0.8"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Pair 5 */}
-                  <path
-                    d="M 50 70 Q 72 75 84 83"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.5"
-                    opacity="0.7"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 70 Q 28 75 16 83"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.5"
-                    opacity="0.7"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Pair 6 - bottom */}
-                  <path
-                    d="M 50 83 Q 66 87 74 91"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.45"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 83 Q 34 87 26 91"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.45"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Tertiary intricate vein net highlights (subtle web patterns to feel incredibly rich and premium) */}
-                  <path
-                    d="M 68 18 Q 74 24 88 38 M 32 18 Q 26 24 12 38"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.25"
-                    opacity="0.3"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 72 31 Q 78 38 90 54 M 28 31 Q 22 38 10 54"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.25"
-                    opacity="0.3"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 74 46 Q 80 54 88 71 M 26 46 Q 20 54 12 71"
-                    fill="none"
-                    stroke="#ffeaa7"
-                    strokeWidth="0.25"
-                    opacity="0.3"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                {/* Glossy highlight to represent the heavy, polished, photorealistic shine of banyan leaf rubbery surface */}
-                <div className="absolute top-0 left-0 w-full h-[150%] bg-gradient-to-br from-white/25 via-transparent to-transparent -rotate-12 translate-x-1/8 -translate-y-1/2 opacity-90" />
-              </div>
-            )}
-            {nodeTheme === "peepal" && (
-              <div className="absolute inset-0 pointer-events-none overflow-hidden">
-                <svg
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                  className="absolute inset-0 w-full h-full opacity-80"
-                >
-                  {/* Organic, naturally curved Midrib (S-shaped to match the tail) */}
-                  <path
-                    d="M 50 16 Q 50 40 50 70 T 40 100"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="1.2"
-                    strokeLinecap="round"
-                  />
-
-                  {/* Symmetric but organic lateral veins branching out at angles */}
-                  <path
-                    d="M 50 25 Q 65 20 85 18"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 25 Q 35 20 15 18"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-
-                  <path
-                    d="M 50 38 Q 63 34 88 32"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 38 Q 37 34 12 32"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-
-                  <path
-                    d="M 50 51 Q 65 47 88 47"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 51 Q 35 47 12 47"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-
-                  <path
-                    d="M 50 64 Q 63 61 80 64"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 50 64 Q 37 61 20 64"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.5"
-                    opacity="0.6"
-                    strokeLinecap="round"
-                  />
-
-                  <path
-                    d="M 49 76 Q 58 74 68 78"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.4"
-                    opacity="0.5"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 49 76 Q 40 74 30 78"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.4"
-                    opacity="0.5"
-                    strokeLinecap="round"
-                  />
-
-                  <path
-                    d="M 46 87 Q 52 86 58 90"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.3"
-                    opacity="0.4"
-                    strokeLinecap="round"
-                  />
-                  <path
-                    d="M 46 87 Q 40 86 34 90"
-                    fill="none"
-                    stroke="#daf379"
-                    strokeWidth="0.3"
-                    opacity="0.4"
-                    strokeLinecap="round"
-                  />
-                </svg>
-                {/* Glossy top-right sun highlight simulation */}
-                <div className="absolute top-0 right-0 w-[90%] h-[130%] bg-gradient-to-bl from-white/20 via-transparent to-transparent -rotate-[15deg] translate-x-1/4 -translate-y-1/2" />
-              </div>
-            )}
-            {nodeTheme === "ludo" && !isSpecialNode && (
-              <>
-                <div
-                  className={`absolute -top-1.5 -left-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-                />
-                <div
-                  className={`absolute -top-1.5 -right-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-                />
-                <div
-                  className={`absolute -bottom-1.5 -left-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-                />
-                <div
-                  className={`absolute -bottom-1.5 -right-1.5 w-3 h-3 rounded-full shadow-inner ${["bg-[#ff4d4d]", "bg-[#2ecc71]", "bg-[#f1c40f]", "bg-[#3498db]"][Math.abs(data.id.split("").reduce((a, b) => a + b.charCodeAt(0), 0)) % 4]}`}
-                />
-              </>
-            )}
-
             <div
               className={`flex w-full h-full min-w-0 ${isMedia ? "items-start mb-2" : "items-center"} ${isSpecialNode ? "p-0" : ""}`}
             >
@@ -1938,33 +1457,22 @@ function NodeRenderer({
                   ...(isCustom && !isSpecialNode
                     ? { color: nodeTextColor }
                     : {}),
-                  ...(!isSpecialNode &&
-                    (nodeTheme === "peepal" ||
-                      nodeTheme === "banyan" ||
-                      (nodeTheme === "nature" && appTheme === "dark"))
-                    ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
-                    : {}),
                 }}
               >
                 {!isSpecialNode && (
                   <div className="flex items-baseline space-x-1.5 w-full max-w-full overflow-hidden">
                     <span
-                      className={`pointer-events-none font-mono text-xs font-semibold ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "whitespace-normal break-all line-clamp-2" : "truncate"} max-w-full ${nodeTheme === "cyberpunk" ? "drop-shadow-md" : ""}`}
+                      className={`pointer-events-none font-mono text-xs font-semibold truncate max-w-full`}
                       title={data.name}
                     >
                       {data.name}
                     </span>
                     {data.type !== "object" && data.type !== "array" && (
                       <span
-                        className={`pointer-events-none text-[10px] uppercase font-bold px-1 rounded-sm ${nodeTheme === "hydrogen" ? "bg-transparent" : isDarkBase ? "bg-white/10" : "bg-black/10"} tracking-widest ${mutedText}`}
+                        className={`pointer-events-none text-[10px] uppercase font-bold px-1 rounded-sm ${isDarkBase ? "bg-white/10" : "bg-black/10"} tracking-widest ${mutedText}`}
                         style={{
                           ...(isCustom
                             ? { color: nodeTextColor, opacity: 0.7 }
-                            : {}),
-                          ...(nodeTheme === "peepal" ||
-                            nodeTheme === "banyan" ||
-                            nodeTheme === "nature"
-                            ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                             : {}),
                         }}
                       >
@@ -1991,7 +1499,7 @@ function NodeRenderer({
                   !isMathNode && (
                     <div className="flex flex-col flex-1 min-w-0 mt-0.5 relative group/val w-full max-w-full h-full overflow-hidden">
                       <div
-                        className={`flex-1 min-w-0 ${isExpanded ? `nodrag overflow-y-auto ${nodeTheme === "peepal" || nodeTheme === "banyan" ? "max-h-[140px]" : "max-h-[180px]"} custom-scrollbar pr-1` : "overflow-hidden"}`}
+                        className={`flex-1 min-w-0 ${isExpanded ? `nodrag overflow-y-auto max-h-[180px] custom-scrollbar pr-1` : "overflow-hidden"}`}
                       >
                         {isKnownDataUrl && (
                           <span className="inline-block px-1 mr-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 align-middle">
@@ -2001,19 +1509,12 @@ function NodeRenderer({
                         <span
                           className={`text-[11px] font-mono leading-normal inline ${isExpanded
                             ? "whitespace-pre-wrap break-all"
-                            : nodeTheme === "peepal" || nodeTheme === "banyan"
-                              ? "line-clamp-3 whitespace-normal break-all block"
-                              : "truncate w-full max-w-full block"
+                            : "truncate w-full max-w-full block"
                             } ${valText}`}
                           title={!isExpanded && strVal.length < 500 ? strVal : undefined}
                           style={{
                             ...(isCustom
                               ? { color: nodeTextColor, opacity: 0.9 }
-                              : {}),
-                            ...(nodeTheme === "peepal" ||
-                              nodeTheme === "banyan" ||
-                              nodeTheme === "nature"
-                              ? { textShadow: "0 2px 5px rgba(0,0,0,0.95)" }
                               : {}),
                           }}
                         >
