@@ -49,7 +49,7 @@ const formatTime = (secs: number) => {
 };
 
 const ICON_BUTTON =
-  'flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-(--ap-muted) transition-colors hover:bg-(--ap-hover) hover:text-(--ap-ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) active:scale-95';
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-(--ap-muted) transition-colors hover:bg-(--ap-hover) hover:text-(--ap-ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) active:scale-95';
 
 /** Radius of the progress ring around the minimised bubble, in a 48×48 box */
 const RING_R = 22;
@@ -131,13 +131,29 @@ const MiniPlayer: React.FC = () => {
           The bar spans the screen on phones; left and right apply once it's minimised.
         </p>
       )}
+      <div className="-mx-2.5 my-2 h-px bg-(--ap-line)" aria-hidden />
+      {/* The only way to close from a phone or the minimised bubble, where there's no close button */}
+      <button
+        role="menuitem"
+        onClick={() => {
+          setMenuOpen(false);
+          stop();
+        }}
+        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-[13px] font-medium text-red-500 transition-colors hover:bg-red-500/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500/40"
+      >
+        <X size={15} />
+        Close player
+      </button>
     </div>
   );
 
-  const pct = Number.isFinite(duration) && duration > 0 ? Math.min(1, progress / duration) : 0;
+  // Until the engine has loaded the file, fall back to the length read from its tags
+  const total = Number.isFinite(duration) && duration > 0 ? duration : currentTrack.duration ?? 0;
+  const pct = total > 0 ? Math.min(1, progress / total) : 0;
+  const time = total > 0 ? `${formatTime(progress)} / ${formatTime(total)}` : progress > 0 ? formatTime(progress) : '';
 
-  const artwork = (size: string) => (
-    <div className={`relative flex ${size} shrink-0 items-center justify-center overflow-hidden rounded-full bg-(--ap-accent-soft)`}>
+  const artwork = (size: string, shape: string) => (
+    <div className={`relative flex ${size} shrink-0 items-center justify-center overflow-hidden ${shape} bg-(--ap-accent-soft)`}>
       {currentTrack.thumbnail ? (
         <img src={currentTrack.thumbnail} alt="" className="h-full w-full object-cover" />
       ) : (
@@ -177,7 +193,7 @@ const MiniPlayer: React.FC = () => {
               className="stroke-(--ap-accent) transition-[stroke-dashoffset] duration-300"
             />
           </svg>
-          <span className={isPlaying ? 'ap-breathe' : ''}>{artwork('h-9 w-9')}</span>
+          <span className={isPlaying ? 'ap-breathe' : ''}>{artwork('h-9 w-9', 'rounded-full')}</span>
         </button>
       </div>
     );
@@ -189,24 +205,32 @@ const MiniPlayer: React.FC = () => {
         corner.v === 'top' ? 'slide-in-from-top-8' : 'slide-in-from-bottom-8'
       } ${corner.h === 'right' ? 'sm:right-6' : 'sm:left-6'}`}
     >
-      <div ref={anchorRef} className="pointer-events-auto relative w-full max-w-[460px] sm:w-[460px]" {...holdHandlers}>
+      <div ref={anchorRef} className="pointer-events-auto relative w-full max-w-[420px] sm:w-[420px]" {...holdHandlers}>
       {positionMenu}
-      <div className="relative flex w-full items-center gap-2.5 overflow-hidden rounded-[22px] border border-(--ap-line) bg-(--ap-surface) py-2 pl-2 pr-1.5 text-(--ap-ink) shadow-xl shadow-black/10 dark:shadow-black/50">
+      <div className="relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-(--ap-line) bg-(--ap-surface) p-2 pr-2.5 text-(--ap-ink) shadow-lg shadow-black/10 dark:shadow-black/40">
         {/* Cover and title open the full player */}
         <button
           onClick={togglePlayer}
           title="Open player"
-          className="flex min-w-0 flex-1 items-center gap-3 rounded-2xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line)"
+          className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line)"
         >
-          <span className="relative flex h-12 w-12 shrink-0 items-center justify-center">
-            <span className={`absolute inset-0 rounded-full bg-(--ap-ring-2) ${isPlaying ? 'ap-breathe' : ''}`} />
-            {artwork('h-10 w-10')}
-          </span>
+          {artwork('h-10 w-10', 'rounded-xl')}
           <span className="min-w-0">
-            <span className="block truncate text-sm font-semibold">{currentTrack.title}</span>
-            <span className="mt-0.5 block truncate text-xs text-(--ap-muted)">
-              {currentTrack.artist || (isPlaying ? 'Now playing' : 'Paused')}
-              <span className="tabular-nums"> · {formatTime(progress)} / {formatTime(duration)}</span>
+            <span className="block truncate text-[13px] font-semibold leading-5 group-hover:underline group-hover:decoration-(--ap-line) group-hover:underline-offset-2">
+              {currentTrack.title}
+            </span>
+            <span className="flex min-w-0 items-center gap-1.5 text-[11.5px] leading-4 text-(--ap-muted)">
+              <span
+                className={`h-1.5 w-1.5 shrink-0 rounded-full ${isPlaying ? 'bg-(--ap-accent) ap-breathe' : 'bg-(--ap-track)'}`}
+                aria-hidden
+              />
+              <span className="truncate">{currentTrack.artist || (isPlaying ? 'Playing' : 'Paused')}</span>
+              {time && (
+                <>
+                  <span aria-hidden>·</span>
+                  <span className="shrink-0 tabular-nums">{time}</span>
+                </>
+              )}
             </span>
           </span>
         </button>
@@ -218,18 +242,18 @@ const MiniPlayer: React.FC = () => {
             aria-label="Previous track"
             className={`${ICON_BUTTON} hidden text-(--ap-ink) sm:flex`}
           >
-            <SkipBack size={17} fill="currentColor" />
+            <SkipBack size={15} fill="currentColor" />
           </button>
           <button
             onClick={togglePlay}
             title={isPlaying ? 'Pause' : 'Play'}
             aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="mx-0.5 flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-(--ap-button) text-(--ap-on-button) shadow-(--ap-button-shadow) ring-1 ring-(--ap-line) transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) active:scale-95"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--ap-accent) text-(--ap-surface) transition-[transform,filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) focus-visible:ring-offset-2 focus-visible:ring-offset-(--ap-surface) active:scale-95"
           >
             {isPlaying ? (
-              <Pause size={18} fill="currentColor" strokeWidth={0} />
+              <Pause size={15} fill="currentColor" strokeWidth={0} />
             ) : (
-              <Play size={18} fill="currentColor" strokeWidth={0} className="ml-0.5" />
+              <Play size={15} fill="currentColor" strokeWidth={0} className="ml-0.5" />
             )}
           </button>
           <button
@@ -238,31 +262,31 @@ const MiniPlayer: React.FC = () => {
             aria-label="Next track"
             className={`${ICON_BUTTON} text-(--ap-ink)`}
           >
-            <SkipForward size={17} fill="currentColor" />
+            <SkipForward size={15} fill="currentColor" />
           </button>
 
-          <span className="mx-1 hidden h-6 w-px bg-(--ap-line) sm:block" />
+          <span className="mx-1.5 hidden h-5 w-px bg-(--ap-line) sm:block" aria-hidden />
 
-          <button
-            onClick={stop}
-            title="Stop"
-            aria-label="Stop playback"
-            className={`${ICON_BUTTON} hidden hover:text-red-500 sm:flex`}
-          >
-            <X size={17} />
-          </button>
           <button
             onClick={() => setIsMinimized(true)}
             title="Minimize (hold or right-click to move)"
             aria-label="Minimize player"
             className={ICON_BUTTON}
           >
-            {corner.h === 'left' ? <ChevronLeft size={18} /> : <ChevronRight size={18} />}
+            {corner.h === 'left' ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+          </button>
+          <button
+            onClick={stop}
+            title="Stop and close"
+            aria-label="Stop playback"
+            className={`${ICON_BUTTON} hidden hover:bg-red-500/10 hover:text-red-500 sm:flex`}
+          >
+            <X size={16} />
           </button>
         </div>
 
         {/* Thin progress line along the bottom edge */}
-        <div className="absolute inset-x-0 bottom-0 h-[3px] bg-(--ap-track)" aria-hidden>
+        <div className="absolute inset-x-0 bottom-0 h-[2px] bg-(--ap-track)" aria-hidden>
           <div
             className="h-full bg-(--ap-accent) transition-[width] duration-300 ease-linear"
             style={{ width: `${pct * 100}%` }}
