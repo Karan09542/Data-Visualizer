@@ -229,6 +229,9 @@ import { odeSystemToLatex } from "../lib/math/odeLatex";
 // Compiled lesson-challenge conditions, by expression.
 const CHECK_CACHE = new Map<string, any>();
 
+// Loaded the first time it's opened.
+const VedicMathsPanel = React.lazy(() => import("./math-node/vedic/VedicMathsPanel"));
+
 // Identity of this module instance. It changes when Vite hot-reloads this file, which
 // lets the cached plot-layer component below be rebuilt — otherwise an open dev page
 // keeps rendering the previous version's closure and edits appear to do nothing.
@@ -341,6 +344,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [showGridControls, setShowGridControls] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
+  const [showVedic, setShowVedic] = useState(false);
   const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(
     null,
   );
@@ -2694,6 +2698,16 @@ export const MathNodeRenderer: React.FC<any> = ({
                           );
                         })}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowVedic(true)}
+                        className="h-6 px-1.5 inline-flex items-center rounded-md bg-gradient-to-r from-orange-500 to-amber-500 text-white text-[10px] font-bold shadow-sm hover:from-orange-600 hover:to-amber-600 transition-colors"
+                        title="Vedic Maths: all 16 sutras, step by step (वैदिक गणित)"
+                        aria-label="Open Vedic Maths"
+                        lang="hi"
+                      >
+                        वैदिक
+                      </button>
                       <button
                         onClick={() => openScanner()}
                         className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
@@ -8893,6 +8907,13 @@ export const MathNodeRenderer: React.FC<any> = ({
           onAddRows={handleAddScannedRows}
           target={scannerTarget}
         />
+
+        {/* Vedic Maths: the 16 sutras, over the whole node */}
+        {showVedic && (
+          <React.Suspense fallback={null}>
+            <VedicMathsPanel onClose={() => setShowVedic(false)} />
+          </React.Suspense>
+        )}
 
         {/* Help Modal Overlay */}
         {showHelp &&
