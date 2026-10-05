@@ -298,6 +298,45 @@ function polish(
   return hit;
 }
 
+/** A dot found under the pointer: its row, where it is, and which of the row's dots. */
+export interface DotHit {
+  fnId: string;
+  x: number;
+  y: number;
+  index: number;
+}
+
+/**
+ * The nearest dot within `maxPx` on screen, among the rows `accept` allows: what a
+ * right-click or double-tap on a point means.
+ */
+export function hitTestDots(
+  mx: number,
+  my: number,
+  { sx, sy }: TraceScale,
+  maxPx: number,
+  scope = "",
+  accept?: (fnId: string) => boolean,
+): DotHit | null {
+  let best: DotHit | null = null;
+  let bestD = maxPx;
+  for (const shape of shapes.values()) {
+    if ((shape.scope ?? "") !== scope || shape.kind !== "point") continue;
+    if (accept && !accept(shape.fnId)) continue;
+    for (let i = 0; i < shape.xs.length; i++) {
+      const x = shape.xs[i];
+      const y = shape.ys[i];
+      if (!finite(x) || !finite(y)) continue;
+      const d = Math.hypot((x - mx) * sx, (y - my) * sy);
+      if (d <= bestD) {
+        bestD = d;
+        best = { fnId: shape.fnId, x, y, index: i };
+      }
+    }
+  }
+  return best;
+}
+
 /**
  * The shape under a point: the nearest one within `maxPx` on screen. Dots win a
  * near-tie against the curves they sit on, so a point on a curve stays pickable.

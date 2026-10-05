@@ -194,6 +194,7 @@ import {
   shapesForFunction,
   type Bounds,
   takenNames,
+  nextPointNames,
   type DrawToolKind,
   type DrawPick,
   CalculatorResult,
@@ -217,6 +218,7 @@ import {
   renderLiveLabel,
 } from "../lib/math/liveLabel";
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
+import { PointMenu, PointMenuTrigger, type PointMenuTarget } from "./math-node/PointMenu";
 import { useNodeResize } from "../hooks/useNodeResize";
 import { splitRelation } from "../lib/math/splitRelation";
 import { inferType } from "../lib/math/inferType";
@@ -1920,6 +1922,67 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (shape) addDrawnShape(shape);
   };
 
+  // ── Point menu: right-click a point, or double-tap it on touch ──────────────
+  const [pointMenu, setPointMenu] = useState<PointMenuTarget | null>(null);
+  const pointMenuFn = pointMenu ? functions.find((f) => f.id === pointMenu.fnId) : undefined;
+  const openPointMenu = useCallback((target: PointMenuTarget) => {
+    setPointMenu(target);
+    highlightRow(target.fnId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const closePointMenu = useCallback(() => {
+    setPointMenu(null);
+    highlightRow(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const isPointRow = useCallback((id: string) => functionsRef.current.find((f) => f.id === id)?.type === "point", []);
+  const patchRow = (id: string, patch: Partial<MathFunction>) =>
+    setFunctions((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
+  /** A free copy of a point, one square up and right, named after the next free letter. */
+  const duplicatePoint = (fn: MathFunction, at: { x: number; y: number }) => {
+    const name = nextPointNames(takenNames(functionsRef.current, variablesRef.current.map((v) => v.name)), 1)[0];
+    const old = pointRowName(fn.expr);
+    const round = (v: number) => Math.round(v * 100) / 100;
+    const label =
+      old && fn.label?.includes(old) ? fn.label.split(old).join(name) : hasLiveValues(fn.label) ? fn.label : fn.label ? name : fn.label;
+    const copy: MathFunction = {
+      ...fn,
+      id: generateSafeId(),
+      expr: `${name} = [${round(at.x + 1)}, ${round(at.y + 1)}]`,
+      label,
+      isDraggable: true,
+      dragVars: undefined,
+      drawGroup: undefined,
+      compiled: undefined,
+    };
+    setFunctions((prev) => {
+      const i = prev.findIndex((f) => f.id === fn.id);
+      return i < 0 ? [...prev, copy] : [...prev.slice(0, i + 1), copy, ...prev.slice(i + 1)];
+    });
+  };
+  /** Scrolls a row into view in the list (opening the panel on a phone) and flashes it. */
+  const showRowInList = (id: string) => {
+    setIsMobileSidebarOpen(true);
+    window.setTimeout(() => {
+      const el = sidebarRef.current?.querySelector<HTMLElement>(`[data-fn-row="${CSS.escape(id)}"]`);
+      if (!el) return;
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+      el.classList.remove("math-row-flash");
+      void el.offsetWidth;
+      el.classList.add("math-row-flash");
+      window.setTimeout(() => el.classList.remove("math-row-flash"), 1600);
+    }, 320);
+  };
+  const deletePoint = (id: string) => {
+    const next = deleteRows(functionsRef.current, variablesRef.current, [id]);
+    setFunctions(next.functions);
+    setVariables(next.variables);
+  };
+  // The point went away (deleted, hidden, undone): so does its menu.
+  useEffect(() => {
+    if (pointMenu && (!pointMenuFn || pointMenuFn.visible === false || pointMenuFn.type !== "point")) closePointMenu();
+  }, [pointMenu, pointMenuFn, closePointMenu]);
+
   const handleDeleteSelection = () => {
     if (!selection) return;
     const next = deleteRows(functionsRef.current, variablesRef.current, selection.rowIds);
@@ -2667,6 +2730,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                     {functions.map((f, index) => (
                       <div
                         key={f.id}
+                        data-fn-row={f.id}
                         draggable={canDragFunctionId === f.id}
                         onDragStart={(e) => {
                           setDraggedFunctionId(f.id);
@@ -8483,6 +8547,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                     onSelect={handleSelect}
                     onMotion={handleSelectionMotion}
                   />
+                  <PointMenuTrigger
+                    containerRef={graphContainerRef}
+                    enabled={!areaToolActive && (!drawTool || drawTool === "select")}
+                    accept={isPointRow}
+                    onOpen={openPointMenu}
+                  />
                   <DrawTool
                     tool={isCompact || drawTool === "select" ? null : drawTool}
                     containerRef={graphContainerRef}
@@ -8525,6 +8595,28 @@ export const MathNodeRenderer: React.FC<any> = ({
                 };
                 handleDrawComplete("vector", [pick(tail), pick(tip)]);
               }}
+            />
+          )}
+          {pointMenu && pointMenuFn && (
+            <PointMenu
+              key={pointMenu.fnId}
+              fn={pointMenuFn}
+              target={pointMenu}
+              containerRef={graphContainerRef}
+              onPatch={(patch) => patchRow(pointMenuFn.id, patch)}
+              onDuplicate={(at) => {
+                duplicatePoint(pointMenuFn, at);
+                closePointMenu();
+              }}
+              onShowInList={() => {
+                showRowInList(pointMenuFn.id);
+                closePointMenu();
+              }}
+              onDelete={() => {
+                deletePoint(pointMenuFn.id);
+                closePointMenu();
+              }}
+              onClose={closePointMenu}
             />
           )}
           {!isCompact && drawTool && (

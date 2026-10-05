@@ -15,6 +15,14 @@
 [data-math-graph]:has(g.math-row-hover) g[data-row-id]:not(.math-row-hover) {
   opacity: 0.18;
 }
+/* A row found from its point's menu: a short flash in the list. */
+@keyframes math-row-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  20%, 60% { box-shadow: 0 0 0 3px rgb(59 130 246 / 0.55); }
+}
+.math-row-flash {
+  animation: math-row-flash 1.5s ease;
+}
 [data-math-graph] g.math-row-hover {
   filter: drop-shadow(0 0 2px var(--row-color)) drop-shadow(0 0 6px var(--row-color));
 }
