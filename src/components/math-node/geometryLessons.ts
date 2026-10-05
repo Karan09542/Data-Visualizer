@@ -28,6 +28,7 @@ export type LessonCategory =
   | "Vectors"
   | "Trigonometry"
   | "Transformations"
+  | "Calculus"
   | "Optics";
 
 export const LESSON_CATEGORIES: LessonCategory[] = [
@@ -41,6 +42,7 @@ export const LESSON_CATEGORIES: LessonCategory[] = [
   "Vectors",
   "Trigonometry",
   "Transformations",
+  "Calculus",
   "Optics",
 ];
 
