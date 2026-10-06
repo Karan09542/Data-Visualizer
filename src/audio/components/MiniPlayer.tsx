@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { Play, Pause, SkipForward, SkipBack, X, Music, ChevronRight, ChevronLeft } from 'lucide-react';
+import { Play, Pause, SkipForward, SkipBack, X, Music, ChevronRight, ChevronLeft, GripVertical, RotateCcw } from 'lucide-react';
 import { useAudioPlayer } from '../hooks/useAudioPlayer';
-import { useLongPressMenu } from '../../hooks/useLongPressMenu';
+import { useDraggable } from '../../hooks/useDraggable';
 
 type Vertical = 'top' | 'bottom';
 type Horizontal = 'left' | 'right';
@@ -37,10 +37,6 @@ function saveCorner(c: Corner) {
   }
 }
 
-/** Where to pin it: at the top, just below the app's toolbar; at the bottom, clear of the home bar */
-const verticalClass = (v: Vertical) =>
-  v === 'top' ? 'top-[calc(env(safe-area-inset-top)+60px)] sm:top-16' : 'bottom-[max(env(safe-area-inset-bottom),16px)] sm:bottom-6';
-
 const formatTime = (secs: number) => {
   const safe = Number.isFinite(secs) && secs > 0 ? secs : 0;
   const min = Math.floor(safe / 60);
@@ -49,7 +45,7 @@ const formatTime = (secs: number) => {
 };
 
 const ICON_BUTTON =
-  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-(--ap-muted) transition-colors hover:bg-(--ap-hover) hover:text-(--ap-ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) active:scale-95';
+  'flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-(--ap-muted) transition-colors hover:bg-(--ap-hover) hover:text-(--ap-ink) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) active:scale-95 cursor-pointer';
 
 /** Radius of the progress ring around the minimised bubble, in a 48×48 box */
 const RING_R = 22;
@@ -61,14 +57,43 @@ const MiniPlayer: React.FC = () => {
   const [corner, setCorner] = useState<Corner>(readCorner);
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-  const anchorRef = useRef<HTMLDivElement>(null);
-  const holdHandlers = useLongPressMenu(() => setMenuOpen(true));
+
+  const {
+    position,
+    setAndSavePosition,
+    resetPosition,
+    isDragging,
+    targetRef,
+    dragProps,
+    docking,
+  } = useDraggable({
+    storageKey: 'mini-player-position',
+    edgePadding: 16,
+    dragThreshold: 4,
+    defaultPosition: () => {
+      const initialCorner = readCorner();
+      const isTop = initialCorner.v === 'top';
+      const isLeft = initialCorner.h === 'left';
+      const w = 420;
+      const h = 64;
+      return {
+        x: typeof window !== 'undefined'
+          ? isLeft ? 16 : Math.max(16, window.innerWidth - w - 24)
+          : 24,
+        y: typeof window !== 'undefined'
+          ? isTop ? 70 : Math.max(16, window.innerHeight - h - 24)
+          : 24,
+      };
+    },
+    onLongPress: () => setMenuOpen(true),
+    onContextMenu: () => setMenuOpen(true),
+  });
 
   useEffect(() => {
     if (!menuOpen) return;
     const onDown = (e: PointerEvent) => {
       const target = e.target as Node;
-      if (menuRef.current?.contains(target) || anchorRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(target) || targetRef.current?.contains(target)) return;
       setMenuOpen(false);
     };
     const onKey = (e: KeyboardEvent) => e.key === 'Escape' && setMenuOpen(false);
@@ -78,27 +103,48 @@ const MiniPlayer: React.FC = () => {
       document.removeEventListener('pointerdown', onDown, true);
       window.removeEventListener('keydown', onKey);
     };
-  }, [menuOpen]);
+  }, [menuOpen, targetRef]);
 
   if (isPlayerOpen || !currentTrack) return null;
 
   const moveTo = (next: Corner) => {
+    const el = targetRef.current;
+    const w = el?.getBoundingClientRect().width || (isMinimized ? 56 : 420);
+    const h = el?.getBoundingClientRect().height || (isMinimized ? 56 : 64);
+    const padding = 16;
+    const x = next.h === 'right' ? Math.max(padding, window.innerWidth - w - padding) : padding;
+    const y = next.v === 'bottom' ? Math.max(padding, window.innerHeight - h - padding) : (padding + 56);
+    setAndSavePosition({ x, y });
     setCorner(next);
     saveCorner(next);
     setMenuOpen(false);
   };
 
-  /** Hold or right-click the player to choose which corner it sits in */
+  /** Hold or right-click the player to choose options / snap corner */
   const positionMenu = menuOpen && (
     <div
       ref={menuRef}
       role="menu"
-      aria-label="Move player"
-      className={`pointer-events-auto absolute z-10 w-48 rounded-2xl border border-(--ap-line) bg-(--ap-surface) p-2.5 text-(--ap-ink) shadow-xl shadow-black/15 animate-in fade-in zoom-in-95 duration-150 dark:shadow-black/50 ${
-        corner.v === 'bottom' ? 'bottom-full mb-2' : 'top-full mt-2'
-      } ${corner.h === 'right' ? 'right-0' : 'left-0'}`}
+      aria-label="Player options"
+      className={`pointer-events-auto absolute z-50 w-52 rounded-2xl border border-(--ap-line) bg-(--ap-surface) p-2.5 text-(--ap-ink) shadow-xl shadow-black/15 animate-in fade-in zoom-in-95 duration-150 dark:shadow-black/50 ${
+        docking.isTop ? 'top-full mt-2' : 'bottom-full mb-2'
+      } ${docking.isLeft ? 'left-0' : 'right-0'}`}
     >
-      <p className="px-1 pb-2 text-[11px] font-medium text-(--ap-muted)">Move player to</p>
+      <div className="flex items-center justify-between px-1 pb-1.5">
+        <span className="text-[11px] font-semibold text-(--ap-muted) uppercase tracking-wider">Player Options</span>
+        <button
+          role="menuitem"
+          onClick={() => {
+            resetPosition();
+            setMenuOpen(false);
+          }}
+          title="Reset to default position"
+          className="text-[11px] text-(--ap-accent) hover:underline flex items-center gap-1 font-medium transition-colors"
+        >
+          <RotateCcw size={11} /> Reset
+        </button>
+      </div>
+      <p className="px-1 pb-1.5 text-[11px] font-medium text-(--ap-muted)">Snap to corner</p>
       <div className="grid grid-cols-2 gap-1.5">
         {CORNERS.map((c) => {
           const active = c.v === corner.v && c.h === corner.h;
@@ -110,7 +156,7 @@ const MiniPlayer: React.FC = () => {
               aria-label={c.label}
               title={c.label}
               onClick={() => moveTo(c)}
-              className={`relative h-14 rounded-lg border transition-colors ${
+              className={`relative h-12 rounded-lg border transition-colors ${
                 active
                   ? 'border-(--ap-accent) bg-(--ap-accent-soft)'
                   : 'border-(--ap-line) bg-(--ap-hover) hover:border-(--ap-accent-line)'
@@ -126,13 +172,11 @@ const MiniPlayer: React.FC = () => {
           );
         })}
       </div>
-      {!isMinimized && (
-        <p className="px-1 pt-2 text-[10.5px] leading-snug text-(--ap-muted) sm:hidden">
-          The bar spans the screen on phones; left and right apply once it's minimised.
-        </p>
-      )}
+      <p className="px-1 pt-2 text-[10.5px] leading-snug text-(--ap-muted)">
+        💡 Freely drag and reposition player anywhere on screen.
+      </p>
       <div className="-mx-2.5 my-2 h-px bg-(--ap-line)" aria-hidden />
-      {/* The only way to close from a phone or the minimised bubble, where there's no close button */}
+      {/* Close button */}
       <button
         role="menuitem"
         onClick={() => {
@@ -153,11 +197,16 @@ const MiniPlayer: React.FC = () => {
   const time = total > 0 ? `${formatTime(progress)} / ${formatTime(total)}` : progress > 0 ? formatTime(progress) : '';
 
   const artwork = (size: string, shape: string) => (
-    <div className={`relative flex ${size} shrink-0 items-center justify-center overflow-hidden ${shape} bg-(--ap-accent-soft)`}>
+    <div className={`relative flex ${size} shrink-0 items-center justify-center overflow-hidden ${shape} bg-(--ap-accent-soft) pointer-events-none select-none`}>
       {currentTrack.thumbnail ? (
-        <img src={currentTrack.thumbnail} alt="" className="h-full w-full object-cover" />
+        <img
+          src={currentTrack.thumbnail}
+          alt=""
+          className="h-full w-full object-cover pointer-events-none select-none"
+          draggable={false}
+        />
       ) : (
-        <Music className="h-[45%] w-[45%] text-(--ap-accent)" />
+        <Music className="h-[45%] w-[45%] text-(--ap-accent) pointer-events-none" />
       )}
     </div>
   );
@@ -165,21 +214,26 @@ const MiniPlayer: React.FC = () => {
   if (isMinimized) {
     return (
       <div
-        ref={anchorRef}
-        className={`audio-player fixed z-40 animate-in fade-in duration-300 ${verticalClass(corner.v)} ${
-          corner.h === 'right' ? 'right-4 slide-in-from-right-8 sm:right-6' : 'left-4 slide-in-from-left-8 sm:left-6'
-        }`}
-        {...holdHandlers}
+        ref={targetRef}
+        {...dragProps}
+        style={{
+          ...dragProps.style,
+          zIndex: 40,
+        }}
+        className="audio-player fixed select-none"
       >
         {positionMenu}
         <button
           onClick={() => setIsMinimized(false)}
-          title="Show player"
+          title="Show player · Drag to move · Right-click or hold for options"
           aria-label={`Show player: ${currentTrack.title}`}
-          className="relative flex h-14 w-14 items-center justify-center rounded-full border border-(--ap-line) bg-(--ap-surface) shadow-lg shadow-black/10 transition-transform hover:scale-105 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) active:scale-95 dark:shadow-black/40"
+          draggable={false}
+          className={`relative flex h-14 w-14 items-center justify-center rounded-full border border-(--ap-line) bg-(--ap-surface) shadow-lg shadow-black/10 ${
+            isDragging ? 'scale-105 shadow-2xl ring-2 ring-(--ap-accent)/50' : 'hover:scale-105 active:scale-95 transition-transform'
+          } focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) dark:shadow-black/40 cursor-grab active:cursor-grabbing`}
         >
           {/* How far through the track, drawn as a ring around the cover */}
-          <svg viewBox="0 0 48 48" className="absolute inset-1 -rotate-90" aria-hidden>
+          <svg viewBox="0 0 48 48" className="absolute inset-1 -rotate-90 pointer-events-none select-none" aria-hidden>
             <circle cx="24" cy="24" r={RING_R} fill="none" strokeWidth="2.5" className="stroke-(--ap-track)" />
             <circle
               cx="24"
@@ -193,7 +247,7 @@ const MiniPlayer: React.FC = () => {
               className="stroke-(--ap-accent) transition-[stroke-dashoffset] duration-300"
             />
           </svg>
-          <span className={isPlaying ? 'ap-breathe' : ''}>{artwork('h-9 w-9', 'rounded-full')}</span>
+          <span className={`pointer-events-none select-none ${isPlaying ? 'ap-breathe' : ''}`}>{artwork('h-9 w-9', 'rounded-full')}</span>
         </button>
       </div>
     );
@@ -201,21 +255,36 @@ const MiniPlayer: React.FC = () => {
 
   return (
     <div
-      className={`audio-player pointer-events-none fixed inset-x-4 z-40 flex justify-center animate-in fade-in duration-300 sm:inset-x-auto ${verticalClass(corner.v)} ${
-        corner.v === 'top' ? 'slide-in-from-top-8' : 'slide-in-from-bottom-8'
-      } ${corner.h === 'right' ? 'sm:right-6' : 'sm:left-6'}`}
+      ref={targetRef}
+      {...dragProps}
+      style={{
+        ...dragProps.style,
+        zIndex: 40,
+      }}
+      className="audio-player fixed select-none w-[calc(100vw-32px)] max-w-[420px] sm:w-[420px]"
     >
-      <div ref={anchorRef} className="pointer-events-auto relative w-full max-w-[420px] sm:w-[420px]" {...holdHandlers}>
       {positionMenu}
-      <div className="relative flex w-full items-center gap-3 overflow-hidden rounded-2xl border border-(--ap-line) bg-(--ap-surface) p-2 pr-2.5 text-(--ap-ink) shadow-lg shadow-black/10 dark:shadow-black/40">
+      <div className={`relative flex w-full items-center gap-2 sm:gap-2.5 overflow-hidden rounded-2xl border border-(--ap-line) bg-(--ap-surface) p-2 pr-2.5 text-(--ap-ink) shadow-lg shadow-black/10 dark:shadow-black/40 ${
+        isDragging ? 'shadow-2xl ring-2 ring-(--ap-accent)/50' : 'transition-shadow'
+      }`}>
+        {/* Subtle Grip Drag Handle */}
+        <div
+          className="flex items-center justify-center pl-1 text-(--ap-muted) opacity-60 hover:opacity-100 transition-opacity cursor-grab active:cursor-grabbing shrink-0 select-none"
+          title="Drag anywhere on player to reposition"
+          aria-hidden="true"
+        >
+          <GripVertical size={16} />
+        </div>
+
         {/* Cover and title open the full player */}
         <button
           onClick={togglePlayer}
-          title="Open player"
-          className="group flex min-w-0 flex-1 items-center gap-3 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line)"
+          draggable={false}
+          title="Open player · Drag bar to reposition"
+          className="group flex min-w-0 flex-1 items-center gap-2.5 rounded-xl text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) cursor-pointer select-none"
         >
           {artwork('h-10 w-10', 'rounded-xl')}
-          <span className="min-w-0">
+          <span className="min-w-0 pointer-events-none select-none">
             <span className="block truncate text-[13px] font-semibold leading-5 group-hover:underline group-hover:decoration-(--ap-line) group-hover:underline-offset-2">
               {currentTrack.title}
             </span>
@@ -238,6 +307,7 @@ const MiniPlayer: React.FC = () => {
         <div className="flex shrink-0 items-center gap-0.5">
           <button
             onClick={previous}
+            draggable={false}
             title="Previous"
             aria-label="Previous track"
             className={`${ICON_BUTTON} hidden text-(--ap-ink) sm:flex`}
@@ -246,9 +316,10 @@ const MiniPlayer: React.FC = () => {
           </button>
           <button
             onClick={togglePlay}
+            draggable={false}
             title={isPlaying ? 'Pause' : 'Play'}
             aria-label={isPlaying ? 'Pause' : 'Play'}
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--ap-accent) text-(--ap-surface) transition-[transform,filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) focus-visible:ring-offset-2 focus-visible:ring-offset-(--ap-surface) active:scale-95"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-(--ap-accent) text-(--ap-surface) transition-[transform,filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-line) focus-visible:ring-offset-2 focus-visible:ring-offset-(--ap-surface) active:scale-95 cursor-pointer"
           >
             {isPlaying ? (
               <Pause size={15} fill="currentColor" strokeWidth={0} />
@@ -258,6 +329,7 @@ const MiniPlayer: React.FC = () => {
           </button>
           <button
             onClick={next}
+            draggable={false}
             title="Next"
             aria-label="Next track"
             className={`${ICON_BUTTON} text-(--ap-ink)`}
@@ -265,18 +337,20 @@ const MiniPlayer: React.FC = () => {
             <SkipForward size={15} fill="currentColor" />
           </button>
 
-          <span className="mx-1.5 hidden h-5 w-px bg-(--ap-line) sm:block" aria-hidden />
+          <span className="mx-1 hidden h-5 w-px bg-(--ap-line) sm:block" aria-hidden />
 
           <button
             onClick={() => setIsMinimized(true)}
-            title="Minimize (hold or right-click to move)"
+            draggable={false}
+            title="Minimize"
             aria-label="Minimize player"
             className={ICON_BUTTON}
           >
-            {corner.h === 'left' ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
+            {docking.isLeft ? <ChevronLeft size={16} /> : <ChevronRight size={16} />}
           </button>
           <button
             onClick={stop}
+            draggable={false}
             title="Stop and close"
             aria-label="Stop playback"
             className={`${ICON_BUTTON} hidden hover:bg-red-500/10 hover:text-red-500 sm:flex`}
@@ -286,13 +360,12 @@ const MiniPlayer: React.FC = () => {
         </div>
 
         {/* Thin progress line along the bottom edge */}
-        <div className="absolute inset-x-0 bottom-0 h-[2px] bg-(--ap-track)" aria-hidden>
+        <div className="absolute inset-x-0 bottom-0 h-[2px] bg-(--ap-track) pointer-events-none" aria-hidden>
           <div
             className="h-full bg-(--ap-accent) transition-[width] duration-300 ease-linear"
             style={{ width: `${pct * 100}%` }}
           />
         </div>
-      </div>
       </div>
     </div>
   );

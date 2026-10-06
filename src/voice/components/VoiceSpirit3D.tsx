@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Mic } from "lucide-react";
 import type * as ThreeNS from "three";
+import { useDraggable } from "../../hooks/useDraggable";
 
 /**
  * The voice button's mascot: the Kailash crystal spirit, in three.js.
@@ -18,6 +19,13 @@ import type * as ThreeNS from "three";
 
 export type SpiritMode = "idle" | "listening" | "processing" | "success" | "error";
 
+export interface VoiceSpirit3DProps {
+  mode: SpiritMode;
+  size?: number;
+  className?: string;
+  draggable?: boolean;
+}
+
 const MODEL_URL = `${import.meta.env.BASE_URL}kailash_sprit_icon.glb`;
 /** Frame rate for the gentle float at rest. */
 const IDLE_FPS = 24;
@@ -28,13 +36,23 @@ const BOP_HZ = 2;
 
 const easeOutCubic = (x: number) => 1 - Math.pow(1 - Math.min(1, Math.max(0, x)), 3);
 
-export const VoiceSpirit3D: React.FC<{ mode: SpiritMode; size?: number; className?: string }> = ({ mode, size = 64, className }) => {
+export const VoiceSpirit3D: React.FC<VoiceSpirit3DProps> = ({ mode, size = 64, className, draggable = false }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const modeRef = useRef(mode);
   modeRef.current = mode;
   const kickRef = useRef<() => void>(() => {});
   const [ready, setReady] = useState(false);
   const [failed, setFailed] = useState(false);
+
+  const { targetRef, dragProps } = useDraggable({
+    storageKey: "voice-spirit-3d-pos",
+    disabled: !draggable,
+    edgePadding: 16,
+    defaultPosition: () => ({
+      x: typeof window !== "undefined" ? Math.max(16, window.innerWidth - (size + 24)) : 24,
+      y: typeof window !== "undefined" ? Math.max(16, window.innerHeight - (size + 24)) : 24,
+    }),
+  });
 
   useEffect(() => {
     let disposed = false;
@@ -251,12 +269,34 @@ export const VoiceSpirit3D: React.FC<{ mode: SpiritMode; size?: number; classNam
     kickRef.current();
   }, [mode]);
 
-  if (failed) return <Mic className={className} style={{ width: size * 0.4, height: size * 0.4 }} />;
-  return (
+  const content = failed ? (
+    <Mic className={className} style={{ width: size * 0.4, height: size * 0.4 }} />
+  ) : (
     <span className={`relative inline-block ${className ?? ""}`} style={{ width: size, height: size }}>
       <canvas ref={canvasRef} style={{ width: size, height: size, opacity: ready ? 1 : 0, transition: "opacity 300ms" }} aria-hidden />
       {/* Shown while the model loads (about 300 KB, once). */}
       {!ready && <Mic className="absolute inset-0 m-auto opacity-70" style={{ width: size * 0.4, height: size * 0.4 }} />}
     </span>
   );
+
+  if (draggable) {
+    return (
+      <div
+        ref={targetRef}
+        {...dragProps}
+        style={{
+          ...dragProps.style,
+          zIndex: 9999,
+          width: size,
+          height: size,
+        }}
+        className="fixed select-none cursor-grab active:cursor-grabbing"
+      >
+        {content}
+      </div>
+    );
+  }
+
+  return content;
 };
+
