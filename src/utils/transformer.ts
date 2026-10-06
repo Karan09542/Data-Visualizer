@@ -1,3 +1,5 @@
+import { getNestedValue } from './curlParser';
+
 export type TreeNode = {
   id: string;
   name: string;
@@ -51,7 +53,7 @@ export const transformToTree = (
   apiNodeResponses?: Record<string, any>,
   jsNodeResponses?: Record<string, any>,
   jsNodeVisibility?: Record<string, { code: boolean, terminal: boolean }>,
-  apiNodeConfig?: Record<string, { view?: ApiResponseView }>
+  apiNodeConfig?: Record<string, { view?: ApiResponseView; extractPath?: string; responseFormat?: 'auto' | 'json' | 'markdown' | 'text'; streamEnabled?: boolean; }>
 ): TreeNode => {
   const type = Array.isArray(data) ? 'array' : data === null ? 'null' : typeof data;
 
@@ -127,20 +129,65 @@ export const transformToTree = (
     // Inject fetched API response if available — either expanded into child nodes, or as a
     // single file-style node (large JSON, text, media and binary responses)
     if (isApiNode && apiNodeResponses && apiNodeResponses[path] !== undefined) {
-      const fetchedData = apiNodeResponses[path];
-      const view = resolveApiResponseView(fetchedData, apiNodeConfig?.[path]?.view);
+      const rawFetchedData = apiNodeResponses[path];
+      const cfg = apiNodeConfig?.[path];
+
+      // Extract specific key / path if configured
+      let displayData = rawFetchedData;
+      const extractKey = cfg?.extractPath?.trim();
+      if (extractKey) {
+        const extracted = getNestedValue(rawFetchedData, extractKey);
+        if (extracted !== undefined) {
+          displayData = extracted;
+        }
+      }
+
+      // Format file presentation if markdown, json or text is selected
+      let fileData = displayData;
+      if (cfg?.responseFormat === 'text') {
+        if (typeof displayData === 'string') {
+          fileData = { _rawText: displayData };
+        } else {
+          try {
+            fileData = { _rawText: JSON.stringify(displayData, null, 2) };
+          } catch {
+            fileData = { _rawText: String(displayData) };
+          }
+        }
+      } else if (cfg?.responseFormat === 'markdown') {
+        if (typeof displayData === 'string') {
+          fileData = { _rawText: displayData, _isMarkdown: true };
+        } else if (displayData?._combinedMessage) {
+          fileData = { _rawText: displayData._combinedMessage, _isMarkdown: true };
+        }
+      } else if (cfg?.responseFormat === 'json') {
+        if (typeof displayData === 'string') {
+          try {
+            fileData = JSON.parse(displayData);
+          } catch {
+            fileData = displayData;
+          }
+        } else {
+          fileData = displayData;
+        }
+      } else if (typeof displayData === 'string') {
+        fileData = { _rawText: displayData };
+      }
+
+      const view = resolveApiResponseView(fileData, cfg?.view);
 
       if (view === 'file') {
         node.children = [{
           id: `${path}.__response`,
-          name: '__response',
+          name: extractKey ? `extracted: ${extractKey}` : '__response',
           type: 'api_response',
-          value: fetchedData,
-          rawValue: fetchedData,
+          value: fileData,
+          rawValue: rawFetchedData,
           path: `${path}.__response`,
         }];
       } else {
-        const fetchedNode = transformToTree(fetchedData, '__fetched', `${path}.__fetched`, apiNodeResponses, jsNodeResponses, jsNodeVisibility, apiNodeConfig);
+        const childLabel = extractKey ? extractKey : '__fetched';
+        const fetchedNode = transformToTree(displayData, childLabel, `${path}.__fetched`, apiNodeResponses, jsNodeResponses, jsNodeVisibility, apiNodeConfig);
         node.children = [fetchedNode];
       }
     }

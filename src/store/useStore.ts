@@ -3,6 +3,7 @@ import { startTransition } from "react";
 import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
 import { transformToTree, type ApiResponseView } from "../utils/transformer";
+import type { KeyValueParam, AuthConfig, BodyConfig } from "../utils/curlParser";
 
 import SearchWorker from "../utils/searchWorker?worker";
 
@@ -250,13 +251,57 @@ export interface StoreState {
   ) => void;
   apiNodeConfig: Record<
     string,
-    { method: string; responseType: string; timeout: number; view?: ApiResponseView }
+    {
+      method: string;
+      responseType: string;
+      timeout?: number;
+      view?: ApiResponseView;
+      params?: KeyValueParam[];
+      headers?: KeyValueParam[];
+      auth?: AuthConfig;
+      body?: BodyConfig;
+      extractPath?: string;
+      responseFormat?: 'auto' | 'json' | 'markdown' | 'text';
+      streamEnabled?: boolean;
+    }
   >;
   setApiNodeConfig: (
     path: string,
-    config: { method: string; responseType: string; timeout: number; view?: ApiResponseView },
+    config: {
+      method: string;
+      responseType: string;
+      timeout?: number;
+      view?: ApiResponseView;
+      params?: KeyValueParam[];
+      headers?: KeyValueParam[];
+      auth?: AuthConfig;
+      body?: BodyConfig;
+      extractPath?: string;
+      responseFormat?: 'auto' | 'json' | 'markdown' | 'text';
+      streamEnabled?: boolean;
+    },
   ) => void;
   apiNodeResponses: Record<string, any>;
+  apiNodeMeta: Record<
+    string,
+    {
+      status?: number;
+      statusText?: string;
+      duration?: number;
+      size?: number;
+      headers?: Record<string, string>;
+    }
+  >;
+  setApiNodeMeta: (
+    path: string,
+    meta: {
+      status?: number;
+      statusText?: string;
+      duration?: number;
+      size?: number;
+      headers?: Record<string, string>;
+    },
+  ) => void;
   apiNodeLoading: Record<string, boolean>;
   apiNodeErrors: Record<string, ApiNodeDiagnosticError | null>;
   setApiNodeResponse: (path: string, data: any) => void;
@@ -818,9 +863,12 @@ export const useStore = create<StoreState>()(
         setApiNodeConfig: (path, config) =>
           set((s) => {
             const apiNodeConfig = { ...s.apiNodeConfig, [path]: config };
-            const viewChanged = (s.apiNodeConfig[path]?.view ?? "auto") !== (config.view ?? "auto");
-            // Switching between child nodes and the file view reshapes the tree
-            if (!viewChanged || s.parsedData === null || s.apiNodeResponses[path] === undefined) {
+            const prevCfg = s.apiNodeConfig[path];
+            const viewChanged = (prevCfg?.view ?? "auto") !== (config.view ?? "auto");
+            const extractChanged = (prevCfg?.extractPath ?? "") !== (config.extractPath ?? "");
+            const formatChanged = (prevCfg?.responseFormat ?? "auto") !== (config.responseFormat ?? "auto");
+            // Switching between child nodes, file view, or changing extraction/format reshapes the tree
+            if ((!viewChanged && !extractChanged && !formatChanged) || s.parsedData === null || s.apiNodeResponses[path] === undefined) {
               return { apiNodeConfig };
             }
             return {
@@ -838,6 +886,11 @@ export const useStore = create<StoreState>()(
           }),
 
         apiNodeResponses: {},
+        apiNodeMeta: {},
+        setApiNodeMeta: (path, meta) =>
+          set((s) => ({
+            apiNodeMeta: { ...s.apiNodeMeta, [path]: meta },
+          })),
         apiNodeLoading: {},
         apiNodeErrors: {},
         setApiNodeResponse: (path: string, data: any) => {
@@ -868,6 +921,8 @@ export const useStore = create<StoreState>()(
           set((s) => {
             const res = { ...s.apiNodeResponses };
             delete res[path];
+            const meta = { ...s.apiNodeMeta };
+            delete meta[path];
             const loading = { ...s.apiNodeLoading };
             delete loading[path];
             const errors = { ...s.apiNodeErrors };
@@ -886,6 +941,7 @@ export const useStore = create<StoreState>()(
             }
             return {
               apiNodeResponses: res,
+              apiNodeMeta: meta,
               apiNodeLoading: loading,
               apiNodeErrors: errors,
               treeData,
