@@ -7,9 +7,11 @@ import React, {
   useRef,
   useState,
   useSyncExternalStore,
+  useMemo
 } from "react";
 import { createPortal } from "react-dom";
-import { Check, Download, Loader2 } from "lucide-react";
+import { Check, Download, FileText, Loader2 } from "lucide-react";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import {
   DndContext,
   closestCenter,
@@ -36,11 +38,14 @@ const HOLD_MS = 400;
 type Observe = (el: Element, page: number) => () => void;
 const ObserveContext = createContext<Observe | null>(null);
 
-function useGridObserver(root: HTMLElement | null, client: PdfWorkerClient): Observe | null {
+function useGridObserver(root: HTMLElement | null, client: PdfWorkerClient, enabled: boolean): Observe | null {
   const [observe, setObserve] = useState<Observe | null>(null);
 
   useEffect(() => {
-    if (!root) return;
+    if (!root || !enabled) {
+      setObserve(null);
+      return;
+    }
     const pages = new Map<Element, number>();
     const observer = new IntersectionObserver(
       (entries) => {
@@ -63,7 +68,7 @@ function useGridObserver(root: HTMLElement | null, client: PdfWorkerClient): Obs
       };
     });
     return () => observer.disconnect();
-  }, [root, client]);
+  }, [root, client, enabled]);
 
   return observe;
 }
@@ -146,13 +151,14 @@ interface CardProps {
   isDownloading?: boolean;
   isOverlay?: boolean;
   defaultFormat: ExportImageFormat;
+  thumbnailsEnabled: boolean;
   onGoToPage?: (page: number) => void;
   onToggleSelect?: (page: number) => void;
   onDownload?: (page: number, format: ExportImageFormat) => void;
   onOpenFormats?: (page: number, anchor: HTMLElement) => void;
 }
 
-const ThumbnailCard: React.FC<CardProps> = ({
+const ThumbnailCard: React.FC<CardProps> = React.memo(({
   pageNum,
   url,
   rotation = 0,
@@ -162,6 +168,7 @@ const ThumbnailCard: React.FC<CardProps> = ({
   isDownloading,
   isOverlay,
   defaultFormat,
+  thumbnailsEnabled,
   onGoToPage,
   onToggleSelect,
   onDownload,
@@ -184,11 +191,10 @@ const ThumbnailCard: React.FC<CardProps> = ({
       className={`group relative flex cursor-pointer select-none flex-col items-center gap-1.5 ${isOverlay ? "scale-105" : ""}`}
     >
       <div
-        className={`relative w-full overflow-hidden rounded-lg bg-white transition-shadow ${
-          isSelected || isCurrent
+        className={`relative w-full overflow-hidden rounded-lg bg-white transition-shadow ${isSelected || isCurrent
             ? "ring-2 ring-(--pv-accent) ring-offset-2 ring-offset-(--pv-panel)"
             : "ring-1 ring-(--pv-line) group-hover:ring-(--pv-muted)/40"
-        } ${isOverlay ? "shadow-2xl" : "shadow-sm"}`}
+          } ${isOverlay ? "shadow-2xl" : "shadow-sm"}`}
         style={{ aspectRatio: "1 / 1.414" }}
       >
         {url ? (
@@ -199,9 +205,18 @@ const ThumbnailCard: React.FC<CardProps> = ({
             className="pointer-events-none h-full w-full object-contain transition-transform duration-200"
             style={rotation ? { transform: `rotate(${rotation}deg)${rotation % 180 ? " scale(0.707)" : ""}` } : undefined}
           />
-        ) : (
+        ) : thumbnailsEnabled ? (
           <div className="flex h-full w-full items-center justify-center bg-(--pv-chip)">
             <div className="h-4 w-4 animate-spin rounded-full border-2 border-(--pv-line) border-t-(--pv-muted)" />
+          </div>
+        ) : (
+          <div className="flex h-full w-full flex-col items-center justify-center gap-1.5 bg-(--pv-chip)/60 p-2 text-(--pv-muted) transition-colors group-hover:bg-(--pv-hover)">
+            <FileText size={20} className="opacity-40 transition-transform group-hover:scale-105" />
+            <div className="flex w-full flex-col items-center gap-1 px-2 opacity-30">
+              <div className="h-1 w-3/4 rounded-full bg-(--pv-line)" />
+              <div className="h-1 w-1/2 rounded-full bg-(--pv-line)" />
+              <div className="h-1 w-2/3 rounded-full bg-(--pv-line)" />
+            </div>
           </div>
         )}
 
@@ -217,11 +232,10 @@ const ThumbnailCard: React.FC<CardProps> = ({
               }}
               aria-label={isSelected ? `Deselect page ${pageNum}` : `Select page ${pageNum}`}
               aria-pressed={isSelected}
-              className={`absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full transition-opacity ${
-                isSelected
+              className={`absolute right-1.5 top-1.5 flex h-6 w-6 items-center justify-center rounded-full transition-opacity ${isSelected
                   ? "bg-(--pv-accent) text-(--pv-on-accent) opacity-100"
                   : `border-2 border-white bg-black/25 text-transparent shadow ${selectionMode ? "opacity-100" : "[@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover:opacity-100 [@media(hover:none)]:hidden"}`
-              }`}
+                }`}
             >
               <Check size={13} strokeWidth={3} />
             </button>
@@ -274,10 +288,10 @@ const ThumbnailCard: React.FC<CardProps> = ({
       </span>
     </div>
   );
-};
+});
 
-const SortableSlot: React.FC<Omit<CardProps, "url" | "isOverlay"> & { client: PdfWorkerClient }> = React.memo(
-  ({ client, ...card }) => {
+const SortableSlot: React.FC<Omit<CardProps, "url" | "isOverlay"> & { client: PdfWorkerClient; thumbnailsEnabled: boolean }> = React.memo(
+  ({ client, thumbnailsEnabled, ...card }) => {
     const observe = useContext(ObserveContext);
     const url = useSyncExternalStore(
       useCallback((cb) => client.thumbnails.subscribe(card.pageNum, cb), [client, card.pageNum]),
@@ -311,7 +325,7 @@ const SortableSlot: React.FC<Omit<CardProps, "url" | "isOverlay"> & { client: Pd
         aria-label={`Page ${card.pageNum}`}
         aria-current={card.isCurrent ? "page" : undefined}
       >
-        <ThumbnailCard {...card} url={url} />
+        <ThumbnailCard {...card} url={url} thumbnailsEnabled={thumbnailsEnabled} />
       </div>
     );
   },
@@ -330,7 +344,10 @@ interface ThumbnailGridProps {
   columns: number;
   isDark: boolean;
   defaultFormat: ExportImageFormat;
+  thumbnailsEnabled: boolean;
   downloadingPage: number | null;
+  sidebarOpen?: boolean;
+  sidebarWide?: boolean;
   onReorder: (pages: number[]) => void;
   onGoToPage: (page: number) => void;
   onToggleSelect: (page: number) => void;
@@ -348,17 +365,56 @@ export const ThumbnailGrid: React.FC<ThumbnailGridProps> = ({
   columns,
   isDark,
   defaultFormat,
+  thumbnailsEnabled,
   downloadingPage,
+  sidebarOpen = true,
+  sidebarWide = false,
   onReorder,
   onGoToPage,
   onToggleSelect,
   onDownloadPage,
 }) => {
-  const observe = useGridObserver(scrollRoot, client);
+  const observe = useGridObserver(scrollRoot, client, thumbnailsEnabled);
   const [dragging, setDragging] = useState<number | null>(null);
   const [formatMenu, setFormatMenu] = useState<{ page: number; anchor: HTMLElement } | null>(null);
   const pagesRef = useRef(pages);
   pagesRef.current = pages;
+
+  const rowCount = Math.ceil(pages.length / columns);
+  const sortableItemIds = useMemo(() => pages.map(String), [pages]);
+
+  const estimatedRowHeight = useMemo(() => {
+    const width = scrollRoot?.clientWidth || (columns > 2 ? 480 : 240);
+    const innerWidth = width - 24;
+    const cardWidth = Math.max(70, (innerWidth - (columns - 1) * 12) / columns);
+    return Math.round(cardWidth * 1.414 + 36);
+  }, [scrollRoot?.clientWidth, columns]);
+
+  const rowVirtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollRoot,
+    estimateSize: () => estimatedRowHeight,
+    overscan: 3,
+    paddingStart: 12,
+    paddingEnd: 12,
+  });
+
+  useEffect(() => {
+    if (sidebarOpen) {
+      rowVirtualizer.measure();
+    }
+  }, [sidebarOpen, columns, sidebarWide, rowVirtualizer]);
+
+  // Keep the current page's thumbnail in view as the reader moves through the document
+  const lastScrolledPage = useRef<number | null>(null);
+  useEffect(() => {
+    if (!scrollRoot || !sidebarOpen || lastScrolledPage.current === currentPage) return;
+    const pageIndex = pages.indexOf(currentPage);
+    if (pageIndex === -1) return;
+    lastScrolledPage.current = currentPage;
+    const rowIndex = Math.floor(pageIndex / columns);
+    rowVirtualizer.scrollToIndex(rowIndex, { align: "auto" });
+  }, [currentPage, columns, pages, scrollRoot, sidebarOpen, rowVirtualizer]);
 
   const sensors = useSensors(
     useSensor(MouseSensor, { activationConstraint: { distance: 6 } }),
@@ -369,11 +425,7 @@ export const ThumbnailGrid: React.FC<ThumbnailGridProps> = ({
   const onOpenFormats = useCallback((page: number, anchor: HTMLElement) => setFormatMenu({ page, anchor }), []);
   const closeFormats = useCallback(() => setFormatMenu(null), []);
 
-  // Keep the current page's thumbnail in view as the reader moves through the document
-  useEffect(() => {
-    if (!scrollRoot) return;
-    scrollRoot.querySelector(`[data-thumb="${currentPage}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [currentPage, scrollRoot]);
+  const virtualRows = rowVirtualizer.getVirtualItems();
 
   return (
     <ObserveContext.Provider value={observe}>
@@ -391,25 +443,58 @@ export const ThumbnailGrid: React.FC<ThumbnailGridProps> = ({
         }}
         onDragCancel={() => setDragging(null)}
       >
-        <SortableContext items={pages.map(String)} strategy={rectSortingStrategy}>
-          <div className="grid gap-x-3 gap-y-4 p-3" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}>
-            {pages.map((page) => (
-              <SortableSlot
-                key={page}
-                client={client}
-                pageNum={page}
-                rotation={rotations[page] || 0}
-                isCurrent={page === currentPage}
-                isSelected={selected.has(page)}
-                selectionMode={selectionMode}
-                isDownloading={downloadingPage === page}
-                defaultFormat={defaultFormat}
-                onGoToPage={onGoToPage}
-                onToggleSelect={onToggleSelect}
-                onDownload={onDownloadPage}
-                onOpenFormats={onOpenFormats}
-              />
-            ))}
+        <SortableContext items={sortableItemIds} strategy={rectSortingStrategy}>
+          <div
+            style={{
+              height: `${rowVirtualizer.getTotalSize()}px`,
+              width: "100%",
+              position: "relative",
+            }}
+          >
+            {virtualRows.map((virtualRow) => {
+              const startIdx = virtualRow.index * columns;
+              const rowPages = pages.slice(startIdx, startIdx + columns);
+
+              return (
+                <div
+                  key={virtualRow.key}
+                  data-index={virtualRow.index}
+                  ref={rowVirtualizer.measureElement}
+                  style={{
+                    position: "absolute",
+                    top: 0,
+                    left: 0,
+                    width: "100%",
+                    transform: `translateY(${virtualRow.start}px)`,
+                    padding: "0 12px 16px 12px",
+                  }}
+                >
+                  <div
+                    className="grid gap-x-3"
+                    style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))` }}
+                  >
+                    {rowPages.map((page) => (
+                      <SortableSlot
+                        key={page}
+                        client={client}
+                        pageNum={page}
+                        rotation={rotations[page] || 0}
+                        isCurrent={page === currentPage}
+                        isSelected={selected.has(page)}
+                        selectionMode={selectionMode}
+                        isDownloading={downloadingPage === page}
+                        defaultFormat={defaultFormat}
+                        thumbnailsEnabled={thumbnailsEnabled}
+                        onGoToPage={onGoToPage}
+                        onToggleSelect={onToggleSelect}
+                        onDownload={onDownloadPage}
+                        onOpenFormats={onOpenFormats}
+                      />
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         </SortableContext>
         <DragOverlay dropAnimation={{ duration: 150, easing: "ease-out" }}>
@@ -422,6 +507,7 @@ export const ThumbnailGrid: React.FC<ThumbnailGridProps> = ({
               isSelected={selected.has(dragging)}
               selectionMode={selectionMode}
               defaultFormat={defaultFormat}
+              thumbnailsEnabled={thumbnailsEnabled}
               isOverlay
             />
           ) : null}

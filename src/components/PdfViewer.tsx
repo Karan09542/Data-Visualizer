@@ -131,6 +131,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
   const [sidebarWide, setSidebarWide] = useState(false);
   const [gridRoot, setGridRoot] = useState<HTMLDivElement | null>(null);
   const [isNarrow, setIsNarrow] = useState(false);
+  const [thumbnailsEnabled, setThumbnailsEnabled] = useState(false);
+  const [thumbnailsBannerDismissed, setThumbnailsBannerDismissed] = useState(false);
 
   /* ── Pages: order, selection, export ────────────────────────────────── */
   const [orderedPages, setOrderedPages] = useState<number[]>([]);
@@ -239,6 +241,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
       setPageInput("1");
       setZoomMode("auto");
       setPasswordError(false);
+      setThumbnailsEnabled(false);
+      setThumbnailsBannerDismissed(false);
       setStatus("ready");
     })().catch((err: any) => {
       if (controller.signal.aborted) return;
@@ -533,8 +537,13 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
 
   /* ── Thumbnails, selection, export ──────────────────────────────────── */
   useEffect(() => {
-    if (sidebarOpen) ensureWorker();
-  }, [sidebarOpen, ensureWorker]);
+    if (sidebarOpen && thumbnailsEnabled) ensureWorker();
+  }, [sidebarOpen, thumbnailsEnabled, ensureWorker]);
+
+  const handleEnableThumbnails = useCallback(() => {
+    setThumbnailsEnabled(true);
+    ensureWorker();
+  }, [ensureWorker]);
 
   const toggleSelect = useCallback((page: number) => {
     setSelectionMode(true);
@@ -848,12 +857,16 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
     else if (value === "page-image") void downloadPageImage(currentPage, defaultFormat);
   };
 
-  const sidebar = sidebarOpen && (
+  const sidebar = (
     <>
-      {isNarrow && <div className="absolute inset-0 z-30 bg-black/40" onClick={() => setSidebarOpen(false)} aria-hidden />}
+      {isNarrow && sidebarOpen && <div className="absolute inset-0 z-30 bg-black/40" onClick={() => setSidebarOpen(false)} aria-hidden />}
       <aside
         className={`flex min-h-0 flex-col border-r border-(--pv-line) bg-(--pv-panel) ${
-          isNarrow ? "absolute inset-y-0 left-0 z-40 w-[min(88%,360px)] shadow-(--pv-shadow)" : `relative shrink-0 ${sidebarWide ? "w-130" : "w-68"}`
+          !sidebarOpen ? "hidden" : ""
+        } ${
+          isNarrow
+            ? `absolute inset-y-0 left-0 z-40 ${sidebarWide ? "w-full" : "w-[min(88%,360px)]"} shadow-(--pv-shadow)`
+            : `relative shrink-0 ${sidebarWide ? "w-130" : "w-68"}`
         }`}
         aria-label="Pages and search"
       >
@@ -883,8 +896,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
               <button
                 onClick={() => setSidebarWide((w) => !w)}
                 className={ICON_BUTTON}
-                title={sidebarWide ? "Fewer columns" : "More columns"}
-                aria-label={sidebarWide ? "Fewer columns" : "More columns"}
+                title={sidebarWide ? (isNarrow ? "Exit fullscreen" : "Fewer columns") : (isNarrow ? "Full screen" : "More columns")}
+                aria-label={sidebarWide ? (isNarrow ? "Exit fullscreen" : "Fewer columns") : (isNarrow ? "Full screen" : "More columns")}
               >
                 {sidebarWide ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
               </button>
@@ -895,127 +908,182 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
           </div>
         </div>
 
-        {sidebarTab === "pages" ? (
-          <>
-            <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-(--pv-line) px-3 text-xs">
-              {selectionMode ? (
-                <>
-                  <span className="font-medium">{selected.size} selected</span>
-                  <span className="flex items-center gap-1">
+        <div className={`flex min-h-0 flex-1 flex-col ${sidebarTab !== "pages" ? "hidden" : ""}`}>
+          <div className="flex h-11 shrink-0 items-center justify-between gap-2 border-b border-(--pv-line) px-3 text-xs">
+            {selectionMode ? (
+              <>
+                <span className="font-medium">{selected.size} selected</span>
+                <span className="flex items-center gap-1">
+                  <button
+                    onClick={() => setSelected(selected.size === orderedPages.length ? new Set() : new Set(orderedPages))}
+                    className="rounded-md px-2 py-1 font-medium text-(--pv-accent) hover:bg-(--pv-hover)"
+                  >
+                    {selected.size === orderedPages.length ? "Select none" : "Select all"}
+                  </button>
+                  <button onClick={exitSelection} className="rounded-md px-2 py-1 font-medium text-(--pv-muted) hover:bg-(--pv-hover) hover:text-(--pv-text)">
+                    Done
+                  </button>
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="text-(--pv-muted)">
+                  {numPages.toLocaleString()} {numPages === 1 ? "page" : "pages"}
+                </span>
+                <div className="flex items-center gap-1">
+                  {!thumbnailsEnabled && (
                     <button
-                      onClick={() => setSelected(selected.size === orderedPages.length ? new Set() : new Set(orderedPages))}
-                      className="rounded-md px-2 py-1 font-medium text-(--pv-accent) hover:bg-(--pv-hover)"
+                      onClick={handleEnableThumbnails}
+                      className="flex items-center gap-1 rounded-md px-2 py-1 font-medium text-(--pv-accent) hover:bg-(--pv-hover)"
+                      title="Generate page thumbnails"
                     >
-                      {selected.size === orderedPages.length ? "Select none" : "Select all"}
+                      <FileImage size={13} />
+                      <span>Generate</span>
                     </button>
-                    <button onClick={exitSelection} className="rounded-md px-2 py-1 font-medium text-(--pv-muted) hover:bg-(--pv-hover) hover:text-(--pv-text)">
-                      Done
-                    </button>
-                  </span>
-                </>
-              ) : (
-                <>
-                  <span className="text-(--pv-muted)">
-                    {numPages.toLocaleString()} {numPages === 1 ? "page" : "pages"}
-                  </span>
+                  )}
                   <button
                     onClick={() => setSelectionMode(true)}
                     className="flex items-center gap-1.5 rounded-md px-2 py-1 font-medium text-(--pv-muted) hover:bg-(--pv-hover) hover:text-(--pv-text)"
                   >
                     <ListChecks size={14} /> Select
                   </button>
-                </>
-              )}
-            </div>
+                </div>
+              </>
+            )}
+          </div>
 
-            <div ref={setGridRoot} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
-              {client && (
-                <ThumbnailGrid
-                  client={client}
-                  scrollRoot={gridRoot}
-                  pages={orderedPages}
-                  currentPage={currentPage}
-                  selectionMode={selectionMode}
-                  selected={selected}
-                  rotations={rotations}
-                  columns={columns}
-                  isDark={isDark}
-                  defaultFormat={defaultFormat}
-                  downloadingPage={downloadingPage}
-                  onReorder={setOrderedPages}
-                  onGoToPage={onThumbGoTo}
-                  onToggleSelect={toggleSelect}
-                  onDownloadPage={downloadPageImage}
-                />
-              )}
-            </div>
-
-            {(selectionMode || isReordered) && (
-              <div className="shrink-0 space-y-2 border-t border-(--pv-line) p-3">
-                {!selectionMode && isReordered && (
-                  <div className="flex items-center justify-between text-xs">
-                    <span className="text-(--pv-muted)">Pages reordered</span>
+          {!thumbnailsEnabled && !thumbnailsBannerDismissed && (
+            <div className="border-b border-(--pv-line) bg-(--pv-chip)/50 p-3">
+              <div className="flex items-start gap-2.5">
+                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-(--pv-accent-soft) text-(--pv-accent)">
+                  <FileImage size={15} />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-1">
+                    <h4 className="text-xs font-semibold text-(--pv-text)">Generate thumbnails?</h4>
                     <button
-                      onClick={() => setOrderedPages(Array.from({ length: numPages }, (_, i) => i + 1))}
-                      className="flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-(--pv-accent) hover:bg-(--pv-hover)"
+                      onClick={() => setThumbnailsBannerDismissed(true)}
+                      className="rounded p-0.5 text-(--pv-muted) transition-colors hover:bg-(--pv-hover) hover:text-(--pv-text)"
+                      title="Dismiss"
+                      aria-label="Dismiss banner"
                     >
-                      <Undo2 size={12} /> Reset order
+                      <X size={13} />
                     </button>
                   </div>
-                )}
-                {busy ? (
-                  <div className="flex h-9 items-center justify-between gap-2 rounded-lg bg-(--pv-chip) px-3 text-xs">
-                    <span className="flex items-center gap-2">
-                      <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-(--pv-line) border-t-(--pv-accent)" />
-                      {busy === "pdf" ? "Building PDF…" : busy === "zip-images" ? `Rendering ${exportProgress ?? ""}` : exportProgress ?? "Preparing…"}
-                    </span>
-                    {busy === "zip-images" && (
-                      <button onClick={() => (cancelExportRef.current = true)} className="font-medium text-(--pv-muted) hover:text-(--pv-text)">
-                        Cancel
+                  <p className="mt-0.5 text-[11px] leading-relaxed text-(--pv-muted)">
+                    Generate previews for {numPages.toLocaleString()} {numPages === 1 ? "page" : "pages"}. Pages can still be navigated without thumbnails.
+                  </p>
+                  <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+                    <button
+                      onClick={handleEnableThumbnails}
+                      className="inline-flex h-6.5 items-center gap-1.5 rounded-md bg-(--pv-accent) px-2.5 text-[11px] font-semibold text-(--pv-on-accent) transition-opacity hover:opacity-90"
+                    >
+                      <FileImage size={12} /> Generate Thumbnails
+                    </button>
+                    <button
+                      onClick={() => setThumbnailsBannerDismissed(true)}
+                      className="inline-flex h-6.5 items-center rounded-md px-2 text-[11px] font-medium text-(--pv-muted) transition-colors hover:bg-(--pv-hover) hover:text-(--pv-text)"
+                    >
+                      Not now
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div ref={setGridRoot} className="custom-scrollbar min-h-0 flex-1 overflow-y-auto">
+            {client && (
+              <ThumbnailGrid
+                client={client}
+                scrollRoot={gridRoot}
+                pages={orderedPages}
+                currentPage={currentPage}
+                selectionMode={selectionMode}
+                selected={selected}
+                rotations={rotations}
+                columns={columns}
+                isDark={isDark}
+                defaultFormat={defaultFormat}
+                thumbnailsEnabled={thumbnailsEnabled}
+                sidebarOpen={sidebarOpen}
+                sidebarWide={sidebarWide}
+                downloadingPage={downloadingPage}
+                onReorder={setOrderedPages}
+                onGoToPage={onThumbGoTo}
+                onToggleSelect={toggleSelect}
+                onDownloadPage={downloadPageImage}
+              />
+            )}
+          </div>
+
+          {(selectionMode || isReordered) && (
+            <div className="shrink-0 space-y-2 border-t border-(--pv-line) p-3">
+              {!selectionMode && isReordered && (
+                <div className="flex items-center justify-between text-xs">
+                  <span className="text-(--pv-muted)">Pages reordered</span>
+                  <button
+                    onClick={() => setOrderedPages(Array.from({ length: numPages }, (_, i) => i + 1))}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-(--pv-accent) hover:bg-(--pv-hover)"
+                  >
+                    <Undo2 size={12} /> Reset order
+                  </button>
+                </div>
+              )}
+              {busy ? (
+                <div className="flex h-9 items-center justify-between gap-2 rounded-lg bg-(--pv-chip) px-3 text-xs">
+                  <span className="flex items-center gap-2">
+                    <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-(--pv-line) border-t-(--pv-accent)" />
+                    {busy === "pdf" ? "Building PDF…" : busy === "zip-images" ? `Rendering ${exportProgress ?? ""}` : exportProgress ?? "Preparing…"}
+                  </span>
+                  {busy === "zip-images" && (
+                    <button onClick={() => (cancelExportRef.current = true)} className="font-medium text-(--pv-muted) hover:text-(--pv-text)">
+                      Cancel
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <button
+                    onClick={downloadPdf}
+                    disabled={selectionMode && selected.size === 0}
+                    className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-(--pv-accent) text-[13px] font-semibold text-(--pv-on-accent) transition-opacity hover:opacity-90 disabled:opacity-40"
+                  >
+                    <FileDown size={15} />
+                    {selectionMode ? `PDF (${selected.size})` : "Download PDF"}
+                  </button>
+                  <CustomSelect
+                    value=""
+                    options={[
+                      { value: "images", label: "PNG images", description: "One image per page", icon: <FileImage size={15} /> },
+                      { value: "pdf", label: "Single PDF", description: "The PDF, zipped", icon: <FileText size={15} /> },
+                    ]}
+                    onChange={(v) => void downloadZip(v as "images" | "pdf")}
+                    menuTitle="Download as ZIP"
+                    open={openMenu === "zip"}
+                    onOpenChange={(o) => setOpenMenu(o ? "zip" : null)}
+                    className="flex-1"
+                    disabled={selectionMode && selected.size === 0}
+                    renderTrigger={({ ref, props }) => (
+                      <button
+                        ref={ref}
+                        type="button"
+                        {...props}
+                        disabled={selectionMode && selected.size === 0}
+                        onClick={() => setOpenMenu((m) => (m === "zip" ? null : "zip"))}
+                        className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-(--pv-line) text-[13px] font-medium transition-colors hover:bg-(--pv-hover) disabled:opacity-40"
+                      >
+                        <Archive size={14} /> ZIP <ChevronDown size={13} className="text-(--pv-muted)" />
                       </button>
                     )}
-                  </div>
-                ) : (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={downloadPdf}
-                      disabled={selectionMode && selected.size === 0}
-                      className="flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg bg-(--pv-accent) text-[13px] font-semibold text-(--pv-on-accent) transition-opacity hover:opacity-90 disabled:opacity-40"
-                    >
-                      <FileDown size={15} />
-                      {selectionMode ? `PDF (${selected.size})` : "Download PDF"}
-                    </button>
-                    <CustomSelect
-                      value=""
-                      options={[
-                        { value: "images", label: "PNG images", description: "One image per page", icon: <FileImage size={15} /> },
-                        { value: "pdf", label: "Single PDF", description: "The PDF, zipped", icon: <FileText size={15} /> },
-                      ]}
-                      onChange={(v) => void downloadZip(v as "images" | "pdf")}
-                      menuTitle="Download as ZIP"
-                      open={openMenu === "zip"}
-                      onOpenChange={(o) => setOpenMenu(o ? "zip" : null)}
-                      className="flex-1"
-                      disabled={selectionMode && selected.size === 0}
-                      renderTrigger={({ ref, props }) => (
-                        <button
-                          ref={ref}
-                          type="button"
-                          {...props}
-                          disabled={selectionMode && selected.size === 0}
-                          onClick={() => setOpenMenu((m) => (m === "zip" ? null : "zip"))}
-                          className="flex h-9 w-full items-center justify-center gap-1.5 rounded-lg border border-(--pv-line) text-[13px] font-medium transition-colors hover:bg-(--pv-hover) disabled:opacity-40"
-                        >
-                          <Archive size={14} /> ZIP <ChevronDown size={13} className="text-(--pv-muted)" />
-                        </button>
-                      )}
-                    />
-                  </div>
-                )}
-              </div>
-            )}
-          </>
-        ) : (
+                  />
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+
+        <div className={`flex min-h-0 flex-1 flex-col ${sidebarTab !== "search" ? "hidden" : ""}`}>
           <PdfSearch
             query={query}
             onQueryChange={setQuery}
@@ -1025,7 +1093,7 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
             onPick={pickMatch}
             autoFocus={sidebarTab === "search"}
           />
-        )}
+        </div>
       </aside>
     </>
   );
