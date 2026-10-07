@@ -26,6 +26,7 @@ import {
   Info,
   AlertCircle,
   Palette,
+  ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
 import { useStore } from '../store/useStore';
@@ -619,7 +620,7 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
     setIsFullscreen((open) => !open);
   }, []);
 
-  const actionClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200';
+  const actionClass = 'inline-flex h-6.5 w-6.5 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-md sm:rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer';
   const Icon = info.icon;
   const isDark = appTheme !== 'light';
   const codeTextClass = isFullscreen ? 'text-[13px]' : 'text-[11.5px]';
@@ -670,28 +671,30 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
   const header = (
     <div
       // In the canvas the header is the drag handle (the body scrolls and selects text instead)
-      className={`flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 ${isFullscreen ? 'px-4 py-3 sm:px-6' : 'drag-handle cursor-move px-3 py-2.5'}`}
+      className={`flex shrink-0 items-center justify-between gap-1.5 sm:gap-2 border-b border-slate-200 dark:border-slate-800 ${
+        isFullscreen ? 'px-2 py-1.5 sm:px-6 sm:py-3' : 'drag-handle cursor-move px-2 py-1.5 sm:px-3 sm:py-2.5'
+      }`}
       title={isFullscreen ? undefined : 'Drag to move'}
     >
-      <div className="flex min-w-0 items-center gap-2.5">
-        <div className={`flex shrink-0 items-center justify-center rounded-lg ${info.iconClass} ${isFullscreen ? 'h-9 w-9' : 'h-8 w-8'}`}>
-          <Icon size={isFullscreen ? 18 : 16} />
+      <div className="flex min-w-0 flex-1 items-center gap-1.5 sm:gap-2 mr-1">
+        <div className={`flex shrink-0 items-center justify-center rounded-lg ${info.iconClass} ${isFullscreen ? 'h-6.5 w-6.5 sm:h-9 sm:w-9' : 'h-6.5 w-6.5 sm:h-8 sm:w-8'}`}>
+          <Icon size={isFullscreen ? 14 : 14} />
         </div>
-        <div className="min-w-0">
-          <div className={`truncate font-mono font-semibold text-slate-900 dark:text-slate-100 ${isFullscreen ? 'text-sm' : 'text-[12px]'}`} title={fileName}>
+        <div className="min-w-0 flex-1">
+          <div className={`truncate font-mono font-semibold text-slate-900 dark:text-slate-100 ${isFullscreen ? 'text-[11.5px] sm:text-sm' : 'text-[11px] sm:text-[12px]'}`} title={fileName}>
             {fileName}
           </div>
-          <div className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">{stats}</div>
+          <div className="mt-0.5 truncate text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">{stats}</div>
         </div>
       </div>
-      <div className="flex shrink-0 items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
         {availableViewModes.length > 1 && (
-          <div className="mr-1 flex items-center rounded-md border border-slate-200 bg-slate-100 p-0.5 text-[10px] font-medium dark:border-slate-800 dark:bg-slate-900">
+          <div className="flex items-center rounded-md border border-slate-200/90 bg-slate-100/80 p-0.5 text-[9.5px] sm:text-[10px] font-medium dark:border-slate-800 dark:bg-slate-900 shrink-0">
             {availableViewModes.map((mode) => (
               <button
                 key={mode.id}
                 onClick={(e) => { e.stopPropagation(); setViewMode(mode.id); }}
-                className={`rounded px-1.5 py-0.5 transition-colors ${
+                className={`rounded px-1.5 py-0.5 whitespace-nowrap transition-colors cursor-pointer ${
                   viewMode === mode.id
                     ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-slate-100 font-semibold'
                     : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
@@ -704,23 +707,43 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
           </div>
         )}
         {viewMode === 'rendered' && canShowMarkdown && (
-          <div className="mr-1 w-[85px] sm:w-[110px]" onClick={(e) => e.stopPropagation()}>
+          <div className="shrink-0" onClick={(e) => e.stopPropagation()}>
             <CustomSelect
               value={mdTheme}
               onChange={(val) => setMdTheme(val)}
               options={MD_THEME_OPTIONS}
-              icon={<Palette size={11} />}
+              icon={<Palette size={12} />}
               variant="toolbar"
-              className="text-[10px]"
+              renderTrigger={({ ref, isOpen, props }) => (
+                <button
+                  ref={ref}
+                  type="button"
+                  {...props}
+                  className={`flex items-center justify-center gap-1 rounded-md border border-slate-200 dark:border-white/[0.08] bg-slate-100/60 dark:bg-transparent hover:bg-slate-200/80 dark:hover:bg-white/[0.08] text-slate-800 dark:text-slate-200 h-6.5 w-6.5 sm:h-7 sm:w-auto px-1 sm:px-2.5 text-[10px] font-semibold transition-all outline-none cursor-pointer ${
+                    isOpen ? 'bg-slate-200/90 dark:bg-white/[0.12] border-slate-300 dark:border-white/[0.15]' : ''
+                  }`}
+                  title={`Theme: ${MD_THEME_OPTIONS.find((t) => t.value === mdTheme)?.label || mdTheme}`}
+                  aria-label="Markdown theme"
+                >
+                  <Palette size={12} className="shrink-0 text-slate-500 dark:text-slate-400" />
+                  <span className="hidden sm:inline truncate max-w-[65px] md:max-w-[80px]">
+                    {MD_THEME_OPTIONS.find((t) => t.value === mdTheme)?.label || mdTheme}
+                  </span>
+                  <ChevronDown
+                    size={10}
+                    className={`hidden sm:inline text-slate-400 dark:text-slate-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                  />
+                </button>
+              )}
             />
           </div>
         )}
         {info.kind === 'json' && (
           <button onClick={showAsNodes} className={actionClass} title="Show as child nodes" aria-label="Show as child nodes">
-            <ListTree size={14} />
+            <ListTree size={13} />
           </button>
         )}
-        {info.text !== undefined && (
+        {info.text !== undefined && viewMode !== 'rendered' && (
           <button
             onClick={(e) => { e.stopPropagation(); setWordWrap((wrap) => !wrap); }}
             className={`${actionClass} ${wordWrap ? 'bg-blue-500/10 text-blue-600 hover:bg-blue-500/15 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300' : ''}`}
@@ -728,17 +751,17 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
             aria-label="Toggle word wrap"
             aria-pressed={wordWrap}
           >
-            <WrapText size={14} />
+            <WrapText size={13} />
           </button>
         )}
         {info.text !== undefined && (
           <button onClick={handleCopy} className={actionClass} title={copied ? 'Copied' : 'Copy'} aria-label="Copy response">
-            {copied ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+            {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
           </button>
         )}
         {(info.src || info.text !== undefined) && (
-          <button onClick={handleDownload} className={actionClass} title={`Download ${fileName}`} aria-label="Download response">
-            <Download size={14} />
+          <button onClick={handleDownload} className={`${actionClass} hidden sm:inline-flex`} title={`Download ${fileName}`} aria-label="Download response">
+            <Download size={13} />
           </button>
         )}
         <button
@@ -747,7 +770,7 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
           title={isFullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}
           aria-label={isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
         >
-          {isFullscreen ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+          {isFullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
         </button>
       </div>
     </div>

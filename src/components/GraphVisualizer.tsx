@@ -1339,6 +1339,7 @@ export default function GraphVisualizer() {
                 nodeY={inlineApiEditor.y}
                 nodeWidth={inlineApiEditor.width}
                 nodeHeight={inlineApiEditor.height}
+                initialTab={inlineApiEditor.initialTab}
                 onClose={() => setInlineApiEditor(null)}
               />
             )}

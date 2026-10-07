@@ -42,7 +42,10 @@ interface CustomSelectProps {
   renderTrigger?: (trigger: {
     ref: React.RefObject<HTMLButtonElement | null>;
     isOpen: boolean;
+    setIsOpen?: (open: boolean) => void;
+    toggle?: () => void;
     props: {
+      onClick: (event: React.MouseEvent<HTMLButtonElement>) => void;
       onKeyDown: (event: React.KeyboardEvent) => void;
       "aria-haspopup": "listbox";
       "aria-expanded": boolean;
@@ -272,7 +275,13 @@ export default function CustomSelect({
       {renderTrigger ? renderTrigger({
         ref: triggerRef,
         isOpen,
+        setIsOpen,
+        toggle: () => (isOpen ? close() : setIsOpen(true)),
         props: {
+          onClick: (e: React.MouseEvent<HTMLButtonElement>) => {
+            if (disabled) return;
+            isOpen ? close() : setIsOpen(true);
+          },
           onKeyDown: handleKeyDown,
           "aria-haspopup": "listbox",
           "aria-expanded": isOpen,

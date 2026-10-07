@@ -7,7 +7,27 @@ export interface KeyValueParam {
   enabled: boolean;
   key: string;
   value: string;
+  type?: 'text' | 'file';
+  fileName?: string;
+  fileSize?: number;
+  fileData?: string; // base64 Data URL for in-browser file persistence & preview
   description?: string;
+}
+
+/**
+ * Converts a base64 Data URL to a standard browser Blob
+ */
+export function dataURItoBlob(dataURI: string): Blob {
+  const parts = dataURI.split(',');
+  const byteString = atob(parts[1] || '');
+  const mimeMatch = parts[0].match(/:(.*?);/);
+  const mimeString = mimeMatch ? mimeMatch[1] : 'application/octet-stream';
+  const ab = new ArrayBuffer(byteString.length);
+  const ia = new Uint8Array(ab);
+  for (let i = 0; i < byteString.length; i++) {
+    ia[i] = byteString.charCodeAt(i);
+  }
+  return new Blob([ab], { type: mimeString });
 }
 
 export type AuthType = 'none' | 'bearer' | 'basic' | 'apiKey';
@@ -264,11 +284,15 @@ export function parseCurl(command: string): ParsedCurlResult {
         const item = tokens[++i];
         const eqIdx = item.indexOf('=');
         if (eqIdx > -1) {
+          const val = item.slice(eqIdx + 1).trim();
+          const isFile = val.startsWith('@');
           formDataParts.push({
             id: Math.random().toString(36).substring(2, 9),
             enabled: true,
             key: item.slice(0, eqIdx).trim(),
-            value: item.slice(eqIdx + 1).trim(),
+            value: isFile ? val.slice(1) : val,
+            type: isFile ? 'file' : 'text',
+            fileName: isFile ? val.slice(1) : undefined,
           });
         }
       }
@@ -465,7 +489,11 @@ export function buildCurl(
       body.formData
         .filter((item) => item.enabled && item.key.trim())
         .forEach((item) => {
-          lines.push(`  -F "${item.key.trim()}=${item.value.trim()}"`);
+          if (item.type === 'file') {
+            lines.push(`  -F "${item.key.trim()}=@${item.fileName || item.value.trim() || 'file'}"`);
+          } else {
+            lines.push(`  -F "${item.key.trim()}=${item.value.trim()}"`);
+          }
         });
     }
   }

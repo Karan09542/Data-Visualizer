@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
 import {
@@ -13,42 +13,57 @@ import {
   type AuthType,
   type BodyType,
 } from '../utils/curlParser';
+import {
+  interpolateVariables,
+  interpolateJsonString,
+  analyzeVariablesInText,
+  substituteInParamList,
+  substituteInAuth,
+  substituteInBody,
+  type ApiVariable,
+} from '../utils/variableInterpolator';
 import CustomSelect from './CustomSelect';
 import MonacoEditor from '@monaco-editor/react';
 import { Highlight, themes } from 'prism-react-renderer';
 import { ModernCheckbox } from './image-workspace/components/shared/ModernCheckbox';
+import JsonImageBase64Modal from './JsonImageBase64Modal';
 import {
   Check,
-  CircleStop,
   Link2,
   Globe,
   X,
-  Play,
   Copy,
   Terminal,
-  Key,
-  FileText,
   FileJson,
   WrapText,
-  Sliders,
   Trash2,
   Plus,
   Eye,
   EyeOff,
   Code,
   AlertCircle,
+  AlertTriangle,
+  Lightbulb,
+  Infinity,
   Sparkles,
   Square,
   Timer,
   TimerOff,
   Layers,
   Send,
-  HelpCircle,
   Search,
   Zap,
   ClipboardPaste,
   ArrowRight,
   ChevronDown,
+  Image as ImageIcon,
+  Upload,
+  Maximize2,
+  Minimize2,
+  Braces,
+  Folder,
+  Lock,
+  Unlock,
 } from 'lucide-react';
 
 interface InlineApiEditorProps {
@@ -58,18 +73,32 @@ interface InlineApiEditorProps {
   nodeY: number;
   nodeWidth: number;
   nodeHeight?: number;
+  initialTab?: TabKey;
   onClose: () => void;
 }
 
-const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'] as const;
+const METHODS = ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD', 'OPTIONS'] as const;
 
-const METHOD_COLORS: Record<string, { bg: string; text: string; border: string }> = {
-  GET: { bg: 'bg-emerald-500/10 dark:bg-emerald-500/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/40' },
-  POST: { bg: 'bg-blue-500/10 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500/40' },
-  PUT: { bg: 'bg-amber-500/10 dark:bg-amber-500/20', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500/40' },
-  PATCH: { bg: 'bg-violet-500/10 dark:bg-violet-500/20', text: 'text-violet-600 dark:text-violet-400', border: 'border-violet-500/40' },
-  DELETE: { bg: 'bg-red-500/10 dark:bg-red-500/20', text: 'text-red-600 dark:text-red-400', border: 'border-red-500/40' },
+const METHOD_COLORS: Record<string, { bg: string; text: string; border: string; dot: string }> = {
+  GET: { bg: 'bg-emerald-500/10 dark:bg-emerald-500/20', text: 'text-emerald-600 dark:text-emerald-400', border: 'border-emerald-500/40', dot: 'bg-emerald-500' },
+  POST: { bg: 'bg-blue-500/10 dark:bg-blue-500/20', text: 'text-blue-600 dark:text-blue-400', border: 'border-blue-500/40', dot: 'bg-blue-500' },
+  PUT: { bg: 'bg-amber-500/10 dark:bg-amber-500/20', text: 'text-amber-600 dark:text-amber-400', border: 'border-amber-500/40', dot: 'bg-amber-500' },
+  PATCH: { bg: 'bg-violet-500/10 dark:bg-violet-500/20', text: 'text-violet-600 dark:text-violet-400', border: 'border-violet-500/40', dot: 'bg-violet-500' },
+  DELETE: { bg: 'bg-red-500/10 dark:bg-red-500/20', text: 'text-red-600 dark:text-red-400', border: 'border-red-500/40', dot: 'bg-red-500' },
+  HEAD: { bg: 'bg-slate-500/10 dark:bg-slate-500/20', text: 'text-slate-600 dark:text-slate-400', border: 'border-slate-500/40', dot: 'bg-slate-400' },
+  OPTIONS: { bg: 'bg-purple-500/10 dark:bg-purple-500/20', text: 'text-purple-600 dark:text-purple-400', border: 'border-purple-500/40', dot: 'bg-purple-500' },
 };
+
+const METHOD_SELECT_OPTIONS = METHODS.map((m) => ({
+  value: m,
+  label: m,
+  icon: (
+    <span
+      className={`inline-block h-2 w-2 rounded-full ${METHOD_COLORS[m]?.dot || 'bg-slate-400'
+        }`}
+    />
+  ),
+}));
 
 const RESPONSE_TYPES = [
   { value: 'auto', label: 'Auto' },
@@ -95,7 +124,7 @@ const COMMON_HEADERS = [
   'Referer',
 ];
 
-type TabKey = 'params' | 'headers' | 'auth' | 'body' | 'response' | 'settings';
+type TabKey = 'params' | 'headers' | 'auth' | 'body' | 'variables' | 'response' | 'settings';
 
 const formatBytes = (bytes?: number) => {
   if (bytes === undefined || !Number.isFinite(bytes)) return '';
@@ -104,7 +133,7 @@ const formatBytes = (bytes?: number) => {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 };
 
-const PrettierIcon = ({ size = 14, className = "" }: { size?: number; className?: string }) => (
+export const PrettierIcon = ({ size = 14, className = "" }: { size?: number; className?: string }) => (
   <svg
     width={size}
     height={size}
@@ -117,7 +146,7 @@ const PrettierIcon = ({ size = 14, className = "" }: { size?: number; className?
   </svg>
 );
 
-export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorProps) {
+export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: InlineApiEditorProps) {
   const updateNodeValue = useStore((state) => state.updateNodeValue);
   const apiNodeConfig = useStore((state) => state.apiNodeConfig);
   const setApiNodeConfig = useStore((state) => state.setApiNodeConfig);
@@ -175,7 +204,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
         });
         return list;
       }
-    } catch {}
+    } catch { }
     return [];
   });
 
@@ -188,8 +217,75 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
   // Body
   const [body, setBody] = useState<BodyConfig>(() => currentConfig.body || { type: 'none' });
 
+  // Variables & Environments
+  const [variables, setVariables] = useState<ApiVariable[]>(() => currentConfig.variables || []);
+  const [activeVariableGroup, setActiveVariableGroup] = useState<string>(() => currentConfig.activeVariableGroup || 'All');
+  const [selectedGroupFilter, setSelectedGroupFilter] = useState<string>('All');
+  const [variableSearchQuery, setVariableSearchQuery] = useState('');
+  const [newGroupNameInput, setNewGroupNameInput] = useState('');
+  const [showAddGroupInput, setShowAddGroupInput] = useState(false);
+  const [copiedVarKey, setCopiedVarKey] = useState<string | null>(null);
+  const [showSecretMap, setShowSecretMap] = useState<Record<string, boolean>>({});
+
+  // Dynamic variable groups derived from currently defined variables
+  const availableGroups = useMemo(() => {
+    const set = new Set<string>(['All', 'General']);
+    for (const v of variables) {
+      if (v.group && v.group.trim()) {
+        set.add(v.group.trim());
+      }
+    }
+    return Array.from(set);
+  }, [variables]);
+
+  // Filtered variables for search & group tabs
+  const filteredVariables = useMemo(() => {
+    return variables.filter((v) => {
+      // Group filter
+      if (selectedGroupFilter !== 'All') {
+        const varGroup = (v.group || 'General').trim().toLowerCase();
+        if (varGroup !== selectedGroupFilter.trim().toLowerCase()) {
+          return false;
+        }
+      }
+      // Search filter
+      if (variableSearchQuery.trim()) {
+        const query = variableSearchQuery.trim().toLowerCase();
+        const matchesKey = v.key.toLowerCase().includes(query);
+        const matchesVal = (v.value || '').toLowerCase().includes(query);
+        const matchesDesc = (v.description || '').toLowerCase().includes(query);
+        const matchesGroup = (v.group || '').toLowerCase().includes(query);
+        if (!matchesKey && !matchesVal && !matchesDesc && !matchesGroup) {
+          return false;
+        }
+      }
+      return true;
+    });
+  }, [variables, selectedGroupFilter, variableSearchQuery]);
+
+  // Dynamic variable resolution & analysis for URL
+  const resolvedUrl = useMemo(
+    () => interpolateVariables(url.trim(), variables, activeVariableGroup),
+    [url, variables, activeVariableGroup]
+  );
+  const urlVariableAnalysis = useMemo(
+    () => analyzeVariablesInText(url, variables, activeVariableGroup),
+    [url, variables, activeVariableGroup]
+  );
+  const hasUnresolvedUrlVariables = urlVariableAnalysis.some((v) => !v.isResolved);
+
   // UI state
-  const [activeTab, setActiveTab] = useState<TabKey>('params');
+  const [activeTab, setActiveTab] = useState<TabKey>(() => {
+    if (initialTab) return initialTab;
+    if (inlineApiEditor?.initialTab) return inlineApiEditor.initialTab;
+    return 'params';
+  });
+
+  useEffect(() => {
+    if (inlineApiEditor?.initialTab) {
+      setActiveTab(inlineApiEditor.initialTab);
+    }
+  }, [inlineApiEditor?.initialTab]);
   const [showCurlModal, setShowCurlModal] = useState(false);
   const [curlInputText, setCurlInputText] = useState('');
   const [curlError, setCurlError] = useState<string | null>(null);
@@ -257,6 +353,45 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
   };
   const [wordWrap, setWordWrap] = useState(true);
   const [copiedJson, setCopiedJson] = useState(false);
+  const [showImageBase64Modal, setShowImageBase64Modal] = useState(false);
+  const [droppedImageFiles, setDroppedImageFiles] = useState<File[]>([]);
+  const [cursorPosition, setCursorPosition] = useState<{ lineNumber: number; column: number } | null>(null);
+  const [isJsonFullscreen, setIsJsonFullscreen] = useState(false);
+  const editorRef = useRef<any>(null);
+
+  const handleInsertAtCursor = (textToInsert: string) => {
+    if (editorRef.current) {
+      const editor = editorRef.current;
+      const selection = editor.getSelection();
+      const position = editor.getPosition();
+      const range = selection && !selection.isEmpty()
+        ? selection
+        : {
+          startLineNumber: position?.lineNumber || 1,
+          startColumn: position?.column || 1,
+          endLineNumber: position?.lineNumber || 1,
+          endColumn: position?.column || 1,
+        };
+      editor.executeEdits('insert-base64-image', [
+        {
+          range,
+          text: textToInsert,
+          forceMoveMarkers: true,
+        },
+      ]);
+      editor.focus();
+      handleJsonChange(editor.getValue());
+    } else {
+      handleJsonChange((body.rawJson || '') + textToInsert);
+    }
+  };
+
+  const handleUpdateFullJson = (newJson: string) => {
+    handleJsonChange(newJson);
+    if (editorRef.current) {
+      editorRef.current.setValue(newJson);
+    }
+  };
 
   const baseName = path.split(/[.[\]"]/).filter(Boolean).pop() || 'request';
   const jsonFileName = `${baseName}_payload.json`;
@@ -269,12 +404,16 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
       await navigator.clipboard.writeText(body.rawJson);
       setCopiedJson(true);
       setTimeout(() => setCopiedJson(false), 1500);
-    } catch {}
+    } catch { }
   };
 
   const handleClearJson = () => {
-    setBody({ ...body, rawJson: '{\n  \n}' });
+    const emptyJson = '{\n  \n}';
+    setBody({ ...body, rawJson: emptyJson });
     setJsonError(null);
+    if (editorRef.current) {
+      editorRef.current.setValue(emptyJson);
+    }
   };
 
   const modalRef = useRef<HTMLDivElement>(null);
@@ -286,9 +425,16 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
   const isValidUrl = (() => {
     if (isEmpty) return true;
     try {
-      const parsed = new URL(trimmedUrl.startsWith('http') ? trimmedUrl : `https://${trimmedUrl}`);
+      const toTest = resolvedUrl.startsWith('http://') || resolvedUrl.startsWith('https://')
+        ? resolvedUrl
+        : `https://${resolvedUrl}`;
+      const parsed = new URL(toTest);
       return parsed.protocol === 'http:' || parsed.protocol === 'https:';
     } catch {
+      // Allow dynamic template URL format like {{baseUrl}}/path
+      if (/\{\{[a-zA-Z0-9_.-]+\}\}/.test(trimmedUrl)) {
+        return true;
+      }
       return false;
     }
   })();
@@ -337,7 +483,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
           list.push({ id: Math.random().toString(36).substring(2, 9), enabled: true, key, value: val });
         });
         setParams(list);
-      } catch {}
+      } catch { }
     }
   };
 
@@ -364,7 +510,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
     } catch (e: any) {
       setCurlError(e?.message || 'Could not parse cURL command');
       if (!showCurlModal) {
-        setCurlBanner(`⚠️ cURL parse error: ${e?.message || 'Invalid format'}`);
+        setCurlBanner(`cURL parse error: ${e?.message || 'Invalid format'}`);
         setTimeout(() => setCurlBanner(null), 4000);
       }
     }
@@ -372,27 +518,52 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
 
   // Copy as cURL
   const handleCopyCurl = async () => {
-    const cmd = buildCurl(url, method, params, headers, auth, body);
+    const substitutedParams = substituteInParamList(params, variables, activeVariableGroup);
+    const substitutedHeaders = substituteInParamList(headers, variables, activeVariableGroup);
+    const substitutedAuth = substituteInAuth(auth, variables, activeVariableGroup);
+    const substitutedBody = substituteInBody(body, variables, activeVariableGroup);
+    const targetUrl = interpolateVariables(url, variables, activeVariableGroup);
+
+    const cmd = buildCurl(targetUrl, method, substitutedParams, substitutedHeaders, substitutedAuth, substitutedBody);
     try {
       await navigator.clipboard.writeText(cmd);
       setCopiedCurl(true);
       setTimeout(() => setCopiedCurl(false), 2000);
-    } catch {}
+    } catch { }
   };
 
-  // Format JSON in Body
+  // Format JSON in Body (safely preserving dynamic {{var}} tokens)
   const handlePrettifyJson = () => {
     if (!body.rawJson) return;
     try {
-      const parsed = JSON.parse(body.rawJson);
-      setBody({ ...body, rawJson: JSON.stringify(parsed, null, 2) });
+      // If rawJson has unquoted {{var}}, temporarily quote them to format cleanly
+      const tokenMap = new Map<string, string>();
+      let tokenIdx = 0;
+      const protectedJson = body.rawJson.replace(/(:\s*|\,\s*|\[\s*)(\{\{\s*[a-zA-Z0-9_.-]+\s*\}\})/g, (_match, prefix, placeholder) => {
+        const token = `__AGY_VAR_${tokenIdx++}__`;
+        tokenMap.set(token, placeholder);
+        return `${prefix}"${token}"`;
+      });
+
+      const parsed = JSON.parse(protectedJson);
+      let formatted = JSON.stringify(parsed, null, 2);
+
+      // Restore unquoted variables
+      for (const [token, placeholder] of tokenMap.entries()) {
+        formatted = formatted.replace(`"${token}"`, placeholder);
+      }
+
+      setBody({ ...body, rawJson: formatted });
       setJsonError(null);
+      if (editorRef.current && editorRef.current.getValue() !== formatted) {
+        editorRef.current.setValue(formatted);
+      }
     } catch (e: any) {
       setJsonError(e.message || 'Invalid JSON syntax');
     }
   };
 
-  // Validate JSON on edit
+  // Validate JSON on edit (evaluating dynamic template variables)
   const handleJsonChange = (val: string) => {
     setBody({ ...body, rawJson: val });
     if (!val.trim()) {
@@ -400,7 +571,13 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
       return;
     }
     try {
-      JSON.parse(val);
+      // 1. Interpolate using active variables
+      const interpolated = interpolateJsonString(val, variables, activeVariableGroup);
+      // 2. Temporarily replace any remaining unresolved {{...}} with valid placeholders to test structure
+      const testJson = interpolated
+        .replace(/:\s*\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, ': "__placeholder__"')
+        .replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, '__placeholder__');
+      JSON.parse(testJson);
       setJsonError(null);
     } catch (e: any) {
       setJsonError(e.message);
@@ -443,7 +620,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
         const parsed = JSON.parse(body.rawJson);
         parsed.stream = false;
         setBody({ ...body, type: 'json', rawJson: JSON.stringify(parsed, null, 2) });
-      } catch {}
+      } catch { }
     }
   };
 
@@ -455,7 +632,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
         const parsed = JSON.parse(body.rawJson);
         parsed.stream = enabled;
         setBody({ ...body, rawJson: JSON.stringify(parsed, null, 2) });
-      } catch {}
+      } catch { }
     }
   };
 
@@ -475,6 +652,8 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
       extractPath: extractPath.trim() || undefined,
       responseFormat,
       streamEnabled,
+      variables,
+      activeVariableGroup,
     };
 
     setApiNodeConfig(path, newConfig);
@@ -493,19 +672,127 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
   // Keyboard shortcut: Esc to close
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !showCurlModal) {
+      if (e.key === 'Escape') {
+        if (showImageBase64Modal) {
+          return;
+        }
+        if (showCurlModal) {
+          setShowCurlModal(false);
+          return;
+        }
+        if (isJsonFullscreen) {
+          setIsJsonFullscreen(false);
+          return;
+        }
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showCurlModal]);
+  }, [onClose, showCurlModal, showImageBase64Modal, isJsonFullscreen]);
+
+  // Reset fullscreen JSON mode if body type switches away from json
+  useEffect(() => {
+    if (body.type !== 'json' && isJsonFullscreen) {
+      setIsJsonFullscreen(false);
+    }
+  }, [body.type, isJsonFullscreen]);
 
   // Count pills for tabs
   const activeParamsCount = params.filter((p) => p.enabled && p.key.trim()).length;
   const activeHeadersCount = headers.filter((h) => h.enabled && h.key.trim()).length;
+  const activeVariablesCount = variables.filter((v) => v.enabled !== false && v.key.trim()).length;
   const isAuthActive = auth.type !== 'none';
   const isBodyActive = body.type !== 'none';
+
+  const monacoOptions = useMemo(() => ({
+    minimap: { enabled: false },
+    lineNumbers: 'on' as const,
+    scrollBeyondLastLine: false,
+    fontSize: isJsonFullscreen ? 12.5 : 11.5,
+    lineHeight: isJsonFullscreen ? 22 : 20,
+    fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
+    tabSize: 2,
+    wordWrap: (wordWrap ? 'on' : 'off') as 'on' | 'off',
+    automaticLayout: true,
+    renderLineHighlight: 'line' as const,
+    overviewRulerBorder: false,
+    hideCursorInOverviewRuler: true,
+    padding: { top: 8, bottom: 8 },
+    scrollbar: {
+      vertical: 'auto' as const,
+      horizontal: 'auto' as const,
+      verticalScrollbarSize: 8,
+      horizontalScrollbarSize: 8,
+    },
+  }), [wordWrap, isJsonFullscreen]);
+
+  const handleMonacoBeforeMount = useCallback((monaco: any) => {
+    try {
+      if (monaco?.languages?.json?.jsonDefaults) {
+        monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+          validate: false,
+          allowComments: true,
+          trailingCommas: 'ignore',
+        });
+      }
+    } catch { }
+
+    try {
+      monaco.editor.defineTheme('api-vs-dark', {
+        base: 'vs-dark',
+        inherit: true,
+        rules: [
+          { token: 'string.key.json', foreground: '9cdcfe' },
+          { token: 'string.value.json', foreground: 'ce9178' },
+          { token: 'number.json', foreground: 'b5cea8' },
+          { token: 'keyword.json', foreground: '569cd6' },
+        ],
+        colors: {
+          'editor.background': '#0f172a',
+          'editorGutter.background': '#0f172a',
+          'editorLineNumber.foreground': '#475569',
+          'editorLineNumber.activeForeground': '#94a3b8',
+          'editor.lineHighlightBackground': '#1e293b33',
+          'editorCursor.foreground': '#38bdf8',
+          'editor.selectionBackground': '#3b82f640',
+        },
+      });
+      monaco.editor.defineTheme('api-light', {
+        base: 'vs',
+        inherit: true,
+        rules: [],
+        colors: {
+          'editor.background': '#ffffff',
+          'editorGutter.background': '#ffffff',
+          'editorLineNumber.foreground': '#94a3b8',
+          'editorLineNumber.activeForeground': '#475569',
+          'editor.lineHighlightBackground': '#f1f5f9',
+        },
+      });
+    } catch { }
+  }, []);
+
+  const monacoLoadingFallback = (
+    <Highlight theme={isDark ? themes.vsDark : themes.github} code={body.rawJson || ''} language="json">
+      {({ tokens, getLineProps, getTokenProps }) => (
+        <pre className={`py-2 font-mono leading-[1.6] text-[11.5px] ${isJsonFullscreen ? 'h-full' : 'h-[220px]'} overflow-auto ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`}>
+          {tokens.map((line, i) => (
+            <div key={i} {...getLineProps({ line })} className="flex px-3">
+              <span className="mr-3 inline-block w-9 shrink-0 select-none text-right text-slate-400/70 dark:text-slate-600">
+                {i + 1}
+              </span>
+              <span>
+                {line.map((token, key) => (
+                  <span key={key} {...getTokenProps({ token })} />
+                ))}
+              </span>
+            </div>
+          ))}
+        </pre>
+      )}
+    </Highlight>
+  );
 
   const modalContent = (
     <div
@@ -529,14 +816,20 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
           <div className="h-1.5 w-12 rounded-full bg-slate-300 dark:bg-slate-700/80 transition-transform active:scale-95" />
         </div>
 
-        {/* Banner notification when cURL was imported */}
         {curlBanner && (
-          <div className="flex items-center justify-between px-4 py-2 text-xs font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-b border-emerald-500/20 animate-in slide-in-from-top-1">
+          <div className={`flex items-center justify-between px-4 py-2 text-xs font-medium border-b animate-in slide-in-from-top-1 ${curlBanner.toLowerCase().includes('error')
+            ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/20'
+            : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20'
+            }`}>
             <span className="flex items-center gap-1.5">
-              <Sparkles size={14} />
-              {curlBanner}
+              {curlBanner.toLowerCase().includes('error') ? (
+                <AlertCircle size={14} className="shrink-0 text-amber-500" />
+              ) : (
+                <Sparkles size={14} className="shrink-0 text-emerald-500" />
+              )}
+              <span>{curlBanner}</span>
             </span>
-            <button onClick={() => setCurlBanner(null)} className="hover:opacity-75">
+            <button onClick={() => setCurlBanner(null)} className="hover:opacity-75 cursor-pointer">
               <X size={14} />
             </button>
           </div>
@@ -551,9 +844,6 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
             <div className="min-w-0">
               <div className="flex items-center gap-2">
                 <span className="text-sm font-bold tracking-tight text-slate-900 dark:text-slate-100">API Request</span>
-                <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-blue-600 dark:text-blue-400">
-                  Postman Mode
-                </span>
               </div>
               <div className="truncate font-mono text-[11px] text-slate-400 dark:text-slate-500 max-w-[180px] sm:max-w-[450px]" title={path}>
                 {path.replace(/^root\.?/, '') || 'root'}
@@ -602,19 +892,21 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
               <CustomSelect
                 value={method}
                 onChange={(val) => setMethod(val)}
-                options={METHODS.map((m) => ({ label: m, value: m }))}
+                options={METHOD_SELECT_OPTIONS}
                 renderTrigger={({ ref, isOpen, props }) => (
                   <button
                     ref={ref}
                     type="button"
                     {...props}
-                    className={`flex h-8 sm:h-9.5 w-full items-center justify-between gap-1 px-2 sm:px-3 rounded-lg sm:rounded-xl border border-slate-200 bg-white font-mono text-[11px] sm:text-xs font-bold transition-all outline-none dark:border-slate-800 dark:bg-slate-900 ${
-                      METHOD_COLORS[method]?.text || 'text-slate-700'
-                    } ${
-                      isOpen
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      props.onClick?.(e);
+                    }}
+                    className={`flex h-8 sm:h-9.5 w-full items-center justify-between gap-1 px-2 sm:px-3 rounded-lg sm:rounded-xl border border-slate-200 bg-white font-mono text-[11px] sm:text-xs font-bold transition-all outline-none dark:border-slate-800 dark:bg-slate-900 ${METHOD_COLORS[method]?.text || 'text-slate-700'
+                      } ${isOpen
                         ? 'ring-2 ring-blue-500/20 border-blue-500 bg-blue-50/40 dark:bg-blue-950/20'
                         : 'hover:bg-slate-50 dark:hover:bg-slate-800/80'
-                    } cursor-pointer`}
+                      } cursor-pointer`}
                     aria-label={`HTTP Method: ${method}`}
                   >
                     <span className="truncate">{method}</span>
@@ -686,8 +978,9 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
               <span className="hidden xs:inline">Tip: </span>Paste cURL into URL to auto-populate
             </span>
             {url.toLowerCase().startsWith('https://localhost') && (
-              <span className="text-amber-500 font-medium">
-                ⚠️ Localhost uses http://, not https://.{' '}
+              <span className="text-amber-500 font-medium inline-flex items-center gap-1">
+                <AlertTriangle size={12} className="shrink-0 text-amber-500" />
+                <span>Localhost uses http://, not https://.{' '}</span>
                 <button
                   type="button"
                   onClick={() => setUrl(url.replace(/^https:\/\//i, 'http://'))}
@@ -698,8 +991,9 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
               </span>
             )}
             {url.includes(':11343') && (
-              <span className="text-amber-500 font-medium">
-                💡 Port 11343 detected.{' '}
+              <span className="text-amber-500 font-medium inline-flex items-center gap-1">
+                <Lightbulb size={12} className="shrink-0 text-amber-500" />
+                <span>Port 11343 detected.{' '}</span>
                 <button
                   type="button"
                   onClick={() => setUrl(url.replace(':11343', ':11434'))}
@@ -711,6 +1005,28 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
             )}
             {!isValidUrl && <span className="text-red-500 font-medium">Please enter a valid HTTP/HTTPS URL</span>}
           </div>
+
+          {/* Dynamic Variable Interpolation Preview for URL */}
+          {urlVariableAnalysis.length > 0 && (
+            <div className="flex flex-wrap items-center gap-1.5 mt-2 px-2.5 py-1.5 rounded-lg border border-blue-500/25 bg-blue-500/5 dark:bg-blue-500/10 text-[11px] animate-in fade-in">
+              <div className="flex items-center gap-1 text-blue-600 dark:text-blue-400 font-semibold shrink-0">
+                <Braces size={12} />
+                <span>Resolved URL:</span>
+              </div>
+              <span
+                className="font-mono text-slate-800 dark:text-slate-200 truncate max-w-[280px] sm:max-w-[460px] select-all cursor-text font-medium"
+                title={resolvedUrl}
+              >
+                {resolvedUrl}
+              </span>
+              {hasUnresolvedUrlVariables && (
+                <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ml-auto">
+                  <AlertTriangle size={11} />
+                  <span>Unresolved variables</span>
+                </span>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Tab Navigation */}
@@ -723,6 +1039,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
             { id: 'headers', label: 'Headers', count: activeHeadersCount },
             { id: 'auth', label: 'Auth', badge: isAuthActive ? auth.type.toUpperCase() : null },
             { id: 'body', label: 'Body', badge: isBodyActive ? body.type.toUpperCase() : null },
+            { id: 'variables', label: 'Variables', count: activeVariablesCount, badge: activeVariableGroup !== 'All' ? activeVariableGroup : null },
             { id: 'response', label: 'Response & Extract', badge: extractPath.trim() ? 'EXTRACT' : (streamEnabled !== undefined ? (streamEnabled ? 'STREAM' : 'SINGLE') : null) },
             { id: 'settings', label: 'Settings' },
           ].map((tab) => {
@@ -732,11 +1049,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                 key={tab.id}
                 type="button"
                 onClick={() => setActiveTab(tab.id as TabKey)}
-                className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-semibold transition-colors border-b-2 -mb-px whitespace-nowrap ${
-                  isActive
-                    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
-                    : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                }`}
+                className={`relative flex items-center gap-1.5 px-4 py-3 text-xs font-semibold transition-colors border-b-2 -mb-px whitespace-nowrap ${isActive
+                  ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400'
+                  : 'border-transparent text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                  }`}
               >
                 <span>{tab.label}</span>
                 {typeof tab.count === 'number' && tab.count > 0 && (
@@ -1044,19 +1360,21 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
           {/* AUTH TAB */}
           {activeTab === 'auth' && (
             <div className="flex flex-col gap-4">
-              <div className="flex items-center gap-3">
-                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Auth Type:</span>
-                <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3">
+                <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 shrink-0">Auth Type:</span>
+                <div
+                  className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900 overflow-x-auto scrollbar-none max-w-full"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
                   {(['none', 'bearer', 'basic', 'apiKey'] as AuthType[]).map((t) => (
                     <button
                       key={t}
                       type="button"
                       onClick={() => setAuth({ ...auth, type: t })}
-                      className={`px-3 py-1 rounded-md text-xs font-medium transition-all ${
-                        auth.type === t
-                          ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400'
-                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                      }`}
+                      className={`px-3 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 transition-all ${auth.type === t
+                        ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400 font-semibold'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                        }`}
                     >
                       {t === 'none' ? 'No Auth' : t === 'bearer' ? 'Bearer Token' : t === 'basic' ? 'Basic Auth' : 'API Key'}
                     </button>
@@ -1178,8 +1496,11 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
           {/* BODY TAB */}
           {activeTab === 'body' && (
             <div className="flex flex-col gap-3">
-              <div className="flex items-center justify-between">
-                <div className="flex rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900">
+              <div className="flex items-center justify-between max-w-full">
+                <div
+                  className="flex items-center rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900 overflow-x-auto scrollbar-none max-w-full"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
                   {(['none', 'json', 'x-www-form-urlencoded', 'formData', 'raw'] as BodyType[]).map((bt) => (
                     <button
                       key={bt}
@@ -1190,11 +1511,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                           setMethod('POST');
                         }
                       }}
-                      className={`px-2.5 py-1 rounded-md text-xs font-medium transition-all ${
-                        body.type === bt
-                          ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400'
-                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
-                      }`}
+                      className={`px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 transition-all ${body.type === bt
+                        ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400 font-semibold'
+                        : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                        }`}
                     >
                       {bt === 'none' ? 'None' : bt === 'json' ? 'JSON' : bt === 'x-www-form-urlencoded' ? 'x-www-form-urlencoded' : bt === 'formData' ? 'form-data' : 'Raw Text'}
                     </button>
@@ -1230,166 +1550,195 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
               {/* JSON Body - Presentation styled like API JSON response */}
               {body.type === 'json' && (
                 <div className="flex flex-col gap-1.5">
-                  <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm">
-                    {/* Header bar matching API Response Viewer */}
-                    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-2 bg-slate-50/80 dark:bg-slate-900/60">
-                      <div className="flex min-w-0 items-center gap-2.5">
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
-                          <FileJson size={16} />
+                  {isJsonFullscreen ? (
+                    <div className="relative rounded-xl overflow-hidden border border-dashed border-blue-500/40 bg-blue-500/5 dark:bg-blue-500/10 p-6 flex flex-col items-center justify-center gap-3 text-center min-h-[220px]">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/20 text-blue-500">
+                        <FileJson size={20} />
+                      </div>
+                      <div className="space-y-1">
+                        <div className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-200">
+                          {jsonFileName} is open in full screen
                         </div>
-                        <div className="min-w-0">
-                          <div className="truncate font-mono text-[12px] font-semibold text-slate-900 dark:text-slate-100">
-                            {jsonFileName}
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 max-w-xs">
+                          The JSON editor is currently expanded to fill the entire viewport.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setIsJsonFullscreen(false)}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition-all active:scale-95 cursor-pointer"
+                      >
+                        <Minimize2 size={13} />
+                        <span>Exit Fullscreen</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0f172a] shadow-sm">
+                      {/* Header bar matching API Response Viewer */}
+                      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3 py-2 bg-slate-50/80 dark:bg-slate-900/60">
+                        <div className="flex min-w-0 items-center gap-2.5">
+                          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                            <FileJson size={16} />
                           </div>
-                          <div className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
-                            {['JSON', formatBytes(jsonSize), `${jsonLineCount} ${jsonLineCount === 1 ? 'line' : 'lines'}`].filter(Boolean).join(' · ')}
+                          <div className="min-w-0">
+                            <div className="truncate font-mono text-[12px] font-semibold text-slate-900 dark:text-slate-100" title={jsonFileName}>
+                              {jsonFileName}
+                            </div>
+                            <div className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                              {['JSON', formatBytes(jsonSize), `${jsonLineCount} ${jsonLineCount === 1 ? 'line' : 'lines'}`].filter(Boolean).join(' · ')}
+                            </div>
                           </div>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setDroppedImageFiles([]);
+                              setShowImageBase64Modal(true);
+                            }}
+                            className="inline-flex h-7 items-center gap-1.5 px-2 rounded-lg text-xs font-semibold text-purple-600 dark:text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 dark:bg-purple-500/15 dark:hover:bg-purple-500/25 transition-colors cursor-pointer mr-0.5"
+                            title="Upload image and convert to Base64 (Ollama, Vision models)"
+                            aria-label="Upload image and convert to Base64"
+                          >
+                            <ImageIcon size={13} className="shrink-0" />
+                            <span className="hidden xs:inline">Image (Base64)</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setWordWrap(!wordWrap)}
+                            className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 ${wordWrap ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : ''
+                              }`}
+                            title={wordWrap ? 'Word wrap: on' : 'Word wrap: off'}
+                            aria-label="Toggle word wrap"
+                          >
+                            <WrapText size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handlePrettifyJson}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                            title="Prettify / Format JSON with Prettier"
+                            aria-label="Prettify JSON with Prettier"
+                          >
+                            <PrettierIcon size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleCopyJson}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                            title={copiedJson ? 'Copied' : 'Copy JSON'}
+                            aria-label="Copy JSON"
+                          >
+                            {copiedJson ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={handleClearJson}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-rose-500 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-rose-400"
+                            title="Reset JSON to empty object"
+                            aria-label="Reset JSON"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setIsJsonFullscreen(true)}
+                            className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer"
+                            title="Full screen (Expand editor to full viewport)"
+                            aria-label="Full screen editor"
+                          >
+                            <Maximize2 size={14} />
+                          </button>
                         </div>
                       </div>
-                      <div className="flex shrink-0 items-center gap-0.5">
-                        <button
-                          type="button"
-                          onClick={() => setWordWrap(!wordWrap)}
-                          className={`inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 ${
-                            wordWrap ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : ''
-                          }`}
-                          title={wordWrap ? 'Word wrap: on' : 'Word wrap: off'}
-                          aria-label="Toggle word wrap"
-                        >
-                          <WrapText size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handlePrettifyJson}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-400"
-                          title="Prettify / Format JSON with Prettier"
-                          aria-label="Prettify JSON with Prettier"
-                        >
-                          <PrettierIcon size={14} />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleCopyJson}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
-                          title={copiedJson ? 'Copied' : 'Copy JSON'}
-                          aria-label="Copy JSON"
-                        >
-                          {copiedJson ? <Check size={14} className="text-emerald-500" /> : <Copy size={14} />}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleClearJson}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-rose-500 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-rose-400"
-                          title="Reset JSON to empty object"
-                          aria-label="Reset JSON"
-                        >
-                          <Trash2 size={14} />
-                        </button>
+
+                      {/* Code Area */}
+                      <div
+                        className="relative w-full h-[220px]"
+                        onDragOver={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                            const imgFiles = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+                            if (imgFiles.length > 0) {
+                              setDroppedImageFiles(imgFiles);
+                              setShowImageBase64Modal(true);
+                            }
+                          }
+                        }}
+                      >
+                        <MonacoEditor
+                          height="220px"
+                          defaultLanguage="json"
+                          language="json"
+                          theme={isDark ? "api-vs-dark" : "api-light"}
+                          value={body.rawJson || ''}
+                          onChange={(val) => handleJsonChange(val || '')}
+                          onMount={(editor, monaco) => {
+                            editorRef.current = editor;
+                            try {
+                              if (monaco?.languages?.json?.jsonDefaults) {
+                                monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+                                  validate: false,
+                                  allowComments: true,
+                                  trailingCommas: 'ignore',
+                                });
+                              }
+                              const model = editor.getModel();
+                              if (model && monaco?.editor) {
+                                monaco.editor.setModelMarkers(model, 'json', []);
+                              }
+                            } catch { }
+                            if (cursorPosition) {
+                              try {
+                                editor.setPosition(cursorPosition);
+                                editor.revealPositionInCenter(cursorPosition);
+                              } catch { }
+                            }
+                            editor.onDidChangeCursorPosition((e) => {
+                              setCursorPosition(e.position);
+                            });
+                          }}
+                          options={monacoOptions}
+                          beforeMount={handleMonacoBeforeMount}
+                          loading={monacoLoadingFallback}
+                        />
+                      </div>
+
+                      {/* Status bar */}
+                      <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 px-3 py-1.5">
+                        <span className="text-[10px] font-mono text-slate-500 truncate mr-2">
+                          {jsonError ? (
+                            <span className="text-red-500 flex items-center gap-1"><AlertCircle size={11} className="shrink-0" /> <span className="truncate">{jsonError}</span></span>
+                          ) : (
+                            <span className="text-emerald-500/90 flex items-center gap-1 font-medium">
+                              <Check size={11} className="shrink-0" />
+                              <span>{/\{\{[a-zA-Z0-9_.-]+\}\}/.test(body.rawJson || '') ? 'Valid JSON (Dynamic Variables Enabled)' : 'Valid JSON'}</span>
+                            </span>
+                          )}
+                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
+                            application/json
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => setIsJsonFullscreen(true)}
+                            className="inline-flex items-center gap-1 text-[10px] font-mono text-slate-400 hover:text-blue-600 dark:text-slate-500 dark:hover:text-blue-400 transition-colors cursor-pointer"
+                            title="Expand to full screen"
+                            aria-label="Expand to full screen"
+                          >
+                            <Maximize2 size={10} />
+                            <span className="hidden xs:inline">Fullscreen</span>
+                          </button>
+                        </div>
                       </div>
                     </div>
-
-                    {/* Code Area */}
-                    <div className="relative w-full h-[220px]">
-                      <MonacoEditor
-                        height="220px"
-                        defaultLanguage="json"
-                        language="json"
-                        theme={isDark ? "api-vs-dark" : "api-light"}
-                        value={body.rawJson || ''}
-                        onChange={(val) => handleJsonChange(val || '')}
-                        options={{
-                          minimap: { enabled: false },
-                          lineNumbers: 'on',
-                          scrollBeyondLastLine: false,
-                          fontSize: 11.5,
-                          lineHeight: 20,
-                          fontFamily: 'ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace',
-                          tabSize: 2,
-                          wordWrap: wordWrap ? 'on' : 'off',
-                          automaticLayout: true,
-                          renderLineHighlight: 'line',
-                          overviewRulerBorder: false,
-                          hideCursorInOverviewRuler: true,
-                          padding: { top: 8, bottom: 8 },
-                          scrollbar: {
-                            vertical: 'auto',
-                            horizontal: 'auto',
-                            verticalScrollbarSize: 8,
-                            horizontalScrollbarSize: 8,
-                          },
-                        }}
-                        beforeMount={(monaco) => {
-                          try {
-                            monaco.editor.defineTheme('api-vs-dark', {
-                              base: 'vs-dark',
-                              inherit: true,
-                              rules: [
-                                { token: 'string.key.json', foreground: '9cdcfe' },
-                                { token: 'string.value.json', foreground: 'ce9178' },
-                                { token: 'number.json', foreground: 'b5cea8' },
-                                { token: 'keyword.json', foreground: '569cd6' },
-                              ],
-                              colors: {
-                                'editor.background': '#0f172a',
-                                'editorGutter.background': '#0f172a',
-                                'editorLineNumber.foreground': '#475569',
-                                'editorLineNumber.activeForeground': '#94a3b8',
-                                'editor.lineHighlightBackground': '#1e293b33',
-                                'editorCursor.foreground': '#38bdf8',
-                                'editor.selectionBackground': '#3b82f640',
-                              },
-                            });
-                            monaco.editor.defineTheme('api-light', {
-                              base: 'vs',
-                              inherit: true,
-                              rules: [],
-                              colors: {
-                                'editor.background': '#ffffff',
-                                'editorGutter.background': '#ffffff',
-                                'editorLineNumber.foreground': '#94a3b8',
-                                'editorLineNumber.activeForeground': '#475569',
-                                'editor.lineHighlightBackground': '#f1f5f9',
-                              },
-                            });
-                          } catch {}
-                        }}
-                        loading={
-                          <Highlight theme={isDark ? themes.vsDark : themes.github} code={body.rawJson || ''} language="json">
-                            {({ tokens, getLineProps, getTokenProps }) => (
-                              <pre className={`py-2 font-mono leading-[1.6] text-[11.5px] h-[220px] overflow-auto ${isDark ? 'bg-[#0f172a]' : 'bg-white'}`}>
-                                {tokens.map((line, i) => (
-                                  <div key={i} {...getLineProps({ line })} className="flex px-3">
-                                    <span className="mr-3 inline-block w-9 shrink-0 select-none text-right text-slate-400/70 dark:text-slate-600">
-                                      {i + 1}
-                                    </span>
-                                    <span>
-                                      {line.map((token, key) => (
-                                        <span key={key} {...getTokenProps({ token })} />
-                                      ))}
-                                    </span>
-                                  </div>
-                                ))}
-                              </pre>
-                            )}
-                          </Highlight>
-                        }
-                      />
-                    </div>
-
-                    {/* Status bar */}
-                    <div className="flex items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/50 px-3 py-1.5">
-                      <span className="text-[10px] font-mono text-slate-500">
-                        {jsonError ? (
-                          <span className="text-red-500 flex items-center gap-1"><AlertCircle size={11} /> {jsonError}</span>
-                        ) : (
-                          <span className="text-emerald-500/90 flex items-center gap-1 font-medium"><Check size={11} /> Valid JSON</span>
-                        )}
-                      </span>
-                      <span className="text-[10px] font-mono text-slate-400 dark:text-slate-500">
-                        application/json
-                      </span>
-                    </div>
-                  </div>
+                  )}
                 </div>
               )}
 
@@ -1532,14 +1881,17 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
               {body.type === 'formData' && (
                 <div className="flex flex-col gap-3">
                   <div className="flex items-center justify-between">
-                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Multipart Form Data</span>
+                    <div>
+                      <span className="text-xs font-semibold text-slate-700 dark:text-slate-300">Multipart Form Data</span>
+                      <p className="text-[11px] text-slate-400">Send text fields or upload binary files and images</p>
+                    </div>
                     <button
                       type="button"
                       onClick={() => {
                         const list = body.formData || [];
                         setBody({
                           ...body,
-                          formData: [...list, { id: Math.random().toString(36).substring(2, 9), enabled: true, key: '', value: '' }],
+                          formData: [...list, { id: Math.random().toString(36).substring(2, 9), enabled: true, key: '', value: '', type: 'text' }],
                         });
                       }}
                       className="inline-flex items-center gap-1 text-xs font-medium text-blue-600 hover:text-blue-500 dark:text-blue-400"
@@ -1556,7 +1908,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                         onClick={() => {
                           setBody({
                             ...body,
-                            formData: [{ id: Math.random().toString(36).substring(2, 9), enabled: true, key: '', value: '' }],
+                            formData: [{ id: Math.random().toString(36).substring(2, 9), enabled: true, key: '', value: '', type: 'text' }],
                           });
                         }}
                         className="mt-2 text-xs font-semibold text-blue-500 hover:underline"
@@ -1580,8 +1932,9 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                                 />
                               </div>
                             </th>
+                            <th className="w-20 px-2 py-2">Type</th>
                             <th className="px-3 py-2">Field Key</th>
-                            <th className="px-3 py-2">Value</th>
+                            <th className="px-3 py-2">Value / File</th>
                             <th className="w-8 px-2 py-2"></th>
                           </tr>
                         </thead>
@@ -1600,11 +1953,43 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                                   />
                                 </div>
                               </td>
+                              <td className="px-2 py-1.5">
+                                <div className="inline-flex rounded-md border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-700 dark:bg-slate-900 text-[10px]">
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...(body.formData || [])];
+                                      next[idx].type = 'text';
+                                      setBody({ ...body, formData: next });
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${item.type !== 'file'
+                                      ? 'bg-white text-blue-600 shadow-xs dark:bg-slate-800 dark:text-blue-400 font-semibold'
+                                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                                      }`}
+                                  >
+                                    Text
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...(body.formData || [])];
+                                      next[idx].type = 'file';
+                                      setBody({ ...body, formData: next });
+                                    }}
+                                    className={`px-1.5 py-0.5 rounded transition-all cursor-pointer ${item.type === 'file'
+                                      ? 'bg-white text-purple-600 shadow-xs dark:bg-slate-800 dark:text-purple-400 font-semibold'
+                                      : 'text-slate-500 hover:text-slate-700 dark:text-slate-400'
+                                      }`}
+                                  >
+                                    File
+                                  </button>
+                                </div>
+                              </td>
                               <td className="px-3 py-1.5">
                                 <input
                                   type="text"
                                   value={item.key}
-                                  placeholder="key"
+                                  placeholder={item.type === 'file' ? "file / image" : "key"}
                                   onChange={(e) => {
                                     const next = [...(body.formData || [])];
                                     next[idx].key = e.target.value;
@@ -1614,17 +1999,105 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                                 />
                               </td>
                               <td className="px-3 py-1.5">
-                                <input
-                                  type="text"
-                                  value={item.value}
-                                  placeholder="value"
-                                  onChange={(e) => {
-                                    const next = [...(body.formData || [])];
-                                    next[idx].value = e.target.value;
-                                    setBody({ ...body, formData: next });
-                                  }}
-                                  className="w-full bg-transparent font-mono text-xs outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
-                                />
+                                {item.type === 'file' ? (
+                                  <div className="flex items-center gap-2">
+                                    {item.fileData ? (
+                                      <div className="flex items-center gap-2 max-w-full min-w-0">
+                                        {item.fileData.startsWith('data:image/') && (
+                                          <img
+                                            src={item.fileData}
+                                            alt={item.fileName || 'file'}
+                                            className="h-6 w-6 shrink-0 rounded object-cover border border-slate-200 dark:border-slate-700"
+                                          />
+                                        )}
+                                        <div className="min-w-0 truncate font-mono text-[11px] text-slate-800 dark:text-slate-200 max-w-[160px] sm:max-w-[240px]" title={item.fileName}>
+                                          {item.fileName}
+                                        </div>
+                                        {item.fileSize && (
+                                          <span className="shrink-0 text-[10px] text-slate-400">
+                                            ({formatBytes(item.fileSize)})
+                                          </span>
+                                        )}
+                                        <label className="cursor-pointer text-blue-500 hover:underline text-[10px] shrink-0 ml-1">
+                                          Change
+                                          <input
+                                            type="file"
+                                            className="hidden"
+                                            onChange={(e) => {
+                                              const file = e.target.files?.[0];
+                                              if (file) {
+                                                const reader = new FileReader();
+                                                reader.onload = () => {
+                                                  const next = [...(body.formData || [])];
+                                                  next[idx].fileName = file.name;
+                                                  next[idx].fileSize = file.size;
+                                                  next[idx].fileData = reader.result as string;
+                                                  next[idx].value = file.name;
+                                                  setBody({ ...body, formData: next });
+                                                };
+                                                reader.readAsDataURL(file);
+                                              }
+                                            }}
+                                          />
+                                        </label>
+                                        <button
+                                          type="button"
+                                          onClick={() => {
+                                            const next = [...(body.formData || [])];
+                                            next[idx].fileName = undefined;
+                                            next[idx].fileSize = undefined;
+                                            next[idx].fileData = undefined;
+                                            next[idx].value = '';
+                                            setBody({ ...body, formData: next });
+                                          }}
+                                          className="text-slate-400 hover:text-rose-500 p-0.5 cursor-pointer"
+                                          title="Remove selected file"
+                                        >
+                                          <X size={12} />
+                                        </button>
+                                      </div>
+                                    ) : (
+                                      <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 hover:border-purple-400 bg-slate-50 dark:bg-slate-900/50 hover:bg-purple-50/20 text-slate-600 dark:text-slate-400 hover:text-purple-600 dark:hover:text-purple-400 cursor-pointer transition-colors text-[11px]">
+                                        <Upload size={12} />
+                                        <span>Select file / image</span>
+                                        <input
+                                          type="file"
+                                          className="hidden"
+                                          onChange={(e) => {
+                                            const file = e.target.files?.[0];
+                                            if (file) {
+                                              const reader = new FileReader();
+                                              reader.onload = () => {
+                                                const next = [...(body.formData || [])];
+                                                next[idx].fileName = file.name;
+                                                next[idx].fileSize = file.size;
+                                                next[idx].fileData = reader.result as string;
+                                                next[idx].value = file.name;
+                                                if (!next[idx].key) {
+                                                  next[idx].key = file.type.startsWith('image/') ? 'image' : 'file';
+                                                }
+                                                setBody({ ...body, formData: next });
+                                              };
+                                              reader.readAsDataURL(file);
+                                            }
+                                          }}
+                                        />
+                                      </label>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <input
+                                    type="text"
+                                    value={item.value}
+                                    placeholder="value"
+                                    onChange={(e) => {
+                                      const next = [...(body.formData || [])];
+                                      next[idx].value = e.target.value;
+                                      setBody({ ...body, formData: next });
+                                    }}
+                                    className="w-full bg-transparent font-mono text-xs outline-none text-slate-900 dark:text-slate-100 placeholder:text-slate-400"
+                                  />
+                                )}
                               </td>
                               <td className="px-2 py-1.5 text-center">
                                 <button
@@ -1635,7 +2108,7 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                                       formData: (body.formData || []).filter((_, i) => i !== idx),
                                     });
                                   }}
-                                  className="text-slate-400 hover:text-red-500"
+                                  className="text-slate-400 hover:text-red-500 cursor-pointer"
                                 >
                                   <Trash2 size={13} />
                                 </button>
@@ -1685,11 +2158,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                   <button
                     type="button"
                     onClick={() => handleStreamToggle(false)}
-                    className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
-                      streamEnabled === false
-                        ? 'border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/30'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
-                    }`}
+                    className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${streamEnabled === false
+                      ? 'border-emerald-500/60 bg-emerald-500/10 ring-1 ring-emerald-500/30'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                      }`}
                   >
                     <div className="flex items-center gap-1.5 font-bold text-xs text-emerald-600 dark:text-emerald-400">
                       <span>Single Response</span>
@@ -1701,11 +2173,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                   <button
                     type="button"
                     onClick={() => handleStreamToggle(true)}
-                    className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
-                      streamEnabled === true
-                        ? 'border-blue-500/60 bg-blue-500/10 ring-1 ring-blue-500/30'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
-                    }`}
+                    className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${streamEnabled === true
+                      ? 'border-blue-500/60 bg-blue-500/10 ring-1 ring-blue-500/30'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                      }`}
                   >
                     <span className="font-bold text-xs text-blue-600 dark:text-blue-400">Stream Chunks</span>
                     <span className="text-[10px] text-slate-500 mt-1 leading-snug">Forces "stream": true to stream live tokens and aggregate NDJSON/SSE.</span>
@@ -1714,11 +2185,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                   <button
                     type="button"
                     onClick={() => handleStreamToggle(undefined)}
-                    className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
-                      streamEnabled === undefined
-                        ? 'border-slate-400 bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-400'
-                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
-                    }`}
+                    className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${streamEnabled === undefined
+                      ? 'border-slate-400 bg-slate-100 dark:bg-slate-800 ring-1 ring-slate-400'
+                      : 'border-slate-200 dark:border-slate-800 hover:border-slate-300'
+                      }`}
                   >
                     <span className="font-bold text-xs text-slate-700 dark:text-slate-300">Auto / Default</span>
                     <span className="text-[10px] text-slate-500 mt-1 leading-snug">Respects whatever is currently configured in the JSON request body.</span>
@@ -1774,11 +2244,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                           key={cand.path}
                           type="button"
                           onClick={() => setExtractPath(cand.path)}
-                          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-mono transition-colors ${
-                            extractPath === cand.path
-                              ? 'border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold'
-                              : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
-                          }`}
+                          className={`inline-flex items-center gap-1 rounded-lg border px-2 py-1 text-[11px] font-mono transition-colors ${extractPath === cand.path
+                            ? 'border-indigo-500 bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 font-bold'
+                            : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300'
+                            }`}
                           title={`${cand.label} (${cand.preview})`}
                         >
                           <span>{cand.path}</span>
@@ -1822,11 +2291,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                       key={fmt.id}
                       type="button"
                       onClick={() => setResponseFormat(fmt.id as any)}
-                      className={`flex flex-col items-start p-2 rounded-lg border text-left transition-all ${
-                        responseFormat === fmt.id
-                          ? 'border-blue-500 bg-blue-500/10 font-bold text-blue-600 dark:text-blue-400'
-                          : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
-                      }`}
+                      className={`flex flex-col items-start p-2 rounded-lg border text-left transition-all ${responseFormat === fmt.id
+                        ? 'border-blue-500 bg-blue-500/10 font-bold text-blue-600 dark:text-blue-400'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:border-slate-300'
+                        }`}
                     >
                       <span className="text-xs">{fmt.label}</span>
                       <span className="text-[9px] text-slate-400 leading-tight">{fmt.hint}</span>
@@ -1837,6 +2305,656 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
             </div>
           )}
 
+          {/* VARIABLES TAB */}
+          {activeTab === 'variables' && (
+            <div className="flex flex-col gap-4">
+              {/* Header card with Overview, Active Scope & Actions */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-900/40">
+                <div className="flex items-start gap-2.5">
+                  <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400 mt-0.5">
+                    <Braces size={16} />
+                  </div>
+                  <div>
+                    <h3 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-1.5">
+                      <span>Dynamic Variables & Environments</span>
+                      <span className="rounded bg-blue-500/10 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-blue-600 dark:text-blue-400">
+                        {`{{var}}`}
+                      </span>
+                    </h3>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 leading-snug">
+                      Group and interpolate variables across URL, Headers, Params, Auth, or JSON Body.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 self-start sm:self-center">
+                  {/* Active Scope Selector */}
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Scope:</span>
+                    <div className="w-48 sm:w-56">
+                      <CustomSelect
+                        value={activeVariableGroup}
+                        onChange={(val) => setActiveVariableGroup(val)}
+                        options={availableGroups.map((grp) => ({
+                          value: grp,
+                          label: grp === 'All' ? 'All Groups (Default)' : `Group: ${grp}`,
+                          icon: <Folder size={12} className={grp === 'All' ? 'text-blue-500' : 'text-slate-400'} />,
+                          description: grp === 'All' ? 'Active in all groups' : `Filter to "${grp}" group`,
+                        }))}
+                        renderTrigger={({ ref, isOpen, props }) => (
+                          <button
+                            ref={ref}
+                            type="button"
+                            {...props}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              props.onClick?.(e);
+                            }}
+                            className={`flex h-8 w-full items-center justify-between gap-1.5 px-2.5 rounded-lg border text-xs font-semibold transition-all outline-none cursor-pointer ${isOpen
+                              ? 'border-blue-500 ring-2 ring-blue-500/20 bg-blue-50/40 dark:bg-blue-950/20 text-blue-600 dark:text-blue-400'
+                              : 'border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-200 hover:border-slate-300 dark:hover:border-slate-600'
+                              }`}
+                          >
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Folder size={12} className={activeVariableGroup === 'All' ? 'text-blue-500 shrink-0' : 'text-slate-400 shrink-0'} />
+                              <span className="truncate">
+                                {activeVariableGroup === 'All' ? 'All Groups (Default)' : `Group: ${activeVariableGroup}`}
+                              </span>
+                            </div>
+                            <ChevronDown
+                              size={12}
+                              className={`text-slate-400 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                            />
+                          </button>
+                        )}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Add Variable Button */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const newVar: ApiVariable = {
+                        id: Math.random().toString(36).substring(2, 9),
+                        enabled: true,
+                        key: '',
+                        value: '',
+                        group: selectedGroupFilter === 'All' ? 'General' : selectedGroupFilter,
+                        description: '',
+                        isSecret: false,
+                      };
+                      setVariables([...variables, newVar]);
+                    }}
+                    className="inline-flex h-7.5 items-center gap-1 rounded-lg bg-blue-600 hover:bg-blue-500 px-2.5 text-xs font-semibold text-white transition-all shadow-xs cursor-pointer active:scale-95"
+                  >
+                    <Plus size={13} />
+                    <span>Add Variable</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Group Filter Chips & Search Bar */}
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+                {/* Group Filter Tabs */}
+                <div
+                  className="flex items-center gap-1.5 overflow-x-auto no-scrollbar scrollbar-none pb-0.5"
+                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                >
+                  <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mr-1 shrink-0">
+                    Filter:
+                  </span>
+                  {availableGroups.map((grp) => {
+                    const count = grp === 'All'
+                      ? variables.length
+                      : variables.filter((v) => (v.group || 'General').toLowerCase() === grp.toLowerCase()).length;
+                    const isSelected = selectedGroupFilter.toLowerCase() === grp.toLowerCase();
+                    return (
+                      <button
+                        key={grp}
+                        type="button"
+                        onClick={() => setSelectedGroupFilter(grp)}
+                        className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-medium whitespace-nowrap transition-all cursor-pointer ${isSelected
+                          ? 'bg-blue-600 text-white shadow-xs font-semibold'
+                          : 'bg-slate-100 dark:bg-slate-800/80 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700/80'
+                          }`}
+                      >
+                        <Folder size={11} className={isSelected ? 'text-white' : 'text-slate-400'} />
+                        <span>{grp}</span>
+                        <span className={`text-[10px] px-1 rounded-full ${isSelected ? 'bg-blue-700/50 text-white' : 'bg-slate-200 dark:bg-slate-700 text-slate-500'}`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+
+                  {/* Add Group Inline Trigger */}
+                  {showAddGroupInput ? (
+                    <div className="flex items-center gap-1 shrink-0 animate-in fade-in">
+                      <input
+                        type="text"
+                        value={newGroupNameInput}
+                        onChange={(e) => setNewGroupNameInput(e.target.value)}
+                        placeholder="Group name..."
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && newGroupNameInput.trim()) {
+                            setSelectedGroupFilter(newGroupNameInput.trim());
+                            setNewGroupNameInput('');
+                            setShowAddGroupInput(false);
+                          } else if (e.key === 'Escape') {
+                            setShowAddGroupInput(false);
+                          }
+                        }}
+                        autoFocus
+                        className="h-7 w-28 rounded-md border border-blue-500 bg-white px-2 text-xs outline-none dark:bg-slate-900 dark:text-slate-100"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (newGroupNameInput.trim()) {
+                            setSelectedGroupFilter(newGroupNameInput.trim());
+                            setNewGroupNameInput('');
+                          }
+                          setShowAddGroupInput(false);
+                        }}
+                        className="h-7 px-1.5 rounded bg-blue-600 text-white text-xs font-bold hover:bg-blue-500 cursor-pointer"
+                      >
+                        OK
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAddGroupInput(false)}
+                        className="h-7 px-1 rounded text-slate-400 hover:text-slate-600 cursor-pointer"
+                      >
+                        <X size={13} />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => setShowAddGroupInput(true)}
+                      className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-400 text-xs font-medium whitespace-nowrap transition-colors cursor-pointer"
+                    >
+                      <Plus size={11} />
+                      <span>Group</span>
+                    </button>
+                  )}
+                </div>
+
+                {/* Search Box */}
+                <div className="relative min-w-[180px] sm:w-48 shrink-0">
+                  <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={variableSearchQuery}
+                    onChange={(e) => setVariableSearchQuery(e.target.value)}
+                    placeholder="Search variables..."
+                    className="h-7.5 w-full rounded-lg border border-slate-200 bg-white pl-7 pr-6 text-xs text-slate-800 placeholder:text-slate-400 outline-none focus:border-blue-500 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100"
+                  />
+                  {variableSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setVariableSearchQuery('')}
+                      className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      <X size={11} />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Variables Table */}
+              {filteredVariables.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 px-4 rounded-xl border border-dashed border-slate-200 dark:border-slate-800 text-center">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-blue-500/10 text-blue-500 mb-2">
+                    <Braces size={20} />
+                  </div>
+                  <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                    {variables.length === 0
+                      ? 'No variables created yet'
+                      : 'No variables match the selected filter'}
+                  </p>
+                  <p className="text-[11px] text-slate-500 max-w-sm mt-0.5 mb-3">
+                    Variables allow you to parametrize endpoints, tokens, IDs, and payloads. Use them anywhere with{' '}
+                    <code className="text-blue-500 font-mono font-semibold">{'{{var}}'}</code>.
+                  </p>
+                  {variables.length === 0 && (
+                    <div className="flex flex-wrap items-center justify-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVariables([
+                            {
+                              id: Math.random().toString(36).substring(2, 9),
+                              enabled: true,
+                              key: 'baseUrl',
+                              value: 'http://localhost:11434',
+                              group: 'Ollama',
+                              description: 'Local Ollama API server',
+                              isSecret: false,
+                            },
+                            {
+                              id: Math.random().toString(36).substring(2, 9),
+                              enabled: true,
+                              key: 'model',
+                              value: 'gemma4:e2b',
+                              group: 'Ollama',
+                              description: 'Active model name',
+                              isSecret: false,
+                            },
+                          ]);
+                          setSelectedGroupFilter('All');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-blue-500 hover:text-blue-500 shadow-xs cursor-pointer"
+                      >
+                        <Sparkles size={12} className="text-amber-500" />
+                        <span>Load Ollama Preset</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setVariables([
+                            {
+                              id: Math.random().toString(36).substring(2, 9),
+                              enabled: true,
+                              key: 'baseUrl',
+                              value: 'http://localhost:3000',
+                              group: 'Dev',
+                              description: 'Local development server',
+                            },
+                            {
+                              id: Math.random().toString(36).substring(2, 9),
+                              enabled: true,
+                              key: 'baseUrl',
+                              value: 'https://api.example.com',
+                              group: 'Prod',
+                              description: 'Production API endpoint',
+                            },
+                            {
+                              id: Math.random().toString(36).substring(2, 9),
+                              enabled: true,
+                              key: 'token',
+                              value: 'sk-my-secret-key-12345',
+                              group: 'Auth',
+                              description: 'Bearer authorization token',
+                              isSecret: true,
+                            },
+                          ]);
+                          setSelectedGroupFilter('All');
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-xs font-medium text-slate-700 dark:text-slate-200 hover:border-blue-500 hover:text-blue-500 shadow-xs cursor-pointer"
+                      >
+                        <Layers size={12} className="text-blue-500" />
+                        <span>Load Dev/Prod Environments</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const newVar: ApiVariable = {
+                            id: Math.random().toString(36).substring(2, 9),
+                            enabled: true,
+                            key: '',
+                            value: '',
+                            group: 'General',
+                            description: '',
+                            isSecret: false,
+                          };
+                          setVariables([...variables, newVar]);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 text-xs font-medium text-white shadow-xs cursor-pointer"
+                      >
+                        <Plus size={12} />
+                        <span>Add Empty Variable</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="overflow-hidden rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs">
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-left text-xs min-w-[620px]">
+                      <thead className="bg-slate-50 dark:bg-slate-900/60 text-slate-500 border-b border-slate-200 dark:border-slate-800 font-semibold">
+                        <tr>
+                          <th className="w-8 px-3 py-2 text-center">
+                            <div className="flex items-center justify-center">
+                              <ModernCheckbox
+                                checked={variables.length > 0 && variables.every((v) => v.enabled !== false)}
+                                onChange={(checked: boolean) => {
+                                  const next = variables.map((v) => ({ ...v, enabled: checked }));
+                                  setVariables(next);
+                                }}
+                              />
+                            </div>
+                          </th>
+                          <th className="px-3 py-2 w-48">Variable Name</th>
+                          <th className="px-3 py-2">Value</th>
+                          <th className="px-3 py-2 w-32">Group</th>
+                          <th className="px-3 py-2 w-40">Description</th>
+                          <th className="w-20 px-2 py-2 text-right">Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
+                        {filteredVariables.map((v) => {
+                          const originalIdx = variables.findIndex((orig) => orig.id === v.id);
+                          const isSecret = Boolean(v.isSecret);
+                          const isShowingSecret = Boolean(showSecretMap[v.id]);
+
+                          return (
+                            <tr key={v.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30 transition-colors">
+                              {/* Enable Checkbox */}
+                              <td className="px-3 py-1.5 text-center">
+                                <div className="flex items-center justify-center">
+                                  <ModernCheckbox
+                                    checked={v.enabled !== false}
+                                    onChange={(checked: boolean) => {
+                                      const next = [...variables];
+                                      next[originalIdx].enabled = checked;
+                                      setVariables(next);
+                                    }}
+                                  />
+                                </div>
+                              </td>
+
+                              {/* Key with {{ }} frame */}
+                              <td className="px-3 py-1.5">
+                                <div className="flex items-center rounded-md border border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/80 px-2 py-1 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/20">
+                                  <span className="font-mono text-slate-400 select-none text-[11px] font-bold mr-0.5">
+                                    {'{{'}
+                                  </span>
+                                  <input
+                                    type="text"
+                                    value={v.key}
+                                    placeholder="var_name"
+                                    onChange={(e) => {
+                                      const sanitized = e.target.value.replace(/[^a-zA-Z0-9_.-]/g, '');
+                                      const next = [...variables];
+                                      next[originalIdx].key = sanitized;
+                                      setVariables(next);
+                                    }}
+                                    className="w-full bg-transparent font-mono text-xs font-semibold text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none"
+                                  />
+                                  <span className="font-mono text-slate-400 select-none text-[11px] font-bold ml-0.5">
+                                    {'}}'}
+                                  </span>
+                                </div>
+                              </td>
+
+                              {/* Value with Secret Toggle */}
+                              <td className="px-3 py-1.5">
+                                <div className="relative flex items-center">
+                                  <input
+                                    type={isSecret && !isShowingSecret ? 'password' : 'text'}
+                                    value={v.value}
+                                    placeholder="value"
+                                    onChange={(e) => {
+                                      const next = [...variables];
+                                      next[originalIdx].value = e.target.value;
+                                      setVariables(next);
+                                    }}
+                                    className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-2.5 py-1 pr-7 font-mono text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/20"
+                                  />
+                                  {isSecret && (
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setShowSecretMap((prev) => ({ ...prev, [v.id]: !prev[v.id] }));
+                                      }}
+                                      className="absolute right-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                                      title={isShowingSecret ? 'Hide secret' : 'Reveal secret'}
+                                    >
+                                      {isShowingSecret ? <EyeOff size={12} /> : <Eye size={12} />}
+                                    </button>
+                                  )}
+                                </div>
+                              </td>
+
+                              {/* Group */}
+                              <td className="px-3 py-1.5">
+                                <input
+                                  type="text"
+                                  value={v.group}
+                                  placeholder="General"
+                                  onChange={(e) => {
+                                    const next = [...variables];
+                                    next[originalIdx].group = e.target.value;
+                                    setVariables(next);
+                                  }}
+                                  className="w-full rounded-md border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-2 py-1 text-xs text-slate-700 dark:text-slate-300 placeholder:text-slate-400 outline-none focus:border-blue-500"
+                                />
+                              </td>
+
+                              {/* Description */}
+                              <td className="px-3 py-1.5">
+                                <input
+                                  type="text"
+                                  value={v.description || ''}
+                                  placeholder="Optional note"
+                                  onChange={(e) => {
+                                    const next = [...variables];
+                                    next[originalIdx].description = e.target.value;
+                                    setVariables(next);
+                                  }}
+                                  className="w-full rounded-md border border-transparent bg-transparent px-2 py-1 text-xs text-slate-500 placeholder:text-slate-400 outline-none hover:border-slate-200 focus:border-slate-300 dark:hover:border-slate-800 dark:focus:border-slate-700"
+                                />
+                              </td>
+
+                              {/* Actions */}
+                              <td className="px-2 py-1.5 text-right whitespace-nowrap">
+                                <div className="inline-flex items-center gap-1 justify-end">
+                                  {/* Copy {{var}} chip */}
+                                  <button
+                                    type="button"
+                                    onClick={async () => {
+                                      if (!v.key) return;
+                                      const text = `{{${v.key}}}`;
+                                      await navigator.clipboard.writeText(text);
+                                      setCopiedVarKey(v.key);
+                                      setTimeout(() => setCopiedVarKey(null), 1500);
+                                    }}
+                                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${copiedVarKey === v.key
+                                      ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                      : 'text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                      }`}
+                                    title={`Copy {{${v.key || 'var'}}} to clipboard`}
+                                  >
+                                    {copiedVarKey === v.key ? <Check size={12} /> : <Copy size={12} />}
+                                  </button>
+
+                                  {/* Secret Masking Toggle */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = [...variables];
+                                      next[originalIdx].isSecret = !v.isSecret;
+                                      setVariables(next);
+                                    }}
+                                    className={`p-1.5 rounded-lg transition-colors cursor-pointer ${isSecret
+                                      ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                      : 'text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                      }`}
+                                    title={isSecret ? 'Marked as Secret (masked)' : 'Mark as Secret'}
+                                  >
+                                    {isSecret ? <Lock size={12} /> : <Unlock size={12} />}
+                                  </button>
+
+                                  {/* Delete Variable */}
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      const next = variables.filter((_, i) => i !== originalIdx);
+                                      setVariables(next);
+                                    }}
+                                    className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 transition-colors cursor-pointer"
+                                    title="Delete variable"
+                                  >
+                                    <Trash2 size={12} />
+                                  </button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Quick Preset Buttons Row */}
+              <div className="flex flex-wrap items-center justify-between gap-2 p-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/30">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    <Sparkles size={12} className="text-amber-500" />
+                    <span>Presets:</span>
+                  </span>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const existingKeys = new Set(variables.map((v) => `${v.group}.${v.key}`));
+                      const toAdd: ApiVariable[] = [];
+                      if (!existingKeys.has('Ollama.baseUrl')) {
+                        toAdd.push({
+                          id: Math.random().toString(36).substring(2, 9),
+                          enabled: true,
+                          key: 'baseUrl',
+                          value: 'http://localhost:11434',
+                          group: 'Ollama',
+                          description: 'Ollama server root',
+                        });
+                      }
+                      if (!existingKeys.has('Ollama.model')) {
+                        toAdd.push({
+                          id: Math.random().toString(36).substring(2, 9),
+                          enabled: true,
+                          key: 'model',
+                          value: 'gemma4:e2b',
+                          group: 'Ollama',
+                          description: 'Default LLM model',
+                        });
+                      }
+                      setVariables([...variables, ...toAdd]);
+                      setSelectedGroupFilter('Ollama');
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:border-blue-500 hover:text-blue-500 shadow-xs cursor-pointer"
+                  >
+                    <span>+ Ollama (Local)</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const toAdd: ApiVariable[] = [
+                        {
+                          id: Math.random().toString(36).substring(2, 9),
+                          enabled: true,
+                          key: 'baseUrl',
+                          value: 'http://localhost:3000',
+                          group: 'Dev',
+                          description: 'Development server',
+                        },
+                        {
+                          id: Math.random().toString(36).substring(2, 9),
+                          enabled: true,
+                          key: 'baseUrl',
+                          value: 'https://api.myproduction.com',
+                          group: 'Prod',
+                          description: 'Production server',
+                        },
+                      ];
+                      setVariables([...variables, ...toAdd]);
+                      setSelectedGroupFilter('Dev');
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:border-blue-500 hover:text-blue-500 shadow-xs cursor-pointer"
+                  >
+                    <span>+ Dev & Prod Envs</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const tokenVar: ApiVariable = {
+                        id: Math.random().toString(36).substring(2, 9),
+                        enabled: true,
+                        key: 'token',
+                        value: 'sk-my-secret-key-12345',
+                        group: 'Auth',
+                        description: 'Authorization token',
+                        isSecret: true,
+                      };
+                      setVariables([...variables, tokenVar]);
+                      setSelectedGroupFilter('Auth');
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-[11px] font-medium text-slate-700 dark:text-slate-300 hover:border-blue-500 hover:text-blue-500 shadow-xs cursor-pointer"
+                  >
+                    <span>+ Auth Token</span>
+                  </button>
+                </div>
+
+                {variables.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (window.confirm('Are you sure you want to clear all variables?')) {
+                        setVariables([]);
+                        setSelectedGroupFilter('All');
+                      }
+                    }}
+                    className="text-[11px] text-slate-400 hover:text-red-500 transition-colors cursor-pointer"
+                  >
+                    Clear all
+                  </button>
+                )}
+              </div>
+
+              {/* Live Click-to-Copy Chips & Syntax Cheatsheet */}
+              {variables.filter((v) => v.enabled !== false && v.key.trim()).length > 0 && (
+                <div className="flex flex-col gap-2 p-3 rounded-xl border border-blue-500/20 bg-blue-500/5 dark:bg-blue-500/10">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] font-bold text-blue-700 dark:text-blue-300 flex items-center gap-1.5">
+                      <Copy size={12} />
+                      <span>Click any variable chip below to copy:</span>
+                    </span>
+                    {copiedVarKey && (
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+                        Copied {`{{${copiedVarKey}}}`}!
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex flex-wrap gap-1.5">
+                    {variables
+                      .filter((v) => v.enabled !== false && v.key.trim())
+                      .map((v) => (
+                        <button
+                          key={v.id}
+                          type="button"
+                          onClick={async () => {
+                            await navigator.clipboard.writeText(`{{${v.key}}}`);
+                            setCopiedVarKey(v.key);
+                            setTimeout(() => setCopiedVarKey(null), 1500);
+                          }}
+                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md border border-blue-500/30 bg-white dark:bg-slate-900 text-[11px] font-mono text-blue-600 dark:text-blue-400 hover:border-blue-500 hover:scale-105 transition-all shadow-xs cursor-pointer"
+                          title={`Click to copy {{${v.key}}}\nValue: ${v.isSecret ? '●●●●●●' : v.value}\nGroup: ${v.group || 'General'}`}
+                        >
+                          <span className="font-semibold">{`{{${v.key}}}`}</span>
+                          <span className="text-[9px] text-slate-400 max-w-[100px] truncate">
+                            {v.isSecret ? '●●●' : `=${v.value}`}
+                          </span>
+                        </button>
+                      ))}
+                  </div>
+
+                  <div className="text-[10px] text-slate-500 dark:text-slate-400 pt-1 border-t border-blue-500/15">
+                    <strong>Syntax:</strong> Use <code className="font-mono text-blue-600 dark:text-blue-400 font-semibold">{'{{var}}'}</code> anywhere, or prefix with group name like <code className="font-mono text-blue-600 dark:text-blue-400 font-semibold">{'{{dev.baseUrl}}'}</code> to target a specific group regardless of active scope.
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* SETTINGS TAB */}
           {activeTab === 'settings' && (
             <div className="flex flex-col gap-4">
@@ -1844,17 +2962,19 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                 {/* Response Parsing Type */}
                 <div className="flex flex-col gap-1.5">
                   <label className="text-xs font-semibold text-slate-700 dark:text-slate-300">Parse Response As</label>
-                  <div className="flex h-9 rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900">
+                  <div
+                    className="flex items-center h-9 rounded-lg border border-slate-200 bg-slate-100 p-0.5 dark:border-slate-800 dark:bg-slate-900 overflow-x-auto scrollbar-none max-w-full"
+                    style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  >
                     {RESPONSE_TYPES.map((type) => (
                       <button
                         key={type.value}
                         type="button"
                         onClick={() => setResponseType(type.value)}
-                        className={`flex-1 rounded-md text-xs font-medium transition-all ${
-                          responseType === type.value
-                            ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400'
-                            : 'text-slate-500 hover:text-slate-800 dark:text-slate-400'
-                        }`}
+                        className={`flex-1 min-w-[62px] px-2.5 py-1 rounded-md text-xs font-medium whitespace-nowrap shrink-0 transition-all ${responseType === type.value
+                          ? 'bg-white text-blue-600 shadow-sm dark:bg-slate-800 dark:text-blue-400 font-semibold'
+                          : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-slate-200'
+                          }`}
                       >
                         {type.label}
                       </button>
@@ -1903,23 +3023,15 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                         </button>
                       </div>
                     ) : (
-                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400">
-                        ∞ None
+                      <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] font-medium text-slate-400 inline-flex items-center gap-1">
+                        <Infinity size={11} className="shrink-0 text-slate-400" />
+                        <span>None</span>
                       </span>
                     )}
                   </div>
-                  <div className="flex items-center justify-between text-[11px] text-slate-400">
-                    <span>Leave empty to disable timeout for long LLM streams or slow jobs.</span>
-                    {!isTimeoutEmpty && (
-                      <button
-                        type="button"
-                        onClick={() => setTimeoutVal('')}
-                        className="text-blue-500 hover:underline font-medium cursor-pointer"
-                      >
-                        Remove timeout
-                      </button>
-                    )}
-                  </div>
+                  <p className="text-[11px] text-slate-400">
+                    Leave empty to disable timeout for long LLM streams or slow jobs.
+                  </p>
                 </div>
               </div>
 
@@ -1932,11 +3044,10 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
                       key={opt.value}
                       type="button"
                       onClick={() => setView(opt.value)}
-                      className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${
-                        view === opt.value
-                          ? 'border-blue-500/60 bg-blue-500/5 ring-1 ring-blue-500/30'
-                          : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                      }`}
+                      className={`flex flex-col items-start p-2.5 rounded-xl border text-left transition-all ${view === opt.value
+                        ? 'border-blue-500/60 bg-blue-500/5 ring-1 ring-blue-500/30'
+                        : 'border-slate-200 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
+                        }`}
                     >
                       <span className="text-xs font-bold text-slate-800 dark:text-slate-200">{opt.label}</span>
                       <span className="text-[10px] text-slate-500 mt-0.5 leading-snug">{opt.hint}</span>
@@ -2206,8 +3317,214 @@ export function InlineApiEditor({ initialUrl, path, onClose }: InlineApiEditorPr
           </div>
         </div>
       )}
+
+      {/* Insert Image as Base64 Modal for JSON body */}
+      <JsonImageBase64Modal
+        isOpen={showImageBase64Modal}
+        onClose={() => {
+          setShowImageBase64Modal(false);
+          setDroppedImageFiles([]);
+        }}
+        currentJson={body.rawJson || ''}
+        initialFiles={droppedImageFiles}
+        cursorPosition={cursorPosition}
+        onInsertAtCursor={handleInsertAtCursor}
+        onUpdateFullJson={handleUpdateFullJson}
+      />
     </div>
   );
 
-  return createPortal(modalContent, document.body);
+  return (
+    <>
+      {createPortal(modalContent, document.body)}
+
+      {/* Fullscreen JSON Editor Portal */}
+      {isJsonFullscreen && typeof document !== 'undefined' && createPortal(
+        <div
+          role="dialog"
+          aria-label="Fullscreen JSON Editor"
+          className="fixed inset-0 z-[10005] flex flex-col w-screen h-[100dvh] bg-white text-slate-900 dark:bg-[#0b1120] dark:text-slate-100 overflow-hidden animate-in fade-in duration-150"
+          onMouseDown={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Header */}
+          <div className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 py-2.5 bg-slate-50/90 dark:bg-slate-900/80 backdrop-blur-md pt-[max(0.625rem,env(safe-area-inset-top))]">
+            <div className="flex min-w-0 items-center gap-2.5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500">
+                <FileJson size={16} />
+              </div>
+              <div className="min-w-0">
+                <div className="truncate font-mono text-[12px] font-semibold text-slate-900 dark:text-slate-100" title={jsonFileName}>
+                  {jsonFileName}
+                </div>
+                <div className="mt-0.5 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                  {['JSON', formatBytes(jsonSize), `${jsonLineCount} ${jsonLineCount === 1 ? 'line' : 'lines'}`].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+            </div>
+
+            {/* Actions Toolbar */}
+            <div className="flex shrink-0 items-center gap-0.5 sm:gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  setDroppedImageFiles([]);
+                  setShowImageBase64Modal(true);
+                }}
+                className="inline-flex h-8 items-center gap-1.5 px-2 sm:px-2.5 rounded-lg text-xs font-semibold text-purple-600 dark:text-purple-400 bg-purple-500/10 hover:bg-purple-500/20 dark:bg-purple-500/15 dark:hover:bg-purple-500/25 transition-colors cursor-pointer mr-0.5"
+                title="Upload image and convert to Base64 (Ollama, Vision models)"
+                aria-label="Upload image and convert to Base64"
+              >
+                <ImageIcon size={14} className="shrink-0" />
+                <span className="hidden xs:inline">Image (Base64)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setWordWrap(!wordWrap)}
+                className={`inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 ${wordWrap ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : ''
+                  }`}
+                title={wordWrap ? 'Word wrap: on' : 'Word wrap: off'}
+                aria-label="Toggle word wrap"
+              >
+                <WrapText size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={handlePrettifyJson}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-blue-600 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-blue-400"
+                title="Prettify / Format JSON with Prettier"
+                aria-label="Prettify JSON with Prettier"
+              >
+                <PrettierIcon size={15} />
+              </button>
+              <button
+                type="button"
+                onClick={handleCopyJson}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200"
+                title={copiedJson ? 'Copied' : 'Copy JSON'}
+                aria-label="Copy JSON"
+              >
+                {copiedJson ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
+              </button>
+              <button
+                type="button"
+                onClick={handleClearJson}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-200/60 hover:text-rose-500 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-rose-400"
+                title="Reset JSON to empty object"
+                aria-label="Reset JSON"
+              >
+                <Trash2 size={15} />
+              </button>
+              <div className="h-4 w-px bg-slate-200 dark:bg-slate-800 mx-0.5 hidden xs:block" />
+              <button
+                type="button"
+                onClick={() => setIsJsonFullscreen(false)}
+                className="inline-flex h-8 items-center gap-1.5 px-2.5 sm:px-3 rounded-lg text-xs font-semibold bg-blue-600 hover:bg-blue-500 text-white shadow-sm transition-all active:scale-95 cursor-pointer"
+                title="Exit full screen (Esc)"
+                aria-label="Exit full screen"
+              >
+                <Minimize2 size={14} />
+                <span className="hidden sm:inline">Exit Fullscreen</span>
+              </button>
+            </div>
+          </div>
+
+          {/* Monaco Editor in Fullscreen */}
+          <div
+            className="relative flex-1 w-full min-h-0 bg-[#0f172a]"
+            onDragOver={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                const imgFiles = Array.from(e.dataTransfer.files).filter((f) => f.type.startsWith('image/'));
+                if (imgFiles.length > 0) {
+                  setDroppedImageFiles(imgFiles);
+                  setShowImageBase64Modal(true);
+                }
+              }
+            }}
+          >
+            <MonacoEditor
+              height="100%"
+              defaultLanguage="json"
+              language="json"
+              theme={isDark ? "api-vs-dark" : "api-light"}
+              value={body.rawJson || ''}
+              onChange={(val) => handleJsonChange(val || '')}
+              onMount={(editor, monaco) => {
+                editorRef.current = editor;
+                try {
+                  if (monaco?.languages?.json?.jsonDefaults) {
+                    monaco.languages.json.jsonDefaults.setDiagnosticsOptions({
+                      validate: false,
+                      allowComments: true,
+                      trailingCommas: 'ignore',
+                    });
+                  }
+                  const model = editor.getModel();
+                  if (model && monaco?.editor) {
+                    monaco.editor.setModelMarkers(model, 'json', []);
+                  }
+                } catch { }
+                if (cursorPosition) {
+                  try {
+                    editor.setPosition(cursorPosition);
+                    editor.revealPositionInCenter(cursorPosition);
+                  } catch { }
+                }
+                editor.onDidChangeCursorPosition((e) => {
+                  setCursorPosition(e.position);
+                });
+              }}
+              options={monacoOptions}
+              beforeMount={handleMonacoBeforeMount}
+              loading={monacoLoadingFallback}
+            />
+          </div>
+
+          {/* Status bar */}
+          <div className="flex shrink-0 items-center justify-between border-t border-slate-200 dark:border-slate-800 bg-slate-50/90 dark:bg-slate-900/80 px-3 sm:px-4 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-[11px] font-mono text-slate-500 truncate">
+                {jsonError ? (
+                  <span className="text-red-500 flex items-center gap-1.5"><AlertCircle size={13} className="shrink-0" /> <span className="truncate">{jsonError}</span></span>
+                ) : (
+                  <span className="text-emerald-500 flex items-center gap-1.5 font-medium">
+                    <Check size={13} className="shrink-0" />
+                    <span>{/\{\{[a-zA-Z0-9_.-]+\}\}/.test(body.rawJson || '') ? 'Valid JSON (Dynamic Variables Enabled)' : 'Valid JSON'}</span>
+                  </span>
+                )}
+              </span>
+            </div>
+
+            <div className="hidden md:flex items-center gap-1.5 text-[11px] text-slate-400 font-mono">
+              <span>Press</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-slate-200 dark:bg-slate-800 text-[10px] font-semibold text-slate-600 dark:text-slate-300 border border-slate-300 dark:border-slate-700">Esc</kbd>
+              <span>to exit full screen</span>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="text-[11px] font-mono text-slate-400 dark:text-slate-500">
+                application/json
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsJsonFullscreen(false)}
+                className="inline-flex items-center gap-1 text-[11px] font-medium text-blue-600 dark:text-blue-400 hover:underline cursor-pointer sm:hidden"
+              >
+                <Minimize2 size={11} />
+                <span>Exit</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
+    </>
+  );
 }

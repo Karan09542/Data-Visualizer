@@ -291,6 +291,7 @@ input[type="number"] {
 }
 
 @theme inline {
+  --breakpoint-xs: 480px;
   --font-heading: var(--font-sans);
   --font-sans: 'Geist Variable', sans-serif;
   --color-sidebar-ring: var(--sidebar-ring);

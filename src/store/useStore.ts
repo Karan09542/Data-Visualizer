@@ -4,6 +4,7 @@ import { persist } from "zustand/middleware";
 import { parseInput } from "../utils/parser";
 import { transformToTree, type ApiResponseView } from "../utils/transformer";
 import type { KeyValueParam, AuthConfig, BodyConfig } from "../utils/curlParser";
+import type { ApiVariable } from "../utils/variableInterpolator";
 
 import SearchWorker from "../utils/searchWorker?worker";
 
@@ -237,6 +238,7 @@ export interface StoreState {
     y: number;
     width: number;
     height?: number;
+    initialTab?: 'params' | 'headers' | 'auth' | 'body' | 'variables' | 'response' | 'settings';
   } | null;
   setInlineApiEditor: (
     editor: {
@@ -247,6 +249,7 @@ export interface StoreState {
       y: number;
       width: number;
       height?: number;
+      initialTab?: 'params' | 'headers' | 'auth' | 'body' | 'variables' | 'response' | 'settings';
     } | null,
   ) => void;
   apiNodeConfig: Record<
@@ -263,6 +266,8 @@ export interface StoreState {
       extractPath?: string;
       responseFormat?: 'auto' | 'json' | 'markdown' | 'text';
       streamEnabled?: boolean;
+      variables?: ApiVariable[];
+      activeVariableGroup?: string;
     }
   >;
   setApiNodeConfig: (
@@ -279,6 +284,8 @@ export interface StoreState {
       extractPath?: string;
       responseFormat?: 'auto' | 'json' | 'markdown' | 'text';
       streamEnabled?: boolean;
+      variables?: ApiVariable[];
+      activeVariableGroup?: string;
     },
   ) => void;
   apiNodeResponses: Record<string, any>;

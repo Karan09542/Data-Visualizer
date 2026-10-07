@@ -2,15 +2,23 @@ import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { useStore } from '../store/useStore';
 import { resolveApiResponseView } from '../utils/transformer';
-import { buildCurl, detectCandidatePaths } from '../utils/curlParser';
+import { buildCurl, detectCandidatePaths, dataURItoBlob, type BodyConfig } from '../utils/curlParser';
+import {
+  interpolateVariables,
+  interpolateJsonString,
+  substituteInParamList,
+  substituteInAuth,
+  substituteInBody,
+  type ApiVariable,
+} from '../utils/variableInterpolator';
+import CustomSelect from './CustomSelect';
+import { PrettierIcon } from './InlineApiEditor';
 import {
   Activity,
   AlertCircle,
-  Ban,
   Check,
   ChevronDown,
   ChevronRight,
-  CircleStop,
   Copy,
   FileCode,
   FileJson,
@@ -28,6 +36,12 @@ import {
   TimerOff,
   Trash2,
   X,
+  Zap,
+  Box,
+  Infinity,
+  ArrowRight,
+  Maximize2,
+  WrapText,
 } from 'lucide-react';
 
 interface ApiNodeRendererProps {
@@ -52,7 +66,47 @@ const methodClassMap: Record<string, string> = {
   PUT: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   PATCH: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
   DELETE: 'bg-red-500/10 text-red-600 dark:text-red-400',
+  HEAD: 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400',
+  OPTIONS: 'bg-slate-500/10 text-slate-600 dark:text-slate-400',
 };
+
+const HTTP_METHOD_OPTIONS = [
+  {
+    value: 'GET',
+    label: 'GET',
+    icon: <span className="inline-block h-2 w-2 rounded-full bg-emerald-500" />,
+  },
+  {
+    value: 'POST',
+    label: 'POST',
+    icon: <span className="inline-block h-2 w-2 rounded-full bg-blue-500" />,
+  },
+  {
+    value: 'PUT',
+    label: 'PUT',
+    icon: <span className="inline-block h-2 w-2 rounded-full bg-amber-500" />,
+  },
+  {
+    value: 'PATCH',
+    label: 'PATCH',
+    icon: <span className="inline-block h-2 w-2 rounded-full bg-violet-500" />,
+  },
+  {
+    value: 'DELETE',
+    label: 'DELETE',
+    icon: <span className="inline-block h-2 w-2 rounded-full bg-red-500" />,
+  },
+  {
+    value: 'HEAD',
+    label: 'HEAD',
+    icon: <span className="inline-block h-2 w-2 rounded-full bg-cyan-500" />,
+  },
+  {
+    value: 'OPTIONS',
+    label: 'OPTIONS',
+    icon: <span className="inline-block h-2 w-2 rounded-full bg-slate-400" />,
+  },
+];
 
 const getMethodClass = (method: string) =>
   methodClassMap[method] || 'bg-slate-500/10 text-slate-600 dark:text-slate-300';
@@ -70,14 +124,14 @@ const formatTimeout = (timeout?: number) => {
   return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
 };
 
-const getEndpointHost = (value: string) => {
-  const trimmed = value.trim();
-  if (!trimmed) return 'No endpoint yet';
+const getEndpointHost = (value: string, variables?: ApiVariable[], activeGroup?: string) => {
+  const interpolated = interpolateVariables(value, variables, activeGroup).trim();
+  if (!interpolated) return 'No endpoint yet';
 
   try {
-    return new URL(trimmed).host || 'Endpoint';
+    return new URL(interpolated).host || 'Endpoint';
   } catch {
-    return 'Custom endpoint';
+    return interpolated.split('/')[0] || 'Custom endpoint';
   }
 };
 
@@ -130,9 +184,12 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
   const setInlineApiEditor = useStore((state) => state.setInlineApiEditor);
   const apiNodeConfig = useStore((state) => state.apiNodeConfig);
   const setApiNodeConfig = useStore((state) => state.setApiNodeConfig);
+  const proxyServers = useStore((state) => state.proxyServers);
+  const useDefaultProxy = useStore((state) => state.useDefaultProxy);
 
   const [useProxy, setUseProxy] = useState(false);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [copiedHint, setCopiedHint] = useState<string | null>(null);
   const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -178,7 +235,186 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
   const currentUrl = isEditing ? inlineApiEditor.url : url;
   const normalizedUrl = currentUrl.trim();
 
+  const [localUrl, setLocalUrl] = useState(currentUrl);
+  const [isUrlFocused, setIsUrlFocused] = useState(false);
+
+  useEffect(() => {
+    if (!isUrlFocused) {
+      setLocalUrl(currentUrl);
+    }
+  }, [currentUrl, isUrlFocused]);
+
+  const handleUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newVal = e.target.value;
+    setLocalUrl(newVal);
+    if (isEditing && inlineApiEditor) {
+      setInlineApiEditor({ ...inlineApiEditor, url: newVal });
+    }
+  };
+
+  const handleCommitUrl = async () => {
+    setIsUrlFocused(false);
+    const trimmed = localUrl.trim();
+    if (trimmed !== url) {
+      await updateNodeValue(path, trimmed);
+    }
+    if (inlineApiEditor && inlineApiEditor.path === path) {
+      setInlineApiEditor({ ...inlineApiEditor, url: trimmed });
+    }
+  };
+
+  const handleUrlKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    e.stopPropagation();
+    if (e.key === 'Enter') {
+      e.currentTarget.blur();
+    } else if (e.key === 'Escape') {
+      setLocalUrl(currentUrl);
+      e.currentTarget.blur();
+    }
+  };
+
   const config = apiNodeConfig[path] || { method: 'GET', responseType: 'auto', timeout: 5000 };
+
+  // Inline Body editing state
+  const [showInlineBody, setShowInlineBody] = useState(false);
+  const [localBodyText, setLocalBodyText] = useState(config.body?.rawJson ?? '');
+  const [isBodyFocused, setIsBodyFocused] = useState(false);
+  const [copiedBody, setCopiedBody] = useState(false);
+  const [isBodyWordWrap, setIsBodyWordWrap] = useState(false);
+  const [lineHeights, setLineHeights] = useState<number[]>([]);
+  const bodyTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const bodyLineNumbersRef = useRef<HTMLDivElement>(null);
+  const mirrorRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isBodyWordWrap) {
+      setLineHeights([]);
+      return;
+    }
+    const updateHeights = () => {
+      if (!mirrorRef.current || !bodyTextareaRef.current) return;
+      const textarea = bodyTextareaRef.current;
+      const width = Math.max(50, textarea.clientWidth - 16);
+      mirrorRef.current.style.width = `${width}px`;
+
+      const children = Array.from(mirrorRef.current.children) as HTMLElement[];
+      const heights = children.map((c) => Math.max(18, c.offsetHeight));
+      setLineHeights(heights);
+    };
+
+    updateHeights();
+    const textarea = bodyTextareaRef.current;
+    if (!textarea) return;
+    const observer = new ResizeObserver(() => {
+      updateHeights();
+    });
+    observer.observe(textarea);
+    return () => observer.disconnect();
+  }, [isBodyWordWrap, localBodyText]);
+
+  useEffect(() => {
+    if (!isBodyFocused) {
+      setLocalBodyText(config.body?.rawJson ?? '');
+    }
+  }, [config.body?.rawJson, isBodyFocused]);
+
+  const commitBodyChange = useCallback((newText: string) => {
+    const updatedBody: BodyConfig = {
+      ...(config.body || { type: 'json' as const }),
+      type: 'json' as const,
+      rawJson: newText,
+    };
+    setApiNodeConfig(path, {
+      ...config,
+      body: updatedBody,
+    });
+  }, [config, path, setApiNodeConfig]);
+
+  const handleBodyChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    const val = e.target.value;
+    setLocalBodyText(val);
+    commitBodyChange(val);
+  };
+
+  const handleBodyScroll = () => {
+    if (bodyTextareaRef.current && bodyLineNumbersRef.current) {
+      bodyLineNumbersRef.current.scrollTop = bodyTextareaRef.current.scrollTop;
+    }
+  };
+
+  const handleBodyKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    e.stopPropagation();
+    if (e.key === 'Tab') {
+      e.preventDefault();
+      const textarea = e.currentTarget;
+      const start = textarea.selectionStart;
+      const end = textarea.selectionEnd;
+      const val = textarea.value;
+      if (e.shiftKey) {
+        if (val.substring(start - 2, start) === '  ') {
+          const next = val.substring(0, start - 2) + val.substring(start);
+          setLocalBodyText(next);
+          commitBodyChange(next);
+          setTimeout(() => {
+            textarea.selectionStart = textarea.selectionEnd = Math.max(0, start - 2);
+          }, 0);
+        }
+      } else {
+        const next = val.substring(0, start) + '  ' + val.substring(end);
+        setLocalBodyText(next);
+        commitBodyChange(next);
+        setTimeout(() => {
+          textarea.selectionStart = textarea.selectionEnd = start + 2;
+        }, 0);
+      }
+    }
+  };
+
+  const handlePrettifyInlineBody = () => {
+    if (!localBodyText.trim()) return;
+    try {
+      const tokens: string[] = [];
+      const masked = localBodyText.replace(/\{\{[a-zA-Z0-9_.-]+\}\}/g, (match) => {
+        const idx = tokens.length;
+        tokens.push(match);
+        return `"__VAR_PLACEHOLDER_${idx}__"`;
+      });
+      const parsed = JSON.parse(masked);
+      let formatted = JSON.stringify(parsed, null, 2);
+      tokens.forEach((token, idx) => {
+        formatted = formatted.replace(`"__VAR_PLACEHOLDER_${idx}__"`, token);
+      });
+      setLocalBodyText(formatted);
+      commitBodyChange(formatted);
+    } catch { }
+  };
+
+  const insertVariableAtCursor = (token: string) => {
+    if (!bodyTextareaRef.current) return;
+    const textarea = bodyTextareaRef.current;
+    const start = textarea.selectionStart ?? localBodyText.length;
+    const end = textarea.selectionEnd ?? localBodyText.length;
+    const next = localBodyText.substring(0, start) + token + localBodyText.substring(end);
+    setLocalBodyText(next);
+    commitBodyChange(next);
+    setTimeout(() => {
+      textarea.focus();
+      textarea.selectionStart = textarea.selectionEnd = start + token.length;
+    }, 0);
+  };
+
+  const bodyValidation = useMemo(() => {
+    const text = localBodyText.trim();
+    if (!text) return { isValid: true, hasVariables: false, error: null };
+    const hasVars = /\{\{[a-zA-Z0-9_.-]+\}\}/.test(text);
+    try {
+      const substituted = interpolateJsonString(text, config.variables, config.activeVariableGroup);
+      JSON.parse(substituted);
+      return { isValid: true, hasVariables: hasVars, error: null };
+    } catch (err: any) {
+      return { isValid: false, hasVariables: hasVars, error: err.message };
+    }
+  }, [localBodyText, config.variables, config.activeVariableGroup]);
 
   const isLoading = apiNodeLoading[path];
   const error = apiNodeErrors[path];
@@ -215,7 +451,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       try {
         isUserAbortedRef.current = true;
         abortControllerRef.current.abort();
-      } catch {}
+      } catch { }
     }
 
     isUserAbortedRef.current = false;
@@ -226,9 +462,16 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     setApiNodeError(path, null);
 
     const startTime = performance.now();
-    let resolvedUrl = currentUrl;
-    let isLocalTarget = isLocalOrLoopbackUrl(currentUrl);
+    const activeVariables = config.variables;
+    const activeGroup = config.activeVariableGroup;
+    const targetBaseUrl = (localUrl.trim() || currentUrl).trim();
+    if (localUrl.trim() && localUrl.trim() !== url) {
+      updateNodeValue(path, localUrl.trim());
+    }
+    let resolvedUrl = interpolateVariables(targetBaseUrl, activeVariables, activeGroup);
+    let isLocalTarget = isLocalOrLoopbackUrl(resolvedUrl);
     let timeoutId: any = null;
+    let shouldProxy = false;
 
     try {
       // 1. Build Target URL (include query params and auth query param if configured)
@@ -236,13 +479,19 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
         const parsed = new URL(resolvedUrl, window.location.origin);
         if (config.params && Array.isArray(config.params)) {
           for (const p of config.params) {
-            if (p.enabled !== false && p.key.trim() && !parsed.searchParams.has(p.key.trim())) {
-              parsed.searchParams.append(p.key.trim(), p.value);
+            if (p.enabled !== false && p.key.trim()) {
+              const pKey = interpolateVariables(p.key.trim(), activeVariables, activeGroup);
+              const pVal = interpolateVariables(p.value, activeVariables, activeGroup);
+              if (!parsed.searchParams.has(pKey)) {
+                parsed.searchParams.append(pKey, pVal);
+              }
             }
           }
         }
         if (config.auth?.type === 'apiKey' && config.auth.apiKeyName && config.auth.apiKeyLocation === 'query') {
-          parsed.searchParams.set(config.auth.apiKeyName, config.auth.apiKeyValue || '');
+          const authKeyName = interpolateVariables(config.auth.apiKeyName, activeVariables, activeGroup);
+          const authKeyVal = interpolateVariables(config.auth.apiKeyValue || '', activeVariables, activeGroup);
+          parsed.searchParams.set(authKeyName, authKeyVal);
         }
         resolvedUrl = parsed.toString();
       } catch {
@@ -251,11 +500,16 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
       isLocalTarget = isLocalOrLoopbackUrl(resolvedUrl);
 
+      // Check if user has an enabled custom proxy in settings
+      const customProxy = proxyServers?.find((p) => p.isEnabled && p.url.trim());
+      const proxyBase = customProxy?.url?.trim() || (useDefaultProxy !== false ? 'https://go.data-visualizer.workers.dev/?url=' : '');
+
       // A remote cloud proxy cannot reach local machine loopback addresses!
-      const shouldProxy = forceProxy && !isLocalTarget;
+      // But a user's custom local/LAN proxy CAN.
+      shouldProxy = Boolean(forceProxy && (customProxy ? true : !isLocalTarget) && proxyBase);
 
       const targetUrl = shouldProxy
-        ? `https://go.data-visualizer.workers.dev/?url=${encodeURIComponent(resolvedUrl)}`
+        ? `${proxyBase}${encodeURIComponent(resolvedUrl)}`
         : resolvedUrl;
 
       // 2. Assemble Request Headers
@@ -267,21 +521,28 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       if (config.headers && Array.isArray(config.headers)) {
         for (const h of config.headers) {
           if (h.enabled !== false && h.key.trim()) {
-            reqHeaders[h.key.trim()] = h.value;
+            const hKey = interpolateVariables(h.key.trim(), activeVariables, activeGroup);
+            const hVal = interpolateVariables(h.value, activeVariables, activeGroup);
+            reqHeaders[hKey] = hVal;
           }
         }
       }
 
       if (config.auth) {
         if (config.auth.type === 'bearer' && config.auth.bearerToken) {
-          reqHeaders['Authorization'] = `Bearer ${config.auth.bearerToken}`;
+          const token = interpolateVariables(config.auth.bearerToken, activeVariables, activeGroup);
+          reqHeaders['Authorization'] = `Bearer ${token}`;
         } else if (config.auth.type === 'basic' && (config.auth.basicUsername || config.auth.basicPassword)) {
           try {
-            const creds = btoa(`${config.auth.basicUsername || ''}:${config.auth.basicPassword || ''}`);
+            const u = interpolateVariables(config.auth.basicUsername || '', activeVariables, activeGroup);
+            const p = interpolateVariables(config.auth.basicPassword || '', activeVariables, activeGroup);
+            const creds = btoa(`${u}:${p}`);
             reqHeaders['Authorization'] = `Basic ${creds}`;
-          } catch {}
+          } catch { }
         } else if (config.auth.type === 'apiKey' && config.auth.apiKeyName && config.auth.apiKeyLocation !== 'query') {
-          reqHeaders[config.auth.apiKeyName] = config.auth.apiKeyValue || '';
+          const aKeyName = interpolateVariables(config.auth.apiKeyName, activeVariables, activeGroup);
+          const aKeyVal = interpolateVariables(config.auth.apiKeyValue || '', activeVariables, activeGroup);
+          reqHeaders[aKeyName] = aKeyVal;
         }
       }
 
@@ -289,11 +550,12 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       let reqBody: any = undefined;
       const methodUpper = (config.method || 'GET').toUpperCase();
       if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(methodUpper) && config.body) {
-        if (config.body.type === 'json' && config.body.rawJson) {
+        if (config.body.type === 'json') {
           if (!reqHeaders['Content-Type'] && !reqHeaders['content-type']) {
             reqHeaders['Content-Type'] = 'application/json';
           }
-          let jsonContent = config.body.rawJson;
+          const rawSource = (showInlineBody && localBodyText !== undefined) ? localBodyText : (config.body.rawJson || '');
+          let jsonContent = interpolateJsonString(rawSource, activeVariables, activeGroup);
           if (typeof config.streamEnabled === 'boolean') {
             try {
               const parsed = JSON.parse(jsonContent);
@@ -301,7 +563,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 parsed.stream = config.streamEnabled;
                 jsonContent = JSON.stringify(parsed, null, 2);
               }
-            } catch {}
+            } catch { }
           }
           reqBody = jsonContent;
         } else if (config.body.type === 'x-www-form-urlencoded' && config.body.urlEncoded) {
@@ -311,7 +573,9 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           const usp = new URLSearchParams();
           for (const item of config.body.urlEncoded) {
             if (item.enabled !== false && item.key.trim()) {
-              usp.append(item.key.trim(), item.value);
+              const k = interpolateVariables(item.key.trim(), activeVariables, activeGroup);
+              const v = interpolateVariables(item.value, activeVariables, activeGroup);
+              usp.append(k, v);
             }
           }
           reqBody = usp.toString();
@@ -319,7 +583,17 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           const fd = new FormData();
           for (const item of config.body.formData) {
             if (item.enabled !== false && item.key.trim()) {
-              fd.append(item.key.trim(), item.value);
+              const k = interpolateVariables(item.key.trim(), activeVariables, activeGroup);
+              if (item.type === 'file' && item.fileData) {
+                try {
+                  const blob = dataURItoBlob(item.fileData);
+                  fd.append(k, blob, item.fileName || 'file');
+                } catch {
+                  fd.append(k, interpolateVariables(item.value, activeVariables, activeGroup));
+                }
+              } else {
+                fd.append(k, interpolateVariables(item.value, activeVariables, activeGroup));
+              }
             }
           }
           reqBody = fd;
@@ -329,7 +603,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           if (!reqHeaders['Content-Type'] && !reqHeaders['content-type']) {
             reqHeaders['Content-Type'] = 'text/plain';
           }
-          reqBody = config.body.rawText;
+          reqBody = interpolateVariables(config.body.rawText, activeVariables, activeGroup);
         }
       }
 
@@ -364,7 +638,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
         let errorBody = '';
         try {
           errorBody = await res.text();
-        } catch (e) {}
+        } catch (e) { }
 
         setApiNodeMeta(path, {
           status: res.status,
@@ -469,7 +743,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 chunks.push(parsed);
                 const chunkText = parsed?.message?.content ?? parsed?.response ?? parsed?.choices?.[0]?.delta?.content ?? parsed?.choices?.[0]?.text ?? '';
                 if (chunkText) combinedMessage += chunkText;
-              } catch {}
+              } catch { }
             }
             streamAccumulated = lines[lines.length - 1];
 
@@ -513,7 +787,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
               chunks.push(parsed);
               const chunkText = parsed?.message?.content ?? parsed?.response ?? parsed?.choices?.[0]?.delta?.content ?? parsed?.choices?.[0]?.text ?? '';
               if (chunkText) combinedMessage += chunkText;
-            } catch {}
+            } catch { }
           }
         }
 
@@ -600,13 +874,14 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       });
 
       setApiNodeResponse(path, data);
-      if (forceProxy) setUseProxy(true);
+      if (shouldProxy) setUseProxy(true);
+      else setUseProxy(false);
     } catch (e: any) {
       const duration = Math.round(performance.now() - startTime);
       const baseRequestInfo = {
         url: currentUrl,
         method: config.method,
-        proxyUsed: forceProxy
+        proxyUsed: shouldProxy
       };
 
       if (e.isDiagnostic) {
@@ -664,22 +939,57 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
         let code = 'FETCH_ERR';
         let userMessage = 'Unable to connect to the endpoint.\n\nPossible causes:\n- Server unavailable\n- Network issue\n- CORS restriction';
 
+        const isHttpsOrigin = typeof window !== 'undefined' && window.location.protocol === 'https:';
+        const isMobileDevice = typeof navigator !== 'undefined' && /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+        const isHttpLocal = resolvedUrl.toLowerCase().startsWith('http://');
+
         if (isLocalTarget) {
           const isHttpsLocal = resolvedUrl.toLowerCase().startsWith('https://');
           const hasPortTypo = resolvedUrl.includes(':11343');
 
-          type = 'Local Server Connection Error';
-          code = 'LOCAL_ERR';
-          userMessage = `Unable to connect to local server at ${resolvedUrl}.\n\n`;
+          if (isMobileDevice) {
+            type = 'Device Mismatch (Mobile -> Localhost)';
+            code = 'MOBILE_LOCALHOST_ERR';
+            userMessage = `You are accessing this app from a mobile device, but the request URL is set to "localhost" (${resolvedUrl}).\n\n` +
+              `Why this fails:\n"localhost" refers to this mobile device itself, where Ollama is not running.\n\n` +
+              `How to connect from mobile:\n` +
+              `1. Free HTTPS Tunnel (Recommended for mobile):\n` +
+              `   Run on your computer where Ollama is running:\n` +
+              `   cloudflared tunnel --url http://localhost:11434\n` +
+              `   (or: npx localtunnel --port 11434)\n` +
+              `   Copy the generated https://... URL into this node.\n\n` +
+              `2. Same Wi-Fi Network:\n` +
+              `   Replace "localhost" with your computer's Wi-Fi IP address (e.g. http://192.168.1.X:11434) and start Ollama with OLLAMA_HOST=0.0.0.0.`;
+          } else if (isHttpsOrigin && isHttpLocal) {
+            type = 'HTTPS Mixed Content & CORS Block';
+            code = 'HTTPS_MIXED_CONTENT_ERR';
+            userMessage = `The visualizer is running on secure HTTPS (${window.location.origin}), but requested insecure HTTP (${resolvedUrl}).\n\n` +
+              `Modern browsers (especially Safari, iOS, and Chromium PNA) block HTTPS pages from connecting to local HTTP servers by default.\n\n` +
+              `How to resolve:\n` +
+              `1. Allow CORS on Ollama (Computer terminal):\n` +
+              `   • Windows PowerShell:\n` +
+              `     $env:OLLAMA_ORIGINS="*"; ollama serve\n` +
+              `   • Mac / Linux:\n` +
+              `     OLLAMA_ORIGINS="*" ollama serve\n\n` +
+              `2. Allow Insecure Content in Browser:\n` +
+              `   Click the padlock icon in your browser address bar -> Site settings -> Set "Insecure content" to "Allow", then reload.\n\n` +
+              `3. Or use a Free HTTPS Tunnel (Recommended - works on all devices):\n` +
+              `   Run on your computer: cloudflared tunnel --url http://localhost:11434\n` +
+              `   Use the https:// URL generated by the tunnel.`;
+          } else {
+            type = 'Local Server Connection Error';
+            code = 'LOCAL_ERR';
+            userMessage = `Unable to connect to local server at ${resolvedUrl}.\n\n`;
 
-          if (isHttpsLocal) {
-            userMessage += `⚠️ Protocol Issue: You are requesting "https://" on localhost. Local servers (like Ollama) run on plain HTTP, not HTTPS.\n\n`;
+            if (isHttpsLocal) {
+              userMessage += `Protocol Issue: You are requesting "https://" on localhost. Local servers (like Ollama) run on plain HTTP, not HTTPS.\n\n`;
+            }
+            if (hasPortTypo) {
+              userMessage += `Port Typo: Port 11343 was requested. The default port for Ollama is 11434.\n\n`;
+            }
+            userMessage += `Troubleshooting Checklist:\n1. Ensure Ollama is running (check terminal or system tray)\n2. Change URL to: http://localhost:11434/api/chat\n3. If CORS is blocked, set OLLAMA_ORIGINS=* before starting Ollama`;
           }
-          if (hasPortTypo) {
-            userMessage += `💡 Port Typo: Port 11343 was requested. The default port for Ollama is 11434.\n\n`;
-          }
-          userMessage += `Troubleshooting Checklist:\n1. Ensure Ollama is running (check terminal or system tray)\n2. Change URL to: http://localhost:11434/api/chat\n3. If CORS is blocked, set OLLAMA_ORIGINS=* before starting Ollama`;
-        } else if (forceProxy) {
+        } else if (shouldProxy) {
           type = 'Proxy Error';
           userMessage = 'Proxy fetch failed.\nWorker endpoint returned an error.';
         }
@@ -735,8 +1045,11 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     setApiNodeConfig(path, { ...config, view: currentView === 'file' ? 'nodes' : 'file' });
   };
 
-  const openEditor = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openEditor = (
+    e?: React.MouseEvent,
+    tab: 'params' | 'headers' | 'auth' | 'body' | 'variables' | 'response' | 'settings' = 'params'
+  ) => {
+    e?.stopPropagation();
     setInlineApiEditor({
       url: currentUrl,
       path,
@@ -746,19 +1059,29 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       width: nodeWidth,
       // The node wrapper adds 6px padding above and below the card
       height: (cardRef.current?.offsetHeight ?? 128) + 12,
+      initialTab: tab,
     });
   };
 
   const handleCopyCurl = (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
+      const substitutedParams = substituteInParamList(config.params, config.variables, config.activeVariableGroup);
+      const substitutedHeaders = substituteInParamList(config.headers, config.variables, config.activeVariableGroup);
+      const substitutedAuth = substituteInAuth(config.auth, config.variables, config.activeVariableGroup);
+      const effectiveBody: BodyConfig | undefined = (showInlineBody && localBodyText !== undefined)
+        ? { ...(config.body || { type: 'json' as const }), type: 'json' as const, rawJson: localBodyText }
+        : config.body;
+      const substitutedBody = substituteInBody(effectiveBody, config.variables, config.activeVariableGroup);
+      const resolvedUrl = interpolateVariables(localUrl.trim() || currentUrl, config.variables, config.activeVariableGroup);
+
       const curl = buildCurl(
-        currentUrl,
+        resolvedUrl,
         config.method || 'GET',
-        config.params || [],
-        config.headers || [],
-        config.auth || { type: 'none' },
-        config.body || { type: 'none' }
+        substitutedParams,
+        substitutedHeaders,
+        substitutedAuth,
+        substitutedBody
       );
       navigator.clipboard.writeText(curl);
       setCopiedCurl(true);
@@ -768,7 +1091,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     }
   };
 
-  const endpointHost = getEndpointHost(currentUrl);
+  const endpointHost = getEndpointHost(localUrl || currentUrl, config.variables, config.activeVariableGroup);
   const responseLabel = formatResponseType(config.responseType);
   const timeoutLabel = formatTimeout(config.timeout);
 
@@ -779,18 +1102,18 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
   const statusMeta: StatusMeta = isLoading
     ? {
-        label: config.streamEnabled ? 'Streaming…' : 'Fetching…',
-        title: 'Request in progress (click Cancel to abort)',
-        dotClass: 'bg-amber-500 animate-pulse',
-        textClass: 'text-amber-600 dark:text-amber-400',
-      }
+      label: config.streamEnabled ? 'Streaming…' : 'Fetching…',
+      title: 'Request in progress (click Cancel to abort)',
+      dotClass: 'bg-amber-500 animate-pulse',
+      textClass: 'text-amber-600 dark:text-amber-400',
+    }
     : error
       ? {
-          label: error.code === 'CANCELLED' ? 'Cancelled' : 'Failed',
-          title: error.userMessage || 'Show error details',
-          dotClass: error.code === 'CANCELLED' ? 'bg-slate-400' : 'bg-red-500',
-          textClass: error.code === 'CANCELLED' ? 'text-slate-500 dark:text-slate-400' : 'text-red-600 dark:text-red-400',
-        }
+        label: error.code === 'CANCELLED' ? 'Cancelled' : 'Failed',
+        title: error.userMessage || 'Show error details',
+        dotClass: error.code === 'CANCELLED' ? 'bg-slate-400' : 'bg-red-500',
+        textClass: error.code === 'CANCELLED' ? 'text-slate-500 dark:text-slate-400' : 'text-red-600 dark:text-red-400',
+      }
       : hasData
         ? { label: 'Connected', title: 'API data loaded', dotClass: 'bg-emerald-500', textClass: 'text-emerald-600 dark:text-emerald-400' }
         : canFetch
@@ -799,8 +1122,8 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
   const iconButtonClass = 'inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200';
 
-  const openErrorPopup = (e: React.MouseEvent) => {
-    e.stopPropagation();
+  const openErrorPopup = (e?: React.MouseEvent) => {
+    e?.stopPropagation();
     setShowErrorPopup(!showErrorPopup);
     setShowAdvancedDiagnostics(false);
   };
@@ -849,41 +1172,66 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
             <div className="min-w-0">
               <div className="text-[13px] font-semibold leading-tight text-slate-900 dark:text-slate-100">API request</div>
               <div className="mt-1 flex min-w-0 flex-wrap items-center gap-1.5">
-                <select
-                  value={config.method}
-                  onChange={(e) => {
-                    e.stopPropagation();
-                    const newMethod = e.target.value;
+                <CustomSelect
+                  value={config.method || 'GET'}
+                  onChange={(newMethod) => {
                     setApiNodeConfig(path, { ...config, method: newMethod });
                   }}
-                  onClick={(e) => e.stopPropagation()}
-                  className={`shrink-0 rounded px-1.5 py-px text-[10px] font-bold cursor-pointer border-0 outline-none uppercase tracking-wide transition-opacity hover:opacity-85 ${getMethodClass(config.method)}`}
-                  title="Click to switch HTTP method"
+                  options={HTTP_METHOD_OPTIONS}
+                  renderTrigger={({ ref, isOpen, props }) => (
+                    <button
+                      ref={ref}
+                      type="button"
+                      {...props}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        props.onClick?.(e);
+                      }}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      className={`nodrag shrink-0 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-bold cursor-pointer border-0 outline-none uppercase tracking-wide transition-all ${getMethodClass(config.method || 'GET')} ${isOpen ? 'ring-2 ring-blue-500/30 brightness-110' : 'hover:opacity-85'
+                        }`}
+                      title="Click to switch HTTP method"
+                      aria-label={`HTTP Method: ${config.method || 'GET'}`}
+                    >
+                      <span>{config.method || 'GET'}</span>
+                      <ChevronDown
+                        size={10}
+                        className={`opacity-70 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                      />
+                    </button>
+                  )}
+                />
+                <button
+                  type="button"
+                  onClick={(e) => openEditor(e, 'params')}
+                  className="truncate text-[11px] text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 cursor-pointer hover:underline text-left max-w-[200px]"
+                  title={`Edit endpoint: ${endpointHost}`}
                 >
-                  {['GET', 'POST', 'PUT', 'PATCH', 'DELETE'].map((m) => (
-                    <option key={m} value={m} className="bg-white text-slate-900 dark:bg-slate-900 dark:text-slate-100 font-semibold text-xs">
-                      {m}
-                    </option>
-                  ))}
-                </select>
-                <span className="truncate text-[11px] text-slate-500 dark:text-slate-400" title={endpointHost}>
                   {endpointHost}
-                </span>
+                </button>
                 {/* Auth Chip */}
                 {config.auth && config.auth.type !== 'none' && (
                   <span
                     className="inline-flex items-center gap-0.5 rounded bg-violet-500/10 pl-1 pr-0.5 py-px text-[9px] font-medium text-violet-600 dark:text-violet-400 group transition-all"
-                    title={`Auth: ${config.auth.type} (click × to disable)`}
+                    title={`Auth: ${config.auth.type} (click to edit, × to disable)`}
                   >
-                    <Key size={9} className="shrink-0" />
-                    <span>{config.auth.type}</span>
+                    <button
+                      type="button"
+                      onClick={(e) => openEditor(e, 'auth')}
+                      className="cursor-pointer hover:underline flex items-center gap-0.5"
+                      title={`Edit auth settings (${config.auth.type})`}
+                    >
+                      <Key size={9} className="shrink-0" />
+                      <span>{config.auth.type}</span>
+                    </button>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         setApiNodeConfig(path, { ...config, auth: { type: 'none' } });
                       }}
-                      className="ml-0.5 rounded p-0.5 hover:bg-violet-500/20 hover:text-violet-800 dark:hover:text-violet-200 transition-colors"
+                      className="ml-0.5 rounded p-0.5 hover:bg-violet-500/20 hover:text-violet-800 dark:hover:text-violet-200 transition-colors cursor-pointer"
                       title="Disable authentication"
                     >
                       <X size={8} />
@@ -894,18 +1242,34 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 {/* Body Chip */}
                 {config.body && config.body.type !== 'none' && (
                   <span
-                    className="inline-flex items-center gap-0.5 rounded bg-amber-500/10 pl-1 pr-0.5 py-px text-[9px] font-medium text-amber-600 dark:text-amber-400 group transition-all"
-                    title={`Body: ${config.body.type} (click × to remove body)`}
+                    className={`inline-flex items-center gap-0.5 rounded pl-1 pr-0.5 py-px text-[9px] font-medium transition-all ${
+                      showInlineBody
+                        ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/30 font-semibold'
+                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 group'
+                    }`}
+                    title={`Body: ${config.body.type} (click to toggle inline body editor, × to remove body)`}
                   >
-                    <FileCode size={9} className="shrink-0" />
-                    <span>{config.body.type}</span>
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
+                        setShowInlineBody((prev) => !prev);
+                      }}
+                      className="cursor-pointer hover:underline flex items-center gap-0.5"
+                      title={showInlineBody ? "Click to hide inline body editor" : "Click to view & edit body directly"}
+                    >
+                      <FileCode size={9} className="shrink-0" />
+                      <span>{config.body.type}</span>
+                      <ChevronDown size={8} className={`transition-transform duration-200 ${showInlineBody ? 'rotate-180' : ''}`} />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowInlineBody(false);
                         setApiNodeConfig(path, { ...config, body: { type: 'none' } });
                       }}
-                      className="ml-0.5 rounded p-0.5 hover:bg-amber-500/20 hover:text-amber-800 dark:hover:text-amber-200 transition-colors"
+                      className="ml-0.5 rounded p-0.5 hover:bg-amber-500/20 hover:text-amber-800 dark:hover:text-amber-200 transition-colors cursor-pointer"
                       title="Disable / remove request body"
                     >
                       <X size={8} />
@@ -916,11 +1280,10 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 {/* Streaming Chip (stream: true / stream: false) */}
                 {config.streamEnabled !== undefined && (
                   <span
-                    className={`inline-flex items-center gap-0.5 rounded pl-1 pr-0.5 py-px text-[9px] font-medium transition-all ${
-                      config.streamEnabled
-                        ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
-                        : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                    }`}
+                    className={`inline-flex items-center gap-0.5 rounded pl-1 pr-0.5 py-px text-[9px] font-medium transition-all ${config.streamEnabled
+                      ? 'bg-cyan-500/10 text-cyan-600 dark:text-cyan-400'
+                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                      }`}
                     title={`Streaming: ${config.streamEnabled ? 'stream: true' : 'stream: false'} (click text to toggle, × to disable)`}
                   >
                     <button
@@ -932,7 +1295,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                       className="cursor-pointer hover:underline flex items-center gap-0.5"
                       title="Click to toggle between Single and Stream"
                     >
-                      {config.streamEnabled ? <Activity size={9} /> : <span className="text-[10px]">⚡</span>}
+                      {config.streamEnabled ? <Activity size={9} /> : <Zap size={9} />}
                       <span>{config.streamEnabled ? 'stream' : 'single'}</span>
                     </button>
                     <button
@@ -941,7 +1304,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                         e.stopPropagation();
                         setApiNodeConfig(path, { ...config, streamEnabled: undefined });
                       }}
-                      className="ml-0.5 rounded p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
+                      className="ml-0.5 rounded p-0.5 hover:bg-black/10 dark:hover:bg-white/10 transition-colors cursor-pointer"
                       title="Disable stream mode (revert to Auto)"
                     >
                       <X size={8} />
@@ -957,7 +1320,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                   >
                     <button
                       type="button"
-                      onClick={openEditor}
+                      onClick={(e) => openEditor(e, 'response')}
                       className="cursor-pointer hover:underline flex items-center gap-0.5 min-w-0 truncate"
                       title={`Edit extraction path: ${config.extractPath}`}
                     >
@@ -970,7 +1333,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                         e.stopPropagation();
                         setApiNodeConfig(path, { ...config, extractPath: undefined });
                       }}
-                      className="ml-0.5 shrink-0 rounded p-0.5 hover:bg-indigo-500/20 hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors"
+                      className="ml-0.5 shrink-0 rounded p-0.5 hover:bg-indigo-500/20 hover:text-indigo-800 dark:hover:text-indigo-200 transition-colors cursor-pointer"
                       title="Disable extraction (show full response)"
                     >
                       <X size={8} />
@@ -978,27 +1341,30 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                   </span>
                 )}
 
-                {/* Response Format Chip (MARKDOWN / JSON / TEXT) */}
-                {config.responseFormat && config.responseFormat !== 'auto' && (
+                {/* Response Format Chip (AUTO / MARKDOWN / JSON / TEXT) */}
+                {config.responseFormat && (
                   <span
-                    className="inline-flex items-center gap-0.5 rounded bg-fuchsia-500/10 pl-1.5 pr-0.5 py-px text-[9px] font-semibold text-fuchsia-600 dark:text-fuchsia-400 uppercase transition-all"
-                    title={`Format: ${config.responseFormat} (click text to cycle, × to disable)`}
+                    className={`inline-flex items-center gap-0.5 rounded pl-1.5 pr-0.5 py-px text-[9px] font-semibold uppercase transition-all ${config.responseFormat === 'auto'
+                      ? 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400 border border-fuchsia-500/25'
+                      : 'bg-fuchsia-500/10 text-fuchsia-600 dark:text-fuchsia-400'
+                      }`}
+                    title={`Format: ${config.responseFormat} (click text to cycle, × to remove override)`}
                   >
                     <button
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         const nextFormatMap: Record<string, 'auto' | 'json' | 'markdown' | 'text'> = {
+                          auto: 'markdown',
                           markdown: 'json',
                           json: 'text',
                           text: 'auto',
-                          auto: 'markdown',
                         };
-                        const next = nextFormatMap[config.responseFormat || 'auto'] || 'auto';
+                        const next = nextFormatMap[config.responseFormat || 'auto'] || 'markdown';
                         setApiNodeConfig(path, { ...config, responseFormat: next });
                       }}
                       className="cursor-pointer hover:underline"
-                      title="Click to cycle format (Markdown → JSON → Text → Auto)"
+                      title="Click to cycle format (Auto → Markdown → JSON → Text → Auto)"
                     >
                       {config.responseFormat}
                     </button>
@@ -1006,13 +1372,26 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                       type="button"
                       onClick={(e) => {
                         e.stopPropagation();
-                        setApiNodeConfig(path, { ...config, responseFormat: 'auto' });
+                        setApiNodeConfig(path, { ...config, responseFormat: undefined });
                       }}
-                      className="ml-0.5 rounded p-0.5 hover:bg-fuchsia-500/20 hover:text-fuchsia-800 dark:hover:text-fuchsia-200 transition-colors"
-                      title="Reset format to Auto"
+                      className="ml-0.5 rounded p-0.5 hover:bg-fuchsia-500/20 hover:text-fuchsia-800 dark:hover:text-fuchsia-200 transition-colors cursor-pointer"
+                      title="Remove format override"
                     >
                       <X size={8} />
                     </button>
+                  </span>
+                )}
+
+                {/* Variables Chip */}
+                {config.variables && config.variables.filter((v) => v.enabled !== false && v.key.trim()).length > 0 && (
+                  <span
+                    className="inline-flex items-center gap-0.5 rounded bg-blue-500/10 px-1.5 py-px text-[9px] font-mono font-medium text-blue-600 dark:text-blue-400 group transition-all cursor-pointer hover:bg-blue-500/20 hover:underline"
+                    onClick={(e) => {
+                      openEditor(e, 'variables');
+                    }}
+                    title={`${config.variables.filter((v) => v.enabled !== false && v.key.trim()).length} variable(s) active${config.activeVariableGroup && config.activeVariableGroup !== 'All' ? ` (Scope: ${config.activeVariableGroup})` : ''} - Click to edit variables`}
+                  >
+                    <span>{`{{${config.variables.filter((v) => v.enabled !== false && v.key.trim()).length}}}`}</span>
                   </span>
                 )}
               </div>
@@ -1031,7 +1410,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
             <button
               onClick={openEditor}
               className={`${iconButtonClass} ${isEditing ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400' : ''}`}
-              title="Edit request (Postman / Apidog style)"
+              title="Edit request"
               aria-label="Edit request"
             >
               <Pencil size={14} />
@@ -1041,19 +1420,267 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
         {/* URL */}
         {canFetch ? (
-          <div
-            className="mx-3 mt-2.5 truncate rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[11px] text-slate-600 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-300"
-            title={currentUrl}
-          >
-            {currentUrl}
+          <div className="mx-3 mt-2.5 relative">
+            <input
+              type="text"
+              value={localUrl}
+              onChange={handleUrlChange}
+              onFocus={() => setIsUrlFocused(true)}
+              onBlur={handleCommitUrl}
+              onKeyDown={handleUrlKeyDown}
+              onMouseDown={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+              spellCheck={false}
+              autoComplete="off"
+              className="nodrag nowheel w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[11px] text-slate-700 transition-all outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:text-slate-900 focus:ring-1 focus:ring-blue-500/20 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-700 dark:focus:border-blue-500 dark:focus:bg-slate-950 dark:focus:text-slate-100 cursor-text"
+              title="Click to edit endpoint URL directly (Enter to save, Esc to cancel)"
+              placeholder="https://api.example.com/endpoint"
+            />
           </div>
         ) : (
           <button
-            onClick={openEditor}
-            className="mx-3 mt-2.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-left text-[11px] text-slate-500 transition-colors hover:border-blue-500/60 hover:text-blue-600 dark:border-slate-700 dark:text-slate-400 dark:hover:text-blue-400"
+            type="button"
+            onClick={(e) => openEditor(e, 'params')}
+            className="mx-3 mt-2.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-left text-[11px] text-slate-500 transition-colors hover:border-blue-500/60 hover:text-blue-600 dark:border-slate-700 dark:text-slate-400 dark:hover:text-blue-400 cursor-pointer"
           >
             + Add an endpoint URL
           </button>
+        )}
+
+        {/* Inline Body Toggle & Editor */}
+        {((config.method && ['POST', 'PUT', 'PATCH', 'DELETE'].includes(config.method.toUpperCase())) || (config.body && config.body.type !== 'none')) && (
+          <div className="mx-3 mt-2 flex items-center justify-between">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!config.body || config.body.type === 'none') {
+                  const initialJson = '{\n  \n}';
+                  setLocalBodyText(initialJson);
+                  commitBodyChange(initialJson);
+                  setShowInlineBody(true);
+                } else {
+                  setShowInlineBody((prev) => !prev);
+                }
+              }}
+              className={`nodrag inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
+                showInlineBody
+                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15'
+                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+              }`}
+              title={showInlineBody ? 'Hide request body editor' : 'Directly view and edit request JSON body'}
+            >
+              <FileCode size={12} className={showInlineBody ? 'text-amber-500' : 'text-slate-400'} />
+              <span>{showInlineBody ? 'Hide Body' : 'Show Body'}</span>
+              <ChevronDown
+                size={11}
+                className={`transition-transform duration-200 ${showInlineBody ? 'rotate-180 text-amber-500' : 'text-slate-400'}`}
+              />
+              {config.body?.rawJson && !showInlineBody && (
+                <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono font-normal">
+                  ({config.body.rawJson.split('\n').length} {config.body.rawJson.split('\n').length === 1 ? 'line' : 'lines'})
+                </span>
+              )}
+            </button>
+
+            {showInlineBody && (
+              <div className="nodrag flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    openEditor(e, 'body');
+                  }}
+                  className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-blue-500 transition-colors p-1 rounded hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                  title="Open full editor modal"
+                >
+                  <Maximize2 size={11} />
+                  <span>Full Editor</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Inline Body Editor Area */}
+        {showInlineBody && config.body && config.body.type !== 'none' && (
+          <div className="mx-3 mt-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-[#0d1218] overflow-hidden shadow-xs animate-in fade-in duration-150">
+            {/* Header Strip */}
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 px-2.5 py-1.5 bg-slate-50/80 dark:bg-slate-900/60">
+              <div className="flex items-center gap-1.5">
+                <FileJson size={13} className="text-amber-500 shrink-0" />
+                <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">JSON Body</span>
+                {bodyValidation.isValid ? (
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-semibold ${
+                    bodyValidation.hasVariables
+                      ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                  }`}>
+                    {bodyValidation.hasVariables ? 'Dynamic Vars' : 'Valid'}
+                  </span>
+                ) : (
+                  <span
+                    className="text-[9px] px-1.5 py-0.5 rounded font-mono font-semibold bg-amber-500/10 text-amber-600 dark:text-amber-400 truncate max-w-[120px]"
+                    title={bodyValidation.error || 'Invalid JSON syntax'}
+                  >
+                    Syntax Warning
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-1">
+                {/* Word Wrap */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsBodyWordWrap((prev) => !prev);
+                  }}
+                  className={`p-1 rounded transition-colors cursor-pointer ${
+                    isBodyWordWrap
+                      ? 'text-blue-600 dark:text-blue-400 bg-blue-500/15'
+                      : 'text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                  }`}
+                  title={isBodyWordWrap ? 'Word wrap: On' : 'Word wrap: Off'}
+                  aria-label="Toggle word wrap"
+                  aria-pressed={isBodyWordWrap}
+                >
+                  <WrapText size={12} />
+                </button>
+                {/* Prettify */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handlePrettifyInlineBody();
+                  }}
+                  className="p-1 rounded text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Format JSON (Preserves variables)"
+                  aria-label="Format JSON"
+                >
+                  <PrettierIcon size={12} />
+                </button>
+                {/* Copy */}
+                <button
+                  type="button"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    if (!localBodyText) return;
+                    await navigator.clipboard.writeText(localBodyText);
+                    setCopiedBody(true);
+                    setTimeout(() => setCopiedBody(false), 1500);
+                  }}
+                  className="p-1 rounded text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title={copiedBody ? 'Copied!' : 'Copy JSON'}
+                  aria-label="Copy JSON"
+                >
+                  {copiedBody ? <Check size={12} className="text-emerald-500" /> : <Copy size={12} />}
+                </button>
+                {/* Clear */}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const resetJson = '{\n  \n}';
+                    setLocalBodyText(resetJson);
+                    commitBodyChange(resetJson);
+                  }}
+                  className="p-1 rounded text-slate-400 hover:text-rose-500 dark:hover:text-rose-400 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                  title="Reset to empty JSON"
+                  aria-label="Reset JSON"
+                >
+                  <Trash2 size={12} />
+                </button>
+              </div>
+            </div>
+
+            {/* Code Textarea with Line Numbers */}
+            <div className="relative flex min-h-[120px] max-h-[240px] overflow-hidden bg-slate-50/30 dark:bg-[#090d14]">
+              {/* Hidden mirror for calculating wrapped line heights */}
+              {isBodyWordWrap && (
+                <div
+                  ref={mirrorRef}
+                  className="invisible pointer-events-none absolute -top-[9999px] -left-[9999px] font-mono text-[11px] leading-[18px] whitespace-pre-wrap break-words"
+                  aria-hidden="true"
+                >
+                  {(localBodyText || '').split('\n').map((line, idx) => (
+                    <div key={idx} style={{ lineHeight: '18px' }}>
+                      {line || '\u00A0'}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Line Numbers Gutter */}
+              <div
+                ref={bodyLineNumbersRef}
+                className="select-none overflow-hidden py-2 pl-2 pr-1.5 font-mono text-[10px] leading-[18px] text-slate-400/60 text-right min-w-[28px] border-r border-slate-200/60 dark:border-slate-800/60 bg-slate-100/40 dark:bg-slate-900/40"
+                aria-hidden="true"
+              >
+                {(localBodyText || '').split('\n').map((_, idx) => (
+                  <div
+                    key={idx}
+                    style={{
+                      height: isBodyWordWrap && lineHeights[idx] ? `${lineHeights[idx]}px` : '18px',
+                      lineHeight: '18px',
+                    }}
+                  >
+                    {idx + 1}
+                  </div>
+                ))}
+              </div>
+
+              {/* Textarea */}
+              <textarea
+                ref={bodyTextareaRef}
+                value={localBodyText}
+                onChange={handleBodyChange}
+                onFocus={() => setIsBodyFocused(true)}
+                onBlur={() => setIsBodyFocused(false)}
+                onKeyDown={handleBodyKeyDown}
+                onScroll={handleBodyScroll}
+                onMouseDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => e.stopPropagation()}
+                onWheel={(e) => e.stopPropagation()}
+                spellCheck={false}
+                autoComplete="off"
+                placeholder='{\n  "key": "value"\n}'
+                className={`nodrag nowheel flex-1 resize-y bg-transparent p-2 font-mono text-[11px] leading-[18px] text-slate-800 dark:text-slate-200 outline-none custom-scrollbar min-h-[120px] max-h-[240px] ${
+                  isBodyWordWrap
+                    ? 'whitespace-pre-wrap break-words overflow-y-auto overflow-x-hidden'
+                    : 'whitespace-pre overflow-auto'
+                }`}
+              />
+            </div>
+
+            {/* Variable Insertion Pills Footer */}
+            {config.variables && config.variables.filter((v) => v.enabled !== false && v.key.trim()).length > 0 && (
+              <div
+                className="nodrag flex items-center gap-1 overflow-x-auto no-scrollbar scrollbar-none px-2.5 py-1 bg-slate-50/70 dark:bg-slate-900/60 border-t border-slate-200/80 dark:border-slate-800/80"
+                style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+              >
+                <span className="text-[9px] font-bold text-slate-400 uppercase tracking-wider shrink-0 mr-0.5">
+                  Insert:
+                </span>
+                {config.variables
+                  .filter((v) => v.enabled !== false && v.key.trim())
+                  .map((v) => (
+                    <button
+                      key={v.id}
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        insertVariableAtCursor(`{{${v.key.trim()}}}`);
+                      }}
+                      className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-mono font-semibold bg-blue-500/10 text-blue-600 dark:text-blue-400 hover:bg-blue-500/20 transition-colors whitespace-nowrap cursor-pointer shrink-0"
+                      title={`Insert {{${v.key.trim()}}} into JSON body`}
+                    >
+                      <span>+ {`{{${v.key.trim()}}}`}</span>
+                    </button>
+                  ))}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Response Metrics Strip (Status, Latency, Size) */}
@@ -1064,14 +1691,16 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 {meta.status} {meta.statusText || ''}
               </span>
               {meta.duration !== undefined && (
-                <span className="text-slate-500 dark:text-slate-400" title="Response latency">
-                  ⚡ {meta.duration}ms
+                <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400" title="Response latency">
+                  <Zap size={10} className="shrink-0 text-amber-500" />
+                  <span>{meta.duration}ms</span>
                 </span>
               )}
             </div>
             {meta.size !== undefined && meta.size > 0 && (
-              <span className="text-slate-500 dark:text-slate-400" title="Response size">
-                📦 {formatSize(meta.size)}
+              <span className="inline-flex items-center gap-1 text-slate-500 dark:text-slate-400" title="Response size">
+                <Box size={10} className="shrink-0 text-blue-500 dark:text-blue-400" />
+                <span>{formatSize(meta.size)}</span>
               </span>
             )}
           </div>
@@ -1116,8 +1745,9 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
               </span>
             </div>
             <div className="flex items-center justify-between gap-2 pt-0.5">
-              <span className="truncate font-mono text-[10px] text-amber-600 dark:text-amber-400" title={suggestedFixedUrl}>
-                → {suggestedFixedUrl}
+              <span className="truncate font-mono text-[10px] text-amber-600 dark:text-amber-400 inline-flex items-center gap-1" title={suggestedFixedUrl}>
+                <ArrowRight size={10} className="shrink-0" />
+                <span className="truncate">{suggestedFixedUrl}</span>
               </span>
               <button
                 onClick={async (e) => {
@@ -1135,6 +1765,30 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 Fix URL & Retry
               </button>
             </div>
+          </div>
+        )}
+
+        {/* Mobile / HTTPS Localhost Error Banner */}
+        {error && isLocalEndpoint && (error.code === 'MOBILE_LOCALHOST_ERR' || error.code === 'HTTPS_MIXED_CONTENT_ERR') && !(isHttpsOnLocal || hasOllamaPortTypo) && (
+          <div className="mx-3 mt-2 flex items-center justify-between rounded-lg border border-purple-500/30 bg-purple-500/10 px-2.5 py-1.5 text-xs dark:bg-purple-500/15">
+            <div className="flex items-center gap-1.5 min-w-0 text-[11px] text-purple-700 dark:text-purple-300 font-medium truncate">
+              <Sparkles size={13} className="shrink-0 text-purple-500" />
+              <span>
+                {error.code === 'MOBILE_LOCALHOST_ERR'
+                  ? 'Mobile device: localhost points to phone'
+                  : 'HTTPS site requires CORS / tunnel'}
+              </span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                openErrorPopup();
+              }}
+              className="shrink-0 rounded-md bg-purple-600 px-2 py-0.5 text-[10px] font-bold text-white shadow-xs transition-colors hover:bg-purple-500 active:scale-95 cursor-pointer"
+              title="View troubleshooting instructions"
+            >
+              View Fix
+            </button>
           </div>
         )}
 
@@ -1181,7 +1835,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
               {!config.timeout || config.timeout <= 0 ? (
                 <span className="inline-flex items-center gap-0.5 text-slate-400" title="No timeout applied (runs until complete or cancelled)">
                   <TimerOff size={10} className="shrink-0" />
-                  <span>∞</span>
+                  <Infinity size={10} className="shrink-0" />
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-0.5" title={`Timeout: ${timeoutLabel}`}>
@@ -1227,7 +1881,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
             {error && !isLoading && (
               <button
-                onClick={(e) => { e.stopPropagation(); handleFetch(error.requestInfo.proxyUsed); }}
+                onClick={(e) => { e.stopPropagation(); handleFetch(isLocalEndpoint ? false : error.requestInfo.proxyUsed); }}
                 className={iconButtonClass}
                 title="Retry"
                 aria-label="Retry"
@@ -1310,6 +1964,47 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                   {error.userMessage}
                 </div>
 
+                {isLocalEndpoint && (
+                  <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-slate-200 dark:border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const isWin = typeof navigator !== 'undefined' && /Win/i.test(navigator.userAgent);
+                        const cmd = isWin
+                          ? `$env:OLLAMA_ORIGINS="*"; ollama serve`
+                          : `OLLAMA_ORIGINS="*" ollama serve`;
+                        navigator.clipboard.writeText(cmd);
+                        setCopiedHint('CORS command copied!');
+                        setTimeout(() => setCopiedHint(null), 3000);
+                      }}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-purple-500/10 hover:bg-purple-500/20 text-purple-600 dark:text-purple-400 border border-purple-500/30 px-2.5 text-[11px] font-semibold transition-all cursor-pointer"
+                      title="Copy command to start Ollama with CORS enabled"
+                    >
+                      <Copy size={12} />
+                      <span>Copy Ollama CORS Fix</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const cmd = `cloudflared tunnel --url http://localhost:11434`;
+                        navigator.clipboard.writeText(cmd);
+                        setCopiedHint('Tunnel command copied!');
+                        setTimeout(() => setCopiedHint(null), 3000);
+                      }}
+                      className="inline-flex h-7 items-center gap-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 px-2.5 text-[11px] font-semibold transition-all cursor-pointer"
+                      title="Copy command to create a free HTTPS tunnel for Ollama"
+                    >
+                      <Copy size={12} />
+                      <span>Copy Tunnel Command</span>
+                    </button>
+                    {copiedHint && (
+                      <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400 animate-in fade-in">
+                        ✓ {copiedHint}
+                      </span>
+                    )}
+                  </div>
+                )}
+
                 <div>
                   <button
                     onClick={() => setShowAdvancedDiagnostics(!showAdvancedDiagnostics)}
@@ -1357,17 +2052,17 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                     Switch to {suggestedMethod} & Retry
                   </button>
                 )}
-                {!error.requestInfo.proxyUsed && (
+                {!isLocalEndpoint && !error.requestInfo.proxyUsed && (
                   <button
                     onClick={() => { handleFetch(true); setShowErrorPopup(false); }}
-                    className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white"
+                    className="inline-flex h-8 items-center rounded-lg px-3 text-xs font-medium text-slate-600 transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:hover:text-white cursor-pointer"
                   >
                     Retry with proxy
                   </button>
                 )}
                 <button
-                  onClick={() => { handleFetch(error.requestInfo.proxyUsed); setShowErrorPopup(false); }}
-                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-500"
+                  onClick={() => { handleFetch(isLocalEndpoint ? false : error.requestInfo.proxyUsed); setShowErrorPopup(false); }}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-blue-500 cursor-pointer"
                 >
                   <RefreshCw size={13} />
                   Retry
