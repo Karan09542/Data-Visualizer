@@ -12,7 +12,10 @@ import { LexicalErrorBoundary } from '@lexical/react/LexicalErrorBoundary';
 import { HeadingNode, QuoteNode } from '@lexical/rich-text';
 import { ListItemNode, ListNode } from '@lexical/list';
 import { CodeNode as LexicalCodeNode, CodeHighlightNode } from '@lexical/code';
-import { LinkNode } from '@lexical/link';
+import { LinkNode, AutoLinkNode } from '@lexical/link';
+import { LinkPlugin } from '@lexical/react/LexicalLinkPlugin';
+import { AutoLinkPlugin, createLinkMatcherWithRegExp } from '@lexical/react/LexicalAutoLinkPlugin';
+import { ClickableLinkPlugin } from '@lexical/react/LexicalClickableLinkPlugin';
 import { TableNode, TableCellNode, TableRowNode } from '@lexical/table';
 import { DOMConversionMap, NodeKey, CAN_UNDO_COMMAND, CAN_REDO_COMMAND, COMMAND_PRIORITY_LOW } from 'lexical';
 import { HorizontalRuleNode } from '@lexical/react/LexicalHorizontalRuleNode';
@@ -29,6 +32,8 @@ import MediaModalsPlugin from './plugins/MediaModalsPlugin';
 
 import { ImageNode } from './nodes/ImageNode';
 import { AudioNode } from './nodes/AudioNode';
+import { YouTubeNode } from './nodes/YouTubeNode';
+import YouTubePlugin from './plugins/YouTubePlugin';
 import AutoSavePlugin from './plugins/AutoSavePlugin';
 import ImagePlugin from './plugins/ImagePlugin';
 import AudioPlugin from './plugins/AudioPlugin';
@@ -36,6 +41,7 @@ import CodeHighlightPlugin from './plugins/CodeHighlightPlugin';
 import CursorToolbarPlugin from './plugins/CursorToolbarPlugin';
 import SlashCommandPlugin from './plugins/SlashCommandPlugin';
 import BlockHandlePlugin from './plugins/BlockHandlePlugin';
+import ListKeyboardPlugin from './plugins/ListKeyboardPlugin';
 import { $getRoot, $createParagraphNode, $createTextNode, $isTextNode } from 'lexical';
 
 // Custom CodeNode subclass that overrides importDOM to return null.
@@ -78,6 +84,18 @@ export interface HistoryState {
   canRedo: boolean;
 }
 
+const URL_MATCHER = /((https?:\/\/(?:www\.)?)|(www\.)|((?:[a-zA-Z0-9-]+\.)+(?:com|org|net|edu|gov|io|ai|co|app|dev|me|be|tv|in|uk|de|jp)\b))[-a-zA-Z0-9@:%._+~#=/?&()\[\]]*/i;
+const EMAIL_MATCHER = /(([^<>()[\]\\.,;:\s@"]+(\.[^<>()[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))/;
+
+const AUTO_LINK_MATCHERS = [
+  createLinkMatcherWithRegExp(URL_MATCHER, (text) => {
+    return text.startsWith('http://') || text.startsWith('https://') ? text : `https://${text}`;
+  }),
+  createLinkMatcherWithRegExp(EMAIL_MATCHER, (text) => {
+    return `mailto:${text}`;
+  }),
+];
+
 const theme = {
   paragraph: 'mb-2 leading-relaxed',
   text: {
@@ -87,6 +105,7 @@ const theme = {
     strikethrough: 'line-through',
     code: 'bg-black/5 dark:bg-white/10 border border-black/5 dark:border-white/10 rounded-md px-1.5 py-0.5 font-mono text-[0.9em] text-[#eb5757] dark:text-[#ff7b72]',
   },
+  link: 'text-blue-600 dark:text-blue-400 underline underline-offset-2 hover:text-blue-700 dark:hover:text-blue-300 cursor-pointer break-all transition-colors font-medium',
   code: 'editor-code',
   codeHighlight: {
     atrule: 'editor-tokenAttr',
@@ -129,7 +148,11 @@ const theme = {
   list: {
     ul: 'list-disc ml-6 mb-2 space-y-1',
     ol: 'list-decimal ml-6 mb-2 space-y-1',
+    checklist: 'ml-6 mb-2 space-y-1 list-none',
     listitem: 'leading-relaxed',
+    nested: {
+      listitem: 'list-none lexical-nested-list-item !list-none',
+    },
     listitemChecked: 'lexical-checklist-checked',
     listitemUnchecked: 'lexical-checklist-unchecked',
   },
@@ -315,8 +338,10 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
         },
         CodeHighlightNode,
         LinkNode,
+        AutoLinkNode,
         ImageNode,
         AudioNode,
+        YouTubeNode,
         HorizontalRuleNode,
         TableNode,
         TableCellNode,
@@ -371,8 +396,14 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
           <HistoryStatePlugin onHistoryChange={onHistoryChange} />
           <ListPlugin />
           <CheckListPlugin />
+          <ListKeyboardPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
           
+          <LinkPlugin />
+          <AutoLinkPlugin matchers={AUTO_LINK_MATCHERS} />
+          <ClickableLinkPlugin newTab={true} />
+          <YouTubePlugin />
+
           <AutoSavePlugin onSave={onSave} onChange={onChange} debounceMs={500} />
           <ExternalContentSyncPlugin content={initialContent} />
           <FontLoaderPlugin content={initialContent} />

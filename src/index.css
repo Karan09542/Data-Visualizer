@@ -816,8 +816,9 @@ input[type="number"] {
   opacity: 0.5;
 }
 
-.lexical-checklist-checked::before,
-.lexical-checklist-unchecked::before {
+/* Checklist checkbox pseudo-elements strictly only on leaf list items */
+.lexical-checklist-checked:not(:has(> ul)):not(:has(> ol)):not(.lexical-nested-list-item)::before,
+.lexical-checklist-unchecked:not(:has(> ul)):not(:has(> ol)):not(.lexical-nested-list-item)::before {
   content: "";
   position: absolute;
   left: 0;
@@ -829,19 +830,83 @@ input[type="number"] {
   transition: all 0.2s;
 }
 
-.dark .lexical-checklist-checked::before,
-.dark .lexical-checklist-unchecked::before {
+.dark .lexical-checklist-checked:not(:has(> ul)):not(:has(> ol)):not(.lexical-nested-list-item)::before,
+.dark .lexical-checklist-unchecked:not(:has(> ul)):not(:has(> ol)):not(.lexical-nested-list-item)::before {
   border-color: rgba(255, 255, 255, 0.25);
 }
 
-.lexical-checklist-unchecked:hover::before {
+.lexical-checklist-unchecked:not(:has(> ul)):not(:has(> ol)):not(.lexical-nested-list-item):hover::before {
   border-color: rgba(0, 0, 0, 0.5);
   background-color: rgba(0, 0, 0, 0.05);
 }
 
-.dark .lexical-checklist-unchecked:hover::before {
+.dark .lexical-checklist-unchecked:not(:has(> ul)):not(:has(> ol)):not(.lexical-nested-list-item):hover::before {
   border-color: rgba(255, 255, 255, 0.5);
   background-color: rgba(255, 255, 255, 0.05);
+}
+
+/* Any list item acting as a nested list wrapper container must NEVER show bullets or checkboxes */
+li:has(> ul),
+li:has(> ol),
+li.lexical-nested-list-item,
+li.list-none {
+  list-style: none !important;
+  list-style-type: none !important;
+  padding-left: 0 !important;
+  margin-left: 0 !important;
+}
+
+li:has(> ul)::before,
+li:has(> ul)::after,
+li:has(> ol)::before,
+li:has(> ol)::after,
+li.lexical-nested-list-item::before,
+li.lexical-nested-list-item::after,
+li.list-none::before,
+li.list-none::after {
+  content: none !important;
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: none !important;
+  background: none !important;
+}
+
+/* Lexical Link & Interactive YouTube Styles in Sticky Notes */
+[contenteditable] a,
+[contenteditable="true"] a,
+[contenteditable="false"] a {
+  cursor: pointer !important;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+  color: #2563eb;
+  transition: color 0.15s ease, text-decoration 0.15s ease;
+}
+
+.dark [contenteditable] a,
+.dark [contenteditable="true"] a,
+.dark [contenteditable="false"] a {
+  color: #60a5fa;
+}
+
+[contenteditable] a:hover,
+[contenteditable="true"] a:hover,
+[contenteditable="false"] a:hover {
+  color: #1d4ed8;
+}
+
+.dark [contenteditable] a:hover,
+.dark [contenteditable="true"] a:hover,
+.dark [contenteditable="false"] a:hover {
+  color: #93c5fd;
+}
+
+.lexical-youtube-container,
+.lexical-youtube-wrapper {
+  display: block;
+  width: 100%;
 }
 
 /* VS Code Dark+ Theme for Lexical Code blocks */
@@ -931,7 +996,7 @@ input[type="number"] {
 }
 
 
-.lexical-checklist-checked::before {
+.lexical-checklist-checked:not(:has(> ul)):not(:has(> ol)):not(.lexical-nested-list-item)::before {
   background-color: #3b82f6;
   /* blue-500 */
   border-color: #3b82f6 !important;

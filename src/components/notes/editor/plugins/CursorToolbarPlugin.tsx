@@ -4,20 +4,24 @@ import {
   $getSelection, $isRangeSelection, $setSelection, FORMAT_TEXT_COMMAND, TextFormatType,
   $isNodeSelection, COMMAND_PRIORITY_LOW, COMMAND_PRIORITY_NORMAL, SELECTION_CHANGE_COMMAND, BLUR_COMMAND,
   FORMAT_ELEMENT_COMMAND, ElementFormatType, $createParagraphNode, RangeSelection,
-  $isTextNode, $isElementNode, INSERT_PARAGRAPH_COMMAND, createCommand
+  $isTextNode, $isElementNode, INSERT_PARAGRAPH_COMMAND, createCommand,
+  $insertNodes, $isRootNode, LexicalNode, INDENT_CONTENT_COMMAND, OUTDENT_CONTENT_COMMAND
 } from 'lexical';
 
 export const OPEN_CURSOR_TOOLBAR_COMMAND = createCommand<void>('OPEN_CURSOR_TOOLBAR_COMMAND');
 import {
   Bold, Italic, Underline, Strikethrough, Code, SquareTerminal,
   AlignLeft, AlignCenter, AlignRight, AlignJustify, Minus, Plus, RotateCcw,
-  Baseline, Highlighter, Pipette, Space, Copy, Check
+  Baseline, Highlighter, Pipette, Space, Copy, Check,
+  Youtube, Play, Indent, Outdent
 } from 'lucide-react';
 import { $setBlocksType, $patchStyleText, $getSelectionStyleValueForProperty } from '@lexical/selection';
 import { $createCodeNode } from '@lexical/code';
+import { $isLinkNode } from '@lexical/link';
 import { createPortal } from 'react-dom';
 import { FontPicker } from '../../../FontPicker';
 import { ColorPickerPortal } from '../../../image-workspace/components/shared/ColorPickers';
+import { extractYouTubeId, extractYouTubeUrl, $createYouTubeNode } from '../nodes/YouTubeNode';
 
 const MIN_FONT_SIZE = 10;
 const MAX_FONT_SIZE = 72;
@@ -99,6 +103,7 @@ export default function CursorToolbarPlugin() {
   const [highlightColor, setHighlightColor] = useState('');
   const [isSpacePadded, setIsSpacePadded] = useState(false);
   const [selectedTextSnippet, setSelectedTextSnippet] = useState('');
+  const [detectedYouTube, setDetectedYouTube] = useState<{ videoId: string; url: string } | null>(null);
   const [showColorPicker, setShowColorPicker] = useState<'text' | 'highlight' | null>(null);
   const [activeColorTab, setActiveColorTab] = useState<'text' | 'highlight'>('text');
   const [previewingColor, setPreviewingColor] = useState<string | null>(null);
@@ -199,6 +204,7 @@ export default function CursorToolbarPlugin() {
     }
     savedSelectionRef.current = null;
     setSelectedTextSnippet('');
+    setDetectedYouTube(null);
     setShow(false);
     setShowColorPicker(null);
     setSelectionTransparent(false);
@@ -275,6 +281,36 @@ export default function CursorToolbarPlugin() {
         const rawSnippet = text ? text.replace(/^[\s\u00A0]+|[\s\u00A0]+$/g, '') : '';
         setSelectedTextSnippet(rawSnippet.length > 25 ? rawSnippet.slice(0, 25) + '...' : rawSnippet);
 
+        let detectedYt: { videoId: string; url: string } | null = null;
+        const ytIdFromText = extractYouTubeId(text);
+        if (ytIdFromText) {
+          detectedYt = {
+            videoId: ytIdFromText,
+            url: extractYouTubeUrl(text, ytIdFromText),
+          };
+        } else {
+          const nodes = selection.getNodes();
+          for (const node of nodes) {
+            let curr: LexicalNode | null = node;
+            while (curr) {
+              if ($isLinkNode(curr)) {
+                const href = curr.getURL();
+                const id = extractYouTubeId(href);
+                if (id) {
+                  detectedYt = {
+                    videoId: id,
+                    url: extractYouTubeUrl(href, id),
+                  };
+                  break;
+                }
+              }
+              curr = curr.getParent();
+            }
+            if (detectedYt) break;
+          }
+        }
+        setDetectedYouTube(detectedYt);
+
         let isPadded = (text.startsWith('\u00A0') || text.startsWith(' ')) && (text.endsWith('\u00A0') || text.endsWith(' '));
         if (!isPadded && selection.anchor.key === selection.focus.key) {
           const node = selection.anchor.getNode();
@@ -335,6 +371,7 @@ export default function CursorToolbarPlugin() {
 
       if (!rect || (rect.width === 0 && rect.height === 0 && rect.top === 0 && rect.left === 0)) {
         setShow(false);
+        setDetectedYouTube(null);
         return;
       }
 
@@ -534,6 +571,41 @@ export default function CursorToolbarPlugin() {
     editor.dispatchCommand(FORMAT_ELEMENT_COMMAND, format);
     deselectAfterApply();
   };
+
+  const handleRenderYouTube = useCallback((videoId: string, url: string) => {
+    editor.update(() => {
+      let selection = $getSelection();
+      if (!$isRangeSelection(selection) && savedSelectionRef.current) {
+        $setSelection(savedSelectionRef.current.clone());
+        selection = $getSelection();
+      }
+
+      if ($isRangeSelection(selection)) {
+        const youtubeNode = $createYouTubeNode({ videoId, url });
+        const anchorNode = selection.anchor.getNode();
+        const topBlock = anchorNode.getTopLevelElement();
+
+        if (
+          topBlock &&
+          topBlock.getTextContent().trim() === selection.getTextContent().trim()
+        ) {
+          topBlock.replace(youtubeNode);
+        } else {
+          $insertNodes([youtubeNode]);
+        }
+
+        const parent = youtubeNode.getParent();
+        if (parent && $isRootNode(parent)) {
+          if (!youtubeNode.getNextSibling()) {
+            const p = $createParagraphNode();
+            youtubeNode.insertAfter(p);
+          }
+        }
+      }
+    });
+
+    deselectAfterApply();
+  }, [editor, deselectAfterApply]);
 
   // What the selection had before previewing, so moving off the list puts it back
   const familyBeforePreviewRef = useRef<string | null>(null);
@@ -903,6 +975,39 @@ export default function CursorToolbarPlugin() {
         markInteracting();
       }}
     >
+      {/* YouTube Render Overlay Option */}
+      {detectedYouTube && (
+        <div className="flex items-center justify-between gap-2.5 border-b border-black/8 dark:border-white/10 bg-red-500/10 dark:bg-red-500/15 p-2.5">
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg bg-red-600 text-white font-bold shadow-xs">
+              <Youtube size={14} className="fill-current" />
+            </div>
+            <div className="flex flex-col min-w-0">
+              <span className="text-[12px] font-semibold text-red-600 dark:text-red-400 leading-tight">
+                Render YouTube Video
+              </span>
+              <span className="text-[10px] text-black/50 dark:text-white/50 truncate font-mono max-w-[180px] sm:max-w-[240px]">
+                {detectedYouTube.url}
+              </span>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={(e) => {
+              e.stopPropagation();
+              handleRenderYouTube(detectedYouTube.videoId, detectedYouTube.url);
+            }}
+            className="flex shrink-0 items-center gap-1.5 rounded-xl bg-red-600 hover:bg-red-700 text-white px-3 py-1.5 text-[12px] font-medium shadow-sm transition-colors cursor-pointer active:scale-95"
+            title="Render YouTube video player in this note"
+          >
+            <Play size={12} className="fill-current" />
+            <span>Render Video</span>
+          </button>
+        </div>
+      )}
+
       {/* Typeface and size */}
       <div className="flex items-center gap-1.5 border-b border-black/6 p-1.5 dark:border-white/10">
         <FontPicker
@@ -996,6 +1101,22 @@ export default function CursorToolbarPlugin() {
         >
           {copiedSelection ? <Check size={15} className="text-emerald-500" /> : <Copy size={15} />}
         </button>
+        {detectedYouTube && (
+          <>
+            <span className="mx-0.5 h-5 w-px shrink-0 bg-black/8 dark:bg-white/12" />
+            <button
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={(e) => {
+                e.stopPropagation();
+                handleRenderYouTube(detectedYouTube.videoId, detectedYouTube.url);
+              }}
+              className={`${BUTTON_BASE} bg-red-600 text-white hover:bg-red-700 active:scale-95`}
+              title="Render YouTube Video"
+            >
+              <Youtube size={15} className="fill-current" />
+            </button>
+          </>
+        )}
         <span className="mx-0.5 h-5 w-px shrink-0 bg-black/8 dark:bg-white/12" />
         <button
           onMouseDown={(e) => e.preventDefault()}
@@ -1182,6 +1303,36 @@ export default function CursorToolbarPlugin() {
             <Icon size={15} />
           </button>
         ))}
+
+        <div className="mx-1 h-5 w-px shrink-0 bg-black/10 dark:bg-white/10" />
+
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            editor.dispatchCommand(OUTDENT_CONTENT_COMMAND, undefined);
+          }}
+          className={`${BUTTON_BASE} ${BUTTON_IDLE}`}
+          title="Outdent / Un-nest list item (Shift+Tab)"
+          aria-label="Outdent (Shift+Tab)"
+        >
+          <Outdent size={15} />
+        </button>
+
+        <button
+          type="button"
+          onMouseDown={(e) => e.preventDefault()}
+          onClick={(e) => {
+            e.stopPropagation();
+            editor.dispatchCommand(INDENT_CONTENT_COMMAND, undefined);
+          }}
+          className={`${BUTTON_BASE} ${BUTTON_IDLE}`}
+          title="Indent / Nest list item (Tab)"
+          aria-label="Indent (Tab)"
+        >
+          <Indent size={15} />
+        </button>
       </div>
 
       {/* ColorPickerPortal from ColorPickers.tsx for Text Color */}
