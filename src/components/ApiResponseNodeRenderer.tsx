@@ -266,6 +266,254 @@ const getThemeClasses = (theme: string) => {
   }
 };
 
+const getHeaderThemeStyles = (theme: string, isThemed: boolean) => {
+  if (!isThemed) {
+    return {
+      headerBg: "bg-white dark:bg-[#0f172a]",
+      headerBorder: "border-slate-200 dark:border-slate-800",
+      cardBorder: "border-slate-200 dark:border-slate-800",
+      titleColor: "text-slate-900 dark:text-slate-100",
+      subtitleColor: "text-slate-500 dark:text-slate-400",
+      actionButton: "text-slate-400 hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200",
+      pillContainer: "border border-slate-200/90 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900",
+      pillActive: "bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-slate-100 font-semibold",
+      pillInactive: "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
+      themeTrigger: "border border-slate-200 dark:border-white/[0.08] bg-slate-100/60 dark:bg-transparent hover:bg-slate-200/80 dark:hover:bg-white/[0.08] text-slate-800 dark:text-slate-200",
+      fullscreenBg: "bg-white text-slate-900 dark:bg-[#0b1120] dark:text-slate-100",
+      resizeGrip: "border-slate-300 dark:border-slate-600",
+    };
+  }
+
+  switch (theme) {
+    case 'github-light':
+      return {
+        headerBg: "bg-[#f6f8fa]",
+        headerBorder: "border-[#d0d7de]",
+        cardBorder: "border-[#d0d7de]",
+        titleColor: "text-[#24292f]",
+        subtitleColor: "text-[#57606a]",
+        actionButton: "text-[#57606a] hover:bg-[#ebf0f4] hover:text-[#24292f]",
+        pillContainer: "border border-[#d0d7de] bg-[#eaeef2]",
+        pillActive: "bg-white text-[#24292f] shadow-xs font-semibold",
+        pillInactive: "text-[#57606a] hover:text-[#24292f]",
+        themeTrigger: "border border-[#d0d7de] bg-white text-[#24292f] hover:bg-[#f3f4f6]",
+        fullscreenBg: "bg-white text-[#24292f]",
+        resizeGrip: "border-[#d0d7de]",
+      };
+    case 'github-dark':
+      return {
+        headerBg: "bg-[#161b22]",
+        headerBorder: "border-[#30363d]",
+        cardBorder: "border-[#30363d]",
+        titleColor: "text-[#c9d1d9]",
+        subtitleColor: "text-[#8b949e]",
+        actionButton: "text-[#8b949e] hover:bg-[#21262d] hover:text-[#c9d1d9]",
+        pillContainer: "border border-[#30363d] bg-[#21262d]",
+        pillActive: "bg-[#30363d] text-[#f0f6fc] font-semibold",
+        pillInactive: "text-[#8b949e] hover:text-[#c9d1d9]",
+        themeTrigger: "border border-[#30363d] bg-[#21262d] text-[#c9d1d9] hover:bg-[#30363d]",
+        fullscreenBg: "bg-[#0d1117] text-[#c9d1d9]",
+        resizeGrip: "border-[#30363d]",
+      };
+    case 'notebook':
+      return {
+        headerBg: "bg-[#f7f2eb]",
+        headerBorder: "border-[#e5dcce]",
+        cardBorder: "border-[#e5dcce]",
+        titleColor: "text-[#2c3e50]",
+        subtitleColor: "text-[#7f8c8d]",
+        actionButton: "text-[#7f8c8d] hover:bg-[#eae1d3] hover:text-[#2c3e50]",
+        pillContainer: "border border-[#e2d6c3] bg-[#ece2d1]",
+        pillActive: "bg-[#fdfaf6] text-[#2c3e50] shadow-xs font-semibold",
+        pillInactive: "text-[#7f8c8d] hover:text-[#2c3e50]",
+        themeTrigger: "border border-[#e2d6c3] bg-[#fdfaf6] text-[#2c3e50] hover:bg-[#eae1d3]",
+        fullscreenBg: "bg-[#fdfaf6] text-slate-800",
+        resizeGrip: "border-[#d5c7b3]",
+      };
+    case 'notebook-dark':
+      return {
+        headerBg: "bg-[#181825]",
+        headerBorder: "border-[#313244]",
+        cardBorder: "border-[#313244]",
+        titleColor: "text-[#cdd6f4]",
+        subtitleColor: "text-[#a6adc8]",
+        actionButton: "text-[#a6adc8] hover:bg-[#313244] hover:text-[#cdd6f4]",
+        pillContainer: "border border-[#313244] bg-[#11111b]",
+        pillActive: "bg-[#313244] text-[#cdd6f4] font-semibold",
+        pillInactive: "text-[#a6adc8] hover:text-[#cdd6f4]",
+        themeTrigger: "border border-[#313244] bg-[#1e1e2e] text-[#cdd6f4] hover:bg-[#313244]",
+        fullscreenBg: "bg-[#1e1e2e] text-slate-300",
+        resizeGrip: "border-[#45475a]",
+      };
+    case 'borderlands':
+      return {
+        headerBg: "bg-[#f1dfb0]",
+        headerBorder: "border-[#111111] border-b-2",
+        cardBorder: "border-[#111111] border-2",
+        titleColor: "text-[#111111] font-bold",
+        subtitleColor: "text-[#333333]",
+        actionButton: "text-[#111111] hover:bg-[#ffd400]/40 hover:text-black",
+        pillContainer: "border-2 border-[#111111] bg-[#ffd400]/20",
+        pillActive: "bg-[#ffd400] text-[#111111] font-bold",
+        pillInactive: "text-[#333333] hover:text-black",
+        themeTrigger: "border-2 border-[#111111] bg-[#fffdf5] text-[#111111] font-bold hover:bg-[#ffd400]",
+        fullscreenBg: "bg-[#f6e7c1] text-[#1a1a1a]",
+        resizeGrip: "border-[#111111]",
+      };
+    case 'comic-minimal':
+      return {
+        headerBg: "bg-[#f5efdf]",
+        headerBorder: "border-[#222222]",
+        cardBorder: "border-[#222222]",
+        titleColor: "text-[#222222] font-semibold",
+        subtitleColor: "text-[#666666]",
+        actionButton: "text-[#444444] hover:bg-[#e6ddc8] hover:text-[#111111]",
+        pillContainer: "border border-[#222222] bg-[#e8e0cc]",
+        pillActive: "bg-white text-[#111111] font-semibold",
+        pillInactive: "text-[#666666] hover:text-[#111111]",
+        themeTrigger: "border border-[#222222] bg-white text-[#111111] hover:bg-[#f0ebe0]",
+        fullscreenBg: "bg-[#faf6ee] text-[#1a1a1a]",
+        resizeGrip: "border-[#222222]",
+      };
+    case 'anime-pastel':
+      return {
+        headerBg: "bg-[#fbe9f2]",
+        headerBorder: "border-[#f1c5d8]",
+        cardBorder: "border-[#f1c5d8]",
+        titleColor: "text-[#6b4c6e] font-semibold",
+        subtitleColor: "text-[#9a769e]",
+        actionButton: "text-[#9a769e] hover:bg-[#f3d2e2] hover:text-[#5a385e]",
+        pillContainer: "border border-[#f1c5d8] bg-[#f5d5e5]",
+        pillActive: "bg-white text-[#6b4c6e] font-semibold shadow-xs",
+        pillInactive: "text-[#9a769e] hover:text-[#5a385e]",
+        themeTrigger: "border border-[#f1c5d8] bg-white text-[#6b4c6e] hover:bg-[#fbeaf3]",
+        fullscreenBg: "bg-[#fff5f9] text-[#4a354c]",
+        resizeGrip: "border-[#e8b5cb]",
+      };
+    case 'manga-scan':
+      return {
+        headerBg: "bg-[#161616]",
+        headerBorder: "border-[#2a2a2a]",
+        cardBorder: "border-[#2a2a2a]",
+        titleColor: "text-[#eeeeee]",
+        subtitleColor: "text-[#888888]",
+        actionButton: "text-[#888888] hover:bg-[#262626] hover:text-[#ffffff]",
+        pillContainer: "border border-[#2a2a2a] bg-[#202020]",
+        pillActive: "bg-[#303030] text-[#ffffff] font-semibold",
+        pillInactive: "text-[#888888] hover:text-[#cccccc]",
+        themeTrigger: "border border-[#2a2a2a] bg-[#202020] text-[#eeeeee] hover:bg-[#2c2c2c]",
+        fullscreenBg: "bg-[#121212] text-[#e0e0e0]",
+        resizeGrip: "border-[#444444]",
+      };
+    case 'cyberpunk':
+      return {
+        headerBg: "bg-[#0a0a14]",
+        headerBorder: "border-[#ffe600]/40",
+        cardBorder: "border-[#ffe600]/40",
+        titleColor: "text-[#ffe600] font-semibold",
+        subtitleColor: "text-[#00e5ff]",
+        actionButton: "text-[#00e5ff] hover:bg-[#ffe600]/15 hover:text-[#ffe600]",
+        pillContainer: "border border-[#00e5ff]/30 bg-[#121422]",
+        pillActive: "bg-[#ffe600] text-black font-bold",
+        pillInactive: "text-[#00e5ff] hover:text-[#ffe600]",
+        themeTrigger: "border border-[#ffe600]/40 bg-[#121422] text-[#ffe600] hover:bg-[#ffe600]/20",
+        fullscreenBg: "bg-[#0a0a14] text-[#e0e0e0]",
+        resizeGrip: "border-[#ffe600]/60",
+      };
+    case 'retro-arcade':
+      return {
+        headerBg: "bg-[#060614]",
+        headerBorder: "border-[#00ffcc]/40",
+        cardBorder: "border-[#00ffcc]/40",
+        titleColor: "text-[#00ffcc] font-semibold",
+        subtitleColor: "text-[#ff0055]",
+        actionButton: "text-[#00ffcc] hover:bg-[#00ffcc]/15 hover:text-white",
+        pillContainer: "border border-[#ff0055]/40 bg-[#0d0d22]",
+        pillActive: "bg-[#00ffcc] text-black font-bold",
+        pillInactive: "text-[#ff0055] hover:text-[#00ffcc]",
+        themeTrigger: "border border-[#00ffcc]/40 bg-[#0d0d22] text-[#00ffcc] hover:bg-[#00ffcc]/20",
+        fullscreenBg: "bg-[#050510] text-[#00ffcc]",
+        resizeGrip: "border-[#00ffcc]/60",
+      };
+    case 'synthwave':
+      return {
+        headerBg: "bg-[#170624]",
+        headerBorder: "border-[#ff2a85]/40",
+        cardBorder: "border-[#ff2a85]/40",
+        titleColor: "text-[#ff71ce] font-semibold",
+        subtitleColor: "text-[#01cdfe]",
+        actionButton: "text-[#01cdfe] hover:bg-[#ff2a85]/20 hover:text-[#ff71ce]",
+        pillContainer: "border border-[#ff2a85]/30 bg-[#210933]",
+        pillActive: "bg-[#ff2a85] text-white font-semibold shadow-xs",
+        pillInactive: "text-[#01cdfe] hover:text-[#ff71ce]",
+        themeTrigger: "border border-[#ff2a85]/40 bg-[#210933] text-[#ff71ce] hover:bg-[#ff2a85]/20",
+        fullscreenBg: "bg-[#1a0826] text-[#f8f8f2]",
+        resizeGrip: "border-[#ff2a85]/60",
+      };
+    case 'neubrutalism':
+      return {
+        headerBg: "bg-[#fffbe0]",
+        headerBorder: "border-b-2 border-black",
+        cardBorder: "border-2 border-black",
+        titleColor: "text-black font-black",
+        subtitleColor: "text-black/75",
+        actionButton: "text-black hover:bg-black/10",
+        pillContainer: "border-2 border-black bg-white",
+        pillActive: "bg-black text-white font-black",
+        pillInactive: "text-black hover:bg-black/10",
+        themeTrigger: "border-2 border-black bg-white text-black font-bold hover:bg-[#fff5c0]",
+        fullscreenBg: "bg-[#fffdf0] text-black",
+        resizeGrip: "border-black",
+      };
+    case 'kawaii':
+      return {
+        headerBg: "bg-[#ffeff3]",
+        headerBorder: "border-[#ffc2cf]",
+        cardBorder: "border-[#ffc2cf]",
+        titleColor: "text-[#ff4d7e] font-semibold",
+        subtitleColor: "text-[#aa707e]",
+        actionButton: "text-[#ff4d7e] hover:bg-[#ffc2cf]/40",
+        pillContainer: "border border-[#ffc2cf] bg-[#ffe0e8]",
+        pillActive: "bg-white text-[#ff4d7e] font-semibold shadow-xs",
+        pillInactive: "text-[#aa707e] hover:text-[#ff4d7e]",
+        themeTrigger: "border border-[#ffc2cf] bg-white text-[#ff4d7e] hover:bg-[#ffeef3]",
+        fullscreenBg: "bg-[#fff5f7] text-[#4d3a40]",
+        resizeGrip: "border-[#ffb3c2]",
+      };
+    case 'chalkboard':
+      return {
+        headerBg: "bg-[#16211c]",
+        headerBorder: "border-[#2b3d35]",
+        cardBorder: "border-[#2b3d35]",
+        titleColor: "text-[#e2eee7]",
+        subtitleColor: "text-[#8ba798]",
+        actionButton: "text-[#8ba798] hover:bg-[#23332b] hover:text-[#e2eee7]",
+        pillContainer: "border border-[#2b3d35] bg-[#111a16]",
+        pillActive: "bg-[#23332b] text-[#e2eee7] font-semibold",
+        pillInactive: "text-[#8ba798] hover:text-[#e2eee7]",
+        themeTrigger: "border border-[#2b3d35] bg-[#1c2a23] text-[#e2eee7] hover:bg-[#23332b]",
+        fullscreenBg: "bg-[#1a2620] text-[#e2eee7]",
+        resizeGrip: "border-[#3e564b]",
+      };
+    case 'default-dark':
+    default:
+      return {
+        headerBg: "bg-[#0f172a]",
+        headerBorder: "border-slate-800",
+        cardBorder: "border-slate-800",
+        titleColor: "text-slate-100",
+        subtitleColor: "text-slate-400",
+        actionButton: "text-slate-400 hover:bg-slate-800 hover:text-slate-100",
+        pillContainer: "border border-slate-800 bg-slate-900",
+        pillActive: "bg-slate-800 text-slate-100 font-semibold shadow-xs",
+        pillInactive: "text-slate-400 hover:text-slate-200",
+        themeTrigger: "border border-slate-800 bg-slate-900 text-slate-200 hover:bg-slate-800",
+        fullscreenBg: "bg-[#0f172a] text-slate-100",
+        resizeGrip: "border-slate-700",
+      };
+  }
+};
+
 interface ApiResponseNodeRendererProps {
   /** Path (and node id) of the `__response` node, i.e. `<api node path>.__response` */
   path: string;
@@ -620,14 +868,17 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
     setIsFullscreen((open) => !open);
   }, []);
 
-  const actionClass = 'inline-flex h-6.5 w-6.5 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-md sm:rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700 dark:text-slate-500 dark:hover:bg-slate-800 dark:hover:text-slate-200 cursor-pointer';
-  const Icon = info.icon;
-  const isDark = appTheme !== 'light';
-  const codeTextClass = isFullscreen ? 'text-[13px]' : 'text-[11.5px]';
-
   const hasStreamMarkdown = Boolean(data && typeof data === 'object' && typeof data._combinedMessage === 'string');
   const hasMarkdownText = info.kind === 'markdown' || (info.text !== undefined && looksLikeMarkdown(info.text));
   const canShowMarkdown = hasStreamMarkdown || hasMarkdownText;
+
+  const isThemedHeader = viewMode === 'rendered' && canShowMarkdown;
+  const ht = useMemo(() => getHeaderThemeStyles(mdTheme, isThemedHeader), [mdTheme, isThemedHeader]);
+
+  const actionClass = `inline-flex h-6.5 w-6.5 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-md sm:rounded-lg transition-colors cursor-pointer ${ht.actionButton}`;
+  const Icon = info.icon;
+  const isDark = appTheme !== 'light';
+  const codeTextClass = isFullscreen ? 'text-[13px]' : 'text-[11.5px]';
 
   const canShowJson = info.kind === 'json' || (() => {
     if (!info.text) return false;
@@ -671,7 +922,7 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
   const header = (
     <div
       // In the canvas the header is the drag handle (the body scrolls and selects text instead)
-      className={`flex shrink-0 items-center justify-between gap-1.5 sm:gap-2 border-b border-slate-200 dark:border-slate-800 ${
+      className={`flex shrink-0 items-center justify-between gap-1.5 sm:gap-2 border-b transition-colors duration-150 ${ht.headerBorder} ${ht.headerBg} ${
         isFullscreen ? 'px-2 py-1.5 sm:px-6 sm:py-3' : 'drag-handle cursor-move px-2 py-1.5 sm:px-3 sm:py-2.5'
       }`}
       title={isFullscreen ? undefined : 'Drag to move'}
@@ -681,23 +932,29 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
           <Icon size={isFullscreen ? 14 : 14} />
         </div>
         <div className="min-w-0 flex-1">
-          <div className={`truncate font-mono font-semibold text-slate-900 dark:text-slate-100 ${isFullscreen ? 'text-[11.5px] sm:text-sm' : 'text-[11px] sm:text-[12px]'}`} title={fileName}>
+          <div
+            className={`truncate font-mono font-semibold transition-colors ${ht.titleColor} ${isFullscreen ? 'text-[11.5px] sm:text-sm' : 'text-[11px] sm:text-[12px]'}`}
+            title={fileName}
+            style={isThemedHeader && THEME_FONTS[mdTheme] ? { fontFamily: `'${THEME_FONTS[mdTheme][0]}', monospace` } : undefined}
+          >
             {fileName}
           </div>
-          <div className="mt-0.5 truncate text-[10px] sm:text-[11px] text-slate-500 dark:text-slate-400 hidden sm:block">{stats}</div>
+          <div className={`mt-0.5 truncate text-[10px] sm:text-[11px] transition-colors ${ht.subtitleColor} hidden sm:block`}>
+            {stats}
+          </div>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1 sm:gap-1.5">
         {availableViewModes.length > 1 && (
-          <div className="flex items-center rounded-md border border-slate-200/90 bg-slate-100/80 p-0.5 text-[9.5px] sm:text-[10px] font-medium dark:border-slate-800 dark:bg-slate-900 shrink-0">
+          <div className={`flex items-center rounded-md p-0.5 text-[9.5px] sm:text-[10px] font-medium shrink-0 transition-colors ${ht.pillContainer}`}>
             {availableViewModes.map((mode) => (
               <button
                 key={mode.id}
                 onClick={(e) => { e.stopPropagation(); setViewMode(mode.id); }}
                 className={`rounded px-1.5 py-0.5 whitespace-nowrap transition-colors cursor-pointer ${
                   viewMode === mode.id
-                    ? 'bg-white text-slate-900 shadow-xs dark:bg-slate-800 dark:text-slate-100 font-semibold'
-                    : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
+                    ? ht.pillActive
+                    : ht.pillInactive
                 }`}
                 title={mode.title}
               >
@@ -719,19 +976,19 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
                   ref={ref}
                   type="button"
                   {...props}
-                  className={`flex items-center justify-center gap-1 rounded-md border border-slate-200 dark:border-white/[0.08] bg-slate-100/60 dark:bg-transparent hover:bg-slate-200/80 dark:hover:bg-white/[0.08] text-slate-800 dark:text-slate-200 h-6.5 w-6.5 sm:h-7 sm:w-auto px-1 sm:px-2.5 text-[10px] font-semibold transition-all outline-none cursor-pointer ${
-                    isOpen ? 'bg-slate-200/90 dark:bg-white/[0.12] border-slate-300 dark:border-white/[0.15]' : ''
+                  className={`flex items-center justify-center gap-1 rounded-md h-6.5 w-6.5 sm:h-7 sm:w-auto px-1 sm:px-2.5 text-[10px] font-semibold transition-all outline-none cursor-pointer ${ht.themeTrigger} ${
+                    isOpen ? 'brightness-95 contrast-105' : ''
                   }`}
                   title={`Theme: ${MD_THEME_OPTIONS.find((t) => t.value === mdTheme)?.label || mdTheme}`}
                   aria-label="Markdown theme"
                 >
-                  <Palette size={12} className="shrink-0 text-slate-500 dark:text-slate-400" />
+                  <Palette size={12} className="shrink-0 opacity-80" />
                   <span className="hidden sm:inline truncate max-w-[65px] md:max-w-[80px]">
                     {MD_THEME_OPTIONS.find((t) => t.value === mdTheme)?.label || mdTheme}
                   </span>
                   <ChevronDown
                     size={10}
-                    className={`hidden sm:inline text-slate-400 dark:text-slate-500 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
+                    className={`hidden sm:inline opacity-70 shrink-0 transition-transform duration-200 ${isOpen ? 'rotate-180' : ''}`}
                   />
                 </button>
               )}
@@ -1015,7 +1272,7 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
     <>
       <div
         ref={containerRef}
-        className="nodrag resize relative flex min-w-0 flex-col overflow-hidden rounded-xl border border-slate-200 bg-white text-slate-900 shadow-sm pointer-events-auto dark:border-slate-800 dark:bg-[#0f172a] dark:text-slate-100"
+        className={`nodrag resize relative flex min-w-0 flex-col overflow-hidden rounded-xl shadow-sm pointer-events-auto transition-colors duration-150 border ${ht.cardBorder} ${ht.headerBg}`}
         style={{ width, height, minWidth: MIN_WIDTH, minHeight: MIN_HEIGHT, maxWidth: MAX_WIDTH, maxHeight: MAX_HEIGHT }}
       >
         {isFullscreen ? (
@@ -1041,7 +1298,7 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
         {/* Resize grip (the native resize handle sits underneath it) */}
         <span
           aria-hidden
-          className="pointer-events-none absolute bottom-0.5 right-0.5 h-2.5 w-2.5 border-b-2 border-r-2 border-slate-300 dark:border-slate-600"
+          className={`pointer-events-none absolute bottom-0.5 right-0.5 h-2.5 w-2.5 border-b-2 border-r-2 ${ht.resizeGrip}`}
         />
       </div>
 
@@ -1049,7 +1306,7 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
         <div
           role="dialog"
           aria-label={`${fileName} fullscreen`}
-          className="fixed inset-0 z-[10000] flex flex-col bg-white text-slate-900 dark:bg-[#0b1120] dark:text-slate-100"
+          className={`fixed inset-0 z-[10000] flex flex-col ${isThemedHeader ? ht.fullscreenBg : 'bg-white text-slate-900 dark:bg-[#0b1120] dark:text-slate-100'}`}
           onMouseDown={(e) => e.stopPropagation()}
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
