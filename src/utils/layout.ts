@@ -334,6 +334,15 @@ export const computeLayout = (
         }
     }
 
+    // Special layout rule for API response nodes:
+    // Always place API response nodes directly to the right of their parent API node
+    root.descendants().forEach(node => {
+        if (node.parent && (node.data.type === 'api_response' || node.data.id.endsWith('.__response'))) {
+            node.x = node.parent.x + 460;
+            node.y = node.parent.y;
+        }
+    });
+
     // Ensure no NaN coordinates exist
     root.descendants().forEach(node => {
         if (isNaN(node.x) || node.x === undefined) node.x = 0;

@@ -303,6 +303,23 @@ function NodeRenderer({
             const pos = store.dragOverrides[id] || { x: desc.x, y: desc.y };
             startPositions.push({ id, startX: pos.x, startY: pos.y });
           }
+        } else {
+          const isCurrentApiNode =
+            nodeRef.current.data.type === "string" &&
+            nodeRef.current.data.name &&
+            String(nodeRef.current.data.name).endsWith("_api_node");
+          if (isCurrentApiNode) {
+            const descendants = nodeRef.current.descendants().slice(1);
+            for (const desc of descendants) {
+              if (desc.data.type === "api_response" || desc.data.id.endsWith(".__response")) {
+                const id = desc.data.id;
+                const pos = store.dragOverrides[id] || { x: desc.x, y: desc.y };
+                const correctedX = pos.x > currentPos.x ? pos.x : currentPos.x + 460;
+                const correctedY = pos.x > currentPos.x ? pos.y : currentPos.y;
+                startPositions.push({ id, startX: correctedX, startY: correctedY });
+              }
+            }
+          }
         }
 
         // Apply immediately

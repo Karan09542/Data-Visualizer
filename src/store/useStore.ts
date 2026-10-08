@@ -915,7 +915,24 @@ export const useStore = create<StoreState>()(
                 s.apiNodeConfig,
               );
             }
-            return { apiNodeResponses: res, treeData };
+            const newOverrides = { ...s.dragOverrides };
+            const parentPos = newOverrides[path];
+            const responsePath = `${path}.__response`;
+            const currentResp = newOverrides[responsePath];
+            if (parentPos) {
+              if (
+                !currentResp ||
+                currentResp.x <= parentPos.x ||
+                Math.abs(currentResp.y - parentPos.y) > 500 ||
+                Math.abs(currentResp.x - (parentPos.x + 460)) > 600
+              ) {
+                newOverrides[responsePath] = {
+                  x: parentPos.x + 460,
+                  y: parentPos.y,
+                };
+              }
+            }
+            return { apiNodeResponses: res, treeData, dragOverrides: newOverrides };
           });
         },
         setApiNodeLoading: (path: string, loading: boolean) =>

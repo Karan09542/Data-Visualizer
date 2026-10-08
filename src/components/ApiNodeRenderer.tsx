@@ -461,6 +461,19 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     setApiNodeLoading(path, true);
     setApiNodeError(path, null);
 
+    // Ensure the response node is positioned directly to the right of the API node
+    const store = useStore.getState();
+    const parentPos = store.dragOverrides[path] || (nodeX !== undefined && nodeY !== undefined ? { x: nodeX, y: nodeY } : null);
+    const responsePath = `${path}.__response`;
+    if (parentPos) {
+      const currentResp = store.dragOverrides[responsePath];
+      if (!currentResp || currentResp.x <= parentPos.x || Math.abs(currentResp.y - parentPos.y) > 500 || Math.abs(currentResp.x - (parentPos.x + 460)) > 600) {
+        store.setMultipleDragOverrides({
+          [responsePath]: { x: parentPos.x + 460, y: parentPos.y },
+        });
+      }
+    }
+
     const startTime = performance.now();
     const activeVariables = config.variables;
     const activeGroup = config.activeVariableGroup;

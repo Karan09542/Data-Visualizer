@@ -243,7 +243,16 @@ export default function GraphVisualizer() {
     let hasMissing = false;
 
     for (const node of originalNodes) {
-      if (!dragOverrides[node.data.id]) {
+      const isApiResponse = node.data.type === 'api_response' || node.data.id.endsWith('.__response');
+      if (isApiResponse && node.parent) {
+        const parentId = node.parent.data.id;
+        const parentPos = dragOverrides[parentId] || { x: node.parent.x, y: node.parent.y };
+        const currentOverride = dragOverrides[node.data.id];
+        if (!currentOverride || currentOverride.x <= parentPos.x || Math.abs(currentOverride.y - parentPos.y) > 500 || Math.abs(currentOverride.x - (parentPos.x + 460)) > 600) {
+          missingOverrides[node.data.id] = { x: parentPos.x + 460, y: parentPos.y };
+          hasMissing = true;
+        }
+      } else if (!dragOverrides[node.data.id]) {
         missingOverrides[node.data.id] = { x: node.x, y: node.y };
         hasMissing = true;
       }
@@ -262,7 +271,20 @@ export default function GraphVisualizer() {
 
     // Apply drag overrides
     const overridenNodes = originalNodes.map((n) => {
+      const isApiResponse = n.data.type === 'api_response' || n.data.id.endsWith('.__response');
+      const parentId = n.parent?.data.id || (isApiResponse ? n.data.id.replace(/\.__response$/, '') : null);
+      const parentPos = parentId ? (dragOverrides[parentId] || (n.parent ? { x: n.parent.x, y: n.parent.y } : null)) : null;
+
       const override = dragOverrides[n.data.id];
+      if (isApiResponse && parentPos) {
+        if (!override || override.x <= parentPos.x || Math.abs(override.y - parentPos.y) > 500 || Math.abs(override.x - (parentPos.x + 460)) > 600) {
+          const copy = Object.assign(Object.create(Object.getPrototypeOf(n)), n);
+          copy.x = parentPos.x + 460;
+          copy.y = parentPos.y;
+          return copy;
+        }
+      }
+
       if (override) {
         // Create a shallow copy keeping prototype functions like .ancestors() working
         const copy = Object.assign(Object.create(Object.getPrototypeOf(n)), n);
