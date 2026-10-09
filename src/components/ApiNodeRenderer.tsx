@@ -13,6 +13,8 @@ import {
 } from '../utils/variableInterpolator';
 import CustomSelect from './CustomSelect';
 import { PrettierIcon } from './InlineApiEditor';
+import { FreeApiModal } from './FreeApiModal';
+import type { FreeApiPreset } from '../constants/freeApis';
 import {
   Activity,
   AlertCircle,
@@ -189,6 +191,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
   const [useProxy, setUseProxy] = useState(false);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
+  const [showFreeApiModal, setShowFreeApiModal] = useState(false);
   const [copiedHint, setCopiedHint] = useState<string | null>(null);
   const [showAdvancedDiagnostics, setShowAdvancedDiagnostics] = useState(false);
   const [copiedCurl, setCopiedCurl] = useState(false);
@@ -1048,6 +1051,43 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     return () => window.removeEventListener('fetch-api-node', handleSpecificFetch);
   }, [handleFetch, path, useProxy]);
 
+  const handleSelectFreeApi = useCallback(
+    async (preset: FreeApiPreset, autoRun: boolean) => {
+      setShowFreeApiModal(false);
+      setLocalUrl(preset.url);
+      await updateNodeValue(path, preset.url);
+
+      if (isEditing && inlineApiEditor) {
+        setInlineApiEditor({ ...inlineApiEditor, url: preset.url });
+      }
+
+      const nextConfig = {
+        ...config,
+        method: preset.method,
+        headers: (preset.headers || []).map((h) => ({
+          id: h.id || Math.random().toString(36).substring(2, 9),
+          key: h.key,
+          value: h.value,
+          enabled: h.enabled,
+        })),
+        body: preset.body ? { type: preset.body.type, rawJson: preset.body.rawJson || '' } : { type: 'none' as const },
+        extractPath: preset.extractPath || undefined,
+        responseFormat: preset.responseFormat || undefined,
+        streamEnabled: preset.method === 'POST' && preset.id === 'ollama-chat' ? false : undefined,
+      };
+
+      setApiNodeConfig(path, nextConfig);
+      setApiNodeError(path, null);
+
+      if (autoRun) {
+        setTimeout(() => {
+          handleFetch(false);
+        }, 80);
+      }
+    },
+    [config, handleFetch, inlineApiEditor, isEditing, path, setApiNodeConfig, setApiNodeError, setInlineApiEditor, updateNodeValue]
+  );
+
   const clearData = () => {
     removeApiNode(path);
     setUseProxy(false);
@@ -1414,6 +1454,18 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
           <div className="flex items-center gap-0.5">
             <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowFreeApiModal(true);
+              }}
+              className={`${iconButtonClass} text-amber-500 hover:text-amber-600 dark:hover:text-amber-400`}
+              title="Quick test with famous free APIs (IP, Weather, Mock data, etc.)"
+              aria-label="Famous Free APIs"
+            >
+              <Sparkles size={13} className="text-amber-500" />
+            </button>
+            <button
               onClick={handleCopyCurl}
               className={iconButtonClass}
               title={copiedCurl ? "Copied cURL command!" : "Copy as cURL command"}
@@ -1446,19 +1498,45 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
               onPointerDown={(e) => e.stopPropagation()}
               spellCheck={false}
               autoComplete="off"
-              className="nodrag nowheel w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 font-mono text-[11px] text-slate-700 transition-all outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:text-slate-900 focus:ring-1 focus:ring-blue-500/20 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-700 dark:focus:border-blue-500 dark:focus:bg-slate-950 dark:focus:text-slate-100 cursor-text"
+              className="nodrag nowheel w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 pr-8 font-mono text-[11px] text-slate-700 transition-all outline-none hover:border-slate-300 focus:border-blue-500 focus:bg-white focus:text-slate-900 focus:ring-1 focus:ring-blue-500/20 dark:border-slate-800 dark:bg-slate-950/60 dark:text-slate-200 dark:hover:border-slate-700 dark:focus:border-blue-500 dark:focus:bg-slate-950 dark:focus:text-slate-100 cursor-text"
               title="Click to edit endpoint URL directly (Enter to save, Esc to cancel)"
               placeholder="https://api.example.com/endpoint"
             />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowFreeApiModal(true);
+              }}
+              className="nodrag absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-500 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+              title="Pick from famous free APIs for instant testing"
+              aria-label="Free API presets"
+            >
+              <Sparkles size={12} className="text-amber-500" />
+            </button>
           </div>
         ) : (
-          <button
-            type="button"
-            onClick={(e) => openEditor(e, 'params')}
-            className="mx-3 mt-2.5 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-left text-[11px] text-slate-500 transition-colors hover:border-blue-500/60 hover:text-blue-600 dark:border-slate-700 dark:text-slate-400 dark:hover:text-blue-400 cursor-pointer"
-          >
-            + Add an endpoint URL
-          </button>
+          <div className="mx-3 mt-2.5 flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={(e) => openEditor(e, 'params')}
+              className="flex-1 rounded-lg border border-dashed border-slate-300 px-2.5 py-1.5 text-left text-[11px] text-slate-500 transition-colors hover:border-blue-500/60 hover:text-blue-600 dark:border-slate-700 dark:text-slate-400 dark:hover:text-blue-400 cursor-pointer"
+            >
+              + Add an endpoint URL
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowFreeApiModal(true);
+              }}
+              className="nodrag inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-xs hover:from-blue-500 hover:to-indigo-500 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="Pick from famous free APIs for instant testing"
+            >
+              <Sparkles size={12} className="text-amber-300" />
+              <span>Free APIs</span>
+            </button>
+          </div>
         )}
 
         {/* Inline Body Toggle & Editor */}
@@ -2096,6 +2174,12 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           </div>,
           document.body
         )}
+
+        <FreeApiModal
+          isOpen={showFreeApiModal}
+          onClose={() => setShowFreeApiModal(false)}
+          onSelect={handleSelectFreeApi}
+        />
       </div>
     </div>
   );

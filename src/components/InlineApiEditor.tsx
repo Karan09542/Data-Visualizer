@@ -27,6 +27,8 @@ import MonacoEditor from '@monaco-editor/react';
 import { Highlight, themes } from 'prism-react-renderer';
 import { ModernCheckbox } from './image-workspace/components/shared/ModernCheckbox';
 import JsonImageBase64Modal from './JsonImageBase64Modal';
+import { FreeApiModal } from './FreeApiModal';
+import type { FreeApiPreset } from '../constants/freeApis';
 import {
   Check,
   Link2,
@@ -353,6 +355,7 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
   };
   const [wordWrap, setWordWrap] = useState(true);
   const [copiedJson, setCopiedJson] = useState(false);
+  const [showFreeApiModal, setShowFreeApiModal] = useState(false);
   const [showImageBase64Modal, setShowImageBase64Modal] = useState(false);
   const [droppedImageFiles, setDroppedImageFiles] = useState<File[]>([]);
   const [cursorPosition, setCursorPosition] = useState<{ lineNumber: number; column: number } | null>(null);
@@ -636,6 +639,69 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
     }
   };
 
+  // Handle Free API Preset Selection
+  const handleSelectFreeApi = (preset: FreeApiPreset, autoRun: boolean) => {
+    setShowFreeApiModal(false);
+    setUrl(preset.url);
+    setMethod(preset.method);
+    const newHeaders = (preset.headers || []).map((h) => ({
+      id: h.id || Math.random().toString(36).substring(2, 9),
+      key: h.key,
+      value: h.value,
+      enabled: h.enabled,
+    }));
+    setHeaders(newHeaders);
+    const newBody = preset.body
+      ? { type: preset.body.type, rawJson: preset.body.rawJson || '' }
+      : { type: 'none' as const };
+    setBody(newBody);
+    const newExtractPath = preset.extractPath || '';
+    setExtractPath(newExtractPath);
+    if (preset.responseFormat) {
+      setResponseFormat(preset.responseFormat);
+    }
+    const newStream = preset.method === 'POST' && preset.id === 'ollama-chat' ? false : undefined;
+    setStreamEnabled(newStream);
+
+    let newParams: KeyValueParam[] = [];
+    const qIdx = preset.url.indexOf('?');
+    if (qIdx > -1) {
+      try {
+        const sp = new URLSearchParams(preset.url.slice(qIdx + 1));
+        sp.forEach((val, key) => {
+          newParams.push({ id: Math.random().toString(36).substring(2, 9), enabled: true, key, value: val });
+        });
+      } catch { }
+    }
+    setParams(newParams);
+
+    if (inlineApiEditor) {
+      setInlineApiEditor({ ...inlineApiEditor, url: preset.url });
+    }
+
+    setCurlBanner(`Loaded free API preset: ${preset.name} (${preset.method})`);
+    setTimeout(() => setCurlBanner(null), 4000);
+
+    if (autoRun) {
+      const newConfig = {
+        ...currentConfig,
+        method: preset.method,
+        responseType,
+        params: newParams,
+        headers: newHeaders,
+        body: newBody,
+        extractPath: newExtractPath.trim() || undefined,
+        responseFormat: preset.responseFormat,
+        streamEnabled: newStream,
+      };
+      setApiNodeConfig(path, newConfig);
+      updateNodeValue(path, preset.url.trim()).then(() => {
+        window.dispatchEvent(new CustomEvent('fetch-api-node', { detail: { path } }));
+        onClose();
+      });
+    }
+  };
+
   // Save current config
   const handleSave = async (triggerFetch = false) => {
     const validTimeout = isTimeoutEmpty ? undefined : (isValidTimeout ? Math.round(parsedTimeout) : currentConfig.timeout);
@@ -673,6 +739,10 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        if (showFreeApiModal) {
+          setShowFreeApiModal(false);
+          return;
+        }
         if (showImageBase64Modal) {
           return;
         }
@@ -689,7 +759,7 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [onClose, showCurlModal, showImageBase64Modal, isJsonFullscreen]);
+  }, [onClose, showCurlModal, showImageBase64Modal, showFreeApiModal, isJsonFullscreen]);
 
   // Reset fullscreen JSON mode if body type switches away from json
   useEffect(() => {
@@ -852,6 +922,17 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
           </div>
 
           <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+            <button
+              type="button"
+              onClick={() => setShowFreeApiModal(true)}
+              title="Pick from famous free APIs for instant testing (IP, Weather, Mock data, etc.)"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 sm:px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-800/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50 cursor-pointer"
+            >
+              <Sparkles size={13} className="text-amber-500" />
+              <span className="hidden sm:inline">Free APIs</span>
+              <span className="inline sm:hidden">APIs</span>
+            </button>
+
             <button
               type="button"
               onClick={() => setShowCurlModal(true)}
@@ -3108,6 +3189,13 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
           </div>
         </div>
       </div>
+
+      {/* Free APIs Modal */}
+      <FreeApiModal
+        isOpen={showFreeApiModal}
+        onClose={() => setShowFreeApiModal(false)}
+        onSelect={handleSelectFreeApi}
+      />
 
       {/* Import cURL Sub-Modal / Bottom Sheet on Mobile */}
       {showCurlModal && (
