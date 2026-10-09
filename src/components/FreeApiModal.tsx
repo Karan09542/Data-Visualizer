@@ -1,7 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  Sparkles,
   X,
   Search,
   Play,
@@ -14,6 +13,7 @@ import {
   Tag,
   KeyRound,
 } from 'lucide-react';
+import { ExploreCompassIcon } from './icons';
 import {
   FREE_API_PRESETS,
   FREE_API_CATEGORIES,
@@ -35,11 +35,7 @@ export function FreeApiModal({ isOpen, onClose, onSelect }: FreeApiModalProps) {
   const modalRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (isOpen) {
-      setTimeout(() => {
-        searchInputRef.current?.focus();
-      }, 80);
-    } else {
+    if (!isOpen) {
       setSearchQuery('');
       setSelectedCategory('All');
     }
@@ -113,8 +109,8 @@ export function FreeApiModal({ isOpen, onClose, onSelect }: FreeApiModalProps) {
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-slate-200 px-4 sm:px-5 py-3 dark:border-slate-800 shrink-0">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-amber-500/20 via-blue-500/20 to-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-500/30">
-              <Sparkles size={18} className="text-amber-500" />
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-blue-500/15 via-indigo-500/15 to-purple-500/15 border border-indigo-500/25">
+              <ExploreCompassIcon size={20} />
             </div>
             <div className="min-w-0">
               <div className="flex items-center gap-2">

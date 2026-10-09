@@ -14,6 +14,7 @@ import {
 import CustomSelect from './CustomSelect';
 import { PrettierIcon } from './InlineApiEditor';
 import { FreeApiModal } from './FreeApiModal';
+import { ExploreCompassIcon } from './icons';
 import type { FreeApiPreset } from '../constants/freeApis';
 import {
   Activity,
@@ -21,6 +22,7 @@ import {
   Check,
   ChevronDown,
   ChevronRight,
+  Compass,
   Copy,
   FileCode,
   FileJson,
@@ -1459,11 +1461,11 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 e.stopPropagation();
                 setShowFreeApiModal(true);
               }}
-              className={`${iconButtonClass} text-amber-500 hover:text-amber-600 dark:hover:text-amber-400`}
-              title="Quick test with famous free APIs (IP, Weather, Mock data, etc.)"
-              aria-label="Famous Free APIs"
+              className={`${iconButtonClass} hover:bg-indigo-500/10 dark:hover:bg-indigo-500/20 transition-all hover:scale-110 active:scale-95`}
+              title="Explore famous free APIs (IP, Weather, Mock data, etc.)"
+              aria-label="Explore Free APIs"
             >
-              <Sparkles size={13} className="text-amber-500" />
+              <ExploreCompassIcon size={16} />
             </button>
             <button
               onClick={handleCopyCurl}
@@ -1508,11 +1510,11 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 e.stopPropagation();
                 setShowFreeApiModal(true);
               }}
-              className="nodrag absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded text-slate-400 hover:text-amber-500 hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-              title="Pick from famous free APIs for instant testing"
-              aria-label="Free API presets"
+              className="nodrag absolute right-1.5 top-1/2 -translate-y-1/2 p-1 rounded-md hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-all hover:scale-110 active:scale-95 cursor-pointer"
+              title="Explore famous free APIs for instant testing"
+              aria-label="Explore Free APIs"
             >
-              <Sparkles size={12} className="text-amber-500" />
+              <ExploreCompassIcon size={15} />
             </button>
           </div>
         ) : (
@@ -1530,10 +1532,10 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 e.stopPropagation();
                 setShowFreeApiModal(true);
               }}
-              className="nodrag inline-flex items-center gap-1 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-xs hover:from-blue-500 hover:to-indigo-500 active:scale-95 transition-all cursor-pointer shrink-0"
-              title="Pick from famous free APIs for instant testing"
+              className="nodrag inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 px-2.5 py-1.5 text-[11px] font-semibold text-white shadow-xs hover:from-blue-500 hover:to-indigo-500 active:scale-95 transition-all cursor-pointer shrink-0"
+              title="Explore famous free APIs for instant testing"
             >
-              <Sparkles size={12} className="text-amber-300" />
+              <ExploreCompassIcon size={14} />
               <span>Free APIs</span>
             </button>
           </div>

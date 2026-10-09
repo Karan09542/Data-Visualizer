@@ -28,11 +28,13 @@ import { Highlight, themes } from 'prism-react-renderer';
 import { ModernCheckbox } from './image-workspace/components/shared/ModernCheckbox';
 import JsonImageBase64Modal from './JsonImageBase64Modal';
 import { FreeApiModal } from './FreeApiModal';
+import { ExploreCompassIcon } from './icons';
 import type { FreeApiPreset } from '../constants/freeApis';
 import {
   Check,
   Link2,
   Globe,
+  Compass,
   X,
   Copy,
   Terminal,
@@ -925,10 +927,10 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
             <button
               type="button"
               onClick={() => setShowFreeApiModal(true)}
-              title="Pick from famous free APIs for instant testing (IP, Weather, Mock data, etc.)"
+              title="Explore famous free APIs for instant testing (IP, Weather, Mock data, etc.)"
               className="inline-flex items-center gap-1.5 rounded-lg border border-indigo-200 bg-indigo-50/70 px-2 sm:px-2.5 py-1.5 text-xs font-semibold text-indigo-700 transition-colors hover:bg-indigo-100 dark:border-indigo-800/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:hover:bg-indigo-900/50 cursor-pointer"
             >
-              <Sparkles size={13} className="text-amber-500" />
+              <ExploreCompassIcon size={14} />
               <span className="hidden sm:inline">Free APIs</span>
               <span className="inline sm:hidden">APIs</span>
             </button>
