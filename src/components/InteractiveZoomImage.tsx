@@ -21,6 +21,10 @@ interface InteractiveZoomImageProps {
   containerStyle?: React.CSSProperties;
   /** Reports the picture's real size once it loads. */
   onNaturalSize?: (width: number, height: number) => void;
+  /** Swipe left gesture callback (e.g., next image). */
+  onSwipeLeft?: () => void;
+  /** Swipe right gesture callback (e.g., previous image). */
+  onSwipeRight?: () => void;
 }
 
 /** Zoom limits, relative to the picture fitted into the view. */
@@ -46,6 +50,8 @@ export function InteractiveZoomImage({
   containerClassName = "bg-slate-100 dark:bg-transparent rounded-2xl",
   containerStyle,
   onNaturalSize,
+  onSwipeLeft,
+  onSwipeRight,
 }: InteractiveZoomImageProps) {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -264,6 +270,26 @@ export function InteractiveZoomImage({
     if (pointers.current.size > 0) return; // still pinching or panning with another finger
     gesture.current = null;
     setIsGesturing(false);
+
+    // Horizontal swipe gesture only when at normal fit zoom (disabled when zoomed in or zoomed out)
+    const isAtNormalZoom = Math.abs(live.current.scale - 1) <= 0.02;
+    if (g && g.moved && (onSwipeLeft || onSwipeRight) && isAtNormalZoom) {
+      const p = toContainer(e.clientX, e.clientY);
+      const dx = p.x - g.startX;
+      const dy = p.y - g.startY;
+      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.3) {
+        if (dx < 0 && onSwipeLeft) {
+          fitView();
+          onSwipeLeft();
+          return;
+        } else if (dx > 0 && onSwipeRight) {
+          fitView();
+          onSwipeRight();
+          return;
+        }
+      }
+    }
+
     if (!g || g.moved || e.type === "pointercancel") return;
 
     // A click or tap.

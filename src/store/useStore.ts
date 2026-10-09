@@ -418,6 +418,8 @@ export interface StoreState {
   activePreviewMedia: {
     url: string;
     type: "image" | "video" | "audio" | "smart" | "pdf" | "3d-model";
+    gallery?: string[];
+    index?: number;
   } | null;
   knownDataUrls: Record<string, "json" | "xml" | "csv">;
   setKnownDataUrl: (url: string, type: "json" | "xml" | "csv") => void;
@@ -498,6 +500,8 @@ export interface StoreState {
     media: {
       url: string;
       type: "image" | "video" | "audio" | "smart" | "pdf" | "3d-model";
+      gallery?: string[];
+      index?: number;
     } | null,
   ) => void;
   /**

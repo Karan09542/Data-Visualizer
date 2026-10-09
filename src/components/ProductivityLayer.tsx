@@ -831,7 +831,12 @@ export default function ProductivityLayer() {
     if (/\.(mp4|mov|webm)$/.test(lower)) type = "video";
     else if (/\.(mp3|wav|ogg)$/.test(lower)) type = "audio";
     else if (/\.(jpg|jpeg|png|gif|webp|svg)$/.test(lower) || hash.startsWith("img_")) type = "image";
-    useStore.getState().setActivePreviewMedia({ url: hash, type });
+    useStore.getState().setActivePreviewMedia({
+      url: hash,
+      type,
+      gallery: activeTodo?.imageHashes,
+      index,
+    });
   };
 
   const handlePaste = (e: React.ClipboardEvent) => {

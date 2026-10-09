@@ -1878,6 +1878,54 @@ function NodeRenderer({
                       });
                       return;
                     }
+                    if (mediaType === "image") {
+                      const currentUrl = actualAssetId || strVal;
+                      const tree = useStore.getState().treeData;
+                      const images: string[] = [];
+                      const seen = new Set<string>();
+                      const collect = (n: any) => {
+                        if (!n) return;
+                        const candidate =
+                          (n.rawValue && typeof n.rawValue === "object"
+                            ? n.rawValue.assetId || n.rawValue.assetRef || n.rawValue.url || n.rawValue.src
+                            : null) ||
+                          (typeof n.value === "string" ? n.value : null) ||
+                          (typeof n.rawValue === "string" ? n.rawValue : null);
+                        if (candidate && typeof candidate === "string") {
+                          const trim = candidate.trim();
+                          const isImg =
+                            trim.startsWith("img_") ||
+                            trim.startsWith("thumb_") ||
+                            trim.startsWith("data:image/") ||
+                            /\.(jpeg|jpg|gif|png|webp|svg|bmp)(\?.*)?$/i.test(trim) ||
+                            (typeof n.name === "string" && (n.name.endsWith("_image_node") || n.name.endsWith(".img")));
+                          if (isImg) {
+                            const norm = trim.startsWith("thumb_") ? "img_" + trim.slice(6) : trim;
+                            if (!seen.has(norm)) {
+                              seen.add(norm);
+                              images.push(norm);
+                            }
+                          }
+                        }
+                        if (Array.isArray(n.children)) {
+                          n.children.forEach(collect);
+                        }
+                      };
+                      if (tree) collect(tree);
+                      const currentNorm = currentUrl.startsWith("thumb_") ? "img_" + currentUrl.slice(6) : currentUrl;
+                      let idx = images.findIndex((u) => u === currentNorm);
+                      if (idx === -1) {
+                        images.unshift(currentNorm);
+                        idx = 0;
+                      }
+                      setActivePreviewMedia({
+                        url: currentNorm,
+                        type: "image",
+                        gallery: images.length > 1 ? images : undefined,
+                        index: idx,
+                      });
+                      return;
+                    }
                     setActivePreviewMedia({
                       url: actualAssetId || strVal,
                       type:

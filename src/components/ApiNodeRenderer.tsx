@@ -968,7 +968,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
               `How to connect from mobile:\n` +
               `1. Free HTTPS Tunnel (Recommended for mobile):\n` +
               `   Run on your computer where Ollama is running:\n` +
-              `   cloudflared tunnel --url http://localhost:11434\n` +
+              `   cloudflared tunnel --url http://localhost:11434 --http-host-header="localhost:11434"\n` +
               `   (or: npx localtunnel --port 11434)\n` +
               `   Copy the generated https://... URL into this node.\n\n` +
               `2. Same Wi-Fi Network:\n` +
@@ -1257,11 +1257,10 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 {/* Body Chip */}
                 {config.body && config.body.type !== 'none' && (
                   <span
-                    className={`inline-flex items-center gap-0.5 rounded pl-1 pr-0.5 py-px text-[9px] font-medium transition-all ${
-                      showInlineBody
-                        ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/30 font-semibold'
-                        : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 group'
-                    }`}
+                    className={`inline-flex items-center gap-0.5 rounded pl-1 pr-0.5 py-px text-[9px] font-medium transition-all ${showInlineBody
+                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 ring-1 ring-amber-500/30 font-semibold'
+                      : 'bg-amber-500/10 text-amber-600 dark:text-amber-400 group'
+                      }`}
                     title={`Body: ${config.body.type} (click to toggle inline body editor, × to remove body)`}
                   >
                     <button
@@ -1478,11 +1477,10 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                   setShowInlineBody((prev) => !prev);
                 }
               }}
-              className={`nodrag inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold transition-all cursor-pointer ${
-                showInlineBody
-                  ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15'
-                  : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
-              }`}
+              className={`nodrag inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-semibold transition-all cursor-pointer ${showInlineBody
+                ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300 hover:bg-amber-500/15'
+                : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800/60'
+                }`}
               title={showInlineBody ? 'Hide request body editor' : 'Directly view and edit request JSON body'}
             >
               <FileCode size={12} className={showInlineBody ? 'text-amber-500' : 'text-slate-400'} />
@@ -1526,11 +1524,10 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 <FileJson size={13} className="text-amber-500 shrink-0" />
                 <span className="font-mono text-[11px] font-bold text-slate-700 dark:text-slate-300">JSON Body</span>
                 {bodyValidation.isValid ? (
-                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-semibold ${
-                    bodyValidation.hasVariables
-                      ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
-                      : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
-                  }`}>
+                  <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono font-semibold ${bodyValidation.hasVariables
+                    ? 'bg-blue-500/10 text-blue-600 dark:text-blue-400'
+                    : 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
+                    }`}>
                     {bodyValidation.hasVariables ? 'Dynamic Vars' : 'Valid'}
                   </span>
                 ) : (
@@ -1551,11 +1548,10 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                     e.stopPropagation();
                     setIsBodyWordWrap((prev) => !prev);
                   }}
-                  className={`p-1 rounded transition-colors cursor-pointer ${
-                    isBodyWordWrap
-                      ? 'text-blue-600 dark:text-blue-400 bg-blue-500/15'
-                      : 'text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200/60 dark:hover:bg-slate-800'
-                  }`}
+                  className={`p-1 rounded transition-colors cursor-pointer ${isBodyWordWrap
+                    ? 'text-blue-600 dark:text-blue-400 bg-blue-500/15'
+                    : 'text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-slate-200/60 dark:hover:bg-slate-800'
+                    }`}
                   title={isBodyWordWrap ? 'Word wrap: On' : 'Word wrap: Off'}
                   aria-label="Toggle word wrap"
                   aria-pressed={isBodyWordWrap}
@@ -1660,11 +1656,10 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                 spellCheck={false}
                 autoComplete="off"
                 placeholder='{\n  "key": "value"\n}'
-                className={`nodrag nowheel flex-1 resize-y bg-transparent p-2 font-mono text-[11px] leading-[18px] text-slate-800 dark:text-slate-200 outline-none custom-scrollbar min-h-[120px] max-h-[240px] ${
-                  isBodyWordWrap
-                    ? 'whitespace-pre-wrap break-words overflow-y-auto overflow-x-hidden'
-                    : 'whitespace-pre overflow-auto'
-                }`}
+                className={`nodrag nowheel flex-1 resize-y bg-transparent p-2 font-mono text-[11px] leading-[18px] text-slate-800 dark:text-slate-200 outline-none custom-scrollbar min-h-[120px] max-h-[240px] ${isBodyWordWrap
+                  ? 'whitespace-pre-wrap break-words overflow-y-auto overflow-x-hidden'
+                  : 'whitespace-pre overflow-auto'
+                  }`}
               />
             </div>
 
@@ -2015,7 +2010,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                     <button
                       type="button"
                       onClick={() => {
-                        const cmd = `cloudflared tunnel --url http://localhost:11434`;
+                        const cmd = `cloudflared tunnel --url http://localhost:11434 --http-host-header="localhost:11434"`;
                         navigator.clipboard.writeText(cmd);
                         setCopiedHint('Tunnel command copied!');
                         setTimeout(() => setCopiedHint(null), 3000);
