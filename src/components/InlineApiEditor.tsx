@@ -20,7 +20,9 @@ import {
   substituteInParamList,
   substituteInAuth,
   substituteInBody,
+  getAvailableNodeVariables,
   type ApiVariable,
+  type AvailableNodeVariable,
 } from '../utils/variableInterpolator';
 import CustomSelect from './CustomSelect';
 import MonacoEditor from '@monaco-editor/react';
@@ -34,7 +36,6 @@ import {
   Check,
   Link2,
   Globe,
-  Compass,
   X,
   Copy,
   Terminal,
@@ -158,6 +159,8 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
   const setInlineApiEditor = useStore((state) => state.setInlineApiEditor);
   const apiNodeLoading = useStore((state) => state.apiNodeLoading);
   const apiNodeResponses = useStore((state) => state.apiNodeResponses);
+  const jsNodeResponses = useStore((state) => state.jsNodeResponses);
+  const parsedData = useStore((state) => state.parsedData);
   const appTheme = useStore((state) => state.appTheme);
   const isDark = appTheme !== 'light';
 
@@ -267,16 +270,71 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
     });
   }, [variables, selectedGroupFilter, variableSearchQuery]);
 
+  // Node Chaining state
+  const [nodeChainingSearchQuery, setNodeChainingSearchQuery] = useState('');
+  const [showNodeChainingDropdown, setShowNodeChainingDropdown] = useState(false);
+  const [copiedChainedToken, setCopiedChainedToken] = useState<string | null>(null);
+
+  const currentNodePath = path || inlineApiEditor?.path;
+
+  const chainingContext = useMemo(
+    () => ({
+      apiNodeResponses,
+      jsNodeResponses,
+      parsedData,
+      currentNodePath,
+    }),
+    [apiNodeResponses, jsNodeResponses, parsedData, currentNodePath]
+  );
+
+  // Available node variables from canvas (including relative sibling variables)
+  const availableNodeVars = useMemo(() => {
+    return getAvailableNodeVariables(chainingContext);
+  }, [chainingContext]);
+
+  const filteredNodeVars = useMemo(() => {
+    if (!nodeChainingSearchQuery.trim()) return availableNodeVars;
+    const q = nodeChainingSearchQuery.trim().toLowerCase();
+    return availableNodeVars.filter(
+      (v) =>
+        v.token.toLowerCase().includes(q) ||
+        v.nodeName.toLowerCase().includes(q) ||
+        v.property.toLowerCase().includes(q) ||
+        String(v.value).toLowerCase().includes(q)
+    );
+  }, [availableNodeVars, nodeChainingSearchQuery]);
+
+  const groupedNodeVars = useMemo(() => {
+    const map = new Map<string, { nodeName: string; nodeId: string; nodeType: 'api' | 'js' | 'data'; status?: string; vars: AvailableNodeVariable[] }>();
+    for (const v of filteredNodeVars) {
+      if (!map.has(v.nodeName)) {
+        map.set(v.nodeName, {
+          nodeName: v.nodeName,
+          nodeId: v.nodeId,
+          nodeType: v.nodeType,
+          status: v.status,
+          vars: [],
+        });
+      }
+      map.get(v.nodeName)!.vars.push(v);
+    }
+    return Array.from(map.values());
+  }, [filteredNodeVars]);
+
   // Dynamic variable resolution & analysis for URL
   const resolvedUrl = useMemo(
-    () => interpolateVariables(url.trim(), variables, activeVariableGroup),
-    [url, variables, activeVariableGroup]
+    () => interpolateVariables(url.trim(), variables, activeVariableGroup, chainingContext),
+    [url, variables, activeVariableGroup, chainingContext]
   );
   const urlVariableAnalysis = useMemo(
-    () => analyzeVariablesInText(url, variables, activeVariableGroup),
-    [url, variables, activeVariableGroup]
+    () => analyzeVariablesInText(url, variables, activeVariableGroup, chainingContext),
+    [url, variables, activeVariableGroup, chainingContext]
   );
   const hasUnresolvedUrlVariables = urlVariableAnalysis.some((v) => !v.isResolved);
+  const chainedUrlVariables = useMemo(
+    () => urlVariableAnalysis.filter((v) => v.isChained),
+    [urlVariableAnalysis]
+  );
 
   // UI state
   const [activeTab, setActiveTab] = useState<TabKey>(() => {
@@ -523,11 +581,11 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
 
   // Copy as cURL
   const handleCopyCurl = async () => {
-    const substitutedParams = substituteInParamList(params, variables, activeVariableGroup);
-    const substitutedHeaders = substituteInParamList(headers, variables, activeVariableGroup);
-    const substitutedAuth = substituteInAuth(auth, variables, activeVariableGroup);
-    const substitutedBody = substituteInBody(body, variables, activeVariableGroup);
-    const targetUrl = interpolateVariables(url, variables, activeVariableGroup);
+    const substitutedParams = substituteInParamList(params, variables, activeVariableGroup, chainingContext);
+    const substitutedHeaders = substituteInParamList(headers, variables, activeVariableGroup, chainingContext);
+    const substitutedAuth = substituteInAuth(auth, variables, activeVariableGroup, chainingContext);
+    const substitutedBody = substituteInBody(body, variables, activeVariableGroup, chainingContext);
+    const targetUrl = interpolateVariables(url, variables, activeVariableGroup, chainingContext);
 
     const cmd = buildCurl(targetUrl, method, substitutedParams, substitutedHeaders, substitutedAuth, substitutedBody);
     try {
@@ -544,7 +602,7 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
       // If rawJson has unquoted {{var}}, temporarily quote them to format cleanly
       const tokenMap = new Map<string, string>();
       let tokenIdx = 0;
-      const protectedJson = body.rawJson.replace(/(:\s*|\,\s*|\[\s*)(\{\{\s*[a-zA-Z0-9_.-]+\s*\}\})/g, (_match, prefix, placeholder) => {
+      const protectedJson = body.rawJson.replace(/(:\s*|\,\s*|\[\s*)(\{\{\s*[a-zA-Z0-9_.\[\]"-]+\s*\}\})/g, (_match, prefix, placeholder) => {
         const token = `__AGY_VAR_${tokenIdx++}__`;
         tokenMap.set(token, placeholder);
         return `${prefix}"${token}"`;
@@ -576,12 +634,12 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
       return;
     }
     try {
-      // 1. Interpolate using active variables
-      const interpolated = interpolateJsonString(val, variables, activeVariableGroup);
+      // 1. Interpolate using active variables and upstream node chaining
+      const interpolated = interpolateJsonString(val, variables, activeVariableGroup, chainingContext);
       // 2. Temporarily replace any remaining unresolved {{...}} with valid placeholders to test structure
       const testJson = interpolated
-        .replace(/:\s*\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, ': "__placeholder__"')
-        .replace(/\{\{\s*([a-zA-Z0-9_.-]+)\s*\}\}/g, '__placeholder__');
+        .replace(/:\s*\{\{\s*([a-zA-Z0-9_.\[\]"-]+)\s*\}\}/g, ': "__placeholder__"')
+        .replace(/\{\{\s*([a-zA-Z0-9_.\[\]"-]+)\s*\}\}/g, '__placeholder__');
       JSON.parse(testJson);
       setJsonError(null);
     } catch (e: any) {
@@ -1014,18 +1072,87 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
                 onChange={(e) => handleUrlChange(e.target.value)}
                 placeholder="Enter URL or paste cURL..."
                 spellCheck={false}
-                className="h-8 sm:h-9.5 w-full rounded-lg sm:rounded-xl border border-slate-200 bg-white pl-7 sm:pl-9 pr-6 sm:pr-8 font-mono text-[11px] sm:text-xs text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-600"
+                className="h-8 sm:h-9.5 w-full rounded-lg sm:rounded-xl border border-slate-200 bg-white pl-7 sm:pl-9 pr-14 sm:pr-16 font-mono text-[11px] sm:text-xs text-slate-900 placeholder:text-slate-400 outline-none transition-colors focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-600"
               />
-              {url && (
-                <button
-                  type="button"
-                  onClick={() => handleUrlChange('')}
-                  className="absolute right-1.5 sm:right-2.5 top-1/2 -translate-y-1/2 p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
-                  title="Clear URL"
-                  aria-label="Clear URL"
-                >
-                  <X size={12} />
-                </button>
+              <div className="absolute right-1.5 sm:right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {availableNodeVars.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowNodeChainingDropdown((prev) => !prev)}
+                    className={`p-1 rounded transition-colors cursor-pointer ${showNodeChainingDropdown
+                        ? 'bg-cyan-500/20 text-cyan-600 dark:text-cyan-400'
+                        : 'text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                      }`}
+                    title={`Insert chained node variable (${availableNodeVars.length} available)`}
+                    aria-label="Insert chained node variable"
+                  >
+                    <Link2 size={13} />
+                  </button>
+                )}
+                {url && (
+                  <button
+                    type="button"
+                    onClick={() => handleUrlChange('')}
+                    className="p-1 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    title="Clear URL"
+                    aria-label="Clear URL"
+                  >
+                    <X size={12} />
+                  </button>
+                )}
+              </div>
+
+              {/* Floating Dropdown for Chained Node Variables */}
+              {showNodeChainingDropdown && (
+                <div className="absolute left-0 top-full mt-1.5 z-50 w-full max-w-md rounded-xl border border-cyan-500/30 bg-white dark:bg-slate-900 shadow-xl overflow-hidden animate-in fade-in slide-in-from-top-1">
+                  <div className="flex items-center justify-between p-2.5 bg-cyan-500/5 dark:bg-cyan-950/20 border-b border-cyan-500/15">
+                    <div className="flex items-center gap-1.5 text-xs font-bold text-cyan-700 dark:text-cyan-300">
+                      <Link2 size={13} />
+                      <span>Insert Chained Node Variable</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setShowNodeChainingDropdown(false)}
+                      className="p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      <X size={12} />
+                    </button>
+                  </div>
+
+                  <div className="max-h-56 overflow-y-auto p-1.5 flex flex-col gap-1">
+                    {availableNodeVars.map((v) => {
+                      const tokenStr = `{{${v.token}}}`;
+                      return (
+                        <button
+                          key={v.token}
+                          type="button"
+                          onClick={() => {
+                            setUrl((prev) => (prev ? `${prev.replace(/\/+$/, '')}/${tokenStr}` : tokenStr));
+                            setShowNodeChainingDropdown(false);
+                          }}
+                          className="flex items-center justify-between gap-2 p-1.5 rounded-lg text-left hover:bg-cyan-500/10 transition-colors cursor-pointer group"
+                        >
+                          <div className="flex items-center gap-1.5 min-w-0">
+                            <span className="px-1 py-0.5 rounded bg-cyan-500/15 text-[9px] font-bold text-cyan-600 dark:text-cyan-400 uppercase">
+                              {v.nodeType}
+                            </span>
+                            {v.isRelative && (
+                              <span className="px-1 py-0.5 rounded bg-emerald-500/15 text-[9px] font-bold text-emerald-600 dark:text-emerald-400 uppercase" title={`Relative import (in ${v.scope})`}>
+                                sibling
+                              </span>
+                            )}
+                            <span className="font-mono text-xs font-semibold text-slate-800 dark:text-slate-100 group-hover:text-cyan-600 dark:group-hover:text-cyan-400 truncate">
+                              {tokenStr}
+                            </span>
+                          </div>
+                          <span className="font-mono text-[10px] text-slate-400 truncate max-w-[120px]">
+                            = {v.preview}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
               )}
             </div>
 
@@ -1102,6 +1229,15 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
               >
                 {resolvedUrl}
               </span>
+              {chainedUrlVariables.length > 0 && (
+                <span
+                  className="flex items-center gap-1 rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-medium text-cyan-600 dark:text-cyan-400"
+                  title={chainedUrlVariables.map((v) => `${v.key} → ${v.value}`).join('\n')}
+                >
+                  <Link2 size={11} />
+                  <span>{chainedUrlVariables.length} Chained Node{chainedUrlVariables.length > 1 ? 's' : ''}</span>
+                </span>
+              )}
               {hasUnresolvedUrlVariables && (
                 <span className="flex items-center gap-1 rounded bg-amber-500/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ml-auto">
                   <AlertTriangle size={11} />
@@ -3035,6 +3171,150 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
                   </div>
                 </div>
               )}
+
+              {/* CANVAS NODE VARIABLE CHAINING SECTION */}
+              <div className="flex flex-col gap-3 p-4 rounded-xl border border-cyan-500/30 bg-cyan-500/5 dark:bg-cyan-950/20">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-500/15 text-cyan-600 dark:text-cyan-400">
+                      <Link2 size={15} />
+                    </div>
+                    <div>
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                        <span>Canvas Node Variable Chaining</span>
+                        <span className="rounded bg-cyan-500/15 px-1.5 py-0.5 text-[10px] font-mono font-semibold text-cyan-600 dark:text-cyan-400">
+                          {`{{node_id.property}}`}
+                        </span>
+                      </h4>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-snug">
+                        Pipe real-time responses from upstream API nodes or canvas objects directly into this request.
+                      </p>
+                    </div>
+                  </div>
+
+                  <span className="self-start sm:self-center px-2 py-0.5 rounded-full bg-cyan-500/10 text-[10px] font-semibold text-cyan-600 dark:text-cyan-400 border border-cyan-500/20">
+                    {availableNodeVars.length} Variables Available
+                  </span>
+                </div>
+
+                {availableNodeVars.length > 0 ? (
+                  <div className="flex flex-col gap-3 mt-1">
+                    {/* Search bar for node variables */}
+                    <div className="relative">
+                      <Search size={13} className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                      <input
+                        type="text"
+                        value={nodeChainingSearchQuery}
+                        onChange={(e) => setNodeChainingSearchQuery(e.target.value)}
+                        placeholder="Search available node outputs (e.g. ip, token, id)..."
+                        className="h-8 w-full rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 pl-8 pr-3 text-xs text-slate-800 dark:text-slate-200 placeholder:text-slate-400 outline-none focus:border-cyan-500"
+                      />
+                    </div>
+
+                    {/* Grouped by Node */}
+                    <div className="flex flex-col gap-2.5 max-h-[340px] overflow-y-auto pr-1">
+                      {groupedNodeVars.map((group) => (
+                        <div
+                          key={group.nodeName}
+                          className="flex flex-col gap-1.5 p-2.5 rounded-lg border border-slate-200/80 dark:border-slate-800/80 bg-white dark:bg-slate-900/60 shadow-xs"
+                        >
+                          <div className="flex items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800/60 pb-1.5">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase ${group.nodeType === 'api'
+                                  ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400'
+                                  : group.nodeType === 'js'
+                                    ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400'
+                                    : 'bg-violet-500/15 text-violet-600 dark:text-violet-400'
+                                }`}>
+                                {group.nodeType}
+                              </span>
+                              <span className="text-xs font-bold text-slate-700 dark:text-slate-200 font-mono truncate">
+                                {group.nodeName}
+                              </span>
+                            </div>
+                            {group.status && (
+                              <span className="text-[10px] text-slate-400 shrink-0">
+                                {group.status}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5 pt-1">
+                            {group.vars.map((v) => {
+                              const tokenText = `{{${v.token}}}`;
+                              const isCopied = copiedChainedToken === v.token;
+                              return (
+                                <div
+                                  key={v.token}
+                                  className="flex items-center justify-between gap-1.5 p-1.5 rounded-md border border-slate-100 dark:border-slate-800 bg-slate-50/70 dark:bg-slate-950/40 text-[11px] group hover:border-cyan-500/40 transition-colors"
+                                >
+                                  <div className="flex flex-col min-w-0 flex-1">
+                                    <div className="flex items-center gap-1 min-w-0">
+                                      <span className="font-mono font-semibold text-cyan-600 dark:text-cyan-400 truncate text-[11px]" title={tokenText}>
+                                        {tokenText}
+                                      </span>
+                                      {v.isRelative && (
+                                        <span className="px-1 py-px rounded bg-emerald-500/15 text-[8px] font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider shrink-0" title={`Relative import (in ${v.scope})`}>
+                                          Sibling
+                                        </span>
+                                      )}
+                                    </div>
+                                    <span className="font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate" title={String(v.value)}>
+                                      = {v.preview}
+                                    </span>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={async () => {
+                                        await navigator.clipboard.writeText(tokenText);
+                                        setCopiedChainedToken(v.token);
+                                        setTimeout(() => setCopiedChainedToken(null), 1500);
+                                      }}
+                                      className={`p-1 rounded transition-colors cursor-pointer ${isCopied
+                                          ? 'bg-emerald-500/15 text-emerald-600'
+                                          : 'text-slate-400 hover:text-cyan-600 dark:hover:text-cyan-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                                        }`}
+                                      title={`Copy ${tokenText}`}
+                                    >
+                                      {isCopied ? <Check size={12} /> : <Copy size={12} />}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => {
+                                        setUrl((prev) => (prev ? `${prev.replace(/\/+$/, '')}/${tokenText}` : tokenText));
+                                      }}
+                                      className="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-cyan-500/10 hover:bg-cyan-500/20 text-cyan-600 dark:text-cyan-400 transition-colors cursor-pointer"
+                                      title="Append to URL"
+                                    >
+                                      + URL
+                                    </button>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-6 text-center rounded-lg border border-dashed border-slate-200 dark:border-slate-800 bg-white/40 dark:bg-slate-900/20">
+                    <Link2 size={24} className="text-slate-400 mb-2" />
+                    <h5 className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                      No upstream node responses yet
+                    </h5>
+                    <p className="text-[11px] text-slate-400 max-w-sm mt-1">
+                      Execute any API node on the canvas (such as an IP lookup or Auth login), and its response properties will automatically appear here to chain into this request!
+                    </p>
+                    <div className="mt-3 flex items-center gap-2 text-[10px] font-mono text-cyan-600 dark:text-cyan-400 bg-cyan-500/10 px-2.5 py-1 rounded-md">
+                      <span>Example:</span>
+                      <code>https://ipwhois.app/json/&#123;&#123;ip_node.ip&#125;&#125;</code>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

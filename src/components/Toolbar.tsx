@@ -49,6 +49,7 @@ import {
   LayoutGrid,
   Atom,
   GraduationCap,
+  LayoutTemplate,
 } from "lucide-react";
 import { useFullscreen } from "../hooks/useFullscreen";
 import CustomSelect from "./CustomSelect";
@@ -122,6 +123,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const setLastSavedCode = useStore((state) => state.setLastSavedCode);
   const setNotification = useStore((state) => state.setNotification);
   const isLearningGamesOpen = useStore((state) => state.isLearningGamesOpen);
+  const isTemplateGalleryOpen = useStore((state) => state.isTemplateGalleryOpen);
+  const setIsTemplateGalleryOpen = useStore((state) => state.setIsTemplateGalleryOpen);
 
   const annotations = useAnnotationStore((state) => state.annotations);
 
@@ -874,7 +877,20 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             <GraduationCap size={14} className={isLearningGamesOpen ? "animate-pulse" : ""} />
             <span>Learn</span>
           </button>
-          <div className="hidden xl:flex items-center gap-4 ml-4 text-xs font-semibold">
+          <button
+            onClick={() => setIsTemplateGalleryOpen(!isTemplateGalleryOpen)}
+            className={`hidden lg:inline-flex items-center gap-1.5 ml-2.5 px-2.5 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer shadow-sm active:scale-95 ${
+              isTemplateGalleryOpen
+                ? "bg-indigo-600 text-white shadow-sm ring-2 ring-indigo-500/30 border border-indigo-600"
+                : "text-indigo-600 dark:text-indigo-400 bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20"
+            }`}
+            title="Starter Templates Gallery"
+            aria-label="Starter Templates Gallery"
+          >
+            <LayoutTemplate size={13} />
+            <span>Templates</span>
+          </button>
+          <div className="hidden xl:flex items-center gap-3.5 ml-3.5 text-xs font-semibold">
             <Link
               to="/about"
               className="text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors"
@@ -1204,6 +1220,18 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         </div>
 
         <div className="lg:hidden flex items-center gap-1 shrink-0">
+          <button
+            onClick={() => setIsTemplateGalleryOpen(!isTemplateGalleryOpen)}
+            className={`p-2 rounded-md transition-colors ${
+              isTemplateGalleryOpen
+                ? "text-indigo-400 bg-indigo-500/20"
+                : "text-indigo-500 dark:text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 hover:bg-slate-100 dark:hover:bg-slate-800"
+            }`}
+            title="Starter Templates"
+            aria-label="Starter Templates"
+          >
+            <LayoutTemplate size={19} />
+          </button>
           <button
             onClick={() => {
               preloadLearningGames();
@@ -1633,7 +1661,19 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 </div>
               </div>
 
-              <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800 grid grid-cols-2 gap-2 text-center text-sm font-medium">
+              <div className="col-span-2 mt-4 pt-4 border-t border-slate-300 dark:border-slate-800 flex flex-col gap-2 text-center text-sm font-medium">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsTemplateGalleryOpen(true);
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="w-full py-2.5 px-3 text-indigo-600 dark:text-indigo-400 font-semibold bg-indigo-500/10 hover:bg-indigo-500/20 border border-indigo-500/20 rounded-xl transition-all flex items-center justify-center gap-2 cursor-pointer shadow-sm active:scale-95"
+                >
+                  <LayoutTemplate size={16} />
+                  <span>Interactive Starter Templates</span>
+                </button>
+                <div className="grid grid-cols-2 gap-2 mt-1">
                 <Link
                   to="/about"
                   className="p-2 text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100 transition-colors"
@@ -1658,6 +1698,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 >
                   Terms
                 </Link>
+                </div>
               </div>
             </div>
           </div>

@@ -571,6 +571,8 @@ export interface StoreState {
   setStickyNotesEnabled: (enabled: boolean) => void;
   schemaExportActive: boolean;
   setSchemaExportActive: (active: boolean) => void;
+  isTemplateGalleryOpen: boolean;
+  setIsTemplateGalleryOpen: (isOpen: boolean) => void;
   // Resets
   resetAllSettings: () => void;
   clearCode: () => void;
@@ -659,6 +661,8 @@ export const useStore = create<StoreState>()(
         schemaExportActive: false,
         setSchemaExportActive: (active: boolean) =>
           set({ schemaExportActive: active }),
+        isTemplateGalleryOpen: false,
+        setIsTemplateGalleryOpen: (isOpen: boolean) => set({ isTemplateGalleryOpen: isOpen }),
         apiMethod: "GET",
         apiUrl: "https://jsonplaceholder.typicode.com/todos/1",
         apiHeaders: '{\n  "Accept": "application/json"\n}',
@@ -922,8 +926,9 @@ export const useStore = create<StoreState>()(
             const newOverrides = { ...s.dragOverrides };
             const parentPos = newOverrides[path];
             const responsePath = `${path}.__response`;
-            const currentResp = newOverrides[responsePath];
+            const fetchedPath = `${path}.__fetched`;
             if (parentPos) {
+              const currentResp = newOverrides[responsePath];
               if (
                 !currentResp ||
                 currentResp.x <= parentPos.x ||
@@ -931,6 +936,18 @@ export const useStore = create<StoreState>()(
                 Math.abs(currentResp.x - (parentPos.x + 460)) > 600
               ) {
                 newOverrides[responsePath] = {
+                  x: parentPos.x + 460,
+                  y: parentPos.y,
+                };
+              }
+              const currentFetched = newOverrides[fetchedPath];
+              if (
+                !currentFetched ||
+                currentFetched.x <= parentPos.x ||
+                Math.abs(currentFetched.y - parentPos.y) > 500 ||
+                Math.abs(currentFetched.x - (parentPos.x + 460)) > 600
+              ) {
+                newOverrides[fetchedPath] = {
                   x: parentPos.x + 460,
                   y: parentPos.y,
                 };

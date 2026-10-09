@@ -30,6 +30,7 @@ import { TableView } from "./TableView";
 import NodeQueryEngine from "./NodeQueryEngine";
 import { NodeContextMenu } from "./NodeContextMenu";
 import { NodeEditingModal } from "./NodeEditingModal";
+import { BlankCanvasTemplateGallery } from "./BlankCanvasTemplateGallery";
 
 /**
  * Canvas backdrops for themes that bring their own, as [dark, light]; other themes use the canvas
@@ -243,7 +244,7 @@ export default function GraphVisualizer() {
     let hasMissing = false;
 
     for (const node of originalNodes) {
-      const isApiResponse = node.data.type === 'api_response' || node.data.id.endsWith('.__response');
+      const isApiResponse = node.data.type === 'api_response' || node.data.id.endsWith('.__response') || node.data.id.endsWith('.__fetched');
       if (isApiResponse && node.parent) {
         const parentId = node.parent.data.id;
         const parentPos = dragOverrides[parentId] || { x: node.parent.x, y: node.parent.y };
@@ -271,8 +272,8 @@ export default function GraphVisualizer() {
 
     // Apply drag overrides
     const overridenNodes = originalNodes.map((n) => {
-      const isApiResponse = n.data.type === 'api_response' || n.data.id.endsWith('.__response');
-      const parentId = n.parent?.data.id || (isApiResponse ? n.data.id.replace(/\.__response$/, '') : null);
+      const isApiResponse = n.data.type === 'api_response' || n.data.id.endsWith('.__response') || n.data.id.endsWith('.__fetched');
+      const parentId = n.parent?.data.id || (isApiResponse ? (n.data.id.endsWith('.__fetched') ? n.data.id.replace(/\.__fetched$/, '') : n.data.id.replace(/\.__response$/, '')) : null);
       const parentPos = parentId ? (dragOverrides[parentId] || (n.parent ? { x: n.parent.x, y: n.parent.y } : null)) : null;
 
       const override = dragOverrides[n.data.id];
@@ -1370,13 +1371,11 @@ export default function GraphVisualizer() {
       </svg>
 
       {nodes.length === 0 && (
-        <div className="absolute inset-0 flex items-center justify-center text-slate-600 font-mono text-sm pointer-events-none">
-          Awaiting input...
-        </div>
+        <BlankCanvasTemplateGallery />
       )}
 
       {/* Floating Search & Settings */}
-      <NodeQueryEngine />
+      {nodes.length > 0 && <NodeQueryEngine />}
 
       {/* Context Menu */}
       {contextMenu && (

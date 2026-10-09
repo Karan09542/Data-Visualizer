@@ -220,6 +220,196 @@ export default defineConfig(({ mode }) => {
         }
       ]
     },
+    build: {
+      chunkSizeWarningLimit: 1200,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            const nid = id.replace(/\\/g, '/');
+            if (nid.includes('/node_modules/')) {
+              // 1. React core ecosystem
+              if (
+                nid.includes('/node_modules/react/') ||
+                nid.includes('/node_modules/react-dom/') ||
+                nid.includes('/node_modules/react-router/') ||
+                nid.includes('/node_modules/react-router-dom/') ||
+                nid.includes('/node_modules/scheduler/')
+              ) {
+                return 'vendor-react';
+              }
+
+              // 2. Flow graph & canvas engine
+              if (nid.includes('/node_modules/@xyflow/')) {
+                return 'vendor-xyflow';
+              }
+
+              // 3. Diagram engines
+              if (nid.includes('/node_modules/mermaid/')) {
+                return 'vendor-mermaid';
+              }
+              if (
+                nid.includes('/node_modules/cytoscape') ||
+                nid.includes('/node_modules/cose-bilkent')
+              ) {
+                return 'vendor-cytoscape';
+              }
+              if (
+                nid.includes('/node_modules/d3') ||
+                nid.includes('/node_modules/dagre')
+              ) {
+                return 'vendor-d3-dagre';
+              }
+
+              // 4. Math, Formula & Calculus
+              if (
+                nid.includes('/node_modules/katex/') ||
+                nid.includes('/node_modules/react-katex/') ||
+                nid.includes('/node_modules/mathjs/') ||
+                nid.includes('/node_modules/mafs/')
+              ) {
+                return 'vendor-math';
+              }
+
+              // 5. Lexical rich text editor
+              if (
+                nid.includes('/node_modules/lexical/') ||
+                nid.includes('/node_modules/@lexical/')
+              ) {
+                return 'vendor-lexical';
+              }
+
+              // 6. 3D rendering & models
+              if (
+                nid.includes('/node_modules/three/') ||
+                nid.includes('/node_modules/@google/model-viewer/')
+              ) {
+                return 'vendor-three';
+              }
+
+              // 7. PDF libraries
+              if (
+                nid.includes('/node_modules/pdfjs-dist/') ||
+                nid.includes('/node_modules/pdf-lib/')
+              ) {
+                return 'vendor-pdf';
+              }
+
+              // 8. Fabric canvas & image utilities
+              if (
+                nid.includes('/node_modules/fabric/') ||
+                nid.includes('/node_modules/@jsquash/')
+              ) {
+                return 'vendor-canvas';
+              }
+
+              // 9. Icons
+              if (nid.includes('/node_modules/lucide-react/')) {
+                return 'vendor-lucide';
+              }
+
+              // 10. Motion & Animations
+              if (
+                nid.includes('/node_modules/motion/') ||
+                nid.includes('/node_modules/framer-motion/')
+              ) {
+                return 'vendor-motion';
+              }
+
+              // 11. Data Parsers
+              if (
+                nid.includes('/node_modules/papaparse/') ||
+                nid.includes('/node_modules/js-yaml/') ||
+                nid.includes('/node_modules/json5/') ||
+                nid.includes('/node_modules/jsonrepair/') ||
+                nid.includes('/node_modules/fast-json-patch/')
+              ) {
+                return 'vendor-parsers';
+              }
+
+              // 12. Dexie & local database
+              if (
+                nid.includes('/node_modules/dexie/') ||
+                nid.includes('/node_modules/dexie-react-hooks/')
+              ) {
+                return 'vendor-db';
+              }
+
+              // 13. Virtualization & tables
+              if (nid.includes('/node_modules/@tanstack/')) {
+                return 'vendor-tanstack';
+              }
+
+              // 14. Monaco code editor
+              if (
+                nid.includes('/node_modules/@monaco-editor/') ||
+                nid.includes('/node_modules/monaco-editor/')
+              ) {
+                return 'vendor-monaco';
+              }
+
+              // 15. Simple Icons & Brand Graphics
+              if (nid.includes('/node_modules/simple-icons/')) {
+                return 'vendor-simple-icons';
+              }
+
+              // 16. Spreadsheets & Office Data (SheetJS)
+              if (nid.includes('/node_modules/xlsx/')) {
+                return 'vendor-xlsx';
+              }
+
+              // 17. In-browser JS compiler (Sucrase)
+              if (nid.includes('/node_modules/sucrase/')) {
+                return 'vendor-sucrase';
+              }
+
+              // 18. OCR & Vision (Tesseract.js)
+              if (nid.includes('/node_modules/tesseract.js/')) {
+                return 'vendor-ocr';
+              }
+
+              // 19. Audio Engine & Metadata (Howler, music-metadata)
+              if (
+                nid.includes('/node_modules/howler/') ||
+                nid.includes('/node_modules/music-metadata/')
+              ) {
+                return 'vendor-audio';
+              }
+
+              // 20. Barcodes & QR codes
+              if (
+                nid.includes('/node_modules/@zxing/') ||
+                nid.includes('/node_modules/jsbarcode/') ||
+                nid.includes('/node_modules/jsqr/') ||
+                nid.includes('/node_modules/qrcode.react/')
+              ) {
+                return 'vendor-barcode-qr';
+              }
+
+              // 21. Markdown parser & rendering plugins
+              if (
+                nid.includes('/node_modules/react-markdown/') ||
+                nid.includes('/node_modules/remark-') ||
+                nid.includes('/node_modules/rehype-') ||
+                nid.includes('/node_modules/micromark') ||
+                nid.includes('/node_modules/unist-')
+              ) {
+                return 'vendor-markdown';
+              }
+
+              // 22. Drag and drop (@dnd-kit)
+              if (nid.includes('/node_modules/@dnd-kit/')) {
+                return 'vendor-dnd';
+              }
+
+              // 23. Zip compression & archives
+              if (nid.includes('/node_modules/jszip/')) {
+                return 'vendor-zip';
+              }
+            }
+          },
+        },
+      },
+    },
     server: {
       proxy: {
         '/api': {

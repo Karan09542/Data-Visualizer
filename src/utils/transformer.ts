@@ -43,6 +43,10 @@ export const resolveApiResponseView = (data: any, view: ApiResponseView = 'auto'
   if (view === 'nodes' || view === 'file') return view;
   if (data === null || typeof data !== 'object') return 'nodes';
   if (isNonJsonApiResponse(data)) return 'file';
+  // Empty arrays and empty objects have no key-value pairs or child elements to expand into tree nodes.
+  // In 'auto' mode, display them directly in the dedicated API response card with full JSON inspectability.
+  if (Array.isArray(data) && data.length === 0) return 'file';
+  if (typeof data === 'object' && Object.keys(data).length === 0) return 'file';
   return exceedsEntryLimit(data, AUTO_FILE_ENTRY_LIMIT) ? 'file' : 'nodes';
 };
 
@@ -103,19 +107,30 @@ export const transformToTree = (
   }
 
   if (type === 'object' && data !== null) {
-    node.children = Object.entries(data).map(([key, val]) => {
-      let safeKey = key;
-      if (key.includes('.') || key.includes('[') || key.includes(']')) {
-        safeKey = `["${key.replace(/"/g, '\\"')}"]`;
-      } else {
-        safeKey = `.${key}`;
-      }
-      return transformToTree(val, key, `${path}${safeKey}`, apiNodeResponses, jsNodeResponses, jsNodeVisibility, apiNodeConfig);
-    });
+    const entries = Object.entries(data);
+    if (entries.length === 0) {
+      node.value = '{} (empty object)';
+      node.children = undefined;
+    } else {
+      node.children = entries.map(([key, val]) => {
+        let safeKey = key;
+        if (key.includes('.') || key.includes('[') || key.includes(']')) {
+          safeKey = `["${key.replace(/"/g, '\\"')}"]`;
+        } else {
+          safeKey = `.${key}`;
+        }
+        return transformToTree(val, key, `${path}${safeKey}`, apiNodeResponses, jsNodeResponses, jsNodeVisibility, apiNodeConfig);
+      });
+    }
   } else if (type === 'array') {
-    node.children = data.map((val: any, index: number) =>
-      transformToTree(val, `[${index}]`, `${path}[${index}]`, apiNodeResponses, jsNodeResponses, jsNodeVisibility, apiNodeConfig)
-    );
+    if (data.length === 0) {
+      node.value = '[] (empty array)';
+      node.children = undefined;
+    } else {
+      node.children = data.map((val: any, index: number) =>
+        transformToTree(val, `[${index}]`, `${path}[${index}]`, apiNodeResponses, jsNodeResponses, jsNodeVisibility, apiNodeConfig)
+      );
+    }
   } else {
     // Aggressive truncation for massive strings to prevent memory & GC lags in D3/React
     if (type === 'string' && typeof data === 'string' && data.length > 50000) {

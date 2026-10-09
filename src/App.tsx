@@ -20,6 +20,7 @@ import { useKeyboardMediaShortcuts } from "./audio/hooks/useKeyboardMediaShortcu
 import { lazyWithRetry } from "./utils/lazyWithRetry";
 
 const ImportModal = lazyWithRetry(() => import("./components/ImportModal").then(module => ({ default: module.ImportModal })), 'ImportModal');
+const BlankCanvasTemplateGallery = lazyWithRetry(() => import("./components/BlankCanvasTemplateGallery").then(module => ({ default: module.BlankCanvasTemplateGallery })), 'BlankCanvasTemplateGallery');
 const IsolatedNodeView = lazyWithRetry(() => import("./components/IsolatedNodeView").then(module => ({ default: module.IsolatedNodeView })), 'IsolatedNodeView');
 const SchemaVisualizer = lazyWithRetry(() => import("./components/SchemaVisualizer"), 'SchemaVisualizer');
 const DrawingToolbar = lazyWithRetry(() => import("./components/DrawingToolbar"), 'DrawingToolbar');
@@ -67,6 +68,8 @@ function App() {
   const visualizerMode = useStore((state) => state.visualizerMode);
   const isFileProcessing = useStore((state) => state.isFileProcessing);
   const isLearningGamesOpen = useStore((state) => state.isLearningGamesOpen);
+  const isTemplateGalleryOpen = useStore((state) => state.isTemplateGalleryOpen);
+  const setIsTemplateGalleryOpen = useStore((state) => state.setIsTemplateGalleryOpen);
   // Keep mounted once opened so closing can animate cleanly with exit transitions
   const [learningGamesLoaded, setLearningGamesLoaded] = useState(false);
   const shouldRenderLearningGames = isLearningGamesOpen || learningGamesLoaded;
@@ -853,6 +856,12 @@ function App() {
         <PyMissingPromptModal />
         <ProductivityLayer />
         <StickyNotesManager />
+        {isTemplateGalleryOpen && (
+          <BlankCanvasTemplateGallery
+            isModal={true}
+            onClose={() => setIsTemplateGalleryOpen(false)}
+          />
+        )}
       </Suspense>
 
       <Suspense fallback={null}>

@@ -6,6 +6,8 @@ import { buildCurl, detectCandidatePaths, dataURItoBlob, type BodyConfig } from 
 import {
   interpolateVariables,
   interpolateJsonString,
+  analyzeVariablesInText,
+  extractVariableNames,
   substituteInParamList,
   substituteInAuth,
   substituteInBody,
@@ -29,6 +31,7 @@ import {
   Globe,
   Key,
   KeyRound,
+  Link2,
   ListTree,
   Loader2,
   Pencil,
@@ -128,8 +131,8 @@ const formatTimeout = (timeout?: number) => {
   return `${Number.isInteger(seconds) ? seconds : seconds.toFixed(1)}s`;
 };
 
-const getEndpointHost = (value: string, variables?: ApiVariable[], activeGroup?: string) => {
-  const interpolated = interpolateVariables(value, variables, activeGroup).trim();
+const getEndpointHost = (value: string, variables?: ApiVariable[], activeGroup?: string, context?: any) => {
+  const interpolated = interpolateVariables(value, variables, activeGroup, context).trim();
   if (!interpolated) return 'No endpoint yet';
 
   try {
@@ -190,6 +193,8 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
   const setApiNodeConfig = useStore((state) => state.setApiNodeConfig);
   const proxyServers = useStore((state) => state.proxyServers);
   const useDefaultProxy = useStore((state) => state.useDefaultProxy);
+  const jsNodeResponses = useStore((state) => state.jsNodeResponses);
+  const parsedData = useStore((state) => state.parsedData);
 
   const [useProxy, setUseProxy] = useState(false);
   const [showErrorPopup, setShowErrorPopup] = useState(false);
@@ -279,6 +284,32 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
   };
 
   const config = apiNodeConfig[path] || { method: 'GET', responseType: 'auto', timeout: 5000 };
+
+  const chainingContext = useMemo(
+    () => ({
+      apiNodeResponses,
+      jsNodeResponses,
+      parsedData,
+      currentNodePath: path,
+    }),
+    [apiNodeResponses, jsNodeResponses, parsedData, path]
+  );
+
+  // Detected chained variables across URL, params, headers, body, auth
+  const chainedVariablesInNode = useMemo(() => {
+    const textPool = [
+      currentUrl,
+      ...(config.params?.map((p) => `${p.key} ${p.value}`) || []),
+      ...(config.headers?.map((h) => `${h.key} ${h.value}`) || []),
+      config.body?.rawJson || '',
+      config.body?.rawText || '',
+      config.auth?.bearerToken || '',
+      config.auth?.apiKeyValue || '',
+    ].join(' ');
+
+    const analyzed = analyzeVariablesInText(textPool, config.variables, config.activeVariableGroup, chainingContext);
+    return analyzed.filter((v) => v.isChained);
+  }, [currentUrl, config, chainingContext]);
 
   // Inline Body editing state
   const [showInlineBody, setShowInlineBody] = useState(false);
@@ -411,15 +442,15 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
   const bodyValidation = useMemo(() => {
     const text = localBodyText.trim();
     if (!text) return { isValid: true, hasVariables: false, error: null };
-    const hasVars = /\{\{[a-zA-Z0-9_.-]+\}\}/.test(text);
+    const hasVars = /\{\{[a-zA-Z0-9_.\[\]"-]+\}\}/.test(text);
     try {
-      const substituted = interpolateJsonString(text, config.variables, config.activeVariableGroup);
+      const substituted = interpolateJsonString(text, config.variables, config.activeVariableGroup, chainingContext);
       JSON.parse(substituted);
       return { isValid: true, hasVariables: hasVars, error: null };
     } catch (err: any) {
       return { isValid: false, hasVariables: hasVars, error: err.message };
     }
-  }, [localBodyText, config.variables, config.activeVariableGroup]);
+  }, [localBodyText, config.variables, config.activeVariableGroup, chainingContext]);
 
   const isLoading = apiNodeLoading[path];
   const error = apiNodeErrors[path];
@@ -470,12 +501,19 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     const store = useStore.getState();
     const parentPos = store.dragOverrides[path] || (nodeX !== undefined && nodeY !== undefined ? { x: nodeX, y: nodeY } : null);
     const responsePath = `${path}.__response`;
+    const fetchedPath = `${path}.__fetched`;
     if (parentPos) {
+      const overridesToSet: Record<string, { x: number, y: number }> = {};
       const currentResp = store.dragOverrides[responsePath];
       if (!currentResp || currentResp.x <= parentPos.x || Math.abs(currentResp.y - parentPos.y) > 500 || Math.abs(currentResp.x - (parentPos.x + 460)) > 600) {
-        store.setMultipleDragOverrides({
-          [responsePath]: { x: parentPos.x + 460, y: parentPos.y },
-        });
+        overridesToSet[responsePath] = { x: parentPos.x + 460, y: parentPos.y };
+      }
+      const currentFetched = store.dragOverrides[fetchedPath];
+      if (!currentFetched || currentFetched.x <= parentPos.x || Math.abs(currentFetched.y - parentPos.y) > 500 || Math.abs(currentFetched.x - (parentPos.x + 460)) > 600) {
+        overridesToSet[fetchedPath] = { x: parentPos.x + 460, y: parentPos.y };
+      }
+      if (Object.keys(overridesToSet).length > 0) {
+        store.setMultipleDragOverrides(overridesToSet);
       }
     }
 
@@ -486,20 +524,36 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     if (localUrl.trim() && localUrl.trim() !== url) {
       updateNodeValue(path, localUrl.trim());
     }
-    let resolvedUrl = interpolateVariables(targetBaseUrl, activeVariables, activeGroup);
+    let resolvedUrl = interpolateVariables(targetBaseUrl, activeVariables, activeGroup, chainingContext);
     let isLocalTarget = isLocalOrLoopbackUrl(resolvedUrl);
     let timeoutId: any = null;
     let shouldProxy = false;
 
     try {
+      // Check for unresolved chained or environment variables in resolvedUrl
+      const unresolvedVars = extractVariableNames(resolvedUrl);
+      if (unresolvedVars.length > 0) {
+        const isChainedPattern = unresolvedVars.some((v) => v.includes('.') || v.includes('['));
+        throw {
+          isDiagnostic: true,
+          type: isChainedPattern ? 'Unresolved Node Variable' : 'Unresolved Variable',
+          code: 'UNRESOLVED_VARIABLE',
+          message: `Variable {{${unresolvedVars[0]}}} has not been resolved.`,
+          userMessage: isChainedPattern
+            ? `This request references {{${unresolvedVars[0]}}}, but the upstream node has not executed or output property is unavailable.\n\nPlease execute the upstream node first so its response is ready for chaining.`
+            : `Variable {{${unresolvedVars[0]}}} is not defined in your active variables.`,
+          details: `Target URL: ${resolvedUrl}`,
+        };
+      }
+
       // 1. Build Target URL (include query params and auth query param if configured)
       try {
         const parsed = new URL(resolvedUrl, window.location.origin);
         if (config.params && Array.isArray(config.params)) {
           for (const p of config.params) {
             if (p.enabled !== false && p.key.trim()) {
-              const pKey = interpolateVariables(p.key.trim(), activeVariables, activeGroup);
-              const pVal = interpolateVariables(p.value, activeVariables, activeGroup);
+              const pKey = interpolateVariables(p.key.trim(), activeVariables, activeGroup, chainingContext);
+              const pVal = interpolateVariables(p.value, activeVariables, activeGroup, chainingContext);
               if (!parsed.searchParams.has(pKey)) {
                 parsed.searchParams.append(pKey, pVal);
               }
@@ -507,8 +561,8 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           }
         }
         if (config.auth?.type === 'apiKey' && config.auth.apiKeyName && config.auth.apiKeyLocation === 'query') {
-          const authKeyName = interpolateVariables(config.auth.apiKeyName, activeVariables, activeGroup);
-          const authKeyVal = interpolateVariables(config.auth.apiKeyValue || '', activeVariables, activeGroup);
+          const authKeyName = interpolateVariables(config.auth.apiKeyName, activeVariables, activeGroup, chainingContext);
+          const authKeyVal = interpolateVariables(config.auth.apiKeyValue || '', activeVariables, activeGroup, chainingContext);
           parsed.searchParams.set(authKeyName, authKeyVal);
         }
         resolvedUrl = parsed.toString();
@@ -539,8 +593,8 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       if (config.headers && Array.isArray(config.headers)) {
         for (const h of config.headers) {
           if (h.enabled !== false && h.key.trim()) {
-            const hKey = interpolateVariables(h.key.trim(), activeVariables, activeGroup);
-            const hVal = interpolateVariables(h.value, activeVariables, activeGroup);
+            const hKey = interpolateVariables(h.key.trim(), activeVariables, activeGroup, chainingContext);
+            const hVal = interpolateVariables(h.value, activeVariables, activeGroup, chainingContext);
             reqHeaders[hKey] = hVal;
           }
         }
@@ -548,18 +602,18 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
 
       if (config.auth) {
         if (config.auth.type === 'bearer' && config.auth.bearerToken) {
-          const token = interpolateVariables(config.auth.bearerToken, activeVariables, activeGroup);
+          const token = interpolateVariables(config.auth.bearerToken, activeVariables, activeGroup, chainingContext);
           reqHeaders['Authorization'] = `Bearer ${token}`;
         } else if (config.auth.type === 'basic' && (config.auth.basicUsername || config.auth.basicPassword)) {
           try {
-            const u = interpolateVariables(config.auth.basicUsername || '', activeVariables, activeGroup);
-            const p = interpolateVariables(config.auth.basicPassword || '', activeVariables, activeGroup);
+            const u = interpolateVariables(config.auth.basicUsername || '', activeVariables, activeGroup, chainingContext);
+            const p = interpolateVariables(config.auth.basicPassword || '', activeVariables, activeGroup, chainingContext);
             const creds = btoa(`${u}:${p}`);
             reqHeaders['Authorization'] = `Basic ${creds}`;
           } catch { }
         } else if (config.auth.type === 'apiKey' && config.auth.apiKeyName && config.auth.apiKeyLocation !== 'query') {
-          const aKeyName = interpolateVariables(config.auth.apiKeyName, activeVariables, activeGroup);
-          const aKeyVal = interpolateVariables(config.auth.apiKeyValue || '', activeVariables, activeGroup);
+          const aKeyName = interpolateVariables(config.auth.apiKeyName, activeVariables, activeGroup, chainingContext);
+          const aKeyVal = interpolateVariables(config.auth.apiKeyValue || '', activeVariables, activeGroup, chainingContext);
           reqHeaders[aKeyName] = aKeyVal;
         }
       }
@@ -573,7 +627,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
             reqHeaders['Content-Type'] = 'application/json';
           }
           const rawSource = (showInlineBody && localBodyText !== undefined) ? localBodyText : (config.body.rawJson || '');
-          let jsonContent = interpolateJsonString(rawSource, activeVariables, activeGroup);
+          let jsonContent = interpolateJsonString(rawSource, activeVariables, activeGroup, chainingContext);
           if (typeof config.streamEnabled === 'boolean') {
             try {
               const parsed = JSON.parse(jsonContent);
@@ -591,8 +645,8 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           const usp = new URLSearchParams();
           for (const item of config.body.urlEncoded) {
             if (item.enabled !== false && item.key.trim()) {
-              const k = interpolateVariables(item.key.trim(), activeVariables, activeGroup);
-              const v = interpolateVariables(item.value, activeVariables, activeGroup);
+              const k = interpolateVariables(item.key.trim(), activeVariables, activeGroup, chainingContext);
+              const v = interpolateVariables(item.value, activeVariables, activeGroup, chainingContext);
               usp.append(k, v);
             }
           }
@@ -601,16 +655,16 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           const fd = new FormData();
           for (const item of config.body.formData) {
             if (item.enabled !== false && item.key.trim()) {
-              const k = interpolateVariables(item.key.trim(), activeVariables, activeGroup);
+              const k = interpolateVariables(item.key.trim(), activeVariables, activeGroup, chainingContext);
               if (item.type === 'file' && item.fileData) {
                 try {
                   const blob = dataURItoBlob(item.fileData);
                   fd.append(k, blob, item.fileName || 'file');
                 } catch {
-                  fd.append(k, interpolateVariables(item.value, activeVariables, activeGroup));
+                  fd.append(k, interpolateVariables(item.value, activeVariables, activeGroup, chainingContext));
                 }
               } else {
-                fd.append(k, interpolateVariables(item.value, activeVariables, activeGroup));
+                fd.append(k, interpolateVariables(item.value, activeVariables, activeGroup, chainingContext));
               }
             }
           }
@@ -621,7 +675,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
           if (!reqHeaders['Content-Type'] && !reqHeaders['content-type']) {
             reqHeaders['Content-Type'] = 'text/plain';
           }
-          reqBody = interpolateVariables(config.body.rawText, activeVariables, activeGroup);
+          reqBody = interpolateVariables(config.body.rawText, activeVariables, activeGroup, chainingContext);
         }
       }
 
@@ -1031,7 +1085,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
       abortControllerRef.current = null;
       setApiNodeLoading(path, false);
     }
-  }, [path, currentUrl, config, setApiNodeLoading, setApiNodeError, setApiNodeResponse, setApiNodeMeta]);
+  }, [path, currentUrl, config, setApiNodeLoading, setApiNodeError, setApiNodeResponse, setApiNodeMeta, localUrl, url, proxyServers, useDefaultProxy, chainingContext]);
 
   useEffect(() => {
     const handleGlobalRefetch = () => {
@@ -1123,14 +1177,14 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
   const handleCopyCurl = (e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const substitutedParams = substituteInParamList(config.params, config.variables, config.activeVariableGroup);
-      const substitutedHeaders = substituteInParamList(config.headers, config.variables, config.activeVariableGroup);
-      const substitutedAuth = substituteInAuth(config.auth, config.variables, config.activeVariableGroup);
+      const substitutedParams = substituteInParamList(config.params, config.variables, config.activeVariableGroup, chainingContext);
+      const substitutedHeaders = substituteInParamList(config.headers, config.variables, config.activeVariableGroup, chainingContext);
+      const substitutedAuth = substituteInAuth(config.auth, config.variables, config.activeVariableGroup, chainingContext);
       const effectiveBody: BodyConfig | undefined = (showInlineBody && localBodyText !== undefined)
         ? { ...(config.body || { type: 'json' as const }), type: 'json' as const, rawJson: localBodyText }
         : config.body;
-      const substitutedBody = substituteInBody(effectiveBody, config.variables, config.activeVariableGroup);
-      const resolvedUrl = interpolateVariables(localUrl.trim() || currentUrl, config.variables, config.activeVariableGroup);
+      const substitutedBody = substituteInBody(effectiveBody, config.variables, config.activeVariableGroup, chainingContext);
+      const resolvedUrl = interpolateVariables(localUrl.trim() || currentUrl, config.variables, config.activeVariableGroup, chainingContext);
 
       const curl = buildCurl(
         resolvedUrl,
@@ -1148,7 +1202,7 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     }
   };
 
-  const endpointHost = getEndpointHost(localUrl || currentUrl, config.variables, config.activeVariableGroup);
+  const endpointHost = getEndpointHost(localUrl || currentUrl, config.variables, config.activeVariableGroup, chainingContext);
   const responseLabel = formatResponseType(config.responseType);
   const timeoutLabel = formatTimeout(config.timeout);
 
@@ -1448,6 +1502,20 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
                     title={`${config.variables.filter((v) => v.enabled !== false && v.key.trim()).length} variable(s) active${config.activeVariableGroup && config.activeVariableGroup !== 'All' ? ` (Scope: ${config.activeVariableGroup})` : ''} - Click to edit variables`}
                   >
                     <span>{`{{${config.variables.filter((v) => v.enabled !== false && v.key.trim()).length}}}`}</span>
+                  </span>
+                )}
+
+                {/* Chained Node Variables Chip */}
+                {chainedVariablesInNode.length > 0 && (
+                  <span
+                    className="inline-flex items-center gap-1 rounded bg-cyan-500/15 px-1.5 py-px text-[9px] font-semibold text-cyan-600 dark:text-cyan-400 border border-cyan-500/25 transition-all cursor-pointer hover:bg-cyan-500/25"
+                    onClick={(e) => {
+                      openEditor(e, 'variables');
+                    }}
+                    title={`Chained from node variable(s): ${chainedVariablesInNode.map((v) => `{{${v.key}}}`).join(', ')} - Click to open variables`}
+                  >
+                    <Link2 size={9} />
+                    <span>Chained ({chainedVariablesInNode.length})</span>
                   </span>
                 )}
               </div>

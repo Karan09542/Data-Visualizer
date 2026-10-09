@@ -311,7 +311,7 @@ function NodeRenderer({
           if (isCurrentApiNode) {
             const descendants = nodeRef.current.descendants().slice(1);
             for (const desc of descendants) {
-              if (desc.data.type === "api_response" || desc.data.id.endsWith(".__response")) {
+              if (desc.data.type === "api_response" || desc.data.id.endsWith(".__response") || desc.data.id.endsWith(".__fetched")) {
                 const id = desc.data.id;
                 const pos = store.dragOverrides[id] || { x: desc.x, y: desc.y };
                 const correctedX = pos.x > currentPos.x ? pos.x : currentPos.x + 460;
