@@ -201,7 +201,7 @@ export const transformToTree = (
           path: `${path}.__response`,
         }];
       } else {
-        const childLabel = extractKey ? extractKey : '__fetched';
+        const childLabel = extractKey ? extractKey : 'fetched';
         const fetchedNode = transformToTree(displayData, childLabel, `${path}.__fetched`, apiNodeResponses, jsNodeResponses, jsNodeVisibility, apiNodeConfig);
         node.children = [fetchedNode];
       }

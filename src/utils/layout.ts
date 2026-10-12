@@ -31,7 +31,12 @@ const applyLayoutModeToHierarchy = (
             d.y = temp;
         });
     } else if (mode === 'radial') {
-        const tree = d3.tree<TreeNode>().nodeSize([0.18 * Math.max(0.5, 1.5 - nodeSpread * 0.2), Math.max(basew, baseh) * 1.3 * nodeSpread]); // angle, radius
+        const leafCount = Math.max(1, subRoot.leaves().length);
+        const dynamicAngleStep = isSubtree
+            ? Math.max(0.18 * Math.max(0.5, 1.5 - nodeSpread * 0.2), (2 * Math.PI) / leafCount)
+            : 0.18 * Math.max(0.5, 1.5 - nodeSpread * 0.2);
+        const radiusStep = Math.max(basew, baseh) * 1.3 * nodeSpread;
+        const tree = d3.tree<TreeNode>().nodeSize([dynamicAngleStep, radiusStep]); // angle, radius
         tree(subRoot);
         subRoot.each(d => {
             const angle = d.x;
@@ -57,7 +62,8 @@ const applyLayoutModeToHierarchy = (
                 n.fy = 0;
             } else {
                 const angle = (idx / Math.max(1, count - 1)) * 2 * Math.PI;
-                const dist = (n.depth || 1) * baseDist * 0.9;
+                const localDepth = (n.depth ?? 0) - (subRoot.depth ?? 0);
+                const dist = Math.max(1, localDepth) * baseDist * 0.9;
                 n.x = Math.cos(angle) * dist;
                 n.y = Math.sin(angle) * dist;
                 delete n.fx;
@@ -68,6 +74,9 @@ const applyLayoutModeToHierarchy = (
         const collisionRadius = (Math.hypot(basew, baseh) / 2 + 35) * Math.max(0.8, nodeSize);
         const linkDistance = (basew + 130) * nodeSpread;
 
+        const isLargeGraph = count > 150;
+        const isHugeGraph = count > 600;
+
         const simulation = d3.forceSimulation(nodesList)
             .force("link", d3.forceLink(linksList)
                 .id((d: any) => d.data.id)
@@ -75,22 +84,25 @@ const applyLayoutModeToHierarchy = (
                 .strength(0.85)
             )
             .force("charge", d3.forceManyBody()
-                .strength(-1800 * nodeSpread)
+                .strength(isHugeGraph ? -800 * nodeSpread : -1800 * nodeSpread)
+                .theta(0.9) // Barnes-Hut Quadtree approximation threshold O(N log N)
                 .distanceMin(80)
                 .distanceMax(3500)
             )
             .force("collide", d3.forceCollide()
                 .radius(collisionRadius)
-                .strength(1.0)
-                .iterations(3)
+                .strength(isHugeGraph ? 0.7 : 1.0)
+                .iterations(isLargeGraph ? 1 : 2) // Single collision pass for large graphs to prevent lag
             )
             .force("centerX", d3.forceX(0).strength(0.04))
             .force("centerY", d3.forceY(0).strength(0.04))
-            .alphaDecay(0.02);
+            .alphaDecay(isHugeGraph ? 0.05 : isLargeGraph ? 0.035 : 0.02);
 
-        // Run simulation ticks to reach true physics equilibrium
-        for (let i = 0; i < 280; i++) {
+        // Adaptive simulation ticks: large graphs reach equilibrium fast without blocking the thread
+        const maxTicks = isHugeGraph ? 50 : isLargeGraph ? 90 : 160;
+        for (let i = 0; i < maxTicks; i++) {
             simulation.tick();
+            if (simulation.alpha() < 0.025) break; // Early convergence
         }
 
         // Release pinned center so coordinates are normal numbers
@@ -117,6 +129,11 @@ const applyLayoutModeToHierarchy = (
             subRoot.x = 0;
             subRoot.y = 0;
 
+            const subRootDescendants = subRoot.descendants();
+            const nodeMap = new Map<string, d3.HierarchyNode<TreeNode>>(
+                subRootDescendants.map(n => [n.data.id, n])
+            );
+
             if (rightNodes.length > 0) {
                 const rightData = {
                     id: 'dummy-right',
@@ -130,7 +147,7 @@ const applyLayoutModeToHierarchy = (
                 treeRight(dummyRight);
 
                 dummyRight.descendants().forEach((dummyNode) => {
-                    const originalNode = subRoot.descendants().find(n => n.data.id === dummyNode.data.id);
+                    const originalNode = nodeMap.get(dummyNode.data.id);
                     if (originalNode && originalNode !== subRoot) {
                         originalNode.x = dummyNode.y;
                         originalNode.y = dummyNode.x;
@@ -151,7 +168,7 @@ const applyLayoutModeToHierarchy = (
                 treeLeft(dummyLeft);
 
                 dummyLeft.descendants().forEach((dummyNode) => {
-                    const originalNode = subRoot.descendants().find(n => n.data.id === dummyNode.data.id);
+                    const originalNode = nodeMap.get(dummyNode.data.id);
                     if (originalNode && originalNode !== subRoot) {
                         originalNode.x = -dummyNode.y;
                         originalNode.y = dummyNode.x;
@@ -241,25 +258,44 @@ const applyLayoutModeToHierarchy = (
 
         placeMolecularAtom(subRoot, 0, 0, 0, 0);
 
-        // Anti-overlap relaxation pass for molecule nodes
+        // Quadtree-based anti-overlap relaxation pass for molecule nodes O(N log N)
         const moleculeNodes = subRoot.descendants();
         const minDistance = (Math.hypot(basew, baseh) / 2 + 30) * Math.max(0.8, nodeSize);
-        for (let iter = 0; iter < 12; iter++) {
+        const relaxationPasses = moleculeNodes.length > 300 ? 3 : 6;
+        for (let iter = 0; iter < relaxationPasses; iter++) {
+            const tree = d3.quadtree<d3.HierarchyNode<TreeNode>>()
+                .x(d => d.x ?? 0)
+                .y(d => d.y ?? 0)
+                .addAll(moleculeNodes);
+
             for (let i = 0; i < moleculeNodes.length; i++) {
-                for (let j = i + 1; j < moleculeNodes.length; j++) {
-                    const a = moleculeNodes[i];
-                    const b = moleculeNodes[j];
-                    const dx = (b.x || 0) - (a.x || 0);
-                    const dy = (b.y || 0) - (a.y || 0);
-                    const dist = Math.hypot(dx, dy) || 1;
-                    if (dist < minDistance) {
-                        const overlap = (minDistance - dist) / 2;
-                        const nx = (dx / dist) * overlap;
-                        const ny = (dy / dist) * overlap;
-                        if (a !== subRoot) { a.x = (a.x || 0) - nx; a.y = (a.y || 0) - ny; }
-                        if (b !== subRoot) { b.x = (b.x || 0) + nx; b.y = (b.y || 0) + ny; }
+                const a = moleculeNodes[i];
+                const ax = a.x ?? 0;
+                const ay = a.y ?? 0;
+
+                tree.visit((quad, x0, y0, x1, y1) => {
+                    if (!quad.length) {
+                        let d: any = quad;
+                        do {
+                            const b = d.data as d3.HierarchyNode<TreeNode>;
+                            if (b && b !== a) {
+                                const bx = b.x ?? 0;
+                                const by = b.y ?? 0;
+                                const dx = bx - ax;
+                                const dy = by - ay;
+                                const dist = Math.hypot(dx, dy) || 1;
+                                if (dist < minDistance) {
+                                    const overlap = (minDistance - dist) / 2;
+                                    const nx = (dx / dist) * overlap;
+                                    const ny = (dy / dist) * overlap;
+                                    if (a !== subRoot) { a.x = ax - nx; a.y = ay - ny; }
+                                    if (b !== subRoot) { b.x = bx + nx; b.y = by + ny; }
+                                }
+                            }
+                        } while ((d = d.next));
                     }
-                }
+                    return x0 > ax + minDistance || x1 < ax - minDistance || y0 > ay + minDistance || y1 < ay - minDistance;
+                });
             }
         }
     } else {
@@ -323,23 +359,68 @@ export const computeLayout = (
                 const subMode = nodeLayoutOverrides[subNode.data.id];
                 const targetX = subNode.x;
                 const targetY = subNode.y;
-                applyLayoutModeToHierarchy(subNode, subMode, basew, baseh, nodeSpread, nodeSize, collapsedNodes, true);
-                const offsetX = targetX - (subNode.x || 0);
-                const offsetY = targetY - (subNode.y || 0);
+
+                // Create an isolated local hierarchy for this subtree so depth is 0 at subNode
+                // This guarantees the subtree layout is strictly calculated relative to subNode (parent), NOT the root
+                const localRoot = d3.hierarchy<TreeNode>(
+                    subNode.data,
+                    d => collapsedNodes.has(d.id) ? null : d.children
+                );
+
+                applyLayoutModeToHierarchy(localRoot, subMode, basew, baseh, nodeSpread, nodeSize, collapsedNodes, true);
+
+                // Build a quick map of local positions for each descendant in the subtree
+                const localMap = new Map<string, { x: number; y: number }>();
+                localRoot.descendants().forEach(d => {
+                    localMap.set(d.data.id, { x: d.x ?? 0, y: d.y ?? 0 });
+                });
+
+                // Apply positions directly around targetX, targetY of the parent subNode
                 subNode.descendants().forEach(d => {
-                    d.x = (d.x || 0) + offsetX;
-                    d.y = (d.y || 0) + offsetY;
+                    const localPos = localMap.get(d.data.id);
+                    if (localPos) {
+                        d.x = targetX + localPos.x;
+                        d.y = targetY + localPos.y;
+                    }
                 });
             }
         }
     }
 
-    // Special layout rule for API response nodes:
-    // Always place API response nodes directly to the right of their parent API node
+    // Special layout rule for API response nodes and raw fetched data nodes:
+    // Place API response / fetched node directly adjacent to parent API node,
+    // and shift the entire fetched subtree together so it stays completely intact!
     root.descendants().forEach(node => {
-        if (node.parent && (node.data.type === 'api_response' || node.data.id.endsWith('.__response') || node.data.id.endsWith('.__fetched'))) {
-            node.x = node.parent.x + 460;
-            node.y = node.parent.y;
+        if (!node.parent) return;
+
+        const isApiParent =
+            node.parent.data.type === 'string' &&
+            typeof node.parent.data.name === 'string' &&
+            node.parent.data.name.endsWith('_api_node');
+
+        if (!isApiParent) return;
+
+        const parentMode = (nodeLayoutOverrides && nodeLayoutOverrides[node.parent.data.id]) || baseMode;
+        const isVertical = parentMode === 'vertical';
+
+        // File-mode single response preview card
+        if (node.data.type === 'api_response' || node.data.id.endsWith('.__response')) {
+            node.x = isVertical ? node.parent.x : node.parent.x + 460;
+            node.y = isVertical ? node.parent.y + 240 : node.parent.y;
+        } else if (node.data.id.endsWith('.__fetched')) {
+            // Raw nodes fetched data key node (__fetched)
+            // Adjacent to API node: right of API node card (width ~340px) with comfortable gap
+            const targetX = isVertical ? node.parent.x : node.parent.x + 360;
+            const targetY = isVertical ? node.parent.y + 180 : node.parent.y;
+
+            const shiftX = targetX - (node.x || 0);
+            const shiftY = targetY - (node.y || 0);
+
+            // Shift fetched node AND ALL ITS DESCENDANTS together so the subtree stays intact
+            node.descendants().forEach(d => {
+                d.x = (d.x || 0) + shiftX;
+                d.y = (d.y || 0) + shiftY;
+            });
         }
     });
 

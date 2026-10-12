@@ -82,6 +82,64 @@ interface NodeProps {
   onContextMenu?: (e: React.MouseEvent, node: TreeNode) => void;
 }
 
+export const isSpecialNodeType = (data: TreeNode | any): boolean => {
+  if (!data) return false;
+  const name = typeof data.name === "string" ? data.name : "";
+  const type = data.type;
+  const id = typeof data.id === "string" ? data.id : "";
+
+  const isApiNode =
+    type === "string" &&
+    name.endsWith("_api_node");
+  const isApiResponse =
+    type === "api_response" ||
+    id.endsWith(".__response");
+  const isJsNode =
+    type === "string" &&
+    name.endsWith("_js_node");
+  const isJsCode = type === "js_code";
+  const isJsTerminal = type === "js_terminal";
+
+  const isTsNode =
+    type === "string" &&
+    name.endsWith("_ts_node");
+  const isTsCode = type === "ts_code";
+  const isTsTerminal = type === "ts_terminal";
+
+  const isPyNode =
+    type === "string" &&
+    name.endsWith("_py_node");
+  const isPyCode = type === "py_code";
+  const isPyTerminal = type === "py_terminal";
+
+  const isTodoNode =
+    name.endsWith("_todo_node") || name.endsWith(".todo");
+  const isTransferNode =
+    name.endsWith("_transfer_node") || name.endsWith(".transfer");
+  const isMathNode =
+    name.endsWith("_math_node") ||
+    name.endsWith(".math") ||
+    name.toLowerCase().endsWith("graph") ||
+    name.toLowerCase().endsWith("math");
+
+  return (
+    isApiNode ||
+    isApiResponse ||
+    isJsCode ||
+    isJsTerminal ||
+    isTsCode ||
+    isTsTerminal ||
+    isJsNode ||
+    isTsNode ||
+    isPyCode ||
+    isPyTerminal ||
+    isPyNode ||
+    isTodoNode ||
+    isTransferNode ||
+    isMathNode
+  );
+};
+
 export const getMediaType = (val: string) => {
   if (!val || typeof val !== "string") return null;
   val = val.trim();
@@ -311,7 +369,7 @@ function NodeRenderer({
           if (isCurrentApiNode) {
             const descendants = nodeRef.current.descendants().slice(1);
             for (const desc of descendants) {
-              if (desc.data.type === "api_response" || desc.data.id.endsWith(".__response") || desc.data.id.endsWith(".__fetched")) {
+              if (desc.data.type === "api_response" || desc.data.id.endsWith(".__response")) {
                 const id = desc.data.id;
                 const pos = store.dragOverrides[id] || { x: desc.x, y: desc.y };
                 const correctedX = pos.x > currentPos.x ? pos.x : currentPos.x + 460;
@@ -478,21 +536,7 @@ function NodeRenderer({
       data.name.toLowerCase().endsWith("graph") ||
       data.name.toLowerCase().endsWith("math"));
 
-  const isSpecialNode =
-    isApiNode ||
-    isApiResponse ||
-    isJsCode ||
-    isJsTerminal ||
-    isTsCode ||
-    isTsTerminal ||
-    isJsNode ||
-    isTsNode ||
-    isPyCode ||
-    isPyTerminal ||
-    isPyNode ||
-    isTodoNode ||
-    isTransferNode ||
-    isMathNode;
+  const isSpecialNode = isSpecialNodeType(data);
   const isManuallyRendered =
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
       ? manuallyRenderedNodes[data.id]

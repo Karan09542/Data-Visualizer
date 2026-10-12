@@ -651,14 +651,16 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
     let originalExpanded = useStore.getState().globalTextExpanded;
 
     try {
+      setExportStatus("Preparing graph snapshot & nodes...");
+      useStore.getState().setGraphExportActive(true);
       if (!originalExpanded) {
         setExportStatus("Expanding geometry...");
         setGlobalTextExpanded(true);
-        // Wait for React update and D3 bounds recalculation
-        await new Promise((resolve) =>
-          requestAnimationFrame(() => setTimeout(resolve, 350)),
-        );
       }
+      // Wait for React update and D3 bounds recalculation with all nodes fully mounted
+      await new Promise((resolve) =>
+        requestAnimationFrame(() => setTimeout(resolve, 350)),
+      );
 
       setExportStatus("Optimizing capture...");
       await new Promise((resolve) =>
@@ -806,6 +808,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       if (!originalExpanded) {
         setGlobalTextExpanded(false);
       }
+      useStore.getState().setGraphExportActive(false);
       setIsExporting(false);
     }
   };

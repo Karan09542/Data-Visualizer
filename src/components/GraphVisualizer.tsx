@@ -12,7 +12,7 @@ import { useStore } from "../store/useStore";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { computeLayout, getEdgePath } from "../utils/layout";
 import { TreeNode } from "../utils/transformer";
-import NodeRenderer from "./NodeRenderer";
+import NodeRenderer, { isSpecialNodeType } from "./NodeRenderer";
 import EdgeRenderer from "./EdgeRenderer";
 import AnnotationRenderer from "./AnnotationRenderer";
 import { useDrawingSystem } from "../hooks/useDrawingSystem";
@@ -217,6 +217,7 @@ export default function GraphVisualizer() {
   const setInlineApiEditor = useStore((s) => s.setInlineApiEditor);
   const autoOrganizeTrigger = useStore((s) => s.autoOrganizeTrigger);
   const nodeLayoutOverrides = useStore((s) => s.nodeLayoutOverrides);
+  const graphExportActive = useStore((s) => s.graphExportActive);
 
   const collapsedNodes = useDeferredValue(rawCollapsedNodes);
   const searchMatches = useDeferredValue(rawSearchMatches);
@@ -244,7 +245,7 @@ export default function GraphVisualizer() {
     let hasMissing = false;
 
     for (const node of originalNodes) {
-      const isApiResponse = node.data.type === 'api_response' || node.data.id.endsWith('.__response') || node.data.id.endsWith('.__fetched');
+      const isApiResponse = node.data.type === 'api_response' || node.data.id.endsWith('.__response');
       if (isApiResponse && node.parent) {
         const parentId = node.parent.data.id;
         const parentPos = dragOverrides[parentId] || { x: node.parent.x, y: node.parent.y };
@@ -253,9 +254,6 @@ export default function GraphVisualizer() {
           missingOverrides[node.data.id] = { x: parentPos.x + 460, y: parentPos.y };
           hasMissing = true;
         }
-      } else if (!dragOverrides[node.data.id]) {
-        missingOverrides[node.data.id] = { x: node.x, y: node.y };
-        hasMissing = true;
       }
     }
 
@@ -270,10 +268,16 @@ export default function GraphVisualizer() {
       return { nodes: originalNodes, links: originalLinks };
     }
 
+    // Build quick map of original node positions
+    const origMap = new Map<string, { x: number; y: number }>();
+    for (const n of originalNodes) {
+      origMap.set(n.data.id, { x: n.x, y: n.y });
+    }
+
     // Apply drag overrides
     const overridenNodes = originalNodes.map((n) => {
-      const isApiResponse = n.data.type === 'api_response' || n.data.id.endsWith('.__response') || n.data.id.endsWith('.__fetched');
-      const parentId = n.parent?.data.id || (isApiResponse ? (n.data.id.endsWith('.__fetched') ? n.data.id.replace(/\.__fetched$/, '') : n.data.id.replace(/\.__response$/, '')) : null);
+      const isApiResponse = n.data.type === 'api_response' || n.data.id.endsWith('.__response');
+      const parentId = n.parent?.data.id || (isApiResponse ? (n.data.id.endsWith('.__response') ? n.data.id.replace(/\.__response$/, '') : null) : null);
       const parentPos = parentId ? (dragOverrides[parentId] || (n.parent ? { x: n.parent.x, y: n.parent.y } : null)) : null;
 
       const override = dragOverrides[n.data.id];
@@ -293,6 +297,26 @@ export default function GraphVisualizer() {
         copy.y = override.y;
         return copy;
       }
+
+      // If this node is part of a fetched API response and its API parent was dragged,
+      // shift this node by the API parent's drag delta so the entire fetched subtree follows cleanly!
+      if (n.data.id.includes('.__fetched')) {
+        const fetchedIdx = n.data.id.indexOf('.__fetched');
+        const apiPath = n.data.id.substring(0, fetchedIdx);
+        const apiOverride = dragOverrides[apiPath];
+        const apiOrig = origMap.get(apiPath);
+        if (apiOverride && apiOrig) {
+          const deltaX = apiOverride.x - apiOrig.x;
+          const deltaY = apiOverride.y - apiOrig.y;
+          if (deltaX !== 0 || deltaY !== 0) {
+            const copy = Object.assign(Object.create(Object.getPrototypeOf(n)), n);
+            copy.x = n.x + deltaX;
+            copy.y = n.y + deltaY;
+            return copy;
+          }
+        }
+      }
+
       return n;
     });
 
@@ -316,6 +340,185 @@ export default function GraphVisualizer() {
 
     return { nodes: overridenNodes, links: overridenLinks };
   }, [originalNodes, originalLinks, dragOverrides]);
+
+  // Spatial Index (Quadtree) for O(log N) viewport culling, nearest-neighbor hover, and collision queries
+  const nodeQuadtree = useMemo(() => {
+    const tree = d3.quadtree<any>()
+      .x((d: any) => d.x ?? 0)
+      .y((d: any) => d.y ?? 0);
+    tree.addAll(nodes);
+    return tree;
+  }, [nodes]);
+
+  const [viewportBounds, setViewportBounds] = useState<{
+    x0: number;
+    y0: number;
+    x1: number;
+    y1: number;
+    scale: number;
+  } | null>(() => {
+    if (typeof window === "undefined") return null;
+    const cw = window.innerWidth || 1200;
+    const ch = window.innerHeight || 800;
+    const scale = 1;
+    const buffer = 500;
+    return {
+      x0: -buffer,
+      y0: -buffer,
+      x1: cw + buffer,
+      y1: ch + buffer,
+      scale,
+    };
+  });
+
+  const currentTransformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
+  const viewportRafRef = useRef<number | null>(null);
+
+  const updateViewportBounds = (transform: d3.ZoomTransform) => {
+    currentTransformRef.current = transform;
+    if (viewportRafRef.current) cancelAnimationFrame(viewportRafRef.current);
+    viewportRafRef.current = requestAnimationFrame(() => {
+      if (!wrapperRef.current) return;
+      const cw = wrapperRef.current.clientWidth || window.innerWidth;
+      const ch = wrapperRef.current.clientHeight || window.innerHeight;
+      const scale = Math.max(0.01, transform.k || 1);
+      // Generous buffer (screen pixels converted to graph coordinates)
+      // to ensure nodes entering the viewport during pan don't abruptly pop in
+      const screenMargin = Math.max(450, Math.min(cw, ch) * 0.5);
+      const buffer = screenMargin / scale;
+      const x0 = -transform.x / scale - buffer;
+      const y0 = -transform.y / scale - buffer;
+      const x1 = (-transform.x + cw) / scale + buffer;
+      const y1 = (-transform.y + ch) / scale + buffer;
+
+      setViewportBounds({ x0, y0, x1, y1, scale });
+    });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (viewportRafRef.current) cancelAnimationFrame(viewportRafRef.current);
+    };
+  }, []);
+
+  const { visibleNodeIds, isLodActive } = useMemo(() => {
+    // When exporting, render all nodes with full detail so nothing is culled in the exported snapshot
+    if (graphExportActive) {
+      return {
+        visibleNodeIds: new Set(nodes.map((n) => n.data.id)),
+        isLodActive: false,
+      };
+    }
+
+    // If fewer than 70 nodes, standard rendering without culling
+    if (nodes.length < 70 || !viewportBounds) {
+      return {
+        visibleNodeIds: new Set(nodes.map((n) => n.data.id)),
+        isLodActive: false,
+      };
+    }
+
+    const { x0, y0, x1, y1, scale } = viewportBounds;
+    // When zoomed far out (scale < 0.25) and dataset is large (>= 250 nodes),
+    // activate Level of Detail (LOD) mode for ultra-fast rendering
+    const isLodActive = scale < 0.25 && nodes.length >= 250;
+
+    const visible = new Set<string>();
+    const halfW = 180;
+    const halfH = 100;
+
+    // Fast Quadtree range search in O(log N + K) time!
+    nodeQuadtree.visit((quad, qx0, qy0, qx1, qy1) => {
+      // If quadrant does not overlap the viewport box, prune this entire branch!
+      if (qx0 > x1 + halfW || qx1 < x0 - halfW || qy0 > y1 + halfH || qy1 < y0 - halfH) {
+        return true;
+      }
+      if (!quad.length) {
+        let d: any = quad;
+        do {
+          const n = d.data;
+          const nx = n.x ?? 0;
+          const ny = n.y ?? 0;
+          if (
+            nx + halfW >= x0 &&
+            nx - halfW <= x1 &&
+            ny + halfH >= y0 &&
+            ny - halfH <= y1
+          ) {
+            visible.add(n.data.id);
+          }
+        } while ((d = d.next));
+      }
+      return false;
+    });
+
+    // Special nodes MUST ALWAYS be visible and never culled!
+    nodes.forEach((n) => {
+      if (isSpecialNodeType(n.data)) {
+        visible.add(n.data.id);
+      }
+    });
+
+    // Guaranteed visibility for selected nodes, active nodes, and search matches
+    if (selectedNodeId) visible.add(selectedNodeId);
+    if (activeNodes) activeNodes.forEach((id) => visible.add(id));
+    if (searchMatches) searchMatches.forEach((id) => visible.add(id));
+
+    return { visibleNodeIds: visible, isLodActive };
+  }, [nodes, nodeQuadtree, viewportBounds, selectedNodeId, activeNodes, searchMatches, graphExportActive]);
+
+  const visibleNodes = useMemo(() => {
+    if (graphExportActive || nodes.length < 70 || !viewportBounds) return nodes;
+    return nodes.filter((n) => visibleNodeIds.has(n.data.id));
+  }, [nodes, visibleNodeIds, viewportBounds, graphExportActive]);
+
+  const visibleLinks = useMemo(() => {
+    if (graphExportActive || nodes.length < 70 || !viewportBounds) return links;
+    return links.filter(
+      (l) =>
+        l &&
+        l.source?.data?.id &&
+        l.target?.data?.id &&
+        (visibleNodeIds.has(l.source.data.id) ||
+          visibleNodeIds.has(l.target.data.id)),
+    );
+  }, [links, visibleNodeIds, viewportBounds, graphExportActive]);
+
+  const [hoveredNodeInfo, setHoveredNodeInfo] = useState<{
+    id: string;
+    name: string;
+    type: string;
+    value: string;
+    x: number;
+    y: number;
+  } | null>(null);
+
+  const handleCanvasPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if ((!isLodActive && nodes.length < 150) || !wrapperRef.current) return;
+    const rect = wrapperRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const transform = currentTransformRef.current;
+    const [worldX, worldY] = transform.invert([mouseX, mouseY]);
+
+    // O(log N) lookup in Quadtree spatial index
+    const hitRadius = Math.max(35, 140 / Math.max(0.1, transform.k));
+    const nearest: any = nodeQuadtree.find(worldX, worldY, hitRadius);
+
+    if (nearest && nearest.data) {
+      const d = nearest.data;
+      setHoveredNodeInfo({
+        id: d.id,
+        name: String(d.name || ''),
+        type: String(d.type || 'node'),
+        value: typeof d.value === 'string' ? d.value : (d.value !== undefined ? JSON.stringify(d.value) : ''),
+        x: e.clientX,
+        y: e.clientY,
+      });
+    } else if (hoveredNodeInfo) {
+      setHoveredNodeInfo(null);
+    }
+  };
 
   const selectedPathNodes = useMemo(() => {
     const set = new Set<string>();
@@ -522,6 +725,15 @@ export default function GraphVisualizer() {
   const zoomRef = useRef<d3.ZoomBehavior<HTMLDivElement, unknown> | null>(null);
   const lastSearchQuery = useRef<string>("");
 
+  const prevTreeRootIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    const currentRootId = treeData?.id || null;
+    if (currentRootId && currentRootId !== prevTreeRootIdRef.current) {
+      hasCentered.current = false;
+      prevTreeRootIdRef.current = currentRootId;
+    }
+  }, [treeData]);
+
   const nodesRef = useRef(nodes);
   useEffect(() => {
     nodesRef.current = nodes;
@@ -570,6 +782,7 @@ export default function GraphVisualizer() {
           const transform = e.transform;
           svgGRef.current.setAttribute("transform", transform.toString());
         }
+        updateViewportBounds(e.transform);
       });
 
     zoomRef.current = zoom;
@@ -598,6 +811,7 @@ export default function GraphVisualizer() {
 
         const transform = d3.zoomIdentity.translate(tx, ty).scale(scale);
         selection.call(zoom.transform, transform);
+        updateViewportBounds(transform);
       }
       hasCentered.current = true;
     }
@@ -1165,6 +1379,7 @@ export default function GraphVisualizer() {
     <div
       id="graph-export-wrapper"
       ref={wrapperRef}
+      onPointerMove={handleCanvasPointerMove}
       onClick={() => {
         setSelectedNodeId(null);
         setIsolatedNodeId(null);
@@ -1266,7 +1481,7 @@ export default function GraphVisualizer() {
               const elements: any[] = [];
               const nodeMaxEdgeZ = new Map<string, number>();
               
-              links.forEach((link) => {
+              visibleLinks.forEach((link) => {
                 if (!link || !link.source?.data?.id || !link.target?.data?.id) return;
                 const isSelectedPath = selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
                 const sourceActive = activeNodes.indexOf(link.source.data.id);
@@ -1287,7 +1502,7 @@ export default function GraphVisualizer() {
                 elements.push({ type: 'link', data: link, isSelectedPath, z });
               });
 
-              nodes.forEach((node) => {
+              visibleNodes.forEach((node) => {
                 const isSelectedPath = selectedPathNodes.has(node.data.id);
                 const activeIndex = activeNodes.indexOf(node.data.id);
                 
@@ -1330,6 +1545,46 @@ export default function GraphVisualizer() {
                   const node = el.data;
                   const isSelected = selectedNodeId === node.data.id;
                   const effectiveNodeLayout = (nodeLayoutOverrides && nodeLayoutOverrides[node.data.id]) || layoutMode;
+                  const isSpecial = isSpecialNodeType(node.data);
+
+                  // Level-of-Detail (LOD): Lightweight SVG capsule when zoomed far out on large graphs.
+                  // CRITICAL: Special nodes (API, JS, TS, Py, Math, Todo, Transfer, Response)
+                  // MUST ALWAYS render as their full custom special node, never degraded to a normal LOD capsule!
+                  // And during export (graphExportActive), LOD is disabled so nodes export with their full styling!
+                  if (isLodActive && !isSpecial && !graphExportActive) {
+                    return (
+                      <g
+                        key={`lod-node-${node.data.id}`}
+                        transform={`translate(${node.x - 65}, ${node.y - 16})`}
+                        className="cursor-pointer transition-transform hover:scale-105"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setSelectedNodeId(node.data.id);
+                        }}
+                      >
+                        <rect
+                          width="130"
+                          height="32"
+                          rx="6"
+                          fill={isSelected ? "#10b981" : (appTheme === "dark" ? "#1e293b" : "#f8fafc")}
+                          stroke={isSelected ? "#34d399" : (appTheme === "dark" ? "#334155" : "#cbd5e1")}
+                          strokeWidth={isSelected ? "2" : "1"}
+                        />
+                        <text
+                          x="65"
+                          y="20"
+                          textAnchor="middle"
+                          fill={isSelected ? "#ffffff" : (appTheme === "dark" ? "#f1f5f9" : "#0f172a")}
+                          fontSize="11"
+                          fontWeight="600"
+                          className="select-none pointer-events-none font-mono"
+                        >
+                          {String(node.data.name || "").slice(0, 14)}
+                        </text>
+                      </g>
+                    );
+                  }
+
                   return (
                     <NodeRenderer
                       key={`node-${node.data.id}`}
@@ -1543,6 +1798,35 @@ export default function GraphVisualizer() {
           </div>,
           document.body,
         )}
+
+      {/* High-speed Quadtree Hover Inspection Tooltip (O(log N)) */}
+      {hoveredNodeInfo && isLodActive && (
+        <div
+          className="fixed z-[10001] pointer-events-none bg-slate-900/95 dark:bg-black/95 text-white text-xs px-3 py-2 rounded-lg shadow-2xl border border-slate-700/80 backdrop-blur-md -translate-x-1/2 -translate-y-full mb-3 min-w-[120px] max-w-[260px] animate-in fade-in zoom-in-95 duration-100 hidden md:block"
+          style={{ left: hoveredNodeInfo.x, top: hoveredNodeInfo.y - 8 }}
+        >
+          <div className="font-semibold text-emerald-400 truncate text-[13px]">{hoveredNodeInfo.name}</div>
+          <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
+            <span className="uppercase font-mono tracking-wider px-1 py-0.2 rounded bg-slate-800 text-slate-300">{hoveredNodeInfo.type}</span>
+            {hoveredNodeInfo.value && <span className="truncate max-w-[160px] text-slate-300 font-mono">{hoveredNodeInfo.value}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Spatial Quadtree & Culling Performance Badge */}
+      {nodes.length >= 70 && !graphExportActive && (
+        <div className="absolute bottom-3 left-3 z-30 pointer-events-none no-export hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full bg-slate-900/85 dark:bg-black/80 backdrop-blur-md border border-slate-700/60 text-[11px] text-slate-300 shadow-lg select-none">
+          <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <span>
+            Visible: <strong className="text-emerald-400 font-mono">{visibleNodes.length}</strong> / <span className="text-slate-400">{nodes.length}</span> nodes
+          </span>
+          {isLodActive ? (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-medium">LOD Active</span>
+          ) : (
+            <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-medium">Quadtree Culled</span>
+          )}
+        </div>
+      )}
     </div>
   );
 }

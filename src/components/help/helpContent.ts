@@ -129,7 +129,7 @@ export const nodesHelp: HelpContent = {
           type: 'cards',
           items: [
             { icon: Edit, title: 'Configure the request', text: 'Double-click the URL, or press Edit, to set the method (`GET`, `POST`, `PUT`…), the response format (`JSON`, `Text`, `Blob`) and a timeout.' },
-            { icon: Play, title: 'See the response', text: 'The request goes through a safe proxy. The response appears under a `__fetched` child node.' },
+            { icon: Play, title: 'See the response', text: 'The request goes through a safe proxy. The response appears under a `fetched` child node.' },
           ],
         },
         { type: 'code', title: 'Example', language: 'json', code: '{\n  "github_profile_api_node": "https://api.github.com/users/octocat"\n}' },

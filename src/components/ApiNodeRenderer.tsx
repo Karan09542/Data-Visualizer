@@ -501,16 +501,11 @@ export function ApiNodeRenderer({ url, path, nodeId, nodeX, nodeY, nodeWidth }: 
     const store = useStore.getState();
     const parentPos = store.dragOverrides[path] || (nodeX !== undefined && nodeY !== undefined ? { x: nodeX, y: nodeY } : null);
     const responsePath = `${path}.__response`;
-    const fetchedPath = `${path}.__fetched`;
     if (parentPos) {
       const overridesToSet: Record<string, { x: number, y: number }> = {};
       const currentResp = store.dragOverrides[responsePath];
       if (!currentResp || currentResp.x <= parentPos.x || Math.abs(currentResp.y - parentPos.y) > 500 || Math.abs(currentResp.x - (parentPos.x + 460)) > 600) {
         overridesToSet[responsePath] = { x: parentPos.x + 460, y: parentPos.y };
-      }
-      const currentFetched = store.dragOverrides[fetchedPath];
-      if (!currentFetched || currentFetched.x <= parentPos.x || Math.abs(currentFetched.y - parentPos.y) > 500 || Math.abs(currentFetched.x - (parentPos.x + 460)) > 600) {
-        overridesToSet[fetchedPath] = { x: parentPos.x + 460, y: parentPos.y };
       }
       if (Object.keys(overridesToSet).length > 0) {
         store.setMultipleDragOverrides(overridesToSet);
