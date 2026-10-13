@@ -91,6 +91,7 @@ export default function StickyNotesManager() {
 
   const [dockPos, setDockPos] = useState({ x: window.innerWidth - 70, y: window.innerHeight / 2 - 100 });
   const [isDragging, setIsDragging] = useState(false);
+  const dockRef = useRef<HTMLDivElement>(null);
   const [manualPos, setManualPos] = useState<{ x: number, y: number } | null>(null);
   const [confirmConfig, setConfirmConfig] = useState<{
     isOpen: boolean;
@@ -422,31 +423,68 @@ export default function StickyNotesManager() {
   const handleToolbarGrabPointerDown = (e: React.PointerEvent) => {
     e.preventDefault();
     e.stopPropagation();
+
+    const grabTarget = e.currentTarget as HTMLElement;
+    try {
+      grabTarget.setPointerCapture(e.pointerId);
+    } catch {}
+
     setIsDragging(true);
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
 
     const startPointerX = e.clientX;
     const startPointerY = e.clientY;
     const startDockX = dockPos.x;
     const startDockY = dockPos.y;
 
+    let pendingPos: { x: number; y: number } | null = null;
+    let rafId: number | null = null;
+
     const onPointerMove = (moveEvent: PointerEvent) => {
       const deltaX = moveEvent.clientX - startPointerX;
       const deltaY = moveEvent.clientY - startPointerY;
-      const newX = Math.max(10, Math.min(window.innerWidth - 70, startDockX + deltaX));
-      const newY = Math.max(10, Math.min(window.innerHeight - 300, startDockY + deltaY));
-      const newPos = { x: newX, y: newY };
-      setManualPos(newPos);
-      setDockPos(newPos);
+      const width = dockRef.current?.offsetWidth || 56;
+      const height = dockRef.current?.offsetHeight || 220;
+      const newX = Math.max(10, Math.min(window.innerWidth - width - 10, startDockX + deltaX));
+      const newY = Math.max(10, Math.min(window.innerHeight - height - 10, startDockY + deltaY));
+      pendingPos = { x: newX, y: newY };
+
+      if (!rafId) {
+        rafId = requestAnimationFrame(() => {
+          rafId = null;
+          if (pendingPos) {
+            setManualPos(pendingPos);
+            setDockPos(pendingPos);
+          }
+        });
+      }
     };
 
-    const onPointerUp = () => {
+    const onPointerUp = (upEvent: PointerEvent) => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+        rafId = null;
+      }
+      if (pendingPos) {
+        setManualPos(pendingPos);
+        setDockPos(pendingPos);
+      }
+      try {
+        grabTarget.releasePointerCapture(upEvent.pointerId);
+      } catch {}
+
       setIsDragging(false);
+      document.body.style.cursor = '';
+      document.body.style.userSelect = '';
       window.removeEventListener('pointermove', onPointerMove);
       window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerUp);
     };
 
     window.addEventListener('pointermove', onPointerMove);
     window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerUp);
   };
 
   if (!stickyNotesEnabled) return null;
@@ -456,9 +494,14 @@ export default function StickyNotesManager() {
 
       {/* Floating toolbar dock */}
       <motion.div
+        ref={dockRef}
         initial={{ opacity: 0, scale: 0.8, x: dockPos.x, y: dockPos.y }}
         animate={{ opacity: 1, scale: 1, x: dockPos.x, y: dockPos.y }}
-        transition={{ type: "spring", damping: 25, stiffness: 200, mass: 0.8 }}
+        transition={
+          isDragging
+            ? { duration: 0 }
+            : { type: "spring", damping: 25, stiffness: 200, mass: 0.8 }
+        }
         className={`sticky-note-toolbar fixed flex flex-col items-center gap-1 rounded-[20px] p-1.5 pointer-events-auto z-[22000] ${DOCK_SURFACE}`}
         onPointerDown={(e) => e.stopPropagation()}
       >

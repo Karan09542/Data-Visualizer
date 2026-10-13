@@ -586,6 +586,7 @@ function StickyNote({ note, onDelete, onUpdate, onDuplicate, onFocus }: Props) {
       ref={containerRef}
       drag={!isMax}
       dragMomentum={false}
+      dragElastic={0}
       onDragStart={() => onFocus(note.id)}
       onDragEnd={handleDragEnd}
       initial={false}

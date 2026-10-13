@@ -1,10 +1,51 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, Outlet, useLocation } from 'react-router-dom';
 import { ArrowRight, Menu, X, Sparkles } from 'lucide-react';
 
 const PagesLayout = () => {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
+  // Allow natural window vertical scrolling on content pages
+  useEffect(() => {
+    const prevBodyOverflow = document.body.style.overflow;
+    const prevBodyHeight = document.body.style.height;
+    const prevHtmlOverflow = document.documentElement.style.overflow;
+    const prevHtmlHeight = document.documentElement.style.height;
+    const rootEl = document.getElementById('root');
+    const prevRootOverflow = rootEl?.style.overflow || '';
+    const prevRootHeight = rootEl?.style.height || '';
+
+    document.body.style.overflow = 'auto';
+    document.body.style.height = 'auto';
+    document.documentElement.style.overflow = 'auto';
+    document.documentElement.style.height = 'auto';
+    if (rootEl) {
+      rootEl.style.overflow = 'visible';
+      rootEl.style.height = 'auto';
+    }
+
+    document.body.classList.add('pages-body');
+    document.documentElement.classList.add('pages-html');
+
+    return () => {
+      document.body.classList.remove('pages-body');
+      document.documentElement.classList.remove('pages-html');
+      document.body.style.overflow = prevBodyOverflow;
+      document.body.style.height = prevBodyHeight;
+      document.documentElement.style.overflow = prevHtmlOverflow;
+      document.documentElement.style.height = prevHtmlHeight;
+      if (rootEl) {
+        rootEl.style.overflow = prevRootOverflow;
+        rootEl.style.height = prevRootHeight;
+      }
+    };
+  }, []);
+
+  // Scroll to top when switching between pages
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
 
   const navLinks = [
     { name: 'About', path: '/about' },
@@ -16,7 +57,7 @@ const PagesLayout = () => {
   const isActive = (path: string) => location.pathname === path;
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans flex flex-col transition-colors">
+    <div className="pages-layout min-h-screen bg-slate-50 dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans flex flex-col transition-colors">
       <header className="border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-[#161b22]/90 backdrop-blur-md sticky top-0 z-50 transition-colors">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-3.5 flex items-center justify-between">
           <Link to="/" className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5 group">
