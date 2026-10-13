@@ -652,9 +652,20 @@ function App() {
         return;
       }
 
+      const files: File[] = [];
       if (e.clipboardData?.files && e.clipboardData.files.length > 0) {
+        files.push(...Array.from(e.clipboardData.files));
+      } else if (e.clipboardData?.items) {
+        for (const item of Array.from(e.clipboardData.items)) {
+          if (item.kind === "file") {
+            const f = item.getAsFile();
+            if (f) files.push(f);
+          }
+        }
+      }
+
+      if (files.length > 0) {
         e.preventDefault();
-        const files = Array.from(e.clipboardData.files);
         try {
           const { processFiles } = await import("./utils/fileProcessor");
           processFiles(files);

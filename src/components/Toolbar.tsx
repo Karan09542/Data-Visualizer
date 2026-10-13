@@ -272,20 +272,79 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
   const handlePasteClipboard = async () => {
     try {
-      const text = await navigator.clipboard.readText();
-      if (text) {
-        useStore.getState().setPendingImport({
-          filename: 'clipboard_paste.txt',
-          text: text,
-          fileContext: 'data',
-          fileSize: text.length
-        });
-      } else {
-        useStore.getState().setNotification({ message: 'Clipboard is empty', type: 'error' });
+      // 1. Try reading rich clipboard items (e.g. copied images/blobs)
+      if (typeof navigator !== "undefined" && navigator.clipboard?.read) {
+        try {
+          const items = await navigator.clipboard.read();
+          for (const item of items) {
+            const imageType = item.types.find((type) => type.startsWith("image/"));
+            if (imageType) {
+              const blob = await item.getType(imageType);
+              const ext = imageType.split("/")[1]?.replace("+xml", "") || "png";
+              const file = new File(
+                [blob],
+                `clipboard_image_${Date.now()}.${ext}`,
+                { type: imageType }
+              );
+              const { processFiles } = await import("../utils/fileProcessor");
+              await processFiles([file]);
+              useStore.getState().setNotification({
+                message: "Image pasted from clipboard!",
+                type: "success",
+              });
+              return;
+            }
+          }
+        } catch (readErr) {
+          console.warn("navigator.clipboard.read() could not read items, trying readText():", readErr);
+        }
       }
+
+      // 2. Fallback to reading text (or data URL image string)
+      if (typeof navigator !== "undefined" && navigator.clipboard?.readText) {
+        const text = await navigator.clipboard.readText();
+        if (text && text.trim().length > 0) {
+          // If the pasted text is a data URL image, convert to image file
+          if (text.trim().startsWith("data:image/")) {
+            try {
+              const res = await fetch(text.trim());
+              const blob = await res.blob();
+              const mimeType = text.substring(5, text.indexOf(";")) || "image/png";
+              const ext = mimeType.split("/")[1] || "png";
+              const file = new File(
+                [blob],
+                `clipboard_image_${Date.now()}.${ext}`,
+                { type: mimeType }
+              );
+              const { processFiles } = await import("../utils/fileProcessor");
+              await processFiles([file]);
+              useStore.getState().setNotification({
+                message: "Image pasted from clipboard!",
+                type: "success",
+              });
+              return;
+            } catch (blobErr) {
+              console.warn("Failed to parse data URL as image blob:", blobErr);
+            }
+          }
+
+          useStore.getState().setPendingImport({
+            filename: "clipboard_paste.txt",
+            text: text,
+            fileContext: "data",
+            fileSize: text.length,
+          });
+          return;
+        }
+      }
+
+      useStore.getState().setNotification({ message: "Clipboard is empty", type: "error" });
     } catch (err) {
-      console.error('Failed to read clipboard contents: ', err);
-      useStore.getState().setNotification({ message: 'Failed to access clipboard. Please check permissions.', type: 'error' });
+      console.error("Failed to read clipboard contents: ", err);
+      useStore.getState().setNotification({
+        message: "Failed to access clipboard. Please check permissions.",
+        type: "error",
+      });
     }
   };
 
