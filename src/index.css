@@ -8,6 +8,27 @@
 @import "katex/dist/katex.min.css";
 @custom-variant dark (&:is(.dark *));
 
+/* Lock viewport and prevent unintended mobile document Y-scrolling/overscroll */
+html,
+body {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 0;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+#root {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+:root {
+  --app-height: 100dvh;
+}
+
 /* Math node: hovering a row in the list lights up its shapes and fades the rest. */
 [data-math-graph] g[data-row-id] {
   transition: opacity 150ms ease, filter 150ms ease;

@@ -91,6 +91,54 @@ function App() {
       }
     }
   }, []);
+
+  // Dynamic mobile viewport height calculation & mobile scroll lock
+  useEffect(() => {
+    const updateAppHeight = () => {
+      // visualViewport is the most accurate on mobile (accounts for dynamic address bar, nav bars, and virtual keyboard)
+      const h = window.visualViewport ? window.visualViewport.height : window.innerHeight;
+      document.documentElement.style.setProperty('--app-height', `${h}px`);
+    };
+
+    updateAppHeight();
+
+    window.visualViewport?.addEventListener('resize', updateAppHeight);
+    window.visualViewport?.addEventListener('scroll', updateAppHeight);
+    window.addEventListener('resize', updateAppHeight);
+    window.addEventListener('orientationchange', updateAppHeight);
+
+    // Prevent any unintended window Y-scroll drift on mobile
+    const handleWindowScroll = () => {
+      if (window.scrollY !== 0 || window.scrollX !== 0) {
+        window.scrollTo(0, 0);
+      }
+    };
+    window.addEventListener('scroll', handleWindowScroll, { passive: true });
+
+    const originalBodyOverflow = document.body.style.overflow;
+    const originalBodyHeight = document.body.style.height;
+    const originalBodyOverscroll = document.body.style.overscrollBehavior;
+    const originalHtmlOverscroll = document.documentElement.style.overscrollBehavior;
+
+    document.body.style.overflow = 'hidden';
+    document.body.style.height = '100%';
+    document.body.style.overscrollBehavior = 'none';
+    document.documentElement.style.overscrollBehavior = 'none';
+
+    return () => {
+      window.visualViewport?.removeEventListener('resize', updateAppHeight);
+      window.visualViewport?.removeEventListener('scroll', updateAppHeight);
+      window.removeEventListener('resize', updateAppHeight);
+      window.removeEventListener('orientationchange', updateAppHeight);
+      window.removeEventListener('scroll', handleWindowScroll);
+
+      document.body.style.overflow = originalBodyOverflow;
+      document.body.style.height = originalBodyHeight;
+      document.body.style.overscrollBehavior = originalBodyOverscroll;
+      document.documentElement.style.overscrollBehavior = originalHtmlOverscroll;
+    };
+  }, []);
+
   const undoStack = useStore((state) => state.undoStack);
   const redoStack = useStore((state) => state.redoStack);
   const undo = useStore((state) => state.undo);
@@ -622,7 +670,8 @@ function App() {
 
   return (
     <div
-      className={`${appTheme} flex flex-col h-screen w-screen bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors relative`}
+      style={{ height: 'var(--app-height, 100dvh)' }}
+      className={`${appTheme} flex flex-col h-[100dvh] w-full max-w-full bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors relative`}
     >
       {isDragOver && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pointer-events-none">
@@ -762,7 +811,13 @@ function App() {
 
               {/* Mobile Canvas Floating Controls (Bottom-Left) */}
               {!isEditorPanelOpen && (
-                <div className="lg:hidden absolute bottom-4 left-4 z-[350] flex items-center bg-white/90 dark:bg-slate-950/60 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/60 rounded-xl p-1 shadow-lg opacity-60 hover:opacity-100 transition-all duration-200">
+                <div
+                  style={{
+                    bottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))',
+                    left: 'max(1rem, env(safe-area-inset-left, 1rem))',
+                  }}
+                  className="lg:hidden absolute z-[350] flex items-center bg-white/90 dark:bg-slate-950/60 backdrop-blur-md border border-slate-200/80 dark:border-slate-800/60 rounded-xl p-1 shadow-lg opacity-60 hover:opacity-100 transition-all duration-200"
+                >
                   <button
                     onClick={undo}
                     disabled={undoStack.length === 0}

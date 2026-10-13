@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { lazyWithRetry } from '../utils/lazyWithRetry';
 import { useStore } from '../store/useStore';
-import { Search, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, X, Info, Settings, RefreshCw, CornerDownLeft, Lightbulb } from 'lucide-react';
+import { Search, AlertCircle, CheckCircle2, ChevronUp, ChevronDown, X, Info, Settings, RefreshCw, CornerDownLeft, Lightbulb, MoreVertical } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
 const NodeQueryEngineHelpModal = lazyWithRetry(() => import('./NodeQueryEngineHelpModal'), 'Query Engine Help');
@@ -30,6 +30,34 @@ export default function NodeQueryEngine() {
     const [isFocused, setIsFocused] = useState(false);
     const [showHelp, setShowHelp] = useState(false);
     const [hasLoadedHelp, setHasLoadedHelp] = useState(false);
+    const [showMobileMenu, setShowMobileMenu] = useState(false);
+    const mobileMenuRef = useRef<HTMLDivElement>(null);
+    const moreButtonRef = useRef<HTMLButtonElement>(null);
+
+    useEffect(() => {
+        if (!showMobileMenu) return;
+        const handleClickOutside = (e: MouseEvent | TouchEvent) => {
+            if (
+                mobileMenuRef.current &&
+                !mobileMenuRef.current.contains(e.target as Node) &&
+                moreButtonRef.current &&
+                !moreButtonRef.current.contains(e.target as Node)
+            ) {
+                setShowMobileMenu(false);
+            }
+        };
+        const handleKeyDown = (e: KeyboardEvent) => {
+            if (e.key === 'Escape') setShowMobileMenu(false);
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        document.addEventListener('touchstart', handleClickOutside);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handleClickOutside);
+            document.removeEventListener('touchstart', handleClickOutside);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [showMobileMenu]);
 
     useEffect(() => {
         if (showHelp) setHasLoadedHelp(true);
@@ -79,7 +107,7 @@ export default function NodeQueryEngine() {
     return (
         <>
             <div
-                className="absolute top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[calc(100%-2rem)] max-w-xl node-query-engine no-export"
+                className="absolute top-3 sm:top-4 left-1/2 -translate-x-1/2 z-50 pointer-events-auto w-[calc(100%-1rem)] sm:w-[calc(100%-2rem)] max-w-xl node-query-engine no-export"
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => e.stopPropagation()}
                 onDoubleClick={(e) => e.stopPropagation()}
@@ -95,14 +123,17 @@ export default function NodeQueryEngine() {
                         }`}
                 >
                     {/* Input row */}
-                    <div className="flex h-11 items-center gap-2 pl-3 pr-1.5">
+                    <div className="flex h-11 items-center gap-1.5 sm:gap-2 pl-2.5 sm:pl-3 pr-1 sm:pr-1.5">
                         <Search size={16} className={`shrink-0 transition-colors ${isFocused ? 'text-blue-500' : 'text-slate-400 dark:text-slate-500'}`} />
 
                         <input
                             ref={inputRef}
                             type="text"
                             value={localSearch}
-                            onChange={(e) => setLocalSearch(e.target.value)}
+                            onChange={(e) => {
+                                setLocalSearch(e.target.value);
+                                setShowMobileMenu(false);
+                            }}
                             onKeyDown={(e) => {
                                 if (e.key === 'Tab' || e.key === 'Enter') {
                                     if (!hasQuery) return;
@@ -118,12 +149,15 @@ export default function NodeQueryEngine() {
                                     else inputRef.current?.blur();
                                 }
                             }}
-                            onFocus={() => setIsFocused(true)}
+                            onFocus={() => {
+                                setIsFocused(true);
+                                setShowMobileMenu(false);
+                            }}
                             onBlur={() => setIsFocused(false)}
                             placeholder="Search by name, e.g. email…"
                             aria-label="Query nodes"
                             aria-invalid={hasError}
-                            className={`min-w-0 flex-1 border-none bg-transparent font-mono text-[13px] outline-none placeholder:font-sans placeholder:text-slate-400 dark:placeholder:text-slate-500 ${hasError ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-100'
+                            className={`min-w-[70px] sm:min-w-0 flex-1 border-none bg-transparent font-mono text-[13px] outline-none placeholder:font-sans placeholder:text-slate-400 dark:placeholder:text-slate-500 ${hasError ? 'text-red-600 dark:text-red-400' : 'text-slate-800 dark:text-slate-100'
                                 }`}
                             autoComplete="off"
                             spellCheck="false"
@@ -140,8 +174,18 @@ export default function NodeQueryEngine() {
                                     className="flex shrink-0 items-center gap-0.5"
                                 >
                                     {!hasError && (
-                                        <span className="mr-1 rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                            {totalMatches > 0 && activeMatchIndex !== null ? `${activeMatchIndex + 1} / ${totalMatches}` : `${totalMatches} / ${totalMatches}`}
+                                        <span className="mr-0.5 sm:mr-1 rounded-md bg-slate-100 px-1 sm:px-1.5 py-0.5 font-mono text-[11px] tabular-nums text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                            {totalMatches > 0 && activeMatchIndex !== null ? (
+                                                <>
+                                                    <span className="sm:hidden">{activeMatchIndex + 1}/{totalMatches}</span>
+                                                    <span className="hidden sm:inline">{activeMatchIndex + 1} / {totalMatches}</span>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <span className="sm:hidden">{totalMatches}</span>
+                                                    <span className="hidden sm:inline">{totalMatches} / {totalMatches}</span>
+                                                </>
+                                            )}
                                         </span>
                                     )}
                                     <button
@@ -187,11 +231,12 @@ export default function NodeQueryEngine() {
                             )}
                         </AnimatePresence>
 
-                        <div className="mx-1 h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
+                        {/* Desktop separator and quick action buttons */}
+                        <div className="hidden sm:block mx-1 h-5 w-px shrink-0 bg-slate-200 dark:bg-slate-800" />
 
                         <button
                             onClick={() => window.dispatchEvent(new CustomEvent('refetch-all-api-nodes'))}
-                            className={`${iconButtonClass} hover:!text-blue-500`}
+                            className={`hidden sm:flex ${iconButtonClass} hover:!text-blue-500`}
                             title="Refetch all API nodes"
                             aria-label="Refetch all API nodes"
                         >
@@ -199,7 +244,7 @@ export default function NodeQueryEngine() {
                         </button>
                         <button
                             onClick={() => setShowHelp(true)}
-                            className={iconButtonClass}
+                            className={`hidden sm:flex ${iconButtonClass}`}
                             title="Query syntax help"
                             aria-label="Query syntax help"
                         >
@@ -207,11 +252,25 @@ export default function NodeQueryEngine() {
                         </button>
                         <button
                             onClick={() => setIsAdvancedPanelOpen(true)}
-                            className={iconButtonClass}
+                            className={`hidden sm:flex ${iconButtonClass}`}
                             title="Settings"
                             aria-label="Open settings"
                         >
                             <Settings size={15} />
+                        </button>
+
+                        {/* Mobile More Options toggle button */}
+                        <button
+                            ref={moreButtonRef}
+                            type="button"
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setShowMobileMenu((prev) => !prev)}
+                            className={`sm:hidden ${iconButtonClass}`}
+                            title="More options"
+                            aria-label="More options"
+                            aria-expanded={showMobileMenu}
+                        >
+                            <MoreVertical size={16} />
                         </button>
                     </div>
 
@@ -265,7 +324,7 @@ export default function NodeQueryEngine() {
                                                     aria-checked={active}
                                                     onMouseDown={(e) => e.preventDefault()}
                                                     onClick={() => useStore.getState().setSearchEngineMode(mode)}
-                                                    className={`rounded px-2 py-0.5 text-[10px] font-medium capitalize transition-colors ${active
+                                                    className={`rounded px-1.5 sm:px-2 py-0.5 text-[10px] font-medium capitalize transition-colors ${active
                                                         ? mode === 'strict'
                                                             ? 'bg-amber-500/15 text-amber-700 dark:text-amber-400'
                                                             : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'
@@ -282,6 +341,57 @@ export default function NodeQueryEngine() {
                         )}
                     </AnimatePresence>
                 </motion.div>
+
+                {/* Mobile options dropdown (outside overflow-hidden) */}
+                <AnimatePresence>
+                    {showMobileMenu && (
+                        <motion.div
+                            ref={mobileMenuRef}
+                            initial={{ opacity: 0, scale: 0.95, y: -4 }}
+                            animate={{ opacity: 1, scale: 1, y: 0 }}
+                            exit={{ opacity: 0, scale: 0.95, y: -4 }}
+                            transition={{ duration: 0.12 }}
+                            className="absolute right-0 top-12 z-[60] w-52 overflow-hidden rounded-xl border border-slate-200 bg-white/95 p-1.5 shadow-xl shadow-slate-900/10 backdrop-blur-md dark:border-slate-800 dark:bg-[#0d1117]/95 dark:shadow-black/40"
+                        >
+                            <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                    setShowMobileMenu(false);
+                                    window.dispatchEvent(new CustomEvent('refetch-all-api-nodes'));
+                                }}
+                                className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors dark:text-slate-200 dark:hover:bg-slate-800/70"
+                            >
+                                <RefreshCw size={14} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                <span>Refetch API Nodes</span>
+                            </button>
+                            <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                    setShowMobileMenu(false);
+                                    setShowHelp(true);
+                                }}
+                                className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors dark:text-slate-200 dark:hover:bg-slate-800/70"
+                            >
+                                <Info size={14} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                <span>Query Syntax Guide</span>
+                            </button>
+                            <button
+                                type="button"
+                                onMouseDown={(e) => e.preventDefault()}
+                                onClick={() => {
+                                    setShowMobileMenu(false);
+                                    setIsAdvancedPanelOpen(true);
+                                }}
+                                className="group flex w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-xs font-medium text-slate-700 hover:bg-slate-100 transition-colors dark:text-slate-200 dark:hover:bg-slate-800/70"
+                            >
+                                <Settings size={14} className="text-slate-400 group-hover:text-blue-500 transition-colors" />
+                                <span>Canvas Settings</span>
+                            </button>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
 
                 {/* Examples / errors dropdown */}
                 <AnimatePresence>
