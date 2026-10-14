@@ -7,7 +7,7 @@ import {
   PenTool, Highlighter, Square, Circle, Triangle,
   Minus, ArrowRight, Eraser, MousePointer2, Waves, Activity, Pentagon, Hexagon, Trash2, GripHorizontal, GripVertical, Undo2, Redo2, MoreHorizontal,
   RotateCcw, ArrowUpLeft, ArrowUp, ArrowUpRight, ArrowDownLeft, ArrowDown, ArrowDownRight, Move,
-  Sigma, X, ChevronUp, Eye, EyeOff, Copy, Check, Plus, SlidersHorizontal, SquareDashedMousePointer
+  Sigma, X, ChevronUp, Eye, EyeOff, Copy, Check, Plus, SlidersHorizontal, SquareDashedMousePointer, Search
 } from 'lucide-react';
 import { Slider } from '@/components/ui/slider';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -428,9 +428,11 @@ const FUNCTION_PRESETS = [
   { label: 'Star (Polar)', expr: 'r = 1 + 0.5*sin(5*theta)' },
 ];
 
-const MORE_FUNCTIONS = [
+const FUNCTION_LIBRARY_GROUPS = [
   {
-    group: 'Trigonometric',
+    id: 'trig',
+    label: 'Trig',
+    title: 'Trigonometric',
     items: [
       { label: 'sin(x)', expr: 'sin(x)' },
       { label: 'cos(x)', expr: 'cos(x)' },
@@ -438,56 +440,521 @@ const MORE_FUNCTIONS = [
       { label: 'asin(x)', expr: 'asin(x)' },
       { label: 'acos(x)', expr: 'acos(x)' },
       { label: 'atan(x)', expr: 'atan(x)' },
+      { label: 'sinh(x)', expr: 'sinh(x)' },
+      { label: 'cosh(x)', expr: 'cosh(x)' },
+      { label: 'sinc(x)', expr: 'x == 0 ? 1 : sin(x)/x' },
     ]
   },
   {
-    group: 'Exponential & Log',
+    id: 'exp',
+    label: 'Exp & Log',
+    title: 'Exponential & Logarithmic',
     items: [
       { label: 'exp(x)', expr: 'exp(x)' },
       { label: 'log(x)', expr: 'log(x)' },
       { label: 'log10(x)', expr: 'log10(x)' },
-      { label: 'pow(x, y)', expr: 'pow(x, 2)' },
+      { label: 'log2(x)', expr: 'log2(x)' },
+      { label: 'pow(x, 2)', expr: 'pow(x, 2)' },
+      { label: 'sqrt(x)', expr: 'sqrt(x)' },
+      { label: 'cbrt(x)', expr: 'cbrt(x)' },
     ]
   },
   {
-    group: 'General',
+    id: 'general',
+    label: 'Basic',
+    title: 'General & Arithmetic',
     items: [
-      { label: 'sqrt(x)', expr: 'sqrt(x)' },
       { label: 'abs(x)', expr: 'abs(x)' },
       { label: 'sign(x)', expr: 'sign(x)' },
       { label: 'ceil(x)', expr: 'ceil(x)' },
       { label: 'floor(x)', expr: 'floor(x)' },
       { label: 'round(x)', expr: 'round(x)' },
-      { label: 'mod(x, y)', expr: 'mod(x, 2)' },
+      { label: 'mod(x, 2)', expr: 'mod(x, 2)' },
     ]
   },
   {
-    group: 'Damped Functions',
+    id: 'damped',
+    label: 'Damped',
+    title: 'Damped Oscillations',
     items: [
       { label: 'exp(-0.1x)sin(x)', expr: 'exp(-0.1*x) * sin(x)' },
       { label: 'exp(-0.2x)cos(x)', expr: 'exp(-0.2*x) * cos(x)' },
       { label: 'exp(-x/5)', expr: 'exp(-x/5)' },
-      { label: 'Damped Spiral (P)', expr: 'x(t)=t*cos(t)*exp(-0.1*t); y(t)=t*sin(t)*exp(-0.1*t)' },
+      { label: 'Damped Spiral', expr: 'x(t)=t*cos(t)*exp(-0.1*t); y(t)=t*sin(t)*exp(-0.1*t)' },
     ]
   },
   {
-    group: 'Functional & Advanced',
+    id: 'parametric',
+    label: 'Parametric',
+    title: 'Parametric & Polar Curves',
+    items: [
+      { label: 'Spiral (Par)', expr: 'x(t)=t/5*cos(t); y(t)=t/5*sin(t)' },
+      { label: 'Butterfly (Par)', expr: 'x(t)=sin(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5); y(t)=cos(t)*(exp(cos(t))-2*cos(4*t)-sin(t/12)^5)' },
+      { label: 'Lissajous (Par)', expr: 'x(t)=sin(3*t); y(t)=sin(4*t)' },
+      { label: 'Cardioid (Polar)', expr: 'r = 1 + sin(theta)' },
+      { label: 'Star (Polar)', expr: 'r = 1 + 0.5*sin(5*theta)' },
+      { label: 'Fourier Heart (Polar)', expr: 'r = -2 + 2*sin(theta) - sin(theta)*sqrt(abs(cos(theta))) / (sin(theta) + 1.4)' },
+      { label: 'Waves (Field)', expr: 'sin(x*y + t)' },
+    ]
+  },
+  {
+    id: 'advanced',
+    label: 'Advanced',
+    title: 'Functional & Series',
     items: [
       { label: 'Fourier Square (Sum)', expr: 'y = sum(map(1:5, f(n)=sin((2n-1)*x)/(2n-1)))' },
       { label: 'Staircase (Filter)', expr: 'y = length(filter(0:10, f(i)=x>i))' },
       { label: 'Harmonic Product', expr: 'y = product(map(1:3, f(k)=sin(k*x)))' },
       { label: 'Dot Modulator', expr: 'dot([sin(x), cos(x)], [cos(x/2), sin(x/2)])' },
-      { label: 'Fourier Heart (R)', expr: 'r = -2 + 2*sin(theta) - sin(theta)*sqrt(abs(cos(theta))) / (sin(theta) + 1.4)' },
       { label: 'Rectifier (Y)', expr: 'y = sin(x) > 0 ? 5*sin(x) : 0' },
     ]
   }
 ];
+
+const MORE_FUNCTIONS = FUNCTION_LIBRARY_GROUPS.map(g => ({ group: g.title, items: g.items }));
 
 const SUGGESTED_MATH_FUNCTIONS = [
   'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'sec', 'csc', 'cot',
   'exp', 'log', 'log10', 'log2', 'pow', 'sqrt', 'cbrt', 'abs', 'ceil', 'floor', 'round', 'fix', 'mod', 'sign',
   'min', 'max', 'mean', 'median', 'std', 'erf', 'gamma', 'factorial'
 ];
+
+interface MathFunctionPickerPortalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  currentExpression: string;
+  onSelectExpression: (expr: string) => void;
+  triggerRef: React.RefObject<HTMLElement | null>;
+  isMobile?: boolean;
+}
+
+function computePopupCoords(trigger: HTMLElement | null, content: HTMLElement | null, isMobile: boolean) {
+  if (!trigger || isMobile || typeof window === 'undefined') {
+    return { top: 0, left: 0, isReady: false, placement: 'right' as const };
+  }
+
+  const triggerRect = trigger.getBoundingClientRect();
+  const popWidth = (content && content.offsetWidth > 0) ? content.offsetWidth : 350;
+  const popHeight = (content && content.offsetHeight > 0) ? content.offsetHeight : 440;
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const margin = 12;
+
+  // Locate parent function panel element if exists
+  const panelEl = trigger.closest('.group\\/func');
+  const panelRect = panelEl ? panelEl.getBoundingClientRect() : triggerRect;
+
+  let left = 0;
+  let top = 0;
+  let placement: 'right' | 'left' | 'bottom' | 'top' = 'right';
+
+  // Preference 1: Position to the right of the function panel
+  if (vw - panelRect.right >= popWidth + margin + 8) {
+    left = panelRect.right + 10;
+    top = Math.max(margin, Math.min(triggerRect.top - 20, vh - popHeight - margin));
+    placement = 'right';
+  }
+  // Preference 2: Position to the left of the function panel
+  else if (panelRect.left >= popWidth + margin + 8) {
+    left = panelRect.left - popWidth - 10;
+    top = Math.max(margin, Math.min(triggerRect.top - 20, vh - popHeight - margin));
+    placement = 'left';
+  }
+  // Preference 3: Anchor near trigger button
+  else {
+    left = triggerRect.left;
+    if (left + popWidth > vw - margin) {
+      left = vw - popWidth - margin;
+    }
+    left = Math.max(margin, left);
+
+    if (vh - triggerRect.bottom >= popHeight + margin) {
+      top = triggerRect.bottom + 8;
+      placement = 'bottom';
+    } else if (triggerRect.top >= popHeight + margin) {
+      top = triggerRect.top - popHeight - 8;
+      placement = 'top';
+    } else {
+      top = Math.max(margin, (vh - popHeight) / 2);
+      placement = 'bottom';
+    }
+  }
+
+  return {
+    top: Math.round(top),
+    left: Math.round(left),
+    isReady: true,
+    placement,
+  };
+}
+
+function MathFunctionPickerPortal({
+  isOpen,
+  onClose,
+  currentExpression,
+  onSelectExpression,
+  triggerRef,
+  isMobile = false,
+}: MathFunctionPickerPortalProps) {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [activeCategory, setActiveCategory] = useState<string>('all');
+  const [coords, setCoords] = useState(() =>
+    computePopupCoords(triggerRef.current, null, isMobile)
+  );
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const contentRef = useRef<HTMLDivElement>(null);
+  const searchInputRef = useRef<HTMLInputElement>(null);
+
+  // Synchronize coords immediately whenever opening, before browser paint
+  if (isOpen && !prevIsOpen) {
+    setPrevIsOpen(true);
+    const initial = computePopupCoords(triggerRef.current, null, isMobile);
+    if (initial.isReady) {
+      setCoords(initial);
+    }
+  } else if (!isOpen && prevIsOpen) {
+    setPrevIsOpen(false);
+  }
+
+  // Focus search input on open & reset state
+  useEffect(() => {
+    if (isOpen) {
+      const timer = setTimeout(() => searchInputRef.current?.focus(), 60);
+      return () => clearTimeout(timer);
+    } else {
+      setSearchQuery('');
+      setActiveCategory('all');
+    }
+  }, [isOpen]);
+
+  // Synchronously compute and set coords in useLayoutEffect before browser paint
+  useLayoutEffect(() => {
+    if (!isOpen || isMobile) return;
+
+    const updatePosition = () => {
+      const trigger = triggerRef.current;
+      if (!trigger) return;
+
+      const next = computePopupCoords(trigger, contentRef.current, isMobile);
+      if (next.isReady) {
+        if (contentRef.current) {
+          contentRef.current.style.top = `${next.top}px`;
+          contentRef.current.style.left = `${next.left}px`;
+          contentRef.current.style.transformOrigin =
+            next.placement === 'right' ? 'top left' :
+            next.placement === 'left' ? 'top right' : 'top center';
+          contentRef.current.style.visibility = 'visible';
+        }
+        setCoords(next);
+      }
+    };
+
+    // Calculate synchronously BEFORE paint
+    updatePosition();
+
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [isOpen, isMobile, triggerRef]);
+
+  // Click outside and Escape handling
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (e: PointerEvent) => {
+      const target = e.target as Node;
+      if (
+        contentRef.current?.contains(target) ||
+        triggerRef.current?.contains(target)
+      ) {
+        return;
+      }
+      onClose();
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onClose();
+      }
+    };
+
+    document.addEventListener('pointerdown', handlePointerDown, true);
+    document.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown, true);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose, triggerRef]);
+
+  if (!isOpen || typeof document === 'undefined') return null;
+
+  const query = searchQuery.trim().toLowerCase();
+
+  const filteredGroups = FUNCTION_LIBRARY_GROUPS.map((group) => {
+    if (activeCategory !== 'all' && group.id !== activeCategory) {
+      return null;
+    }
+    const items = group.items.filter((item) => {
+      if (!query) return true;
+      return (
+        item.label.toLowerCase().includes(query) ||
+        item.expr.toLowerCase().includes(query) ||
+        group.title.toLowerCase().includes(query)
+      );
+    });
+    if (items.length === 0) return null;
+    return { ...group, items };
+  }).filter(Boolean) as typeof FUNCTION_LIBRARY_GROUPS;
+
+  const totalMatches = filteredGroups.reduce((acc, g) => acc + g.items.length, 0);
+
+  const hasExactMatch = FUNCTION_LIBRARY_GROUPS.some((g) =>
+    g.items.some(
+      (i) => i.label.toLowerCase() === query || i.expr.toLowerCase() === query
+    )
+  );
+
+  const handleApply = (expr: string) => {
+    onSelectExpression(expr);
+    onClose();
+  };
+
+  const content = (
+    <div
+      ref={contentRef}
+      style={
+        isMobile
+          ? undefined
+          : {
+              position: 'fixed',
+              top: coords.top,
+              left: coords.left,
+              zIndex: 10025,
+              transformOrigin:
+                coords.placement === 'right' ? 'top left' :
+                coords.placement === 'left' ? 'top right' : 'top center',
+              visibility: coords.isReady ? 'visible' : 'hidden',
+            }
+      }
+      className={`${
+        isMobile
+          ? 'w-full max-w-[360px] max-h-[75vh]'
+          : 'w-[350px] max-h-[440px]'
+      } bg-white dark:bg-[#0b1120] border border-slate-200 dark:border-slate-800 shadow-2xl rounded-2xl flex flex-col overflow-hidden text-slate-800 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-150 font-sans`}
+      onClick={(e) => e.stopPropagation()}
+      onPointerDown={(e) => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-3.5 py-2.5 border-b border-slate-200 dark:border-slate-800 bg-slate-50/80 dark:bg-slate-900/60 backdrop-blur-sm shrink-0">
+        <div className="flex items-center gap-2">
+          <div className="w-6 h-6 rounded-md bg-blue-500/10 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold">
+            <Sigma size={13} />
+          </div>
+          <div className="flex items-center gap-1.5">
+            <span className="text-[11px] font-bold tracking-wide uppercase text-slate-700 dark:text-slate-200">
+              Math Functions
+            </span>
+            <span className="px-1.5 py-0.2 text-[9px] font-mono font-medium rounded-full bg-slate-200/80 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+              {totalMatches}
+            </span>
+          </div>
+        </div>
+        <button
+          onClick={onClose}
+          className="p-1 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-200/60 dark:hover:bg-slate-800 transition-colors"
+          title="Close (Esc)"
+        >
+          <X size={14} />
+        </button>
+      </div>
+
+      {/* Search Bar & Custom Input */}
+      <div className="p-3 pb-2 flex flex-col gap-2 shrink-0">
+        <div className="relative flex items-center">
+          <Search size={13} className="absolute left-2.5 text-slate-400 pointer-events-none" />
+          <input
+            ref={searchInputRef}
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') {
+                const val = searchQuery.trim();
+                if (val) {
+                  handleApply(val);
+                }
+              }
+            }}
+            placeholder="Search math functions or enter formula..."
+            className="w-full bg-slate-100 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-lg pl-8 pr-7 py-1.5 text-xs font-mono text-slate-800 dark:text-slate-200 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/60 transition-all"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 p-0.5 rounded text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+            >
+              <X size={12} />
+            </button>
+          )}
+        </div>
+
+        {searchQuery.trim().length > 0 && (
+          <div className="flex flex-col gap-1.5">
+            <LaTeXPreview expression={searchQuery.trim()} className="!p-1.5 !rounded-lg" />
+            {!hasExactMatch && (
+              <button
+                onClick={() => handleApply(searchQuery.trim())}
+                className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 dark:text-blue-400 border border-blue-500/30 text-[11px] font-medium transition-all group"
+              >
+                <span className="truncate">
+                  Apply custom: <code className="font-mono font-bold">{searchQuery.trim()}</code>
+                </span>
+                <span className="text-[10px] uppercase font-bold tracking-wider opacity-80 group-hover:opacity-100 flex items-center gap-1">
+                  Use <Check size={11} />
+                </span>
+              </button>
+            )}
+          </div>
+        )}
+
+        {/* Category Filter Pills */}
+        <div className="flex items-center gap-1 overflow-x-auto no-scrollbar py-0.5 pt-0.5">
+          {[
+            { id: 'all', label: 'All' },
+            ...FUNCTION_LIBRARY_GROUPS.map((g) => ({ id: g.id, label: g.label })),
+          ].map((tab) => {
+            const isActive = activeCategory === tab.id;
+            return (
+              <button
+                key={tab.id}
+                onClick={() => setActiveCategory(tab.id)}
+                className={`shrink-0 px-2.5 py-1 rounded-md text-[10px] font-medium transition-all ${
+                  isActive
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-slate-100 dark:bg-slate-800/70 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800'
+                }`}
+              >
+                {tab.label}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Grid of Presets & Functions */}
+      <div className="flex-1 overflow-y-auto custom-scrollbar px-3 pb-2.5 flex flex-col gap-3 min-h-[140px]">
+        {filteredGroups.length === 0 ? (
+          <div className="py-8 text-center text-xs text-slate-400">
+            <p>No presets found for "{searchQuery}".</p>
+            {searchQuery.trim() && (
+              <button
+                onClick={() => handleApply(searchQuery.trim())}
+                className="mt-2 text-blue-500 underline text-[11px] font-medium"
+              >
+                Set "{searchQuery}" as expression
+              </button>
+            )}
+          </div>
+        ) : (
+          filteredGroups.map((group) => (
+            <div key={group.id} className="flex flex-col gap-1.5">
+              <div className="flex items-center justify-between px-0.5">
+                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                  {group.title}
+                </span>
+                <span className="text-[9px] text-slate-400 font-mono opacity-60">
+                  {group.items.length}
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-1.5">
+                {group.items.map((item) => {
+                  const isSelected = currentExpression === item.expr;
+                  return (
+                    <button
+                      key={item.label}
+                      onClick={() => handleApply(item.expr)}
+                      className={`flex flex-col text-left p-2 rounded-lg border transition-all text-xs font-mono relative overflow-hidden ${
+                        isSelected
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-sm ring-1 ring-blue-500/30'
+                          : 'bg-slate-50 dark:bg-slate-900/60 hover:bg-blue-50/70 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 border-slate-200/70 dark:border-slate-800 hover:border-blue-300 dark:hover:border-blue-700'
+                      }`}
+                      title={item.expr}
+                    >
+                      <div className="flex items-center justify-between w-full">
+                        <span className="font-semibold truncate">{item.label}</span>
+                        {isSelected && <Check size={11} className="shrink-0" />}
+                      </div>
+                      {item.label !== item.expr && (
+                        <span
+                          className={`text-[9px] truncate mt-0.5 opacity-70 ${
+                            isSelected ? 'text-blue-100' : 'text-slate-400'
+                          }`}
+                        >
+                          {item.expr}
+                        </span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ))
+        )}
+      </div>
+
+      {/* Quick Math Tokens */}
+      <div className="px-3 py-2 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/40 flex items-center gap-1.5 overflow-x-auto no-scrollbar shrink-0">
+        <span className="text-[9px] font-bold uppercase tracking-wider text-slate-400 shrink-0">
+          Quick:
+        </span>
+        {['sin', 'cos', 'tan', 'sqrt', 'exp', 'log', 'abs', 'pow'].map((token) => (
+          <button
+            key={token}
+            onClick={() => {
+              if (searchQuery.trim()) {
+                setSearchQuery((prev) => `${prev}${token}(x)`);
+                searchInputRef.current?.focus();
+              } else {
+                handleApply(`${token}(x)`);
+              }
+            }}
+            className="px-2 py-0.5 rounded text-[10px] font-mono bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-blue-500 hover:border-blue-400 transition-colors shrink-0"
+          >
+            {token}(x)
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  if (isMobile) {
+    return createPortal(
+      <div
+        className="fixed inset-0 z-[10025] flex items-end sm:items-center justify-center p-3 sm:p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200 pointer-events-auto"
+        onClick={onClose}
+      >
+        {content}
+      </div>,
+      document.body
+    );
+  }
+
+  return createPortal(
+    <>
+      <div
+        className="fixed inset-0 z-[10024] bg-transparent pointer-events-auto"
+        onClick={onClose}
+      />
+      {content}
+    </>,
+    document.body
+  );
+}
 
 const BrushPreview = ({ brushId, color }: { brushId: string, color: string }) => {
   const strokeColor = color === 'transparent' ? 'currentColor' : color;
@@ -553,9 +1020,8 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   const store = useAnnotationStore();
   const [isOpen, setIsOpen] = useState(false);
   const [isMoreOpen, setIsMoreOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [expressionCopied, setExpressionCopied] = useState(false);
-  const mobileSearchRef = useRef<HTMLInputElement>(null);
+  const mobileMoreTriggerRef = useRef<HTMLButtonElement>(null);
   const mobileMainInputRef = useRef<HTMLInputElement>(null);
 
   const handleCopyExpression = () => {
@@ -918,108 +1384,27 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                               );
                             })}
 
-                            <Popover open={isMoreOpen} onOpenChange={(open) => { setIsMoreOpen(open); if (!open) setSearchQuery(''); }}>
-                              <PopoverTrigger className="px-2 py-1 text-[10px] font-semibold rounded-md bg-[#121A2F] text-blue-400 hover:bg-[#1A2540] border border-blue-500/30 transition-colors flex items-center gap-1">
-                                More <ChevronUp size={12} className="rotate-180" />
-                              </PopoverTrigger>
-                              <PopoverContent className="w-[min(260px,85vw)] p-3 bg-[#0b1120] border-slate-800 rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
-                                <div className="flex flex-col gap-3">
-                                  <div className="flex flex-col gap-1.5">
-                                    <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">Search or Custom</span>
-                                    <div className="flex flex-col gap-2">
-                                      <input
-                                        ref={mobileSearchRef}
-                                        type="text"
-                                        placeholder="Search functions..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                                        className="flex-1 px-2.5 py-2 text-[11px] bg-[#121A2F] border border-slate-700 rounded-lg text-slate-200 focus:outline-none focus:border-blue-500 transition-colors placeholder:text-slate-600 font-mono ring-offset-slate-900 focus:ring-2 focus:ring-blue-500/20"
-                                        onKeyDown={(e) => {
-                                          if (e.key === 'Enter') {
-                                            const val = searchQuery.trim();
-                                            if (val) {
-                                              store.setFunctionExpression(val);
-                                              setIsMoreOpen(false);
-                                            }
-                                          }
-                                        }}
-                                      />
-                                      <LaTeXPreview
-                                        expression={searchQuery}
-                                        onSelect={() => mobileSearchRef.current?.focus()}
-                                      />
-                                    </div>
-                                  </div>
-
-                                  {MORE_FUNCTIONS.map((group) => {
-                                    const filteredItems = group.items.filter(item =>
-                                      item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                                      item.expr.toLowerCase().includes(searchQuery.toLowerCase())
-                                    );
-                                    if (filteredItems.length === 0) return null;
-
-                                    return (
-                                      <div key={group.group} className="flex flex-col gap-1.5">
-                                        <span className="text-[9px] font-bold uppercase tracking-widest text-slate-500">{group.group}</span>
-                                        <div className="grid grid-cols-2 gap-1">
-                                          {filteredItems.map((item) => (
-                                            <button
-                                              key={item.label}
-                                              onClick={() => {
-                                                store.setFunctionExpression(item.expr);
-                                                setIsMoreOpen(false);
-                                              }}
-                                              className={`px-1.5 py-1 text-[9px] text-left rounded transition-all font-mono border ${store.functionExpression === item.expr
-                                                ? 'bg-blue-600 text-white border-blue-500 shadow-sm'
-                                                : 'bg-[#121A2F] text-slate-300 hover:bg-blue-600/20 hover:text-blue-400 border-slate-800 hover:border-blue-500/30'
-                                                }`}
-                                            >
-                                              {item.label}
-                                            </button>
-                                          ))}
-                                        </div>
-                                      </div>
-                                    );
-                                  })}
-
-                                  {/* Dynamic suggestions from a larger list */}
-                                  {searchQuery.length >= 1 && (
-                                    <div className="flex flex-col gap-1.5">
-                                      <span className="text-[9px] font-bold uppercase tracking-widest text-blue-500/70">Suggestions</span>
-                                      <div className="flex flex-wrap gap-1">
-                                        {SUGGESTED_MATH_FUNCTIONS
-                                          .filter(fn => fn.toLowerCase().includes(searchQuery.toLowerCase()))
-                                          .filter(fn => !MORE_FUNCTIONS.some(g => g.items.some(i => i.expr.includes(fn))))
-                                          .slice(0, 10)
-                                          .map(fn => (
-                                            <button
-                                              key={fn}
-                                              onClick={() => {
-                                                store.setFunctionExpression(`${fn}(x)`);
-                                                setIsMoreOpen(false);
-                                              }}
-                                              className="px-2 py-0.5 text-[9px] rounded-full bg-blue-500/10 text-blue-400 border border-blue-500/20 hover:bg-blue-500/20 transition-all font-mono"
-                                            >
-                                              {fn}(x)
-                                            </button>
-                                          ))
-                                        }
-                                      </div>
-                                    </div>
-                                  )}
-
-                                  {searchQuery && !MORE_FUNCTIONS.some(g => g.items.some(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))) && (
-                                    <button
-                                      onClick={() => {
-                                        store.setFunctionExpression(searchQuery);
-                                        setIsMoreOpen(false);
-                                      }}
-                                      className="mt-2 w-full py-2 text-[10px] font-bold bg-blue-600/20 text-blue-400 border border-blue-500/40 rounded-lg hover:bg-blue-600/30 transition-all"
-                                    >
-                                      Use "{searchQuery}"
-                                    </button>
-                                  )}
-                                </div>
-                              </PopoverContent>
-                            </Popover>
+                            <button
+                              ref={mobileMoreTriggerRef}
+                              onClick={() => setIsMoreOpen(v => !v)}
+                              className={`px-3 py-1.5 text-[11px] font-semibold rounded-lg transition-all flex items-center gap-1 border active:scale-95 ${isMoreOpen
+                                ? 'bg-blue-600 text-white border-blue-500 shadow-md'
+                                : 'bg-[#121A2F] text-blue-400 hover:bg-[#1A2540] border-blue-500/30'
+                                }`}
+                              title="More Math Functions & Presets"
+                            >
+                              More <ChevronUp size={12} className={`transition-transform duration-200 ${isMoreOpen ? '' : 'rotate-180'}`} />
+                            </button>
+                            {isMoreOpen && (
+                              <MathFunctionPickerPortal
+                                isOpen={isMoreOpen}
+                                onClose={() => setIsMoreOpen(false)}
+                                currentExpression={store.functionExpression}
+                                onSelectExpression={(expr) => store.setFunctionExpression(expr)}
+                                triggerRef={mobileMoreTriggerRef}
+                                isMobile={true}
+                              />
+                            )}
                           </div>
 
                           {/* Function specific sliders grid */}
@@ -1158,12 +1543,51 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
                             )}
                           </div>
 
-                          <div className="flex flex-col gap-4">
+                          <div className="flex flex-col gap-3">
                             <div className="flex items-center justify-between">
                               <span className="text-[11px] font-semibold tracking-wider text-slate-500 dark:text-slate-300 uppercase">Tip Size</span>
-                              <span className="text-[10px] font-mono bg-slate-200 dark:bg-slate-800/80 px-2 py-0.5 rounded-md text-slate-700 dark:text-slate-200">{store.arrowTipSize}px</span>
+                              <div className="flex items-center gap-1 bg-[#121A2F] border border-slate-700/80 rounded-lg px-2 py-0.5">
+                                <input
+                                  type="number"
+                                  min="1"
+                                  max="200"
+                                  value={store.arrowTipSize || ''}
+                                  onChange={(e) => {
+                                    const val = parseInt(e.target.value, 10);
+                                    if (!isNaN(val)) store.setArrowTipSize(Math.max(1, Math.min(200, val)));
+                                    else if (e.target.value === '') store.setArrowTipSize(0);
+                                  }}
+                                  onBlur={() => {
+                                    if (!store.arrowTipSize || store.arrowTipSize < 1) store.setArrowTipSize(15);
+                                  }}
+                                  className="w-10 bg-transparent text-[11px] font-mono text-right outline-none text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                  title="Custom tip size in px (1-200)"
+                                />
+                                <span className="text-[10px] text-slate-400 font-mono">px</span>
+                              </div>
                             </div>
-                            <Slider min={5} max={50} value={store.arrowTipSize} onValueChange={v => store.setArrowTipSize(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
+                            <Slider
+                              min={2}
+                              max={Math.max(80, Math.ceil(store.arrowTipSize / 20) * 20)}
+                              step={1}
+                              value={store.arrowTipSize}
+                              onValueChange={v => store.setArrowTipSize(Array.isArray(v) ? v[0] : (v as number))}
+                              className="w-full"
+                            />
+                            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar py-0.5">
+                              {[8, 15, 24, 36, 50].map((size) => (
+                                <button
+                                  key={size}
+                                  onClick={() => store.setArrowTipSize(size)}
+                                  className={`px-2 py-0.5 text-[10px] font-mono rounded-md transition-all border ${store.arrowTipSize === size
+                                    ? 'bg-blue-600 text-white border-blue-500 shadow-sm font-semibold'
+                                    : 'bg-[#121A2F] text-slate-300 border-slate-800 hover:border-slate-700'
+                                    }`}
+                                >
+                                  {size}px
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       )}
@@ -1288,9 +1712,8 @@ export default function DrawingToolbar() {
 
   const [resizingMode, setResizingMode] = useState<'none' | 'scale' | 'options' | 'function' | 'arrow'>('none');
   const [isMoreOpen, setIsMoreOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
   const [expressionCopied, setExpressionCopied] = useState(false);
-  const desktopSearchRef = useRef<HTMLInputElement>(null);
+  const desktopMoreTriggerRef = useRef<HTMLButtonElement>(null);
   const desktopMainInputRef = useRef<HTMLInputElement>(null);
 
   const handleCopyExpression = () => {
@@ -2342,10 +2765,50 @@ export default function DrawingToolbar() {
                   )}
                 </div>
                 <div className="flex flex-col gap-2 w-full pt-3 border-t border-slate-200 dark:border-slate-800">
-                  <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase flex justify-between gap-4">
-                    Tip Size <span>{store.arrowTipSize}px</span>
-                  </span>
-                  <Slider min={5} max={50} value={store.arrowTipSize} onValueChange={v => store.setArrowTipSize(Array.isArray(v) ? v[0] : (v as number))} className="w-full" />
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-bold tracking-wider text-slate-500 uppercase">Tip Size</span>
+                    <div className="flex items-center gap-1 bg-slate-100 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/80 rounded-md px-1.5 py-0.5 focus-within:border-blue-500 focus-within:ring-1 focus-within:ring-blue-500/20 transition-all">
+                      <input
+                        type="number"
+                        min="1"
+                        max="200"
+                        value={store.arrowTipSize || ''}
+                        onChange={(e) => {
+                          const val = parseInt(e.target.value, 10);
+                          if (!isNaN(val)) store.setArrowTipSize(Math.max(1, Math.min(200, val)));
+                          else if (e.target.value === '') store.setArrowTipSize(0);
+                        }}
+                        onBlur={() => {
+                          if (!store.arrowTipSize || store.arrowTipSize < 1) store.setArrowTipSize(15);
+                        }}
+                        className="w-8 bg-transparent text-[10px] font-mono text-right outline-none text-slate-800 dark:text-slate-200 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                        title="Custom tip size (1-200px)"
+                      />
+                      <span className="text-[9px] text-slate-400 font-mono">px</span>
+                    </div>
+                  </div>
+                  <Slider
+                    min={2}
+                    max={Math.max(80, Math.ceil(store.arrowTipSize / 20) * 20)}
+                    step={1}
+                    value={store.arrowTipSize}
+                    onValueChange={v => store.setArrowTipSize(Array.isArray(v) ? v[0] : (v as number))}
+                    className="w-full"
+                  />
+                  <div className="flex items-center gap-1 mt-0.5">
+                    {[8, 15, 24, 36, 50].map((size) => (
+                      <button
+                        key={size}
+                        onClick={() => store.setArrowTipSize(size)}
+                        className={`px-1.5 py-0.5 text-[9px] font-mono rounded transition-all border ${store.arrowTipSize === size
+                          ? 'bg-blue-600 text-white border-blue-500 shadow-sm font-semibold'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-transparent hover:bg-slate-200 dark:hover:bg-slate-700'
+                          }`}
+                      >
+                        {size}px
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
               </div>
@@ -2489,110 +2952,27 @@ export default function DrawingToolbar() {
                       );
                     })}
 
-                    <Popover open={isMoreOpen} onOpenChange={(open) => { setIsMoreOpen(open); if (!open) setSearchQuery(''); }}>
-                      <PopoverTrigger className="px-2 py-1 rounded-md text-[10px] bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 transition-all flex items-center gap-1 hover:bg-blue-100 dark:hover:bg-blue-900/50">
-                        More <ChevronUp size={10} className="rotate-180" />
-                      </PopoverTrigger>
-                      <PopoverContent className="w-[300px] p-4 bg-white dark:bg-[#0b1120] border-slate-200 dark:border-slate-800 shadow-2xl rounded-xl z-[300] max-h-[350px] overflow-y-auto custom-scrollbar">
-                        <div className="flex flex-col gap-4">
-                          <div className="flex flex-col gap-2 pb-2 border-b border-slate-100 dark:border-slate-800">
-                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">Search or Custom</span>
-                            <div className="flex flex-col gap-2">
-                              <input
-                                ref={desktopSearchRef}
-                                type="text"
-                                placeholder="Search math functions..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="flex-1 px-2.5 py-2 text-[11px] bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500/50 transition-all placeholder:text-slate-400 dark:placeholder:text-slate-600 font-mono"
-                                onKeyDown={(e) => {
-                                  if (e.key === 'Enter') {
-                                    const val = searchQuery.trim();
-                                    if (val) {
-                                      store.setFunctionExpression(val);
-                                      setIsMoreOpen(false);
-                                    }
-                                  }
-                                }}
-                              />
-                              <LaTeXPreview
-                                expression={searchQuery}
-                                onSelect={() => desktopSearchRef.current?.focus()}
-                              />
-                            </div>
-                          </div>
-
-                          {MORE_FUNCTIONS.map((group) => {
-                            const filteredItems = group.items.filter(item =>
-                              item.label.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                              item.expr.toLowerCase().includes(searchQuery.toLowerCase())
-                            );
-                            if (filteredItems.length === 0) return null;
-
-                            return (
-                              <div key={group.group} className="flex flex-col gap-2">
-                                <span className="text-[9px] font-black uppercase tracking-widest text-slate-400 dark:text-slate-500">{group.group}</span>
-                                <div className="grid grid-cols-2 gap-1.5">
-                                  {filteredItems.map((item) => (
-                                    <button
-                                      key={item.label}
-                                      onClick={() => {
-                                        store.setFunctionExpression(item.expr);
-                                        setIsMoreOpen(false);
-                                      }}
-                                      className={`px-2 py-1.5 text-[10px] text-left rounded transition-all font-mono border ${store.functionExpression === item.expr
-                                        ? 'bg-blue-500 text-white border-blue-400 shadow-md ring-2 ring-blue-500/20'
-                                        : 'bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-blue-50 dark:hover:bg-blue-900/40 hover:text-blue-600 dark:hover:text-blue-400 border-slate-100 dark:border-slate-700 hover:border-blue-300 dark:hover:border-blue-800'
-                                        }`}
-                                    >
-                                      {item.label}
-                                    </button>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })}
-
-                          {/* Dynamic suggestions from a larger list for Desktop */}
-                          {searchQuery.length >= 1 && (
-                            <div className="flex flex-col gap-2">
-                              <span className="text-[9px] font-black uppercase tracking-widest text-blue-500/70">Suggestions</span>
-                              <div className="flex flex-wrap gap-1.5">
-                                {SUGGESTED_MATH_FUNCTIONS
-                                  .filter(fn => fn.toLowerCase().includes(searchQuery.toLowerCase()))
-                                  .filter(fn => !MORE_FUNCTIONS.some(g => g.items.some(i => i.expr.includes(fn))))
-                                  .slice(0, 12)
-                                  .map(fn => (
-                                    <button
-                                      key={fn}
-                                      onClick={() => {
-                                        store.setFunctionExpression(`${fn}(x)`);
-                                        setIsMoreOpen(false);
-                                      }}
-                                      className="px-2 py-1 text-[10px] rounded-full bg-blue-500/5 text-blue-500 dark:text-blue-400 border border-blue-500/20 hover:bg-blue-500/10 transition-all font-mono"
-                                    >
-                                      {fn}(x)
-                                    </button>
-                                  ))
-                                }
-                              </div>
-                            </div>
-                          )}
-
-                          {searchQuery && !MORE_FUNCTIONS.some(g => g.items.some(i => i.label.toLowerCase().includes(searchQuery.toLowerCase()))) && (
-                            <button
-                              onClick={() => {
-                                store.setFunctionExpression(searchQuery);
-                                setIsMoreOpen(false);
-                              }}
-                              className="mt-2 w-full py-2.5 text-[11px] font-bold bg-blue-500/10 text-blue-500 border border-blue-500/30 rounded-lg hover:bg-blue-500/20 transition-all"
-                            >
-                              Use Custom: "{searchQuery}"
-                            </button>
-                          )}
-                        </div>
-                      </PopoverContent>
-                    </Popover>
+                    <button
+                      ref={desktopMoreTriggerRef}
+                      onClick={() => setIsMoreOpen(v => !v)}
+                      className={`px-2.5 py-1.5 rounded-md text-[10px] transition-all flex items-center gap-1 font-medium ${isMoreOpen
+                        ? 'bg-blue-500 text-white shadow-md ring-2 ring-blue-500/20'
+                        : 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/50'
+                        }`}
+                      title="More Math Functions & Presets"
+                    >
+                      More <ChevronUp size={10} className={`transition-transform duration-200 ${isMoreOpen ? '' : 'rotate-180'}`} />
+                    </button>
+                    {isMoreOpen && (
+                      <MathFunctionPickerPortal
+                        isOpen={isMoreOpen}
+                        onClose={() => setIsMoreOpen(false)}
+                        currentExpression={store.functionExpression}
+                        onSelectExpression={(expr) => store.setFunctionExpression(expr)}
+                        triggerRef={desktopMoreTriggerRef}
+                        isMobile={false}
+                      />
+                    )}
                   </div>
                 </div>
 
