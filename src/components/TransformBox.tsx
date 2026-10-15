@@ -1,6 +1,7 @@
 import React, { useRef, useEffect, useState, useLayoutEffect } from 'react';
 import * as d3 from 'd3';
 import { Annotation, useAnnotationStore } from '../store/useAnnotationStore';
+import { getSafePointer } from '../utils/svgPointer';
 
 const WAVE_TOOLS = ['sine-wave', 'square-wave', 'triangle-wave', 'sawtooth-wave', 'pulse-wave', 'zigzag-wave'];
 // Shapes drawn from the first and last point only; the points in between are just the drag trail
@@ -167,7 +168,9 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
       e.preventDefault();
       e.stopPropagation();
       if (onOpenContextMenu) {
-        onOpenContextMenu(e.clientX, e.clientY);
+        const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX ?? 0;
+        const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY ?? 0;
+        onOpenContextMenu(clientX, clientY);
       }
     });
 
@@ -183,11 +186,11 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
         const currentAnno = annoRef.current;
         dragStartTx = currentAnno.translateX ?? 0;
         dragStartTy = currentAnno.translateY ?? 0;
-        dragStartPointer = d3.pointer(e, parent);
+        dragStartPointer = getSafePointer(e, parent);
       })
       .on('drag', (e) => {
         const currentAnno = annoRef.current;
-        const currentPointer = d3.pointer(e, parent);
+        const currentPointer = getSafePointer(e, parent);
         
         const dx = currentPointer[0] - dragStartPointer[0];
         const dy = currentPointer[1] - dragStartPointer[1];
@@ -213,7 +216,7 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
         const currentAnno = annoRef.current;
         dragStartRot = currentAnno.rotation ?? 0;
         
-        const [px, py] = d3.pointer(e, parent);
+        const [px, py] = getSafePointer(e, parent);
         const globalCx = cx + (currentAnno.translateX ?? 0);
         const globalCy = cy + (currentAnno.translateY ?? 0);
         
@@ -222,7 +225,7 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
       })
       .on('drag', (e) => {
         const currentAnno = annoRef.current;
-        const [px, py] = d3.pointer(e, parent);
+        const [px, py] = getSafePointer(e, parent);
         
         const globalCx = cx + (currentAnno.translateX ?? 0);
         const globalCy = cy + (currentAnno.translateY ?? 0);
@@ -264,11 +267,11 @@ export const TransformBox = ({ anno, onOpenContextMenu, onInteractionStart }: { 
             onInteractionStart?.();
             startSx = annoRef.current.scaleX ?? 1;
             startSy = annoRef.current.scaleY ?? 1;
-            startPointer = d3.pointer(e, parent);
+            startPointer = getSafePointer(e, parent);
           })
           .on('drag', (e) => {
         const currentAnno = annoRef.current;
-        const currentPointer = d3.pointer(e, parent);
+        const currentPointer = getSafePointer(e, parent);
         
         // Mouse diff in graph space
         const dx = currentPointer[0] - startPointer[0];

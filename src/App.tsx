@@ -57,7 +57,6 @@ export default function AppWrapper() {
 }
 function App() {
   const [editorWidth, setEditorWidth] = useState(30); // percentage
-
   const isEditorPanelOpen = useStore((state) => state.isEditorPanelOpen);
   const setIsEditorPanelOpen = useStore((state) => state.setIsEditorPanelOpen);
   const appTheme = useStore((state) => state.appTheme);
@@ -77,7 +76,6 @@ function App() {
   useEffect(() => {
     if (isLearningGamesOpen) setLearningGamesLoaded(true);
   }, [isLearningGamesOpen]);
-
   // Eagerly prefetch learning games when browser is idle to ensure instant opening
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -169,20 +167,20 @@ function App() {
       fetch(`${baseUrl}/api/users/me`, {
         headers: { 'Authorization': `Bearer ${token}` }
       })
-      .then(res => res.json())
-      .then(user => {
-        if (!user.error) {
-          useAuthStore.getState().setAuth(token, user);
-          useStore.getState().setNotification({ message: 'Successfully logged in!', type: 'success' });
-        }
-      })
-      .catch(console.error)
-      .finally(() => {
-        searchParams.delete('token');
-        setSearchParams(searchParams, { replace: true });
-      });
+        .then(res => res.json())
+        .then(user => {
+          if (!user.error) {
+            useAuthStore.getState().setAuth(token, user);
+            useStore.getState().setNotification({ message: 'Successfully logged in!', type: 'success' });
+          }
+        })
+        .catch(console.error)
+        .finally(() => {
+          searchParams.delete('token');
+          setSearchParams(searchParams, { replace: true });
+        });
     }
-    
+
     const error = searchParams.get('error');
     if (error) {
       useStore.getState().setNotification({ message: `Login failed: ${error}`, type: 'error' });
@@ -557,7 +555,7 @@ function App() {
       e.preventDefault();
       dragCounter++;
 
-      const isCustomZone = 
+      const isCustomZone =
         (e.target as Element)?.closest?.('.custom-dropzone, [data-quick-utils-modal], .quick-utils-modal') ||
         !!document.querySelector('[data-quick-utils-modal="true"]');
       if (isCustomZone) {
@@ -572,7 +570,7 @@ function App() {
       if (!e.dataTransfer?.types || !Array.from(e.dataTransfer.types).includes("Files")) return;
       e.preventDefault();
 
-      const isCustomZone = 
+      const isCustomZone =
         (e.target as Element)?.closest?.('.custom-dropzone, [data-quick-utils-modal], .quick-utils-modal') ||
         !!document.querySelector('[data-quick-utils-modal="true"]');
       if (isCustomZone) {
@@ -599,7 +597,7 @@ function App() {
       dragCounter = 0;
       setIsDragOver(false);
 
-      const isCustomZone = 
+      const isCustomZone =
         (e.target as Element)?.closest?.('.custom-dropzone, [data-quick-utils-modal], .quick-utils-modal') ||
         !!document.querySelector('[data-quick-utils-modal="true"]');
       if (isCustomZone) {

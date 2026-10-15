@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import * as d3 from 'd3';
 import { Annotation, useAnnotationStore } from '../store/useAnnotationStore';
 import { groupTransformUpdates, identityMatrix, unionBox, type GroupTransform } from '../utils/annotationSelection';
+import { getSafePointer } from '../utils/svgPointer';
 
 /**
  * The handles for a multi-shape selection made with Box select: the same box, rotate handle,
@@ -49,7 +50,9 @@ export const GroupTransformBox = ({ annos, onOpenMenu }: { annos: Annotation[]; 
     sel.on('contextmenu', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      onOpenMenu(e.clientX, e.clientY);
+      const clientX = e.clientX ?? e.touches?.[0]?.clientX ?? e.changedTouches?.[0]?.clientX ?? 0;
+      const clientY = e.clientY ?? e.touches?.[0]?.clientY ?? e.changedTouches?.[0]?.clientY ?? 0;
+      onOpenMenu(clientX, clientY);
     });
 
     const store = () => useAnnotationStore.getState();
@@ -62,7 +65,7 @@ export const GroupTransformBox = ({ annos, onOpenMenu }: { annos: Annotation[]; 
       const state = store();
       snapshot = state.annotations.filter(a => state.selectedAnnotationIds.includes(a.id));
       start = restRef.current;
-      startPointer = d3.pointer(e, parent);
+      startPointer = getSafePointer(e, parent);
     };
     const apply = (t: GroupTransform, shown: Frame) => {
       store().updateAnnotations(groupTransformUpdates(snapshot, t));
@@ -95,7 +98,7 @@ export const GroupTransformBox = ({ annos, onOpenMenu }: { annos: Annotation[]; 
         })
         .on('drag', (e) => {
           if (toggled) return;
-          const [px, py] = d3.pointer(e, parent);
+          const [px, py] = getSafePointer(e, parent);
           const dx = px - startPointer[0];
           const dy = py - startPointer[1];
           apply({ cx: start.cx, cy: start.cy, m: identityMatrix, dx, dy }, { ...start, cx: start.cx + dx, cy: start.cy + dy });
@@ -113,7 +116,7 @@ export const GroupTransformBox = ({ annos, onOpenMenu }: { annos: Annotation[]; 
           setTooltip('0°');
         })
         .on('drag', (e) => {
-          const [px, py] = d3.pointer(e, parent);
+          const [px, py] = getSafePointer(e, parent);
           let deg = ((Math.atan2(py - start.cy, px - start.cx) - startAngle) * 180) / Math.PI;
           deg = ((deg + 540) % 360) - 180;
           if (e.sourceEvent?.shiftKey) deg = Math.round(deg / 90) * 90;
@@ -134,7 +137,7 @@ export const GroupTransformBox = ({ annos, onOpenMenu }: { annos: Annotation[]; 
         d3.drag<SVGGElement, unknown>()
           .on('start', begin)
           .on('drag', (e) => {
-            const [px, py] = d3.pointer(e, parent);
+            const [px, py] = getSafePointer(e, parent);
             let gx = xDir ? 1 + (xDir * (px - startPointer[0]) * 2) / Math.max(1, start.w) : 1;
             let gy = yDir ? 1 + (yDir * (py - startPointer[1]) * 2) / Math.max(1, start.h) : 1;
             if (e.sourceEvent?.shiftKey && xDir && yDir) {

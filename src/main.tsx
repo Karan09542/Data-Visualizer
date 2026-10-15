@@ -11,6 +11,7 @@ import Terms from './pages/Terms';
 import NotFound from './pages/NotFound';
 import './index.css';
 import { FeatureUnavailableError, isLoadFailure, notifyLoadFailure } from './utils/offlineErrors';
+import { showGlobalErrorCard } from './components/AppErrorPopup';
 
 if (typeof window !== 'undefined') {
   sessionStorage.removeItem('chunk-reload-attempted');
@@ -268,34 +269,13 @@ if (typeof window !== 'undefined') {
        e.preventDefault();
        notifyLoadFailure();
     } else {
-       // display error on screen
-       const errDiv = document.createElement('div');
-       errDiv.className = 'fixed bottom-4 right-4 left-4 sm:left-auto sm:w-[450px] bg-red-600/95 backdrop-blur-sm text-white rounded-xl shadow-2xl z-[999999] overflow-hidden flex flex-col font-sans border border-red-400/30';
-       
-       const header = document.createElement('div');
-       header.className = 'flex items-center justify-between px-4 py-3 bg-red-900/40 border-b border-red-500/30';
-       
-       const title = document.createElement('span');
-       title.className = 'font-semibold text-sm tracking-wide text-red-50 flex items-center gap-2';
-       title.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg> Application Error';
-       
-       const closeBtn = document.createElement('button');
-       closeBtn.className = 'text-red-200 hover:text-white bg-transparent p-1 rounded-md hover:bg-white/10 transition-colors cursor-pointer';
-       closeBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
-       closeBtn.onclick = () => errDiv.remove();
-       
-       header.appendChild(title);
-       header.appendChild(closeBtn);
-       
-       const content = document.createElement('div');
-       content.className = 'p-4 max-h-[50vh] overflow-y-auto whitespace-pre-wrap break-words text-[13px] font-mono leading-relaxed text-red-100/90';
-       content.textContent = `${e.message}\n\nLocation: ${e.filename?.split('/').pop()}:${e.lineno}:${e.colno}\n\n${e.error?.stack || ''}`;
-       
-       errDiv.appendChild(header);
-       errDiv.appendChild(content);
-       
-       document.body.appendChild(errDiv);
-       setTimeout(() => { if (document.body.contains(errDiv)) errDiv.remove(); }, 15000);
+       const loc = e.filename ? `${e.filename.split('/').pop()}:${e.lineno}:${e.colno}` : undefined;
+       showGlobalErrorCard({
+         title: 'Application Error',
+         message: e.message || 'An unexpected runtime error occurred',
+         location: loc,
+         stack: e.error?.stack,
+       });
     }
   });
 
@@ -362,23 +342,18 @@ if (typeof window !== 'undefined') {
       return;
     }
 
-    const errDiv = document.createElement('div');
-    errDiv.style.position = 'fixed';
-    errDiv.style.bottom = '60px';
-    errDiv.style.right = '10px';
-    errDiv.style.background = 'rgba(255,100,0,0.8)';
-    errDiv.style.color = 'white';
-    errDiv.style.padding = '10px';
-    errDiv.style.zIndex = '999999';
     let fallbackMsg = '';
     try {
       fallbackMsg = JSON.stringify(e.reason);
     } catch {
       fallbackMsg = String(e.reason?.message || e.reason);
     }
-    errDiv.textContent = `Promise Rejection: ${e.reason instanceof Error ? e.reason.message : fallbackMsg}\n${e.reason?.stack || ''}`;
-    document.body.appendChild(errDiv);
-    setTimeout(() => errDiv.remove(), 10000); // Auto remove after 10s
+    const displayMsg = (e.reason instanceof Error ? e.reason.message : fallbackMsg) || reasonMsg;
+    showGlobalErrorCard({
+      title: 'Unhandled Promise Rejection',
+      message: displayMsg || 'An unhandled promise rejection occurred',
+      stack: e.reason?.stack,
+    });
   });
 }
 
