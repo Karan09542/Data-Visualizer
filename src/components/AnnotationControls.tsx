@@ -12,8 +12,12 @@ import {
   Trash2,
   Square,
   ChevronsUp,
-  ChevronsDown
+  ChevronsDown,
+  Copy,
+  Download
 } from 'lucide-react';
+import { useStore } from '../store/useStore';
+import { copyAnnotationAsPng, downloadAnnotationAsPng } from '../utils/annotationExport';
 
 const PX_PER_INCH = 96;
 const PX_PER_CM = 37.8;
@@ -251,6 +255,45 @@ export const AnnotationContextMenu = ({
     onClose();
   };
 
+  const copyPng = async () => {
+    try {
+      const copied = await copyAnnotationAsPng(anno);
+      if (copied) {
+        useStore.getState().setNotification({
+          message: 'Shape copied to clipboard as PNG',
+          type: 'success',
+        });
+      } else {
+        useStore.getState().setNotification({
+          message: 'Direct clipboard copy unavailable on this browser; downloaded PNG instead',
+          type: 'info',
+        });
+      }
+    } catch (err: any) {
+      useStore.getState().setNotification({
+        message: err?.message || 'Failed to copy shape as PNG',
+        type: 'error',
+      });
+    }
+    onClose();
+  };
+
+  const downloadPng = async () => {
+    try {
+      await downloadAnnotationAsPng(anno);
+      useStore.getState().setNotification({
+        message: 'Shape downloaded as PNG',
+        type: 'success',
+      });
+    } catch (err: any) {
+      useStore.getState().setNotification({
+        message: err?.message || 'Failed to download shape as PNG',
+        type: 'error',
+      });
+    }
+    onClose();
+  };
+
   return createPortal(
     <div 
       ref={menuRef}
@@ -308,14 +351,34 @@ export const AnnotationContextMenu = ({
 
       <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
 
-      <button onClick={() => { onShowManualResize(); onClose(); }} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-500 hover:text-white flex items-center gap-2 transition-colors">
+      <button onClick={() => { onShowManualResize(); onClose(); }} className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-500 hover:text-white flex items-center gap-2 transition-colors cursor-pointer">
         <Maximize size={14} />
         Manual Resize
       </button>
 
       <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
 
-      <button onClick={remove} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500 hover:text-white flex items-center gap-2 transition-colors">
+      <button 
+        onClick={copyPng} 
+        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-500 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+        title="Copy transparent PNG of this shape to clipboard"
+      >
+        <Copy size={14} />
+        Copy as PNG
+      </button>
+
+      <button 
+        onClick={downloadPng} 
+        className="w-full text-left px-3 py-2 text-xs font-medium text-slate-700 dark:text-slate-200 hover:bg-blue-500 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
+        title="Download transparent PNG of this shape"
+      >
+        <Download size={14} />
+        Download as PNG
+      </button>
+
+      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
+
+      <button onClick={remove} className="w-full text-left px-3 py-2 text-xs font-bold text-rose-500 hover:bg-rose-500 hover:text-white flex items-center gap-2 transition-colors cursor-pointer">
         <Trash2 size={14} />
         Delete Shape
       </button>
@@ -422,6 +485,61 @@ export const GroupContextMenu = ({ x, y, onClose }: { x: number; y: number; onCl
       </button>
       <button onClick={() => reorder('back')} className={item}>
         <ChevronsDown size={14} /> Send to Back
+      </button>
+
+      <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />
+
+      <button 
+        onClick={async () => {
+          const annos = selected();
+          try {
+            const copied = await copyAnnotationAsPng(annos);
+            if (copied) {
+              useStore.getState().setNotification({
+                message: `${annos.length} shapes copied to clipboard as PNG`,
+                type: 'success',
+              });
+            } else {
+              useStore.getState().setNotification({
+                message: 'Downloaded shapes as PNG',
+                type: 'info',
+              });
+            }
+          } catch (err: any) {
+            useStore.getState().setNotification({
+              message: err?.message || 'Failed to copy shapes as PNG',
+              type: 'error',
+            });
+          }
+          onClose();
+        }} 
+        className={item}
+        title="Copy selected shapes as PNG to clipboard"
+      >
+        <Copy size={14} /> Copy as PNG
+      </button>
+
+      <button 
+        onClick={async () => {
+          const annos = selected();
+          try {
+            await downloadAnnotationAsPng(annos);
+            useStore.getState().setNotification({
+              message: `${annos.length} shapes downloaded as PNG`,
+              type: 'success',
+            });
+          } catch (err: any) {
+            useStore.getState().setNotification({
+              message: err?.message || 'Failed to download shapes as PNG',
+              type: 'error',
+            });
+          }
+          onClose();
+        }} 
+        className={item}
+        title="Download selected shapes as transparent PNG"
+      >
+        <Download size={14} /> Download as PNG
       </button>
 
       <div className="h-px bg-slate-100 dark:bg-slate-800 my-1 mx-2" />

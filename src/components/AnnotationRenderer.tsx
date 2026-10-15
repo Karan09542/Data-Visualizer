@@ -741,6 +741,8 @@ export default function AnnotationRenderer() {
       {annotations.map(anno => (
         <g 
           key={anno.id} 
+          id={`annotation-shape-${anno.id}`}
+          data-anno-id={anno.id}
           onContextMenu={(e) => {
             if (isBoxSelect) {
               e.preventDefault();
