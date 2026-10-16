@@ -21,7 +21,7 @@ import {
   ChevronRight,
   Film,
 } from 'lucide-react';
-import { useStore } from '../store/useStore';
+import { useStore, useEffectiveTheme } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
 import { InteractiveZoomImage } from './InteractiveZoomImage';
 import SmartMediaRenderer from './SmartMediaRenderer';
@@ -313,7 +313,7 @@ const ThumbnailItem: React.FC<{
 
 const MediaPreviewPopup: React.FC = () => {
   const { activePreviewMedia, setActivePreviewMedia } = useStore();
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const isDark = appTheme === 'dark';
   const setNotification = useStore((state) => state.setNotification);
   const uploadedMediaMetadata = useStore((state) => state.uploadedMediaMetadata);

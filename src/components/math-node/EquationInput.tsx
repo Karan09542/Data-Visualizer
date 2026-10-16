@@ -7,7 +7,7 @@ import rehypeKatex from "rehype-katex";
 import katex from "katex";
 import { Calculator } from "lucide-react";
 
-import { useStore } from "../../store/useStore";
+import { useStore, useEffectiveTheme } from "../../store/useStore";
 import { MATH_COMPLETIONS, getVarColor } from "./mathTypes";
 import { useMathWorker } from "../../hooks/useMathWorker";
 import { MathKeyboard } from "../MathKeyboard";
@@ -67,7 +67,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const { expressionToLatexWithEval } = useMathWorker();
 
   const effectiveMode = showKeyboard ? "virtual" : "native";

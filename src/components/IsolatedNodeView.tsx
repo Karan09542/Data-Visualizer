@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { useStore } from '../store/useStore';
+import { useStore, useEffectiveTheme } from '../store/useStore';
 import { MathNodeRenderer } from './MathNodeRenderer';
 import { TransferNodeRenderer } from './TransferNodeRenderer';
 import { getValueAtPath } from '../utils/pathUtils';
@@ -13,7 +13,7 @@ interface IsolatedNodeViewProps {
 
 export const IsolatedNodeView: React.FC<IsolatedNodeViewProps> = ({ path }) => {
   const parsedData = useStore((state) => state.parsedData);
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
 
   const nodeData = useMemo(() => {
     if (!parsedData || !path) return null;

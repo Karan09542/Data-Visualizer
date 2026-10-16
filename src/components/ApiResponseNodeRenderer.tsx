@@ -29,7 +29,7 @@ import {
   ChevronDown,
   type LucideIcon,
 } from 'lucide-react';
-import { useStore } from '../store/useStore';
+import { useStore, useEffectiveTheme } from '../store/useStore';
 import { SafeModelViewer } from './SafeModelViewer';
 import CustomSelect from './CustomSelect';
 import { loadGoogleFont } from '../utils/fontRegistry';
@@ -685,7 +685,7 @@ const describeResponse = (data: any, preferredFormat?: string): ResponseInfo => 
 };
 
 export function ApiResponseNodeRenderer({ path, data, width, height }: ApiResponseNodeRendererProps) {
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const apiNodeConfig = useStore((state) => state.apiNodeConfig);
   const setApiNodeConfig = useStore((state) => state.setApiNodeConfig);
   const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
@@ -877,7 +877,7 @@ export function ApiResponseNodeRenderer({ path, data, width, height }: ApiRespon
 
   const actionClass = `inline-flex h-6.5 w-6.5 sm:h-7 sm:w-7 shrink-0 items-center justify-center rounded-md sm:rounded-lg transition-colors cursor-pointer ${ht.actionButton}`;
   const Icon = info.icon;
-  const isDark = appTheme !== 'light';
+  const isDark = appTheme === 'dark';
   const codeTextClass = isFullscreen ? 'text-[13px]' : 'text-[11.5px]';
 
   const canShowJson = info.kind === 'json' || (() => {

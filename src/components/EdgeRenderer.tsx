@@ -1,5 +1,5 @@
 import React, { useId, useState } from 'react';
-import { useStore } from '../store/useStore';
+import { useStore, useEffectiveTheme } from '../store/useStore';
 import { PALETTE_EDGE_COLORS } from '../constants/visualizer';
 
 interface EdgeProps {
@@ -23,7 +23,7 @@ function EdgeRenderer({ d, style, nodeTheme, isHighlighted, isDimmed, isSelected
   const edgeWidth = useStore(state => state.edgeWidth ?? 1.0);
   // For this edge's own arrowhead marker and fade gradient
   const uid = useId().replace(/[^a-zA-Z0-9_-]/g, '');
-  const appTheme = useStore(state => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const jsNodeErrors = useStore(state => state.jsNodeErrors);
   const jsNodeResponses = useStore(state => state.jsNodeResponses);
 

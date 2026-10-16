@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useAIStore } from '../../store/useAIStore';
-import { useStore } from '../../store/useStore';
+import { useStore, useEffectiveTheme } from '../../store/useStore';
 import { providerRegistry } from '../../ai/services/ProviderRegistry';
 import { AIModelSelector, getProviderIcon } from './AIModelSelector';
 import {
@@ -53,7 +53,7 @@ export const AISettingsPanel: React.FC = () => {
   const setApiKey = useAIStore((state) => state.setApiKey);
   const removeApiKey = useAIStore((state) => state.removeApiKey);
 
-  const appTheme = useStore(state => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const isDark = appTheme === 'dark';
 
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'error'>('idle');
@@ -205,7 +205,7 @@ export const AIParameters: React.FC = () => {
   const streamingEnabled = useAIStore((state) => state.streamingEnabled);
   const updateSettings = useAIStore((state) => state.updateSettings);
 
-  const appTheme = useStore(state => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const isDark = appTheme === 'dark';
 
   return (

@@ -565,9 +565,7 @@ function App() {
       }
     };
 
-    if (appTheme === "system") {
-      syncWithSystem(mediaQuery);
-    }
+    syncWithSystem(mediaQuery);
 
     mediaQuery.addEventListener("change", syncWithSystem);
     return () => mediaQuery.removeEventListener("change", syncWithSystem);

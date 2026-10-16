@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
-import { useStore } from "../store/useStore";
+import { useStore, useEffectiveTheme } from "../store/useStore";
 import { PdfViewer } from "./PdfViewer";
 import { QRCodeSVG } from "qrcode.react";
 import jsQR from "jsqr";
@@ -453,7 +453,7 @@ export const TransferNodeRenderer: React.FC<{
   node: HierarchyPointNode<TreeNode>;
 }> = ({ node }) => {
   const setCode = useStore((state) => state.setCode);
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const setNotification = useStore((state) => state.setNotification);
   const nodeKey = node.data.path.split(".").pop() || "transfer";
   const [connectionState, setConnectionState] = useState<

@@ -4,6 +4,7 @@ import {
   NodeTheme,
   EdgeStyle,
   NodeShape,
+  getEffectiveTheme,
 } from "../store/useStore";
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Link } from "react-router-dom";
@@ -99,7 +100,10 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const isMobileMenuOpen = useStore((state) => state.isMobileMenuOpen);
   const setIsMobileMenuOpen = useStore((state) => state.setIsMobileMenuOpen);
   const appTheme = useStore((state) => state.appTheme);
+  const systemTheme = useStore((state) => state.systemTheme);
   const setAppTheme = useStore((state) => state.setAppTheme);
+  const isSystemDefault = appTheme === "system";
+  const effectiveTheme = getEffectiveTheme(appTheme, systemTheme);
   const setCanvasBackgroundColor = useStore((state) => state.setCanvasBackgroundColor);
   const setCanvasPatternColor = useStore((state) => state.setCanvasPatternColor);
   const canvasBackgroundColor = useStore((state) => state.canvasBackgroundColor);
@@ -353,12 +357,20 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
 
   const { isFullscreen, isSupported: canGoFullscreen, toggleFullscreen } = useFullscreen();
 
-  const toggleTheme = () => {
-    if (appTheme === "dark") {
-      setAppTheme("light");
-      setCanvasBackgroundColor("#f8fafc");
-      setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
-    } else if (appTheme === "light") {
+  const toggleSystemDefault = () => {
+    if (isSystemDefault) {
+      // Turn off system default: lock to current effective theme
+      const current = effectiveTheme;
+      setAppTheme(current);
+      if (current === "dark") {
+        setCanvasBackgroundColor("#0d1117");
+        setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
+      } else {
+        setCanvasBackgroundColor("#f8fafc");
+        setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
+      }
+    } else {
+      // Turn on system default
       setAppTheme("system");
       const systemIsDark =
         typeof window !== "undefined" &&
@@ -370,6 +382,15 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
         setCanvasBackgroundColor("#f8fafc");
         setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
       }
+    }
+  };
+
+  const toggleLightDarkMode = () => {
+    if (isSystemDefault) return;
+    if (effectiveTheme === "dark") {
+      setAppTheme("light");
+      setCanvasBackgroundColor("#f8fafc");
+      setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
     } else {
       setAppTheme("dark");
       setCanvasBackgroundColor("#0d1117");
@@ -647,7 +668,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               : isTransparent
                 ? "transparent"
                 : useStore.getState().canvasBackgroundColor ||
-                (useStore.getState().appTheme === "dark"
+                (getEffectiveTheme(useStore.getState().appTheme, useStore.getState().systemTheme) === "dark"
                   ? "#07090e"
                   : "#f8fafc"),
           width: fullWidth,
@@ -831,7 +852,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             : isTransparent
               ? "transparent"
               : useStore.getState().canvasBackgroundColor ||
-              (useStore.getState().appTheme === "dark"
+              (getEffectiveTheme(useStore.getState().appTheme, useStore.getState().systemTheme) === "dark"
                 ? "#0d1117"
                 : "#ffffff"),
         width: fullWidth,
@@ -1257,28 +1278,55 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   {isFullscreen ? <Shrink size={16} /> : <Expand size={16} />}
                 </button>
               )}
+              {/* System Default Theme Toggle */}
               <button
-                onClick={toggleTheme}
-                className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+                onClick={toggleSystemDefault}
+                className={`p-1.5 rounded transition-all ${
+                  isSystemDefault
+                    ? "bg-indigo-50 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 border border-indigo-200/80 dark:border-indigo-500/30 shadow-xs"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800 border border-transparent"
+                }`}
                 title={
-                  appTheme === "dark"
-                    ? "Theme: Dark (Switch to Light Mode)"
-                    : appTheme === "light"
-                    ? "Theme: Light (Switch to System Default)"
-                    : "Theme: System Default (Switch to Dark Mode)"
+                  isSystemDefault
+                    ? "System Default: Enabled (Auto-sync with OS). Click to switch to manual mode."
+                    : "Enable System Default theme (Auto-sync with OS)"
                 }
                 aria-label={
-                  appTheme === "dark"
+                  isSystemDefault
+                    ? "Disable System Default theme"
+                    : "Enable System Default theme"
+                }
+                aria-pressed={isSystemDefault}
+              >
+                <Monitor size={16} />
+              </button>
+
+              {/* Light / Dark Mode Toggle (Disabled when System Default is enabled) */}
+              <button
+                onClick={toggleLightDarkMode}
+                disabled={isSystemDefault}
+                className={`p-1.5 rounded transition-colors ${
+                  isSystemDefault
+                    ? "opacity-35 cursor-not-allowed text-slate-400 dark:text-slate-600 hover:bg-transparent"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 hover:bg-slate-200 dark:hover:bg-slate-800"
+                }`}
+                title={
+                  isSystemDefault
+                    ? "Theme is managed by System Default (disable System Default to switch manually)"
+                    : effectiveTheme === "dark"
                     ? "Switch to Light Mode"
-                    : appTheme === "light"
-                    ? "Switch to System Default"
+                    : "Switch to Dark Mode"
+                }
+                aria-label={
+                  isSystemDefault
+                    ? "Light/Dark mode disabled (controlled by System Default)"
+                    : effectiveTheme === "dark"
+                    ? "Switch to Light Mode"
                     : "Switch to Dark Mode"
                 }
               >
-                {appTheme === "dark" ? (
+                {effectiveTheme === "dark" ? (
                   <Sun size={16} />
-                ) : appTheme === "light" ? (
-                  <Monitor size={16} />
                 ) : (
                   <Moon size={16} />
                 )}
@@ -1689,22 +1737,55 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     </button>
                   )}
 
+                  {/* System Default Theme Toggle */}
                   <button
-                    onClick={toggleTheme}
-                    className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
+                    onClick={toggleSystemDefault}
+                    className={`flex items-center justify-between gap-2 p-3 border rounded-xl text-xs font-semibold transition-all ${
+                      isSystemDefault
+                        ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300"
+                        : "bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+                    }`}
                   >
-                    {appTheme === "dark" ? (
-                      <Sun size={16} className="text-amber-400" />
-                    ) : appTheme === "light" ? (
-                      <Monitor size={16} className="text-sky-400" />
+                    <div className="flex items-center gap-2">
+                      <Monitor size={16} className={isSystemDefault ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400"} />
+                      <span>System Theme</span>
+                    </div>
+                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                      isSystemDefault
+                        ? "bg-indigo-200/80 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200"
+                        : "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
+                    }`}>
+                      {isSystemDefault ? "ON" : "OFF"}
+                    </span>
+                  </button>
+
+                  {/* Light / Dark Mode Toggle (Disabled when System Default is enabled) */}
+                  <button
+                    onClick={toggleLightDarkMode}
+                    disabled={isSystemDefault}
+                    className={`flex items-center gap-2 p-3 border rounded-xl text-xs font-semibold transition-all ${
+                      isSystemDefault
+                        ? "opacity-40 cursor-not-allowed bg-slate-100/50 dark:bg-slate-900/30 border-slate-200/50 dark:border-slate-800/50 text-slate-400 dark:text-slate-600"
+                        : "bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
+                    }`}
+                    title={
+                      isSystemDefault
+                        ? "Theme is managed by System Default (disable System Default to switch manually)"
+                        : effectiveTheme === "dark"
+                        ? "Switch to Light Mode"
+                        : "Switch to Dark Mode"
+                    }
+                  >
+                    {effectiveTheme === "dark" ? (
+                      <Sun size={16} className={isSystemDefault ? "text-slate-400 dark:text-slate-600" : "text-amber-500"} />
                     ) : (
-                      <Moon size={16} className="text-indigo-500" />
+                      <Moon size={16} className={isSystemDefault ? "text-slate-400 dark:text-slate-600" : "text-indigo-500"} />
                     )}
                     <span>
-                      {appTheme === "dark"
+                      {isSystemDefault
+                        ? "Mode (Auto)"
+                        : effectiveTheme === "dark"
                         ? "Light Mode"
-                        : appTheme === "light"
-                        ? "System Default"
                         : "Dark Mode"}
                     </span>
                   </button>

@@ -1800,3 +1800,9 @@ export const useStore = create<StoreState>()(
     },
   ),
 );
+
+export function useEffectiveTheme(): "dark" | "light" {
+  const appTheme = useStore((s) => s.appTheme);
+  const systemTheme = useStore((s) => s.systemTheme);
+  return getEffectiveTheme(appTheme, systemTheme);
+}

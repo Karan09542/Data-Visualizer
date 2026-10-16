@@ -4,7 +4,7 @@ import { aiProviderManager } from '../../ai/services/AIProviderManager';
 import { providerRegistry } from '../../ai/services/ProviderRegistry';
 import { providerDiscovery } from '../../ai/services/ProviderDiscovery';
 import { useAIStore } from '../../store/useAIStore';
-import { useStore } from '../../store/useStore';
+import { useStore, useEffectiveTheme } from '../../store/useStore';
 import { aiEventBus } from '../../ai/events/AIEventBus';
 import { responseParser } from '../../ai/parsers/ResponseParser';
 import { getProviderIcon, getModelIcon } from './AIModelSelector';
@@ -132,7 +132,7 @@ export const AICommandPalette: React.FC<AICommandPaletteProps> = ({
   const streamingEnabled = useAIStore((state) => state.streamingEnabled);
   const systemPrompt = useAIStore((state) => state.systemPrompt);
 
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const isDark = appTheme === 'dark';
 
   // Discover and register providers on mount

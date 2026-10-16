@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useCallback } from "react";
 import { useNodeResize } from '../hooks/useNodeResize';
-import { useStore } from "../store/useStore";
+import { useStore, useEffectiveTheme } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
 import {
   Play,
@@ -38,7 +38,7 @@ export function JsNodeRenderer({ path, code, width, height }: JsNodeRendererProp
   const setJsNodeCodeOverride = useStore((state) => state.setJsNodeCodeOverride);
   const updateNodeValue = useStore((state) => state.updateNodeValue);
   const setCustomNodeSize = useStore((state) => state.setCustomNodeSize);
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
 
   const containerRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<NodeJS.Timeout | undefined>(undefined);

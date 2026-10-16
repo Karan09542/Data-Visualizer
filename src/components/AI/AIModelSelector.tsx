@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useAIStore } from '../../store/useAIStore';
-import { useStore } from '../../store/useStore';
+import { useStore, useEffectiveTheme } from '../../store/useStore';
 import { providerRegistry } from '../../ai/services/ProviderRegistry';
 import { providerDiscovery } from '../../ai/services/ProviderDiscovery';
 import { AIModel } from '../../ai/providers/IAIProvider';
@@ -67,7 +67,7 @@ export const AIModelSelector: React.FC = () => {
   const setActiveProvider = useAIStore((state) => state.setActiveProvider);
   const setActiveModel = useAIStore((state) => state.setActiveModel);
   const apiKeys = useAIStore((state) => state.apiKeys);
-  const appTheme = useStore(state => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const isDark = appTheme === 'dark';
 
   const [models, setModels] = useState<AIModel[]>([]);
