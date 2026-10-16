@@ -1480,14 +1480,14 @@ export default function GraphVisualizer() {
             {(() => {
               const elements: any[] = [];
               const nodeMaxEdgeZ = new Map<string, number>();
-              
+
               visibleLinks.forEach((link) => {
                 if (!link || !link.source?.data?.id || !link.target?.data?.id) return;
                 const isSelectedPath = selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
                 const sourceActive = activeNodes.indexOf(link.source.data.id);
                 const targetActive = activeNodes.indexOf(link.target.data.id);
                 const maxActive = Math.max(sourceActive, targetActive);
-                
+
                 let z = 0;
                 if (maxActive !== -1) z = 10000 + maxActive * 10 - 2;
                 else if (isSelectedPath) z = 1000 - 2;
@@ -1505,7 +1505,7 @@ export default function GraphVisualizer() {
               visibleNodes.forEach((node) => {
                 const isSelectedPath = selectedPathNodes.has(node.data.id);
                 const activeIndex = activeNodes.indexOf(node.data.id);
-                
+
                 let intrinsicZ = 0;
                 if (activeIndex !== -1) intrinsicZ = 10000 + activeIndex * 10;
                 else if (isSelectedPath) intrinsicZ = 1000;
@@ -1648,9 +1648,8 @@ export default function GraphVisualizer() {
       {tableViewData &&
         createPortal(
           <div
-            className={`fixed inset-0 z-[10000] flex items-center justify-center ${
-              isTableMaximized ? "p-0" : "p-0 sm:p-4 md:p-6"
-            } ${appTheme}`}
+            className={`fixed inset-0 z-[10000] flex items-center justify-center ${isTableMaximized ? "p-0" : "p-0 sm:p-4 md:p-6"
+              } ${appTheme}`}
           >
             <div
               className="absolute inset-0 bg-black/60 backdrop-blur-sm"
@@ -1660,11 +1659,10 @@ export default function GraphVisualizer() {
               }}
             />
             <div
-              className={`relative transition-all duration-200 ${
-                isTableMaximized
+              className={`relative transition-all duration-200 ${isTableMaximized
                   ? "w-screen h-screen max-w-none max-h-none rounded-none border-none p-0"
                   : "w-full h-full sm:h-[90vh] sm:max-h-[920px] max-w-7xl sm:rounded-2xl border border-slate-200/90 dark:border-emerald-950/60 shadow-2xl shadow-emerald-950/10 dark:shadow-emerald-950/40"
-              } bg-[#fafcfb] dark:bg-[#0a0f0d] flex flex-col overflow-hidden`}
+                } bg-[#fafcfb] dark:bg-[#0a0f0d] flex flex-col overflow-hidden`}
               onClick={(e) => e.stopPropagation()}
             >
               <div className="flex justify-between items-center px-3.5 py-2.5 sm:px-5 sm:py-3.5 border-b border-slate-200/90 dark:border-emerald-950/70 bg-white/95 dark:bg-[#0d1613]/95 backdrop-blur-md shrink-0">
@@ -1675,11 +1673,10 @@ export default function GraphVisualizer() {
                 <div className="flex items-center gap-2 shrink-0">
                   <button
                     onClick={() => setIsTableMaximized(!isTableMaximized)}
-                    className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-xs ${
-                      isTableMaximized
+                    className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all border shadow-xs ${isTableMaximized
                         ? "bg-emerald-600 hover:bg-emerald-700 text-white border-emerald-600 shadow-sm shadow-emerald-500/20"
                         : "bg-white hover:bg-emerald-50/70 text-slate-700 hover:text-emerald-700 border-slate-200 dark:bg-[#121c18] dark:hover:bg-emerald-950/50 dark:text-slate-200 dark:hover:text-emerald-300 dark:border-emerald-900/50"
-                    }`}
+                      }`}
                     title={isTableMaximized ? "Return to Normal View (Esc)" : "Expand to Fullscreen"}
                     aria-label={isTableMaximized ? "Normal View" : "Fullscreen"}
                   >

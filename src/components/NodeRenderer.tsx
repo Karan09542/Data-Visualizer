@@ -36,6 +36,7 @@ import {
   FolderTree,
   ListTree,
   CircleDashed,
+  Plus,
 } from "lucide-react";
 import SmartMediaRenderer from "./SmartMediaRenderer";
 import { SmartFallbackMedia } from "./SmartFallbackMedia";
@@ -43,6 +44,7 @@ import { ApiNodeRenderer } from "./ApiNodeRenderer";
 import { ApiResponseNodeRenderer } from "./ApiResponseNodeRenderer";
 import { JsNodeRenderer } from "./JsNodeRenderer";
 import { JsNodeCodeRenderer } from "./JsNodeCodeRenderer";
+import { QuickAddNodePopover } from "./QuickAddNodePopover";
 import { JsNodeTerminalRenderer } from "./JsNodeTerminalRenderer";
 import { TsNodeRenderer } from "./TsNodeRenderer";
 import { TsNodeCodeRenderer } from "./TsNodeCodeRenderer";
@@ -539,6 +541,99 @@ function NodeRenderer({
       data.name.toLowerCase().endsWith("math"));
 
   const isSpecialNode = isSpecialNodeType(data);
+  const isContainerNode =
+    !isSpecialNode &&
+    (data.type === "object" || data.type === "array") &&
+    !String(data.path).includes(".__response");
+
+  const [isHovered, setIsHovered] = React.useState(false);
+  const [isMobileActive, setIsMobileActive] = React.useState(false);
+  const [isAddPopoverOpen, setIsAddPopoverOpen] = React.useState(false);
+  const plusButtonRef = useRef<HTMLButtonElement>(null);
+  const [anchorRect, setAnchorRect] = React.useState<DOMRect | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const mobileTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const touchStateRef = useRef<{
+    startTime: number;
+    startX1: number;
+    startY1: number;
+    startX2: number;
+    startY2: number;
+  } | null>(null);
+
+  const handleMouseEnter = () => {
+    if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+    setIsHovered(true);
+  };
+
+  const handleMouseLeave = () => {
+    if (isAddPopoverOpen) return;
+    hoverTimerRef.current = setTimeout(() => {
+      setIsHovered(false);
+    }, 250);
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    if (!isContainerNode) return;
+    if (e.touches.length === 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      touchStateRef.current = {
+        startTime: Date.now(),
+        startX1: t1.clientX,
+        startY1: t1.clientY,
+        startX2: t2.clientX,
+        startY2: t2.clientY,
+      };
+    } else {
+      touchStateRef.current = null;
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (!isContainerNode || !touchStateRef.current) return;
+    const duration = Date.now() - touchStateRef.current.startTime;
+    if (duration < 500) {
+      const currentTouches = e.changedTouches;
+      let moved = false;
+      for (let i = 0; i < currentTouches.length; i++) {
+        const ct = currentTouches[i];
+        const dist1 = Math.hypot(
+          ct.clientX - touchStateRef.current.startX1,
+          ct.clientY - touchStateRef.current.startY1
+        );
+        const dist2 = Math.hypot(
+          ct.clientX - touchStateRef.current.startX2,
+          ct.clientY - touchStateRef.current.startY2
+        );
+        if (Math.min(dist1, dist2) > 25) {
+          moved = true;
+          break;
+        }
+      }
+
+      if (!moved) {
+        e.stopPropagation();
+        setIsMobileActive((prev) => !prev);
+
+        if (mobileTimerRef.current) clearTimeout(mobileTimerRef.current);
+        mobileTimerRef.current = setTimeout(() => {
+          setIsMobileActive(false);
+        }, 8000);
+      }
+    }
+    touchStateRef.current = null;
+  };
+
+  const handlePlusClick = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const btn = (e.currentTarget as HTMLElement) || plusButtonRef.current;
+    if (btn && btn.getBoundingClientRect) {
+      setAnchorRect(btn.getBoundingClientRect());
+    }
+    setIsAddPopoverOpen(true);
+  };
   const isManuallyRendered =
     manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
       ? manuallyRenderedNodes[data.id]
@@ -1411,7 +1506,7 @@ function NodeRenderer({
     fHeight *= nodeSize;
   }
 
-  let foWidth = fWidth + 100;
+  let foWidth = fWidth + (isContainerNode ? 140 : 100);
   let foHeight = fHeight + 100;
   if (isSpecialNode) {
     foWidth += 200;
@@ -1439,13 +1534,17 @@ function NodeRenderer({
           className={`flex flex-col items-center justify-center w-full h-full transition-all duration-300 ${isMatch || isSelected ? "scale-105" : ""} ${dropShadowClass}`}
         >
           <div
-            className={`pointer-events-auto select-none relative flex ${isMedia ? "flex-col" : "items-center"} ${!isSpecialNode ? "border" : ""} cursor-pointer ${!isSpecialNode ? "hover:brightness-125" : ""} transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
+            className={`pointer-events-auto select-none relative flex group/node ${isMedia ? "flex-col" : "items-center"} ${!isSpecialNode ? "border" : ""} cursor-pointer ${!isSpecialNode ? "hover:brightness-125" : ""} transition-all duration-300 flex-shrink-0 ${baseClasses} ${highlightClasses} ${shapeClasses}`}
             style={{
               ...shapeStyle,
               transform: isSpecialNode ? undefined : `scale(${nodeSize})`,
               transformOrigin: "center",
               touchAction: "none",
             }}
+            onMouseEnter={isContainerNode ? handleMouseEnter : undefined}
+            onMouseLeave={isContainerNode ? handleMouseLeave : undefined}
+            onTouchStart={isContainerNode ? handleTouchStart : undefined}
+            onTouchEnd={isContainerNode ? handleTouchEnd : undefined}
             onClick={(e) => {
               e.stopPropagation();
               setSelectedNodeId(data.id);
@@ -1988,6 +2087,43 @@ function NodeRenderer({
                   FULL PREVIEW
                 </button>
               </div>
+            )}
+            {isContainerNode && (
+              <div
+                className={`absolute left-full top-1/2 -translate-y-1/2 pl-1.5 flex items-center z-30 transition-all duration-150 ${
+                  isHovered || isMobileActive || isAddPopoverOpen || isSelected
+                    ? "opacity-100 scale-100 pointer-events-auto"
+                    : "opacity-0 scale-75 pointer-events-none group-hover/node:opacity-100 group-hover/node:scale-100 group-hover/node:pointer-events-auto"
+                }`}
+                onMouseEnter={handleMouseEnter}
+                onMouseLeave={handleMouseLeave}
+              >
+                <button
+                  ref={plusButtonRef}
+                  type="button"
+                  data-testid="add-node-circle-btn"
+                  className="relative w-5 h-5 rounded-full bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:text-white dark:hover:text-white hover:bg-emerald-600 dark:hover:bg-emerald-600 border border-slate-300 dark:border-slate-600/80 hover:border-emerald-500 dark:hover:border-emerald-500 shadow-sm flex items-center justify-center hover:scale-110 active:scale-90 transition-all duration-150 cursor-pointer focus:outline-none before:absolute before:-inset-2 before:content-['']"
+                  onClick={handlePlusClick}
+                  onTouchStart={(e) => e.stopPropagation()}
+                  title={`Add child node to ${data.name}`}
+                  aria-label={`Add child to ${data.name}`}
+                >
+                  <Plus size={11} strokeWidth={2.5} />
+                </button>
+              </div>
+            )}
+
+            {isContainerNode && isAddPopoverOpen && (
+              <QuickAddNodePopover
+                isOpen={isAddPopoverOpen}
+                onClose={() => {
+                  setIsAddPopoverOpen(false);
+                  setIsMobileActive(false);
+                  setIsHovered(false);
+                }}
+                targetNode={data}
+                anchorRect={anchorRect}
+              />
             )}
           </div>
         </div>
