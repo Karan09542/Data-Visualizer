@@ -7,7 +7,7 @@ import Toolbar from "./components/Toolbar";
 import AutosaveManager from "./components/AutosaveManager";
 import { NotificationToast } from "./components/NotificationToast";
 import { ErrorBoundary } from "./components/ErrorBoundary";
-import { useStore } from "./store/useStore";
+import { useStore, getEffectiveTheme } from "./store/useStore";
 import { useAuthStore } from "./store/useAuthStore";
 import { refreshAuthToken } from "./lib/authFetch";
 import { useAnnotationStore } from "./store/useAnnotationStore";
@@ -60,6 +60,9 @@ function App() {
   const isEditorPanelOpen = useStore((state) => state.isEditorPanelOpen);
   const setIsEditorPanelOpen = useStore((state) => state.setIsEditorPanelOpen);
   const appTheme = useStore((state) => state.appTheme);
+  const systemTheme = useStore((state) => state.systemTheme);
+  const setSystemTheme = useStore((state) => state.setSystemTheme);
+  const effectiveTheme = getEffectiveTheme(appTheme, systemTheme);
   const isMathHelpOpen = useStore((state) => state.isMathHelpOpen);
   const setIsMathHelpOpen = useStore((state) => state.setIsMathHelpOpen);
   const isSavedDocsOpen = useStore((state) => state.isSavedDocsOpen);
@@ -537,12 +540,38 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (appTheme === "dark") {
+    if (effectiveTheme === "dark") {
       document.documentElement.classList.add("dark");
     } else {
       document.documentElement.classList.remove("dark");
     }
-  }, [appTheme]);
+  }, [effectiveTheme]);
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+    const syncWithSystem = (e: MediaQueryListEvent | MediaQueryList) => {
+      const isDark = e.matches;
+      setSystemTheme(isDark ? "dark" : "light");
+      if (useStore.getState().appTheme === "system") {
+        if (isDark) {
+          useStore.getState().setCanvasBackgroundColor("#0d1117");
+          useStore.getState().setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
+        } else {
+          useStore.getState().setCanvasBackgroundColor("#f8fafc");
+          useStore.getState().setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
+        }
+      }
+    };
+
+    if (appTheme === "system") {
+      syncWithSystem(mediaQuery);
+    }
+
+    mediaQuery.addEventListener("change", syncWithSystem);
+    return () => mediaQuery.removeEventListener("change", syncWithSystem);
+  }, [appTheme, setSystemTheme]);
 
   useEffect(() => {
     let dragCounter = 0;
@@ -680,7 +709,7 @@ function App() {
   return (
     <div
       style={{ height: 'var(--app-height, 100dvh)' }}
-      className={`${appTheme} flex flex-col h-[100dvh] w-full max-w-full bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors relative`}
+      className={`${effectiveTheme} flex flex-col h-[100dvh] w-full max-w-full bg-white dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans overflow-hidden transition-colors relative`}
     >
       {isDragOver && (
         <div className="absolute inset-0 z-[9999] flex items-center justify-center bg-white/40 dark:bg-black/60 backdrop-blur-md animate-in fade-in duration-200 pointer-events-none">

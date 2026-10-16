@@ -34,6 +34,7 @@ import {
   FileAudio,
   Sun,
   Moon,
+  Monitor,
   Info,
   ClipboardPaste,
   Plus,
@@ -46,7 +47,7 @@ import {
 } from "lucide-react";
 import SafeEditor from "./SafeEditor";
 import { usePackageTypes } from "../utils/npmEditorSupport";
-import { useStore } from "../store/useStore";
+import { useStore, getEffectiveTheme } from "../store/useStore";
 import { getVirtualPath } from "../utils/vfs";
 import { usePyPackageStore } from "../store/usePyPackageStore";
 import { PyPackagesPanel } from "./PyPackagesPanel";
@@ -168,7 +169,9 @@ const defaultWorkspaceSettings: WorkspaceSettings = {
 };
 
 export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
-  const appTheme = useStore((state) => state.appTheme);
+  const rawAppTheme = useStore((state) => state.appTheme);
+  const systemTheme = useStore((state) => state.systemTheme);
+  const appTheme = getEffectiveTheme(rawAppTheme, systemTheme);
   const jsNodeFocusLine = useStore((state) => state.jsNodeFocusLine);
   const setJsNodeFocusLine = useStore((state) => state.setJsNodeFocusLine);
   const autoClearLogs = useStore((state) => state.autoClearLogs);
@@ -2244,16 +2247,30 @@ declare const console: {
                   </div>
 
                   <button
-                    onClick={() =>
-                      setAppTheme(appTheme === "dark" ? "light" : "dark")
-                    }
+                    onClick={() => {
+                      if (rawAppTheme === "dark") {
+                        setAppTheme("light");
+                      } else if (rawAppTheme === "light") {
+                        setAppTheme("system");
+                      } else {
+                        setAppTheme("dark");
+                      }
+                    }}
                     className={menuItem}
                   >
                     <div className="flex items-center gap-2">
-                      {appTheme === "dark" ? <Sun size={12} /> : <Moon size={12} />}
+                      {rawAppTheme === "dark" ? (
+                        <Sun size={12} />
+                      ) : rawAppTheme === "light" ? (
+                        <Monitor size={12} />
+                      ) : (
+                        <Moon size={12} />
+                      )}
                       <span>
-                        {appTheme === "dark"
+                        {rawAppTheme === "dark"
                           ? "Switch to Light Mode"
+                          : rawAppTheme === "light"
+                          ? "Switch to System Default"
                           : "Switch to Dark Mode"}
                       </span>
                     </div>

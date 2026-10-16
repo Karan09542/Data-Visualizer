@@ -1,13 +1,14 @@
 import { X, SlidersHorizontal } from 'lucide-react';
-import { useStore } from '../../store/useStore';
+import { useStore, getEffectiveTheme } from '../../store/useStore';
 import { AISettingsPanel } from './AISettingsPanel';
 import { useState, useRef, useEffect } from 'react';
 
 export default function AISettingsSidebar() {
   const isAISettingsPanelOpen = useStore((state) => state.isAISettingsPanelOpen);
   const setIsAISettingsPanelOpen = useStore((state) => state.setIsAISettingsPanelOpen);
-  const appTheme = useStore((state) => state.appTheme);
-  const isDark = appTheme === 'dark';
+  const rawAppTheme = useStore((state) => state.appTheme);
+  const systemTheme = useStore((state) => state.systemTheme);
+  const isDark = getEffectiveTheme(rawAppTheme, systemTheme) === 'dark';
 
   const [panelWidth, setPanelWidth] = useState(420);
   const isResizing = useRef(false);

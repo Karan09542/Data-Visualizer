@@ -71,7 +71,7 @@ import "mafs/font.css";
 import "katex/dist/katex.min.css";
 import katex from "katex";
 import * as mathjs from "mathjs";
-import { useStore } from "../store/useStore";
+import { useStore, getEffectiveTheme } from "../store/useStore";
 import { useMathWorker } from "../hooks/useMathWorker";
 import { db } from "../lib/db";
 import MathHelpPopup from "./MathHelpPopup";
@@ -814,7 +814,9 @@ export const MathNodeRenderer: React.FC<any> = ({
     root.querySelectorAll(".math-row-hover").forEach((el) => el.classList.remove("math-row-hover"));
     if (id) root.querySelectorAll(`g[data-row-id="${CSS.escape(id)}"]`).forEach((el) => el.classList.add("math-row-hover"));
   };
-  const appTheme = useStore((state) => state.appTheme);
+  const rawAppTheme = useStore((state) => state.appTheme);
+  const systemTheme = useStore((state) => state.systemTheme);
+  const appTheme = getEffectiveTheme(rawAppTheme, systemTheme);
   const updateNodeValue = useStore((state) => state.updateNodeValue);
 
   // Debounced auto-save of state to node data

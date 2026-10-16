@@ -1,4 +1,5 @@
 import React, { useState, useEffect, Suspense } from "react";
+import { createPortal } from "react-dom";
 import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { motion, AnimatePresence } from "motion/react";
 import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight, Moon, Paintbrush, Layers, Crop } from "lucide-react";
@@ -68,12 +69,19 @@ interface QuickUtilsModalProps {
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
   const [activeTab, setActiveTab] = useState<"crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
+  const [hasOpenedWaveDisp, setHasOpenedWaveDisp] = useState(false);
   const [isMaximized, setIsMaximized] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
       return window.innerWidth < 768;
     }
     return false;
   });
+
+  useEffect(() => {
+    if (activeTab === "wavedisp") {
+      setHasOpenedWaveDisp(true);
+    }
+  }, [activeTab]);
 
   // Ensure fullscreen on mobile when modal opens
   useEffect(() => {
@@ -98,7 +106,9 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, onClose]);
 
-  return (
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
     <AnimatePresence>
       {isOpen && (
         <div
@@ -124,18 +134,21 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+            onClick={(e) => {
+              e.stopPropagation();
+              onClose();
+            }}
+            className="absolute inset-0 bg-black/60 backdrop-blur-sm cursor-pointer"
           />
 
           {/* Modal Container */}
           <motion.div
-            initial={{ opacity: 0, scale: 0.98, y: 8 }}
-            animate={{ opacity: 1, scale: 1, y: 0 }}
-            exit={{ opacity: 0, scale: 0.98, y: 8 }}
+            initial={{ opacity: 0, scale: 0.99 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.99 }}
             transition={{
-              duration: 0.16,
-              ease: [0.16, 1, 0.3, 1]
+              duration: 0.12,
+              ease: "easeOut"
             }}
             className={`relative ${isMaximized
               ? "w-full h-full max-w-none max-h-none rounded-none border-none p-0"
@@ -178,28 +191,52 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
 
                   {/* Mobile Close Button */}
                   <button
-                    onClick={onClose}
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onClose();
+                    }}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      onClose();
+                    }}
                     id="quick-tools-mobile-close-btn"
-                    className="md:hidden p-1.5 sm:p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors shrink-0"
+                    className="md:hidden p-1.5 sm:p-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full text-slate-600 dark:text-slate-300 transition-colors shrink-0 cursor-pointer"
+                    title="Close (Esc)"
+                    aria-label="Close"
                   >
                     <X size={16} />
                   </button>
 
                   {/* Maximize & Close buttons for desktop */}
-                  <div className="hidden md:flex items-center gap-1">
+                  <div className="hidden md:flex items-center gap-1.5">
                     <button
+                      type="button"
                       id="quick-tools-maximize-btn"
-                      onClick={() => setIsMaximized(!isMaximized)}
-                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsMaximized(!isMaximized);
+                      }}
+                      className="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
                       title={isMaximized ? "Restore Modal" : "Maximize Fullscreen"}
+                      aria-label={isMaximized ? "Restore Modal" : "Maximize Fullscreen"}
                     >
-                      {isMaximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+                      {isMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
                     </button>
                     <button
+                      type="button"
                       id="quick-tools-close-btn"
-                      onClick={onClose}
-                      className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-md text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors"
-                      title="Close"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                      }}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        onClose();
+                      }}
+                      className="p-1.5 sm:p-2 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-300 transition-colors cursor-pointer"
+                      title="Close (Esc)"
+                      aria-label="Close"
                     >
                       <X size={16} />
                     </button>
@@ -243,11 +280,13 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
 
             {/* Main Content Area */}
             <div className="flex-1 h-full overflow-hidden flex flex-col bg-slate-50/50 dark:bg-[#0c0f16]/50 pb-[env(safe-area-inset-bottom)]">
-              <div className={activeTab === "wavedisp" ? "w-full h-full flex flex-col" : "hidden"}>
-                <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Animated Photo Effects...</div>}>
-                  <WaveDisplacementStudio />
-                </Suspense>
-              </div>
+              {hasOpenedWaveDisp && (
+                <div className={activeTab === "wavedisp" ? "w-full h-full flex flex-col" : "hidden"}>
+                  <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Animated Photo Effects...</div>}>
+                    <WaveDisplacementStudio />
+                  </Suspense>
+                </div>
+              )}
               {activeTab === "crop" && (
                 <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Crop Tool...</div>}>
                   <ImageCropUtil />
@@ -298,6 +337,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
           </motion.div>
         </div>
       )}
-    </AnimatePresence>
+    </AnimatePresence>,
+    document.body
   );
 }

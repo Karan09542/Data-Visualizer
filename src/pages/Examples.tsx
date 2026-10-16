@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { useStore, CodeFormat } from '../store/useStore';
+import { useStore, CodeFormat, getEffectiveTheme } from '../store/useStore';
 import {
   Play,
   Copy,
@@ -352,7 +352,9 @@ export default function Examples() {
   const navigate = useNavigate();
   const setCode = useStore(state => state.setCode);
   const setCodeFormat = useStore(state => state.setCodeFormat);
-  const appTheme = useStore(state => state.appTheme);
+  const rawAppTheme = useStore(state => state.appTheme);
+  const systemTheme = useStore(state => state.systemTheme);
+  const appTheme = getEffectiveTheme(rawAppTheme, systemTheme);
 
   const [selectedCategory, setSelectedCategory] = useState<CategoryType>('all');
   const [searchQuery, setSearchQuery] = useState('');

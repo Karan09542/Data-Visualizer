@@ -407,10 +407,30 @@ export const registerAllVoiceCommands = () => {
   });
 
   CommandRegistry.register({
+    phrases: ["enable system mode", "switch to system theme", "system theme", "system default", "system mode", "follow system theme", "use system theme"],
+    title: "System default mode",
+    group: "look",
+    description: "Follows system color scheme",
+    execute: () => {
+      const store = useStore.getState();
+      store.setAppTheme("system");
+      const systemIsDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+      if (systemIsDark) {
+        store.setCanvasBackgroundColor("#0d1117");
+        store.setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
+      } else {
+        store.setCanvasBackgroundColor("#f8fafc");
+        store.setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
+      }
+      store.setNotification({ message: 'Switched to system default mode', type: 'info' });
+    }
+  });
+
+  CommandRegistry.register({
     phrases: ["toggle dark mode", "toggle theme", "toggle themes", "switch theme", "switch themes", "change theme", "change themes", "toggle light mode"],
     title: "Switch theme",
     group: "look",
-    description: "Flips between dark and light",
+    description: "Cycles between dark, light, and system default",
     execute: () => {
       const store = useStore.getState();
       if (store.appTheme === "dark") {
@@ -418,6 +438,17 @@ export const registerAllVoiceCommands = () => {
         store.setCanvasBackgroundColor("#f8fafc");
         store.setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
         store.setNotification({ message: 'Switched to light mode', type: 'info' });
+      } else if (store.appTheme === "light") {
+        store.setAppTheme("system");
+        const systemIsDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+        if (systemIsDark) {
+          store.setCanvasBackgroundColor("#0d1117");
+          store.setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
+        } else {
+          store.setCanvasBackgroundColor("#f8fafc");
+          store.setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
+        }
+        store.setNotification({ message: 'Switched to system default mode', type: 'info' });
       } else {
         store.setAppTheme("dark");
         store.setCanvasBackgroundColor("#0d1117");

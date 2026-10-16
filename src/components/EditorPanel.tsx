@@ -1,4 +1,4 @@
-import { useStore } from "../store/useStore";
+import { useStore, getEffectiveTheme } from "../store/useStore";
 import SafeEditor from "./SafeEditor";
 import CustomSelect from "./CustomSelect";
 import MergeConfigDialog from "./MergeConfigDialog";
@@ -71,7 +71,9 @@ export default function EditorPanel() {
   const clearCode = useStore((state) => state.clearCode);
   const error = useStore((state) => state.error);
   const parsedData = useStore((state) => state.parsedData);
-  const appTheme = useStore((state) => state.appTheme);
+  const rawAppTheme = useStore((state) => state.appTheme);
+  const systemTheme = useStore((state) => state.systemTheme);
+  const appTheme = getEffectiveTheme(rawAppTheme, systemTheme);
   const codeFormat = useStore((state) => state.codeFormat);
   const apiMethod = useStore((state) => state.apiMethod);
   const setApiMethod = useStore((state) => state.setApiMethod);

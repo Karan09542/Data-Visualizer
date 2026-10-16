@@ -80,7 +80,21 @@ if (typeof window !== "undefined") {
 import { NODE_THEMES, EDGE_STYLES, LayoutMode, CodeFormat, NodeTheme, EdgeStyle, NodeShape } from "../constants/visualizer";
 export type { LayoutMode, CodeFormat, NodeTheme, EdgeStyle, NodeShape };
 export type CanvasTheme = "none" | "dots" | "grid" | "lines";
-export type AppTheme = "dark" | "light";
+export type AppTheme = "dark" | "light" | "system";
+
+export function getEffectiveTheme(
+  theme: AppTheme,
+  systemTheme?: "dark" | "light",
+): "dark" | "light" {
+  if (theme === "dark") return "dark";
+  if (theme === "light") return "light";
+  if (systemTheme) return systemTheme;
+  if (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
+    return "dark";
+  }
+  return "light";
+}
+
 export type GradientType = "linear" | "radial";
 export type VisualizerMode = "graph" | "schema";
 
@@ -369,6 +383,8 @@ export interface StoreState {
   nodeShape: NodeShape;
   canvasTheme: CanvasTheme;
   appTheme: AppTheme;
+  systemTheme: "dark" | "light";
+  setSystemTheme: (theme: "dark" | "light") => void;
   canvasBackgroundColor: string;
   canvasPatternColor: string;
   canvasBackgroundImage: string;
@@ -605,6 +621,8 @@ export const useStore = create<StoreState>()(
       }
       return {
         ...defaultSettings,
+        systemTheme: (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light") as "dark" | "light",
+        setSystemTheme: (theme: "dark" | "light") => set({ systemTheme: theme }),
         code: initialCode,
         globalSearchErrors: [],
         globalSearchSuggestions: [],
@@ -1757,9 +1775,14 @@ export const useStore = create<StoreState>()(
           typeof p?.edgeStyle === "string" && (EDGE_STYLES as readonly string[]).includes(p.edgeStyle)
             ? p.edgeStyle
             : currentState.edgeStyle;
+        const validAppTheme: AppTheme =
+          p?.appTheme === "light" || p?.appTheme === "system" || p?.appTheme === "dark"
+            ? p.appTheme
+            : currentState.appTheme;
         return {
           ...currentState,
           ...p,
+          appTheme: validAppTheme,
           collapsedNodes,
           nodeTheme,
           edgeStyle,

@@ -21,6 +21,7 @@ import {
   X,
   Sun,
   Moon,
+  Monitor,
   Undo2,
   Redo2,
   Share2,
@@ -357,6 +358,18 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
       setAppTheme("light");
       setCanvasBackgroundColor("#f8fafc");
       setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
+    } else if (appTheme === "light") {
+      setAppTheme("system");
+      const systemIsDark =
+        typeof window !== "undefined" &&
+        window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+      if (systemIsDark) {
+        setCanvasBackgroundColor("#0d1117");
+        setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
+      } else {
+        setCanvasBackgroundColor("#f8fafc");
+        setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
+      }
     } else {
       setAppTheme("dark");
       setCanvasBackgroundColor("#0d1117");
@@ -1247,9 +1260,28 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               <button
                 onClick={toggleTheme}
                 className="p-1.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
-                title="Toggle Theme"
+                title={
+                  appTheme === "dark"
+                    ? "Theme: Dark (Switch to Light Mode)"
+                    : appTheme === "light"
+                    ? "Theme: Light (Switch to System Default)"
+                    : "Theme: System Default (Switch to Dark Mode)"
+                }
+                aria-label={
+                  appTheme === "dark"
+                    ? "Switch to Light Mode"
+                    : appTheme === "light"
+                    ? "Switch to System Default"
+                    : "Switch to Dark Mode"
+                }
               >
-                {appTheme === "dark" ? <Sun size={16} /> : <Moon size={16} />}
+                {appTheme === "dark" ? (
+                  <Sun size={16} />
+                ) : appTheme === "light" ? (
+                  <Monitor size={16} />
+                ) : (
+                  <Moon size={16} />
+                )}
               </button>
               <button
                 onClick={onOpenShare}
@@ -1661,8 +1693,20 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     onClick={toggleTheme}
                     className="flex items-center gap-2 p-3 bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-200 transition-all"
                   >
-                    {appTheme === "dark" ? <Sun size={16} className="text-amber-400" /> : <Moon size={16} className="text-indigo-500" />}
-                    <span>{appTheme === "dark" ? "Light Mode" : "Dark Mode"}</span>
+                    {appTheme === "dark" ? (
+                      <Sun size={16} className="text-amber-400" />
+                    ) : appTheme === "light" ? (
+                      <Monitor size={16} className="text-sky-400" />
+                    ) : (
+                      <Moon size={16} className="text-indigo-500" />
+                    )}
+                    <span>
+                      {appTheme === "dark"
+                        ? "Light Mode"
+                        : appTheme === "light"
+                        ? "System Default"
+                        : "Dark Mode"}
+                    </span>
                   </button>
 
                   <button

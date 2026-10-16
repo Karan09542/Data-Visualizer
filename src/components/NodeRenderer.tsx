@@ -3,7 +3,7 @@ import React, { useEffect, useLayoutEffect, useRef } from "react";
 import * as d3 from "d3";
 import { HierarchyPointNode } from "d3";
 import { TreeNode } from "../utils/transformer";
-import { useStore, NodeTheme } from "../store/useStore";
+import { useStore, NodeTheme, getEffectiveTheme } from "../store/useStore";
 import { PALETTE_THEMES } from "../constants/visualizer";
 import { db } from "../lib/db";
 import { liveQuery } from "dexie";
@@ -234,7 +234,9 @@ function NodeRenderer({
   const setActivePreviewMedia = useStore(
     (state) => state.setActivePreviewMedia,
   );
-  const appTheme = useStore((state) => state.appTheme);
+  const rawAppTheme = useStore((state) => state.appTheme);
+  const systemTheme = useStore((state) => state.systemTheme);
+  const appTheme = getEffectiveTheme(rawAppTheme, systemTheme);
   const knownDataUrls = useStore((state) => state.knownDataUrls);
   const nodeSizes = useStore((state) => state.nodeSizes);
 
