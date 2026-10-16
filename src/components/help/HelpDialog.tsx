@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useId, useMemo, useRef, us
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Search, Check, Copy, Plus, type LucideIcon } from 'lucide-react';
+import { useStore, getEffectiveTheme } from '../../store/useStore';
 
 /*
  * One dialog for every help popup in the app. Each popup is just a HelpContent object
@@ -94,10 +95,10 @@ const ConfirmButton: React.FC<{
           // Clipboard can be blocked; the text stays selectable
         }
       }}
-      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-medium transition-colors ${
+      className={`flex h-8 shrink-0 items-center gap-1.5 rounded-lg px-2.5 text-xs font-semibold transition-all ${
         primary
-          ? 'bg-indigo-600 text-white hover:bg-indigo-500 dark:bg-indigo-500 dark:hover:bg-indigo-400'
-          : 'text-slate-500 hover:bg-slate-100 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/8 dark:hover:text-white'
+          ? 'bg-indigo-600 text-white hover:bg-indigo-500 shadow-sm shadow-indigo-500/20 active:scale-95'
+          : 'text-slate-600 dark:text-slate-300 bg-slate-100/90 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700/80 hover:text-slate-900 dark:hover:text-white border border-slate-200/70 dark:border-slate-700/60'
       }`}
       aria-label={label}
       title={label}
@@ -111,23 +112,23 @@ const ConfirmButton: React.FC<{
 const Examples: React.FC<{ items: HelpExample[]; codeClass: string }> = ({ items, codeClass }) => {
   const { exampleAction, renderPreview } = useContext(ExampleContext);
   return (
-    <ul className="divide-y divide-slate-200 rounded-xl border border-slate-200 dark:divide-white/8 dark:border-white/10">
+    <ul className="divide-y divide-slate-200/80 rounded-xl border border-slate-200/90 bg-slate-50/40 dark:divide-slate-800/80 dark:border-slate-800 dark:bg-slate-800/20">
       {items.map((item, i) => (
         <li key={i} className="space-y-2 px-3.5 py-3">
           {(item.title || item.text) && (
             <div>
-              {item.title && <p className="text-[13px] font-semibold text-slate-900 dark:text-white">{item.title}</p>}
+              {item.title && <p className="text-[13px] font-semibold text-slate-900 dark:text-slate-100">{item.title}</p>}
               {item.text && (
-                <p className="mt-0.5 text-[12.5px] leading-relaxed text-slate-500 dark:text-slate-400">
+                <p className="mt-0.5 text-[12.5px] leading-relaxed text-slate-600 dark:text-slate-400">
                   <RichText text={item.text} />
                 </p>
               )}
             </div>
           )}
           <div className="flex items-start gap-1.5">
-            <div className="min-w-0 flex-1 rounded-lg bg-slate-50 px-2.5 py-1.5 dark:bg-white/4">
+            <div className="min-w-0 flex-1 rounded-lg bg-slate-100/70 p-2.5 border border-slate-200/60 dark:bg-slate-950/60 dark:border-slate-800/60">
               {item.preview && renderPreview && (
-                <div className="mb-1 overflow-x-auto text-[15px] text-slate-900 dark:text-slate-100">{renderPreview(item.preview)}</div>
+                <div className="mb-1.5 overflow-x-auto text-[15px] text-slate-900 dark:text-slate-100">{renderPreview(item.preview)}</div>
               )}
               <code className={`block whitespace-pre-wrap break-words font-mono text-[12px] leading-relaxed ${codeClass}`}>{item.code}</code>
             </div>
@@ -150,17 +151,45 @@ const Examples: React.FC<{ items: HelpExample[]; codeClass: string }> = ({ items
 
 /** Tailwind needs whole class names, so each tone spells its classes out */
 const TONES: Record<HelpTone, { icon: string; soft: string; code: string }> = {
-  indigo: { icon: 'text-indigo-500 dark:text-indigo-400', soft: 'bg-indigo-500/8 border-indigo-500/20 dark:bg-indigo-400/8 dark:border-indigo-400/20', code: 'text-indigo-700 dark:text-indigo-300' },
-  amber: { icon: 'text-amber-500 dark:text-amber-400', soft: 'bg-amber-500/8 border-amber-500/25 dark:bg-amber-400/8 dark:border-amber-400/20', code: 'text-amber-700 dark:text-amber-300' },
-  blue: { icon: 'text-blue-500 dark:text-blue-400', soft: 'bg-blue-500/8 border-blue-500/20 dark:bg-blue-400/8 dark:border-blue-400/20', code: 'text-blue-700 dark:text-blue-300' },
-  emerald: { icon: 'text-emerald-500 dark:text-emerald-400', soft: 'bg-emerald-500/8 border-emerald-500/25 dark:bg-emerald-400/8 dark:border-emerald-400/20', code: 'text-emerald-700 dark:text-emerald-300' },
-  rose: { icon: 'text-rose-500 dark:text-rose-400', soft: 'bg-rose-500/8 border-rose-500/20 dark:bg-rose-400/8 dark:border-rose-400/20', code: 'text-rose-700 dark:text-rose-300' },
-  purple: { icon: 'text-purple-500 dark:text-purple-400', soft: 'bg-purple-500/8 border-purple-500/20 dark:bg-purple-400/8 dark:border-purple-400/20', code: 'text-purple-700 dark:text-purple-300' },
-  cyan: { icon: 'text-cyan-600 dark:text-cyan-400', soft: 'bg-cyan-500/8 border-cyan-500/25 dark:bg-cyan-400/8 dark:border-cyan-400/20', code: 'text-cyan-700 dark:text-cyan-300' },
+  indigo: {
+    icon: 'text-indigo-600 dark:text-indigo-400',
+    soft: 'bg-indigo-50/80 border-indigo-200/80 dark:bg-indigo-950/30 dark:border-indigo-800/50',
+    code: 'text-indigo-600 dark:text-indigo-300',
+  },
+  amber: {
+    icon: 'text-amber-600 dark:text-amber-400',
+    soft: 'bg-amber-50/80 border-amber-200/80 dark:bg-amber-950/30 dark:border-amber-800/50',
+    code: 'text-amber-600 dark:text-amber-300',
+  },
+  blue: {
+    icon: 'text-sky-600 dark:text-sky-400',
+    soft: 'bg-sky-50/80 border-sky-200/80 dark:bg-sky-950/30 dark:border-sky-800/50',
+    code: 'text-sky-600 dark:text-sky-300',
+  },
+  emerald: {
+    icon: 'text-emerald-600 dark:text-emerald-400',
+    soft: 'bg-emerald-50/80 border-emerald-200/80 dark:bg-emerald-950/30 dark:border-emerald-800/50',
+    code: 'text-emerald-600 dark:text-emerald-300',
+  },
+  rose: {
+    icon: 'text-rose-600 dark:text-rose-400',
+    soft: 'bg-rose-50/80 border-rose-200/80 dark:bg-rose-950/30 dark:border-rose-800/50',
+    code: 'text-rose-600 dark:text-rose-300',
+  },
+  purple: {
+    icon: 'text-purple-600 dark:text-purple-400',
+    soft: 'bg-purple-50/80 border-purple-200/80 dark:bg-purple-950/30 dark:border-purple-800/50',
+    code: 'text-purple-600 dark:text-purple-300',
+  },
+  cyan: {
+    icon: 'text-cyan-600 dark:text-cyan-400',
+    soft: 'bg-cyan-50/80 border-cyan-200/80 dark:bg-cyan-950/30 dark:border-cyan-800/50',
+    code: 'text-cyan-600 dark:text-cyan-300',
+  },
 };
 
-const SURFACE = 'bg-white dark:bg-[#0f1117]';
-const LINE = 'border-slate-200 dark:border-white/10';
+const SURFACE = 'bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl';
+const LINE = 'border-slate-200/90 dark:border-slate-800/80';
 const MUTED = 'text-slate-500 dark:text-slate-400';
 
 /** Turns `backticks` into inline code */
@@ -170,7 +199,7 @@ const RichText: React.FC<{ text: string }> = ({ text }) => (
       part.startsWith('`') && part.endsWith('`') ? (
         <code
           key={i}
-          className="rounded-md bg-slate-100 px-1.5 py-0.5 font-mono text-[0.85em] text-slate-800 dark:bg-white/8 dark:text-slate-200"
+          className="rounded-md bg-slate-100 dark:bg-slate-800/80 border border-slate-200/70 dark:border-slate-700/60 px-1.5 py-0.5 font-mono text-[0.85em] text-slate-800 dark:text-slate-200 font-medium"
         >
           {part.slice(1, -1)}
         </code>
@@ -182,7 +211,7 @@ const RichText: React.FC<{ text: string }> = ({ text }) => (
 );
 
 const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-b-2 border-slate-200 bg-slate-50 px-1.5 font-mono text-[11px] font-medium text-slate-700 dark:border-white/12 dark:bg-white/6 dark:text-slate-200">
+  <kbd className="inline-flex h-6 min-w-6 items-center justify-center rounded-md border border-b-2 border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 px-1.5 font-mono text-[11px] font-semibold text-slate-700 dark:text-slate-200 shadow-xs">
     {children}
   </kbd>
 );
@@ -191,7 +220,7 @@ const Keys: React.FC<{ keys: string[] }> = ({ keys }) => (
   <span className="flex shrink-0 flex-wrap items-center justify-end gap-1">
     {keys.map((k, i) => (
       <React.Fragment key={i}>
-        {i > 0 && <span className="text-[11px] text-slate-400 dark:text-slate-500">+</span>}
+        {i > 0 && <span className="text-[11px] text-slate-400 dark:text-slate-500 font-medium">+</span>}
         <Kbd>{k}</Kbd>
       </React.Fragment>
     ))}
@@ -211,21 +240,21 @@ const CodeSample: React.FC<{ block: Extract<HelpBlock, { type: 'code' }> }> = ({
   };
   return (
     <div className={`overflow-hidden rounded-xl border ${LINE}`}>
-      <div className={`flex items-center justify-between gap-2 border-b ${LINE} bg-slate-50 px-3 py-1.5 dark:bg-white/3`}>
-        <span className={`truncate text-xs font-medium ${MUTED}`}>
+      <div className={`flex items-center justify-between gap-2 border-b ${LINE} bg-slate-100/70 px-3.5 py-1.5 dark:bg-slate-800/60`}>
+        <span className={`truncate text-xs font-semibold ${MUTED}`}>
           {block.title ?? 'Example'}
-          {block.language && <span className="ml-2 font-mono text-[10px] uppercase opacity-70">{block.language}</span>}
+          {block.language && <span className="ml-2 font-mono text-[10px] uppercase opacity-70 tracking-wider">{block.language}</span>}
         </span>
         <button
           onClick={copy}
-          className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium ${MUTED} transition-colors hover:bg-slate-200/60 hover:text-slate-900 dark:hover:bg-white/8 dark:hover:text-white`}
+          className={`flex h-7 items-center gap-1.5 rounded-md px-2 text-xs font-medium ${MUTED} transition-colors hover:bg-slate-200/70 hover:text-slate-900 dark:hover:bg-slate-700/70 dark:hover:text-white`}
           aria-label="Copy example"
         >
           {copied ? <Check size={13} className="text-emerald-500" /> : <Copy size={13} />}
           {copied ? 'Copied' : 'Copy'}
         </button>
       </div>
-      <pre className="custom-scrollbar overflow-x-auto bg-slate-50/50 p-3.5 font-mono text-[12px] leading-relaxed text-slate-800 dark:bg-black/20 dark:text-slate-200">
+      <pre className="custom-scrollbar overflow-x-auto bg-slate-50/80 p-3.5 font-mono text-[12px] leading-relaxed text-slate-800 dark:bg-slate-950/70 dark:text-slate-200">
         {block.code}
       </pre>
     </div>
@@ -237,15 +266,15 @@ const Block: React.FC<{ block: HelpBlock; tone: HelpTone }> = ({ block, tone }) 
   switch (block.type) {
     case 'callout':
       return (
-        <div className={`rounded-xl border p-4 text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 ${t.soft}`}>
-          {block.title && <p className="mb-1 font-semibold text-slate-900 dark:text-white">{block.title}</p>}
+        <div className={`rounded-xl border p-4 text-[13px] leading-relaxed text-slate-700 dark:text-slate-300 shadow-xs ${t.soft}`}>
+          {block.title && <p className="mb-1 font-semibold text-slate-900 dark:text-slate-100">{block.title}</p>}
           <RichText text={block.text} />
         </div>
       );
 
     case 'shortcuts':
       return (
-        <ul className={`divide-y rounded-xl border ${LINE} divide-slate-200 dark:divide-white/8`}>
+        <ul className={`divide-y rounded-xl border ${LINE} divide-slate-200/80 dark:divide-slate-800/80 bg-slate-50/40 dark:bg-slate-800/20`}>
           {block.items.map((item, i) => (
             <li key={i} className="flex min-h-11 items-center justify-between gap-4 px-3.5 py-2">
               <span className="text-[13px] text-slate-700 dark:text-slate-300">
@@ -259,10 +288,10 @@ const Block: React.FC<{ block: HelpBlock; tone: HelpTone }> = ({ block, tone }) 
 
     case 'syntax':
       return (
-        <ul className={`divide-y rounded-xl border ${LINE} divide-slate-200 dark:divide-white/8`}>
+        <ul className={`divide-y rounded-xl border ${LINE} divide-slate-200/80 dark:divide-slate-800/80 bg-slate-50/40 dark:bg-slate-800/20`}>
           {block.items.map((item, i) => (
             <li key={i} className="flex flex-col gap-1 px-3.5 py-2.5 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-              <code className={`font-mono text-[12.5px] font-medium ${t.code}`}>{item.code}</code>
+              <code className={`font-mono text-[12.5px] font-medium ${t.code} bg-slate-100/70 dark:bg-slate-950/50 px-2 py-0.5 rounded border border-slate-200/60 dark:border-slate-800/60 w-fit`}>{item.code}</code>
               <span className={`text-[12.5px] sm:text-right ${MUTED}`}>
                 <RichText text={item.label} />
               </span>
@@ -277,9 +306,11 @@ const Block: React.FC<{ block: HelpBlock; tone: HelpTone }> = ({ block, tone }) 
           {block.items.map((item, i) => {
             const Icon = item.icon;
             return (
-              <div key={i} className={`rounded-xl border ${LINE} p-3.5`}>
-                <div className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold text-slate-900 dark:text-white">
-                  <Icon size={15} className={t.icon} />
+              <div key={i} className={`rounded-xl border ${LINE} bg-slate-50/60 dark:bg-slate-800/30 p-3.5 hover:border-slate-300 dark:hover:border-slate-700/80 transition-all shadow-xs`}>
+                <div className="mb-1.5 flex items-center gap-2 text-[13px] font-semibold text-slate-900 dark:text-slate-100">
+                  <div className="p-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200/60 dark:border-slate-700/50 shadow-xs">
+                    <Icon size={14} className={t.icon} />
+                  </div>
                   {item.title}
                 </div>
                 <p className={`text-[12.5px] leading-relaxed ${MUTED}`}>
@@ -338,6 +369,11 @@ const filterSections = (sections: HelpSection[], query: string): HelpSection[] =
 };
 
 export default function HelpDialog({ open, onClose, content, action, exampleAction, renderPreview, zIndex }: HelpDialogProps) {
+  const rawAppTheme = useStore((s) => s.appTheme);
+  const systemTheme = useStore((s) => s.systemTheme);
+  const effectiveTheme = getEffectiveTheme(rawAppTheme, systemTheme);
+  const isDark = effectiveTheme === 'dark';
+
   const titleId = useId();
   const scrollRef = useRef<HTMLDivElement>(null);
   const panelRef = useRef<HTMLDivElement>(null);
@@ -400,19 +436,19 @@ export default function HelpDialog({ open, onClose, content, action, exampleActi
         aria-current={isActive ? 'true' : undefined}
         className={
           compact
-            ? `flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-medium transition-colors ${
+            ? `flex h-8 shrink-0 items-center gap-1.5 rounded-full border px-3 text-xs font-semibold transition-all ${
                 isActive
-                  ? 'border-slate-900 bg-slate-900 text-white dark:border-white dark:bg-white dark:text-slate-900'
-                  : `${LINE} text-slate-600 hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-white/5`
+                  ? 'border-indigo-600 bg-indigo-600 text-white shadow-xs'
+                  : 'border-slate-200 bg-slate-50 text-slate-600 hover:bg-slate-100 dark:border-slate-800 dark:bg-slate-800/50 dark:text-slate-300 dark:hover:bg-slate-800'
               }`
-            : `flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium transition-colors ${
+            : `flex h-9 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-[13px] font-medium transition-all ${
                 isActive
-                  ? 'bg-slate-100 text-slate-900 dark:bg-white/8 dark:text-white'
-                  : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-white/4 dark:hover:text-slate-200'
+                  ? 'bg-indigo-50 text-indigo-700 font-semibold border border-indigo-200/60 dark:bg-indigo-950/40 dark:text-indigo-300 dark:border-indigo-800/50 shadow-xs'
+                  : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-800/60 dark:hover:text-slate-200 border border-transparent'
               }`
         }
       >
-        <Icon size={compact ? 13 : 15} className={isActive && !compact ? tone.icon : 'opacity-70'} />
+        <Icon size={compact ? 13 : 15} className={isActive ? tone.icon : 'opacity-70'} />
         <span className="truncate">{s.title}</span>
       </button>
     );
@@ -422,177 +458,179 @@ export default function HelpDialog({ open, onClose, content, action, exampleActi
   const ActionIcon = action?.icon;
 
   return createPortal(
-    <AnimatePresence>
-      {open && (
-        <div
-          className="fixed inset-0 z-10000 flex items-end justify-center sm:items-center sm:p-6"
-          style={zIndex ? { zIndex } : undefined}
-          // The popups open from inside the canvas; keep its pan and zoom from reacting
-          onWheel={(e) => e.stopPropagation()}
-          onPointerDown={(e) => e.stopPropagation()}
-          onTouchStart={(e) => e.stopPropagation()}
-          onTouchMove={(e) => e.stopPropagation()}
-        >
-          <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ duration: 0.15 }}
-            className="absolute inset-0 bg-slate-950/50 backdrop-blur-[2px]"
-            onClick={onClose}
-          />
-
-          <motion.div
-            ref={panelRef}
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={titleId}
-            tabIndex={-1}
-            initial={{ opacity: 0, y: 16 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 16 }}
-            transition={{ duration: 0.18, ease: 'easeOut' }}
-            className={`relative flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl border ${LINE} ${SURFACE} text-slate-900 shadow-2xl outline-none dark:text-slate-100 sm:h-[min(720px,88vh)] sm:max-w-4xl sm:rounded-2xl`}
+    <div className={isDark ? "dark font-sans" : "font-sans"}>
+      <AnimatePresence>
+        {open && (
+          <div
+            className="fixed inset-0 z-10000 flex items-end justify-center sm:items-center sm:p-6"
+            style={zIndex ? { zIndex } : undefined}
+            // The popups open from inside the canvas; keep its pan and zoom from reacting
+            onWheel={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+            onTouchStart={(e) => e.stopPropagation()}
+            onTouchMove={(e) => e.stopPropagation()}
           >
-            {/* Header */}
-            <header className={`flex shrink-0 flex-col gap-3 border-b ${LINE} px-4 pb-3 pt-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5`}>
-              <div className="flex min-w-0 flex-1 items-center gap-3">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-700 dark:bg-white/8 dark:text-slate-200">
-                  <HeaderIcon size={18} />
-                </div>
-                <div className="min-w-0">
-                  <h2 id={titleId} className="truncate text-[15px] font-semibold tracking-tight">
-                    {content.title}
-                  </h2>
-                  {content.subtitle && <p className={`truncate text-xs ${MUTED}`}>{content.subtitle}</p>}
-                </div>
-                <button
-                  onClick={onClose}
-                  className={`ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${MUTED} transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/8 dark:hover:text-white sm:hidden`}
-                  aria-label="Close"
-                >
-                  <X size={19} />
-                </button>
-              </div>
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.15 }}
+              className="absolute inset-0 bg-slate-950/60 dark:bg-slate-950/75 backdrop-blur-sm"
+              onClick={onClose}
+            />
 
-              <div className="flex items-center gap-2">
-                <div className="relative flex-1 sm:w-64 sm:flex-none">
-                  <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="search"
-                    value={query}
-                    onChange={(e) => setQuery(e.target.value)}
-                    placeholder="Search this guide"
-                    aria-label="Search this guide"
-                    className={`h-9 w-full rounded-lg border ${LINE} bg-slate-50 pl-9 pr-3 text-[13px] outline-none transition-colors placeholder:text-slate-400 focus:border-indigo-400 focus:bg-white dark:bg-white/4 dark:focus:border-indigo-400/60 dark:focus:bg-transparent`}
-                  />
+            <motion.div
+              ref={panelRef}
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={titleId}
+              tabIndex={-1}
+              initial={{ opacity: 0, y: 16, scale: 0.98 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: 16, scale: 0.98 }}
+              transition={{ duration: 0.18, ease: 'easeOut' }}
+              className={`relative flex h-[92dvh] w-full flex-col overflow-hidden rounded-t-2xl border ${LINE} ${SURFACE} text-slate-900 shadow-2xl shadow-slate-950/50 outline-none dark:text-slate-100 sm:h-[min(720px,88vh)] sm:max-w-4xl sm:rounded-2xl`}
+            >
+              {/* Header */}
+              <header className={`flex shrink-0 flex-col gap-3 border-b ${LINE} bg-slate-50/70 px-4 pb-3 pt-4 sm:flex-row sm:items-center sm:gap-4 sm:px-5 dark:bg-slate-900/80 backdrop-blur-md`}>
+                <div className="flex min-w-0 flex-1 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-indigo-500/10 text-indigo-600 dark:bg-indigo-500/20 dark:text-indigo-400 border border-indigo-500/20 shadow-xs">
+                    <HeaderIcon size={18} />
+                  </div>
+                  <div className="min-w-0">
+                    <h2 id={titleId} className="truncate text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">
+                      {content.title}
+                    </h2>
+                    {content.subtitle && <p className={`truncate text-xs ${MUTED}`}>{content.subtitle}</p>}
+                  </div>
+                  <button
+                    onClick={onClose}
+                    className={`ml-auto flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${MUTED} transition-colors hover:bg-slate-200/60 hover:text-slate-900 dark:hover:bg-slate-800/80 dark:hover:text-white sm:hidden`}
+                    aria-label="Close"
+                  >
+                    <X size={19} />
+                  </button>
                 </div>
-                <button
-                  onClick={onClose}
-                  className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg ${MUTED} transition-colors hover:bg-slate-100 hover:text-slate-900 dark:hover:bg-white/8 dark:hover:text-white sm:flex`}
-                  aria-label="Close"
-                  title="Close (Esc)"
-                >
-                  <X size={19} />
-                </button>
-              </div>
-            </header>
 
-            {/* Section chips on phones */}
-            {showNav && !query && (
-              <nav className={`flex shrink-0 gap-1.5 overflow-x-auto border-b ${LINE} px-4 py-2 [scrollbar-width:none] md:hidden`}>
-                {content.sections.map((s) => navItem(s, true))}
-              </nav>
-            )}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1 sm:w-64 sm:flex-none">
+                    <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
+                    <input
+                      type="search"
+                      value={query}
+                      onChange={(e) => setQuery(e.target.value)}
+                      placeholder="Search this guide"
+                      aria-label="Search this guide"
+                      className={`h-9 w-full rounded-lg border ${LINE} bg-white dark:bg-slate-950/70 pl-9 pr-3 text-[13px] text-slate-900 dark:text-slate-100 placeholder:text-slate-400 dark:placeholder:text-slate-500 outline-none transition-all focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/30`}
+                    />
+                  </div>
+                  <button
+                    onClick={onClose}
+                    className={`hidden h-9 w-9 shrink-0 items-center justify-center rounded-lg ${MUTED} transition-colors hover:bg-slate-200/60 hover:text-slate-900 dark:hover:bg-slate-800/80 dark:hover:text-white sm:flex`}
+                    aria-label="Close"
+                    title="Close (Esc)"
+                  >
+                    <X size={19} />
+                  </button>
+                </div>
+              </header>
 
-            <div className="flex min-h-0 flex-1">
-              {/* Section list on wider screens */}
-              {showNav && (
-                <nav className={`custom-scrollbar hidden w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-r ${LINE} p-3 md:flex`}>
-                  <p className={`px-2.5 pb-1.5 pt-1 text-[11px] font-medium ${MUTED}`}>On this page</p>
-                  {(query ? sections : content.sections).map((s) => navItem(s, false))}
+              {/* Section chips on phones */}
+              {showNav && !query && (
+                <nav className={`flex shrink-0 gap-1.5 overflow-x-auto border-b ${LINE} bg-slate-50/50 dark:bg-slate-900/50 px-4 py-2 [scrollbar-width:none] md:hidden`}>
+                  {content.sections.map((s) => navItem(s, true))}
                 </nav>
               )}
 
-              <div
-                ref={scrollRef}
-                onScroll={handleScroll}
-                className="custom-scrollbar relative min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6"
-              >
-                {sections.length === 0 ? (
-                  <div className="flex h-full flex-col items-center justify-center text-center">
-                    <Search size={22} className="text-slate-300 dark:text-slate-600" />
-                    <p className="mt-3 text-sm font-medium">Nothing matches “{query}”</p>
-                    <p className={`mt-1 text-xs ${MUTED}`}>Try a shorter word, or clear the search.</p>
-                  </div>
-                ) : (
-                  <div className="mx-auto flex max-w-2xl flex-col gap-9">
-                    {sections.map((s) => {
-                      const Icon = s.icon;
-                      const tone = s.tone ?? 'indigo';
-                      return (
-                        <section key={s.id} data-section={s.id} className="scroll-mt-2">
-                          <div className="mb-3 flex items-center gap-2">
-                            <Icon size={16} className={TONES[tone].icon} />
-                            <h3 className="text-[15px] font-semibold tracking-tight">{s.title}</h3>
-                          </div>
-                          {s.description && (
-                            <p className={`-mt-1 mb-3 text-[13px] leading-relaxed ${MUTED}`}>
-                              <RichText text={s.description} />
-                            </p>
-                          )}
-                          <div className="flex flex-col gap-3">
-                            <ExampleContext.Provider value={{ exampleAction, renderPreview }}>
-                              {s.blocks.map((b, i) => (
-                                <Block key={i} block={b} tone={tone} />
-                              ))}
-                            </ExampleContext.Provider>
-                          </div>
-                        </section>
-                      );
-                    })}
-                  </div>
+              <div className="flex min-h-0 flex-1">
+                {/* Section list on wider screens */}
+                {showNav && (
+                  <nav className={`custom-scrollbar hidden w-56 shrink-0 flex-col gap-0.5 overflow-y-auto border-r ${LINE} bg-slate-50/40 dark:bg-slate-900/30 p-3 md:flex`}>
+                    <p className={`px-2.5 pb-1.5 pt-1 text-[11px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500`}>On this page</p>
+                    {(query ? sections : content.sections).map((s) => navItem(s, false))}
+                  </nav>
                 )}
-              </div>
-            </div>
 
-            {/* Footer */}
-            <footer className={`flex shrink-0 items-center justify-between gap-3 border-t ${LINE} px-4 py-3 pb-[max(env(safe-area-inset-bottom),12px)] sm:px-5`}>
-              <div className={`hidden min-w-0 items-center gap-2 text-xs sm:flex ${MUTED}`}>
-                {content.footerHint ? (
-                  <>
-                    <Keys keys={content.footerHint.keys} />
-                    <span className="truncate">{content.footerHint.label}</span>
-                  </>
-                ) : (
-                  <>
-                    <Kbd>Esc</Kbd>
-                    <span>to close</span>
-                  </>
-                )}
-              </div>
-              <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
-                {action && (
-                  <button
-                    onClick={action.onClick}
-                    className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border ${LINE} px-3.5 text-[13px] font-medium transition-colors hover:bg-slate-50 dark:hover:bg-white/5 sm:flex-none`}
-                  >
-                    {ActionIcon && <ActionIcon size={15} />}
-                    {action.label}
-                  </button>
-                )}
-                <button
-                  onClick={onClose}
-                  className="h-9 flex-1 rounded-lg bg-slate-900 px-5 text-[13px] font-medium text-white transition-colors hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200 sm:flex-none"
+                <div
+                  ref={scrollRef}
+                  onScroll={handleScroll}
+                  className="custom-scrollbar relative min-w-0 flex-1 overflow-y-auto px-4 py-5 sm:px-6 bg-white dark:bg-slate-900/40"
                 >
-                  Done
-                </button>
+                  {sections.length === 0 ? (
+                    <div className="flex h-full flex-col items-center justify-center text-center">
+                      <Search size={24} className="text-slate-300 dark:text-slate-600 mb-1" />
+                      <p className="mt-2 text-sm font-semibold text-slate-800 dark:text-slate-200">Nothing matches “{query}”</p>
+                      <p className={`mt-1 text-xs ${MUTED}`}>Try a shorter word, or clear the search.</p>
+                    </div>
+                  ) : (
+                    <div className="mx-auto flex max-w-2xl flex-col gap-9">
+                      {sections.map((s) => {
+                        const Icon = s.icon;
+                        const tone = s.tone ?? 'indigo';
+                        return (
+                          <section key={s.id} data-section={s.id} className="scroll-mt-2">
+                            <div className="mb-3 flex items-center gap-2">
+                              <Icon size={16} className={TONES[tone].icon} />
+                              <h3 className="text-[15px] font-semibold tracking-tight text-slate-900 dark:text-slate-100">{s.title}</h3>
+                            </div>
+                            {s.description && (
+                              <p className={`-mt-1 mb-3 text-[13px] leading-relaxed ${MUTED}`}>
+                                <RichText text={s.description} />
+                              </p>
+                            )}
+                            <div className="flex flex-col gap-3">
+                              <ExampleContext.Provider value={{ exampleAction, renderPreview }}>
+                                {s.blocks.map((b, i) => (
+                                  <Block key={i} block={b} tone={tone} />
+                                ))}
+                              </ExampleContext.Provider>
+                            </div>
+                          </section>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               </div>
-            </footer>
-          </motion.div>
-        </div>
-      )}
-    </AnimatePresence>,
+
+              {/* Footer */}
+              <footer className={`flex shrink-0 items-center justify-between gap-3 border-t ${LINE} bg-slate-50/70 px-4 py-3 pb-[max(env(safe-area-inset-bottom),12px)] sm:px-5 dark:bg-slate-900/80 backdrop-blur-md`}>
+                <div className={`hidden min-w-0 items-center gap-2 text-xs sm:flex ${MUTED}`}>
+                  {content.footerHint ? (
+                    <>
+                      <Keys keys={content.footerHint.keys} />
+                      <span className="truncate">{content.footerHint.label}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Kbd>Esc</Kbd>
+                      <span>to close</span>
+                    </>
+                  )}
+                </div>
+                <div className="flex flex-1 items-center justify-end gap-2 sm:flex-none">
+                  {action && (
+                    <button
+                      onClick={action.onClick}
+                      className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white dark:bg-slate-800 px-3.5 text-[13px] font-medium text-slate-700 dark:text-slate-200 transition-colors hover:bg-slate-100 dark:hover:bg-slate-700 sm:flex-none`}
+                    >
+                      {ActionIcon && <ActionIcon size={15} />}
+                      {action.label}
+                    </button>
+                  )}
+                  <button
+                    onClick={onClose}
+                    className="h-9 flex-1 rounded-lg bg-indigo-600 px-6 text-[13px] font-semibold text-white shadow-md shadow-indigo-500/25 transition-all hover:bg-indigo-500 active:scale-[0.98] sm:flex-none"
+                  >
+                    Done
+                  </button>
+                </div>
+              </footer>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+    </div>,
     document.body,
   );
 }
