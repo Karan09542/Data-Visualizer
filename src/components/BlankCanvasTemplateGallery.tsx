@@ -13,9 +13,15 @@ import {
   Copy,
   PlusCircle,
   X,
+  AlertCircle,
+  FolderPlus,
+  RefreshCw,
+  Plus,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useStore } from '../store/useStore';
+import { db } from '../lib/db';
+import { isDocumentEmpty } from '../utils/documentUtils';
 
 export interface StarterTemplate {
   id: string;
@@ -281,6 +287,13 @@ interface BlankCanvasTemplateGalleryProps {
 
 export function BlankCanvasTemplateGallery({ isModal = false, onClose }: BlankCanvasTemplateGalleryProps) {
   const navigate = useNavigate();
+  const code = useStore((state) => state.code);
+  const activeDocumentId = useStore((state) => state.activeDocumentId);
+  const activeDocumentName = useStore((state) => state.activeDocumentName);
+  const setActiveDocumentId = useStore((state) => state.setActiveDocumentId);
+  const setActiveDocumentName = useStore((state) => state.setActiveDocumentName);
+  const setLastSavedCode = useStore((state) => state.setLastSavedCode);
+  const setIsDirty = useStore((state) => state.setIsDirty);
   const setCode = useStore((state) => state.setCode);
   const setCodeFormat = useStore((state) => state.setCodeFormat);
   const setNotification = useStore((state) => state.setNotification);
@@ -288,32 +301,75 @@ export function BlankCanvasTemplateGallery({ isModal = false, onClose }: BlankCa
 
   const [previewId, setPreviewId] = useState<string | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [selectedTemplate, setSelectedTemplate] = useState<StarterTemplate | null>(null);
+  const [templateDocName, setTemplateDocName] = useState<string>('');
+
+  const isCurrentDocEmpty = isDocumentEmpty(code);
 
   useEffect(() => {
-    if (!isModal) return;
-    const origOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        setIsTemplateGalleryOpen(false);
-        if (onClose) onClose();
+        if (selectedTemplate) {
+          setSelectedTemplate(null);
+          return;
+        }
+        if (isModal) {
+          setIsTemplateGalleryOpen(false);
+          if (onClose) onClose();
+        }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
+
+    let origOverflow = '';
+    if (isModal) {
+      origOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+    }
+
     return () => {
-      document.body.style.overflow = origOverflow;
+      if (isModal) {
+        document.body.style.overflow = origOverflow;
+      }
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [isModal, onClose, setIsTemplateGalleryOpen]);
+  }, [isModal, onClose, setIsTemplateGalleryOpen, selectedTemplate]);
 
   const handleSelectTemplate = (template: StarterTemplate) => {
+    setSelectedTemplate(template);
+    setTemplateDocName(template.title);
+  };
+
+  const handleOverwriteCurrent = (template: StarterTemplate) => {
     setCodeFormat('json');
     setCode(template.code);
+    if (activeDocumentId) {
+      setIsDirty(true);
+    }
+
+    // Clear runtime states to prevent stale node executions
+    useStore.setState({
+      apiNodeResponses: {},
+      apiNodeLoading: {},
+      apiNodeErrors: {},
+      jsNodeResponses: {},
+      jsNodeLoading: {},
+      jsNodeErrors: {},
+      jsNodeDurations: {},
+      jsNodeLastRuns: {},
+      jsNodeLogs: {},
+      activePreviewMedia: null,
+      activePreviewText: null,
+      globalTextExpanded: false,
+      collapsedNodes: new Set(),
+    });
+
+    setSelectedTemplate(null);
     setIsTemplateGalleryOpen(false);
     if (onClose) onClose();
 
     setNotification({
-      message: `Loaded template: ${template.title}`,
+      message: `Loaded template into current document: ${template.title}`,
       type: 'success',
     });
 
@@ -324,7 +380,82 @@ export function BlankCanvasTemplateGallery({ isModal = false, onClose }: BlankCa
     }, 250);
   };
 
+  const handleCreateNewWithTemplate = async (template: StarterTemplate) => {
+    const docTitle = templateDocName.trim() || template.title;
+    try {
+      const newId = await db.documents.add({
+        name: docTitle,
+        code: template.code,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+        isPinned: false,
+      });
+
+      setActiveDocumentId(newId as number);
+      setActiveDocumentName(docTitle);
+      setLastSavedCode(template.code);
+      setIsDirty(false);
+      setCodeFormat('json');
+      setCode(template.code);
+
+      // Clear runtime states
+      useStore.setState({
+        apiNodeResponses: {},
+        apiNodeLoading: {},
+        apiNodeErrors: {},
+        jsNodeResponses: {},
+        jsNodeLoading: {},
+        jsNodeErrors: {},
+        jsNodeDurations: {},
+        jsNodeLastRuns: {},
+        jsNodeLogs: {},
+        activePreviewMedia: null,
+        activePreviewText: null,
+        globalTextExpanded: false,
+        collapsedNodes: new Set(),
+      });
+
+      setSelectedTemplate(null);
+      setIsTemplateGalleryOpen(false);
+      if (onClose) onClose();
+
+      setNotification({
+        message: `Created new document: "${docTitle}"`,
+        type: 'success',
+      });
+
+      setTimeout(() => {
+        const fitBtn = document.getElementById('fit-graph-btn');
+        if (fitBtn) fitBtn.click();
+      }, 250);
+    } catch (err) {
+      console.error('Failed to create document from template:', err);
+      setNotification({
+        message: 'Failed to create document from template',
+        type: 'error',
+      });
+    }
+  };
+
   const handleStartBlank = () => {
+    if (!isCurrentDocEmpty) {
+      setSelectedTemplate({
+        id: 'blank-workspace',
+        title: 'Blank Workspace',
+        badge: 'Blank',
+        tagline: 'Start fresh with a clean slate',
+        description: 'New blank workspace',
+        accentGradient: 'from-slate-500/10 to-slate-500/20',
+        badgeColor: 'border-slate-500/30 text-slate-500 bg-slate-500/10',
+        borderHoverColor: 'hover:border-slate-400',
+        icon: <PlusCircle size={20} className="text-slate-500" />,
+        tags: ['blank', 'empty'],
+        keyFeatures: ['Empty workspace', 'Clean root node'],
+        code: '{\n  "workspace": "My Blank Workspace"\n}',
+      });
+      return;
+    }
+
     setCodeFormat('json');
     setCode('{\n  "workspace": "My Blank Workspace"\n}');
     setIsTemplateGalleryOpen(false);
@@ -504,43 +635,197 @@ export function BlankCanvasTemplateGallery({ isModal = false, onClose }: BlankCa
     </div>
   );
 
-  if (isModal) {
-    return createPortal(
+  const templateChoiceModal = selectedTemplate && createPortal(
+    <div
+      className="fixed inset-0 z-[100005] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      onClick={() => setSelectedTemplate(null)}
+    >
       <div
-        className="fixed inset-0 z-[100000] flex items-center justify-center p-0 sm:p-4 md:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
-        onClick={() => {
-          setIsTemplateGalleryOpen(false);
-          if (onClose) onClose();
-        }}
+        className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 sm:p-6 overflow-hidden animate-in zoom-in-95 duration-200"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="relative w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-5xl overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-[#0b0f19] rounded-none sm:rounded-3xl border-0 sm:border border-slate-200/90 dark:border-slate-800 p-4 sm:p-8 shadow-2xl flex flex-col"
-          onClick={(e) => e.stopPropagation()}
-        >
+        {/* Top Gradient bar */}
+        <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${selectedTemplate.accentGradient || 'from-indigo-500 to-purple-500'}`} />
+
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="flex items-center gap-3">
+            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/60 shadow-sm text-indigo-600 dark:text-indigo-400 shrink-0">
+              {selectedTemplate.icon || <Sparkles size={20} />}
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
+                  {selectedTemplate.badge || 'Template'}
+                </span>
+                <span className="text-xs text-slate-400">• Starter Template</span>
+              </div>
+              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">
+                {selectedTemplate.title}
+              </h3>
+            </div>
+          </div>
+          <button
+            onClick={() => setSelectedTemplate(null)}
+            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            title="Cancel"
+            aria-label="Cancel"
+          >
+            <X size={18} />
+          </button>
+        </div>
+
+        {/* Status notice */}
+        {isCurrentDocEmpty ? (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-xs text-blue-700 dark:text-blue-300 mb-4">
+            <Sparkles size={16} className="shrink-0 mt-0.5 text-blue-500" />
+            <div>
+              <p className="font-semibold">Current workspace is empty.</p>
+              <p className="mt-0.5 text-blue-600/90 dark:text-blue-300/80">
+                You can overwrite your current document with this template, or create a brand new saved document with this example.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 mb-4">
+            <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-500" />
+            <div>
+              <p className="font-semibold">
+                Current document{activeDocumentName ? ` ("${activeDocumentName}")` : ''} has existing content.
+              </p>
+              <p className="mt-0.5 text-amber-700/90 dark:text-amber-300/80">
+                Overwriting will replace your current workspace. Alternatively, create a new document with this example to preserve existing work.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="space-y-3 mb-5">
+          {/* Option 1: Overwrite Current Document */}
           <button
             type="button"
+            onClick={() => handleOverwriteCurrent(selectedTemplate)}
+            className="w-full text-left p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/70 bg-slate-50 dark:bg-slate-950/60 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 transition-all group flex items-start gap-3"
+          >
+            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:border-indigo-300 transition-colors shrink-0 mt-0.5">
+              <RefreshCw size={17} className="group-hover:rotate-180 transition-transform duration-500" />
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="flex items-center justify-between">
+                <span className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+                  Overwrite Current Document
+                </span>
+                <span className="text-[11px] font-medium text-slate-400 group-hover:text-indigo-500">
+                  Use in Current &rarr;
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
+                {isCurrentDocEmpty
+                  ? 'Load this starter template directly into your current workspace'
+                  : 'Replace current workspace with template (unsaved changes will be lost)'}
+              </p>
+            </div>
+          </button>
+
+          {/* Option 2: Create New Document with this Example */}
+          <div className="p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/40 dark:bg-indigo-950/30">
+            <div className="flex items-start gap-3 mb-2.5">
+              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-600 text-white shadow-sm shrink-0 mt-0.5">
+                <FolderPlus size={17} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <span className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
+                  Create New Document
+                </span>
+                <p className="text-xs text-indigo-800/80 dark:text-indigo-300/80 mt-0.5 leading-relaxed">
+                  Saves as a new document in your saved documents list and opens it
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-2">
+              <input
+                type="text"
+                value={templateDocName}
+                onChange={(e) => setTemplateDocName(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    handleCreateNewWithTemplate(selectedTemplate);
+                  }
+                }}
+                placeholder="Document name"
+                className="flex-1 h-9 px-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-xs sm:text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/30"
+              />
+              <button
+                type="button"
+                onClick={() => handleCreateNewWithTemplate(selectedTemplate)}
+                className="inline-flex h-9 items-center justify-center gap-1.5 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all active:scale-95 shrink-0"
+              >
+                <Plus size={14} />
+                <span>Create Document</span>
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end pt-1">
+          <button
+            type="button"
+            onClick={() => setSelectedTemplate(null)}
+            className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
+  );
+
+  if (isModal) {
+    return (
+      <>
+        {createPortal(
+          <div
+            className="fixed inset-0 z-[100000] flex items-center justify-center p-0 sm:p-4 md:p-6 bg-black/75 backdrop-blur-md animate-in fade-in duration-200"
             onClick={() => {
               setIsTemplateGalleryOpen(false);
               if (onClose) onClose();
             }}
-            className="absolute top-3.5 right-3.5 sm:top-5 sm:right-5 p-2 sm:p-2.5 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800/80 dark:hover:bg-slate-700 transition-colors cursor-pointer z-30 shadow-sm"
-            title="Close Gallery (Esc)"
-            aria-label="Close"
           >
-            <X size={18} />
-          </button>
-          {content}
-        </div>
-      </div>,
-      document.body
+            <div
+              className="relative w-full h-[100dvh] sm:h-auto sm:max-h-[90vh] sm:max-w-5xl overflow-y-auto custom-scrollbar bg-slate-50 dark:bg-[#0b0f19] rounded-none sm:rounded-3xl border-0 sm:border border-slate-200/90 dark:border-slate-800 p-4 sm:p-8 shadow-2xl flex flex-col"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <button
+                type="button"
+                onClick={() => {
+                  setIsTemplateGalleryOpen(false);
+                  if (onClose) onClose();
+                }}
+                className="absolute top-3.5 right-3.5 sm:top-5 sm:right-5 p-2 sm:p-2.5 rounded-full text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white bg-slate-200/80 hover:bg-slate-300 dark:bg-slate-800/80 dark:hover:bg-slate-700 transition-colors cursor-pointer z-30 shadow-sm"
+                title="Close Gallery (Esc)"
+                aria-label="Close"
+              >
+                <X size={18} />
+              </button>
+              {content}
+            </div>
+          </div>,
+          document.body
+        )}
+        {templateChoiceModal}
+      </>
     );
   }
 
   return (
-    <div className="absolute inset-0 z-20 overflow-y-auto custom-scrollbar pointer-events-auto p-4 sm:p-6 md:p-8">
-      <div className="min-h-full flex flex-col justify-center items-center py-4">
-        {content}
+    <>
+      <div className="absolute inset-0 z-20 overflow-y-auto custom-scrollbar pointer-events-auto p-4 sm:p-6 md:p-8">
+        <div className="min-h-full flex flex-col justify-center items-center py-4">
+          {content}
+        </div>
       </div>
-    </div>
+      {templateChoiceModal}
+    </>
   );
 }

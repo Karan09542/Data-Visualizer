@@ -16,10 +16,22 @@ export default function AutosaveManager() {
 
     const timer = setTimeout(async () => {
       try {
-        await db.documents.update(activeDocumentId, {
+        const updated = await db.documents.update(activeDocumentId, {
           code,
           updatedAt: Date.now()
         });
+        if (updated === 0) {
+          const name = useStore.getState().activeDocumentName || 'Autosaved Document';
+          const newId = await db.documents.add({
+            name,
+            code,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+            isPinned: false
+          });
+          useStore.getState().setActiveDocumentId(newId as number);
+          useStore.getState().setActiveDocumentName(name);
+        }
         setLastSavedCode(code);
         setIsDirty(false);
       } catch (err) {

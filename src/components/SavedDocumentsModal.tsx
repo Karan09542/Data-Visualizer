@@ -1,8 +1,10 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useLiveQuery } from 'dexie-react-hooks';
 import { db, type SavedDocument } from '../lib/db';
 import { useStore } from '../store/useStore';
+import { isDocumentEmpty } from '../utils/documentUtils';
 import {
+  AlertCircle,
   AlertTriangle,
   ArrowRight,
   CalendarDays,
@@ -16,6 +18,7 @@ import {
   FolderOpen,
   Pin,
   Plus,
+  Save,
   Search,
   Trash2,
   X,
@@ -57,11 +60,12 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editName, setEditName] = useState('');
   const [confirmAction, setConfirmAction] = useState<{
-    type: 'delete' | 'switch';
+    type: 'delete' | 'switch' | 'new-blank';
     title: string;
     message: string;
     actionId?: number;
     doc?: SavedDocument;
+    pendingName?: string;
   } | null>(null);
 
   const documents = useLiveQuery(() => db.documents.toArray());
@@ -69,6 +73,14 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
   const pinnedDocuments = useMemo(() => documents?.filter((doc) => doc.isPinned).length ?? 0, [documents]);
   const activeDocument = useMemo(() => documents?.find((doc) => doc.id === activeDocumentId), [documents, activeDocumentId]);
   const isSearching = searchQuery.trim().length > 0;
+
+  // Reconcile if activeDocumentId doesn't exist in DB anymore
+  useEffect(() => {
+    if (documents !== undefined && activeDocumentId && !documents.some(d => d.id === activeDocumentId)) {
+      setActiveDocumentId(null);
+      setActiveDocumentName(null);
+    }
+  }, [documents, activeDocumentId, setActiveDocumentId, setActiveDocumentName]);
 
   const filteredAndSortedDocs = useMemo(() => {
     if (!documents) return [];
@@ -92,21 +104,58 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
     });
   }, [documents, searchQuery, sortBy]);
 
-  const handleCreateNew = async () => {
-    if (!docName.trim()) {
-      useStore.getState().setNotification({ message: 'Please enter a document name', type: 'error' });
+  const handleSaveCurrent = async () => {
+    const trimmed = docName.trim();
+    if (!trimmed) {
+      useStore.getState().setNotification({ message: 'Please enter a document name to save', type: 'error' });
       return;
     }
+    const currentCode = useStore.getState().code;
+    const newId = await db.documents.add({
+      name: trimmed,
+      code: currentCode,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      isPinned: false
+    });
+    setActiveDocumentId(newId as number);
+    setActiveDocumentName(trimmed);
+    useStore.getState().setLastSavedCode(currentCode);
+    setIsDirty(false);
+    setDocName('');
+    useStore.getState().setNotification({ message: `Document "${trimmed}" saved successfully`, type: 'success' });
+  };
+
+  const handleCreateBlank = async () => {
+    const trimmed = docName.trim() || 'Untitled Document';
+    const currentCode = useStore.getState().code;
+    const currentIsDirty = useStore.getState().isDirty;
+    const hasExistingContent = !isDocumentEmpty(currentCode);
+
+    if (currentIsDirty || hasExistingContent) {
+      setConfirmAction({
+        type: 'new-blank',
+        title: 'Create Blank Document',
+        message: 'Creating a blank document will clear your current workspace and editor. Are you sure you want to discard current work and start blank?',
+        pendingName: trimmed
+      });
+      return;
+    }
+
+    await performCreateBlank(trimmed);
+  };
+
+  const performCreateBlank = async (name: string) => {
     const defaultCode = "{\n  \n}";
     const newId = await db.documents.add({
-      name: docName.trim(),
+      name,
       code: defaultCode,
       createdAt: Date.now(),
       updatedAt: Date.now(),
       isPinned: false
     });
     setActiveDocumentId(newId as number);
-    setActiveDocumentName(docName.trim());
+    setActiveDocumentName(name);
     useStore.getState().setLastSavedCode(defaultCode);
 
     // Clear runtime state to prevent bleeding across documents
@@ -129,7 +178,8 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
     setCode(defaultCode);
     setIsDirty(false);
     setDocName('');
-    useStore.getState().setNotification({ message: 'Document created successfully', type: 'success' });
+    setConfirmAction(null);
+    useStore.getState().setNotification({ message: `New blank document "${name}" created`, type: 'success' });
   };
 
   const handleDuplicate = async (doc: SavedDocument) => {
@@ -160,7 +210,10 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
       return;
     }
 
-    if (!activeDocumentId && isDirty) {
+    const currentCode = useStore.getState().code;
+    const hasContent = !isDocumentEmpty(currentCode);
+
+    if (!activeDocumentId && (isDirty || hasContent)) {
       setConfirmAction({
         type: 'switch',
         title: 'Unsaved Changes',
@@ -289,28 +342,45 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
             <div className="shrink-0 border-b border-slate-200 bg-white px-3.5 py-3 dark:border-slate-800 dark:bg-slate-900 sm:px-5 sm:py-4">
               <div className="space-y-2.5 sm:space-y-3">
                 <div className="rounded-lg border border-slate-200 bg-slate-50 p-2.5 dark:border-slate-800 dark:bg-slate-950/70 sm:p-3">
-                  <div className="flex items-center gap-2">
+                  <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
                     <div className="relative flex-1 min-w-0">
                       <FileCode size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" />
                       <input
                         type="text"
                         value={docName}
                         onChange={(e) => setDocName(e.target.value)}
-                        onKeyDown={(e) => e.key === 'Enter' && handleCreateNew()}
-                        placeholder="New document name"
+                        onKeyDown={(e) => e.key === 'Enter' && handleSaveCurrent()}
+                        placeholder={!activeDocumentId ? "Name your current document to save..." : "Document name..."}
                         className="h-9.5 w-full rounded-lg border border-slate-200 bg-white pl-9 pr-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500 sm:h-10"
                       />
                     </div>
-                    <button
-                      onClick={handleCreateNew}
-                      className="inline-flex h-9.5 shrink-0 items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 active:scale-[0.98] sm:h-10 sm:px-4 sm:text-sm"
-                      title="Create Document"
-                      aria-label="Create Document"
-                    >
-                      <Plus size={16} className="shrink-0" />
-                      <span>Create</span>
-                    </button>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        onClick={handleSaveCurrent}
+                        className="inline-flex h-9.5 flex-1 sm:flex-initial items-center justify-center gap-1.5 rounded-lg bg-blue-600 px-3.5 text-xs font-semibold text-white shadow-sm shadow-blue-600/20 transition-all hover:bg-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500/40 active:scale-[0.98] sm:h-10 sm:text-sm"
+                        title={!activeDocumentId ? "Save Current Document" : "Save Current as New"}
+                        aria-label="Save Current Document"
+                      >
+                        <Save size={15} className="shrink-0" />
+                        <span>{!activeDocumentId ? "Save Current" : "Save as Copy"}</span>
+                      </button>
+                      <button
+                        onClick={handleCreateBlank}
+                        className="inline-flex h-9.5 items-center justify-center gap-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 text-xs font-semibold text-slate-700 dark:text-slate-300 transition-all hover:bg-slate-100 dark:hover:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-slate-400 active:scale-[0.98] sm:h-10 sm:text-sm"
+                        title="Create Blank Document"
+                        aria-label="Create Blank Document"
+                      >
+                        <Plus size={15} className="shrink-0 text-slate-500" />
+                        <span>Blank Doc</span>
+                      </button>
+                    </div>
                   </div>
+                  {!activeDocumentId && (
+                    <div className="mt-2 flex items-center gap-1.5 text-xs text-amber-600 dark:text-amber-400 font-medium">
+                      <AlertCircle size={13} className="shrink-0" />
+                      <span>Current workspace is unsaved. Enter a name and click "Save Current" to keep your work.</span>
+                    </div>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-2">
@@ -564,15 +634,19 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
                             confirmDelete(confirmAction.actionId);
                           } else if (confirmAction.type === 'switch' && confirmAction.doc) {
                             performLoad(confirmAction.doc);
+                          } else if (confirmAction.type === 'new-blank') {
+                            performCreateBlank(confirmAction.pendingName || 'Untitled Document');
                           }
                         }}
                         className={`inline-flex h-10 items-center justify-center rounded-lg px-4 text-sm font-semibold text-white shadow-sm transition-colors focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-white dark:focus:ring-offset-slate-900 ${
                           confirmAction.type === 'delete'
                             ? 'bg-red-600 shadow-red-600/20 hover:bg-red-500 focus:ring-red-500/40'
+                            : confirmAction.type === 'new-blank'
+                            ? 'bg-amber-600 shadow-amber-600/20 hover:bg-amber-500 focus:ring-amber-500/40'
                             : 'bg-blue-600 shadow-blue-600/20 hover:bg-blue-500 focus:ring-blue-500/40'
                         }`}
                       >
-                        {confirmAction.type === 'delete' ? 'Delete Document' : 'Switch Document'}
+                        {confirmAction.type === 'delete' ? 'Delete Document' : confirmAction.type === 'new-blank' ? 'Discard & Start Blank' : 'Switch Document'}
                       </button>
                     </div>
                   </motion.div>

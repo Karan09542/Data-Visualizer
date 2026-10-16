@@ -118,6 +118,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const convertFormat = useStore((state) => state.convertFormat);
   const activeDocumentId = useStore((state) => state.activeDocumentId);
   const activeDocumentName = useStore((state) => state.activeDocumentName);
+  const setActiveDocumentId = useStore((state) => state.setActiveDocumentId);
+  const setActiveDocumentName = useStore((state) => state.setActiveDocumentName);
   const isDirty = useStore((state) => state.isDirty);
   const setIsDirty = useStore((state) => state.setIsDirty);
   const setLastSavedCode = useStore((state) => state.setLastSavedCode);
@@ -1139,10 +1141,22 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
               {(isDirty && activeDocumentId && !isAutosaveEnabled) && (
                 <button
                   onClick={async () => {
-                    await db.documents.update(activeDocumentId, {
+                    const updatedCount = await db.documents.update(activeDocumentId, {
                       code,
                       updatedAt: Date.now()
                     });
+                    if (updatedCount === 0) {
+                      const name = activeDocumentName || 'Document 1';
+                      const newId = await db.documents.add({
+                        name,
+                        code,
+                        createdAt: Date.now(),
+                        updatedAt: Date.now(),
+                        isPinned: false
+                      });
+                      setActiveDocumentId(newId as number);
+                      setActiveDocumentName(name);
+                    }
                     setLastSavedCode(code);
                     setIsDirty(false);
                     setNotification({ message: 'Document saved', type: 'success' });
@@ -1154,14 +1168,14 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   <span className="text-xs font-semibold">Save</span>
                 </button>
               )}
-              {(!activeDocumentId && isDirty) && (
+              {!activeDocumentId && (
                 <button
                   onClick={() => setIsSavedDocsOpen(true)}
                   className="flex items-center gap-1.5 p-1.5 px-2.5 rounded-md bg-amber-600 hover:bg-amber-700 text-white transition-colors border border-transparent shadow-sm"
-                  title="Save as new document"
+                  title="Save current workspace as a document"
                 >
                   <Save size={14} />
-                  <span className="text-xs font-semibold">Save New</span>
+                  <span className="text-xs font-semibold">Save</span>
                 </button>
               )}
 
@@ -1483,10 +1497,22 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     <button
                       onClick={async () => {
                         setIsMobileMenuOpen(false);
-                        await db.documents.update(activeDocumentId, {
+                        const updated = await db.documents.update(activeDocumentId, {
                           code,
                           updatedAt: Date.now()
                         });
+                        if (updated === 0) {
+                          const name = activeDocumentName || 'Document 1';
+                          const newId = await db.documents.add({
+                            name,
+                            code,
+                            createdAt: Date.now(),
+                            updatedAt: Date.now(),
+                            isPinned: false
+                          });
+                          setActiveDocumentId(newId as number);
+                          setActiveDocumentName(name);
+                        }
                         setLastSavedCode(code);
                         setIsDirty(false);
                         setNotification({ message: 'Document updated successfully', type: 'success' });
@@ -1505,7 +1531,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                       className="flex items-center gap-2 p-3 bg-amber-600 hover:bg-amber-700 active:bg-amber-800 text-white border border-amber-500/30 rounded-xl text-xs font-semibold transition-all shadow-sm"
                     >
                       <Save size={16} />
-                      <span>Save New</span>
+                      <span>Save Document</span>
                     </button>
                   )}
 
