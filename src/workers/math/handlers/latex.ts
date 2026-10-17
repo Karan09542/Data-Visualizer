@@ -1,5 +1,10 @@
 import { MathWorkerHandler } from "../types";
 import { getParsedNode, parseAndAdjustForCompile } from "../utils/parse";
+import {
+  parseFamilyExpression,
+  evaluateFamilyValues,
+  familyToLatex,
+} from "../../../lib/math/familyPlot";
 
 const toTex: MathWorkerHandler<{ expression: string; coloredVars?: Record<string, string> }> = (payload, context) => {
   context.cancellationToken.throwIfCancelled();
@@ -36,6 +41,22 @@ const expressionToLatex: MathWorkerHandler<{ expression: string; coloredVars?: R
       },
     });
   };
+
+  const family = parseFamilyExpression(payload.expression);
+  if (family) {
+    try {
+      let innerLatex = "";
+      try {
+        innerLatex = getLatex(family.expr);
+      } catch {
+        innerLatex = family.expr;
+      }
+      const latex = familyToLatex(family, innerLatex);
+      return { latex, hasNode: true };
+    } catch (e: any) {
+      return { error: e.message || String(e) };
+    }
+  }
 
   try {
     let latex = "";
@@ -80,6 +101,13 @@ const expressionToLatexWithEval: MathWorkerHandler<{ expression: string; colored
 
   if (latexResult.error || !latexResult.hasNode || !payload.scope) {
     return latexResult;
+  }
+
+  const family = parseFamilyExpression(payload.expression);
+  if (family) {
+    const { values } = evaluateFamilyValues(family, payload.scope);
+    const evalResult = `${values.length} curves (${family.variable} = ${values[0]}..${values[values.length - 1]})`;
+    return { ...latexResult, evalResult };
   }
 
   try {

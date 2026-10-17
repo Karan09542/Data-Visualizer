@@ -1,10 +1,13 @@
 import * as mathjs from "mathjs";
 import { Registry } from "../registry";
+import { parseFamilyExpression } from "../../../lib/math/familyPlot";
 
 export function getParsedNode(registry: Registry, expr: string): any {
   const cached = registry.getParsedNode(expr);
   if (cached) return cached;
-  const node = mathjs.parse(expr);
+  const family = parseFamilyExpression(expr);
+  const targetExpr = family ? family.expr : expr;
+  const node = mathjs.parse(targetExpr);
   registry.setParsedNode(expr, node);
   return node;
 }

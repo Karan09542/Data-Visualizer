@@ -4,6 +4,7 @@
  */
 import * as mathjs from "mathjs";
 import { MathFunction, formatMathError } from "./mathTypes";
+import { parseFamilyExpression } from "./familyPlot";
 
 // ─── AST helpers ──────────────────────────────────────────────────────────────
 
@@ -48,7 +49,9 @@ export const indexHelper = (obj: any, ...indices: any[]) => {
 // ─── Expression compilation ───────────────────────────────────────────────────
 
 export const parseAndAdjustForCompile = (exprStr: string): any => {
-  const node = mathjs.parse(exprStr);
+  const family = parseFamilyExpression(exprStr);
+  const targetExpr = family ? family.expr : exprStr;
+  const node = mathjs.parse(targetExpr);
   const transformNode = (n: any): any => {
     let mapped = n.map(transformNode);
     if (mapped.isFunctionNode) {

@@ -4,6 +4,7 @@ import { formatMathError } from "../utils/helpers";
 import { splitRelation } from "../../../lib/math/splitRelation";
 import { odeExportName, parseOdeSystem } from "../../../lib/math/odeSystem";
 import { GEOMETRY_HELPERS, GEOMETRY_HELPER_NAMES } from "../../../lib/math/geometryHelpers";
+import { parseFamilyExpression } from "../../../lib/math/familyPlot";
 
 const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper", ...GEOMETRY_HELPER_NAMES,
   // Angle units, as in cos(t rad): not sliders.
@@ -183,6 +184,51 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
         }
 
         return { id: f.id, compiledKey: firstKey, error };
+      }
+
+      const family = parseFamilyExpression(f.expr);
+      if (family) {
+        const { key, compiled } = compileExpression(context, family.expr);
+        if (f.label && !f.label.includes("{{")) assignedVars.add(f.label);
+        if (f.name) assignedVars.add(f.name);
+
+        const node = context.registry.getParsedNode(family.expr);
+        if (node) {
+          extractVariables(
+            node,
+            assignedVars,
+            varsToAdd,
+            context,
+            [family.variable, ...(f.type === "polar" ? POLAR_BUILTINS : [])],
+          );
+        }
+
+        for (const boundStr of [family.range.minExpr, family.range.maxExpr, family.range.stepExpr].filter(Boolean) as string[]) {
+          try {
+            const boundNode = context.registry.getParsedNode(boundStr);
+            if (boundNode) {
+              extractVariables(boundNode, assignedVars, varsToAdd, context, [family.variable]);
+            }
+          } catch { }
+        }
+
+        let error: string | undefined;
+        try {
+          const fTime = f.hasCustomTimeline ? (f.time !== undefined ? f.time : 0) : payload.time;
+          const fScope = Object.create(tempBaseScope);
+          fScope.t = fTime;
+          fScope.time = payload.time;
+          fScope.x = 0;
+          fScope.y = 0;
+          fScope[family.variable] = 0;
+          if (f.type === "polar") fScope.theta = fScope["θ"] = 0;
+
+          compiled.evaluate(fScope);
+        } catch (evalErr: any) {
+          error = formatMathError(evalErr.message || String(evalErr));
+        }
+
+        return { id: f.id, compiledKey: key, error };
       }
 
       const { key, compiled } = compileExpression(context, f.expr);

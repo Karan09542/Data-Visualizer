@@ -207,6 +207,28 @@ export const COLORS = [
 ];
 
 export const MATH_COMPLETIONS = [
+  // Curve Families & Parameterized Sequences
+  {
+    name: "family",
+    desc: "Family of curves: family(0:n, f(i) = sin(x) + i) or family(0:5, sin(x) + i)",
+    insert: "family(0:5, sin(x) + i)",
+  },
+  {
+    name: "sequence",
+    desc: "Sequence of curves: sequence(0:n, sin(x) + i) or sequence(0:5, x^2 + i)",
+    insert: "sequence(0:5, sin(x) + i)",
+  },
+  {
+    name: "render",
+    desc: "Plot list/family of equations: render(0:n, f(i) = sin(x) + i)",
+    insert: "render(0:5, f(i) = sin(x) + i)",
+  },
+  {
+    name: "seq",
+    desc: "Sequence of functions: seq(sin(x) + i, i, 0, n)",
+    insert: "seq(sin(x) + i, i, 0, 5)",
+  },
+
   // Basic & Algebraic
   { name: "sin", desc: "Sine of x", insert: "sin(" },
   { name: "cos", desc: "Cosine of x", insert: "cos(" },

@@ -9,6 +9,7 @@
  */
 import * as mathjs from "mathjs";
 import { splitRelation } from "./splitRelation";
+import { parseFamilyExpression } from "./familyPlot";
 
 export type InferredType =
   | "function"
@@ -93,6 +94,11 @@ function classifyValue(src: string): InferredType | null {
 export function inferType(raw: string): InferredType | null {
   const expr = (raw ?? "").trim();
   if (!expr) return null;
+
+  const family = parseFamilyExpression(expr);
+  if (family) {
+    return inferType(family.expr) ?? "function";
+  }
 
   // x' = …, x'' = … (a prime after a name): a differential equation.
   if (/[A-Za-z_θ][A-Za-z0-9_]*'+/.test(expr) && /=/.test(expr)) return "differential";

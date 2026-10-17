@@ -56,3 +56,4 @@ export * from "./FormulaScanner";
 export * from "./InlineFormulaDraw";
 export * from "./colorVariations";
 export * from "./ColorVariationMenu";
+export * from "./familyPlot";
