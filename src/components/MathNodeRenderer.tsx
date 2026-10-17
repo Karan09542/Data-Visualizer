@@ -204,6 +204,9 @@ import {
   InlineFormulaDraw,
   type ScannedRow,
   type RowPlacement,
+  type ColorVariationMode,
+  getNextVariationColor,
+  ColorVariationMenu,
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
@@ -292,11 +295,20 @@ export const MathNodeRenderer: React.FC<any> = ({
   isExpanded,
   width,
   height,
+  isSelected,
 }) => {
   const { compileFunctions } = useMathWorker();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isPanelVisible, setIsPanelVisible] = useState(true);
   const [isShiftPressed, setIsShiftPressed] = useState(false);
+
+  const selectedNodeId = useStore((state) => state.selectedNodeId);
+  const isNodeSelected =
+    Boolean(isSelected) ||
+    (selectedNodeId !== null &&
+      (selectedNodeId === nodeId ||
+        selectedNodeId === data?.id ||
+        selectedNodeId === data?.path));
 
   const [activeGizmo, setActiveGizmo] = useState<{
     id: string;
@@ -626,6 +638,15 @@ export const MathNodeRenderer: React.FC<any> = ({
       vectorResultants: settings.vectorResultants === true,
       timeline: readTimelineSettings(settings.timeline),
       view: readGraphView(settings.view),
+      colorVariationMode:
+        settings.colorVariationMode === "tint" ||
+        settings.colorVariationMode === "shade"
+          ? (settings.colorVariationMode as ColorVariationMode)
+          : ("none" as ColorVariationMode),
+      colorVariationBase:
+        typeof settings.colorVariationBase === "string"
+          ? settings.colorVariationBase
+          : undefined,
     };
   }, []);
 
@@ -737,6 +758,12 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [vectorAngles, setVectorAngles] = useState(initialGridSettings.vectorAngles);
   // Show the resultant wherever drawn vectors are joined.
   const [showResultants, setShowResultants] = useState(initialGridSettings.vectorResultants);
+  const [colorVariationMode, setColorVariationMode] = useState<ColorVariationMode>(
+    initialGridSettings.colorVariationMode || "none",
+  );
+  const [colorVariationBase, setColorVariationBase] = useState<string | undefined>(
+    initialGridSettings.colorVariationBase,
+  );
   // The drawing tool in hand; null lets the graph pan as usual.
   const [drawTool, setDrawTool] = useState<GraphTool | null>(null);
   // What the Vector tool labels its arrows with (remembered per browser).
@@ -855,6 +882,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     vectorResultants: showResultants,
     timeline: timelineSettings,
     view: homeView,
+    colorVariationMode,
+    colorVariationBase,
   });
 
   useEffect(() => {
@@ -886,6 +915,8 @@ export const MathNodeRenderer: React.FC<any> = ({
       vectorResultants: showResultants,
       timeline: timelineSettings,
       view: homeView,
+      colorVariationMode,
+      colorVariationBase,
     };
   }, [
     gridType,
@@ -906,6 +937,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     showResultants,
     timelineSettings,
     homeView,
+    colorVariationMode,
+    colorVariationBase,
   ]);
 
   // compiledKey is runtime state too: saved, it tells a tab that loads the row that
@@ -1028,6 +1061,16 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setVectorAngles(parsed.gridSettings.vectorAngles);
               if (typeof parsed.gridSettings.vectorResultants === "boolean")
                 setShowResultants(parsed.gridSettings.vectorResultants);
+              if (
+                parsed.gridSettings.colorVariationMode === "none" ||
+                parsed.gridSettings.colorVariationMode === "tint" ||
+                parsed.gridSettings.colorVariationMode === "shade"
+              ) {
+                setColorVariationMode(parsed.gridSettings.colorVariationMode);
+              }
+              if (typeof parsed.gridSettings.colorVariationBase === "string") {
+                setColorVariationBase(parsed.gridSettings.colorVariationBase);
+              }
               if (parsed.gridSettings.timeline) {
                 const tl = readTimelineSettings(parsed.gridSettings.timeline);
                 setTimeMode(tl.mode);
@@ -1126,6 +1169,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     showResultants,
     timelineSettings,
     homeView,
+    colorVariationMode,
+    colorVariationBase,
   ]);
 
   useEffect(() => {
@@ -1589,6 +1634,45 @@ export const MathNodeRenderer: React.FC<any> = ({
     setIsPlaying(true);
   };
 
+  const handleTogglePlayRef = useRef(handleTogglePlay);
+  handleTogglePlayRef.current = handleTogglePlay;
+
+  // Spacebar shortcut: toggles time on/off if math node is selected or in maximize mode
+  useEffect(() => {
+    const handleSpaceToggle = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " " && e.key !== "Spacebar") return;
+
+      // Ignore when typing inside any text input or editable element
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === "INPUT" ||
+          target.tagName === "TEXTAREA" ||
+          target.tagName === "SELECT" ||
+          target.isContentEditable ||
+          Boolean(target.closest("input, textarea, select, [contenteditable='true']")))
+      ) {
+        return;
+      }
+
+      // Check if this math node is selected, maximized, or focused
+      const isFocused =
+        Boolean(rootRef.current) &&
+        (rootRef.current!.contains(document.activeElement) ||
+          rootRef.current === document.activeElement);
+
+      const isActive = isFullscreen || isExpanded || isNodeSelected || isFocused;
+      if (!isActive) return;
+
+      e.preventDefault();
+      e.stopPropagation();
+      handleTogglePlayRef.current();
+    };
+
+    window.addEventListener("keydown", handleSpaceToggle, true);
+    return () => window.removeEventListener("keydown", handleSpaceToggle, true);
+  }, [isFullscreen, isExpanded, isNodeSelected]);
+
   // Dragging a handle sets the starting state of a run: pause and go back to the start,
   // so what you drag is where the motion begins. In continuous mode time just carries on.
   const rewindForSetup = () => {
@@ -1698,17 +1782,28 @@ export const MathNodeRenderer: React.FC<any> = ({
   };
 
   const handleAddFunction = () => {
-    setFunctions((prev) => [
-      ...prev,
-      {
-        id: generateSafeId(),
-        expr: "",
-        color: COLORS[prev.length % COLORS.length],
-        visible: true,
-        type: "function",
-        autoType: true,
-      },
-    ]);
+    setFunctions((prev) => {
+      const lastColor = prev.length > 0 ? prev[prev.length - 1].color : undefined;
+      const newColor = getNextVariationColor({
+        mode: colorVariationMode,
+        targetColor: lastColor,
+        baseColor: colorVariationBase,
+        existingColors: prev.map((f) => f.color),
+        fallbackIndex: prev.length,
+      });
+
+      return [
+        ...prev,
+        {
+          id: generateSafeId(),
+          expr: "",
+          color: newColor,
+          visible: true,
+          type: "function",
+          autoType: true,
+        },
+      ];
+    });
   };
 
   // ─── Getting started, and drawing ──────────────────────────────────────────
@@ -1739,9 +1834,17 @@ export const MathNodeRenderer: React.FC<any> = ({
     setFunctions((prev) => {
       const blank = prev.find((f) => !f.expr.trim());
       if (blank) return prev.map((f) => (f === blank ? { ...f, expr, type, autoType: true } : f));
+      const lastColor = prev.length > 0 ? prev[prev.length - 1].color : undefined;
+      const newColor = getNextVariationColor({
+        mode: colorVariationMode,
+        targetColor: lastColor,
+        baseColor: colorVariationBase,
+        existingColors: prev.map((f) => f.color),
+        fallbackIndex: prev.length,
+      });
       return [
         ...prev,
-        { id: generateSafeId(), expr, type, autoType: true, color: COLORS[prev.length % COLORS.length], visible: true },
+        { id: generateSafeId(), expr, type, autoType: true, color: newColor, visible: true },
       ];
     });
   };
@@ -2117,22 +2220,33 @@ export const MathNodeRenderer: React.FC<any> = ({
     expr2?: string;
     name?: string;
   }) => {
-    setFunctions((prev) => [
-      ...prev,
-      {
-        id: generateSafeId(),
-        expr: formula.expr,
-        expr2: formula.expr2,
-        name: formula.name || "",
-        color: COLORS[prev.length % COLORS.length],
-        visible: true,
-        type: formula.type,
-        // Sensible defaults so an inserted ODE draws something immediately.
-        ...(formula.type === "differential"
-          ? { tRange: [0, 20] as [number, number], odeSteps: 1000, odeAnimate: true }
-          : {}),
-      },
-    ]);
+    setFunctions((prev) => {
+      const lastColor = prev.length > 0 ? prev[prev.length - 1].color : undefined;
+      const newColor = getNextVariationColor({
+        mode: colorVariationMode,
+        targetColor: lastColor,
+        baseColor: colorVariationBase,
+        existingColors: prev.map((f) => f.color),
+        fallbackIndex: prev.length,
+      });
+
+      return [
+        ...prev,
+        {
+          id: generateSafeId(),
+          expr: formula.expr,
+          expr2: formula.expr2,
+          name: formula.name || "",
+          color: newColor,
+          visible: true,
+          type: formula.type,
+          // Sensible defaults so an inserted ODE draws something immediately.
+          ...(formula.type === "differential"
+            ? { tRange: [0, 20] as [number, number], odeSteps: 1000, odeAnimate: true }
+            : {}),
+        },
+      ];
+    });
   };
 
   const handleAddFunctionAt = (
@@ -2143,10 +2257,19 @@ export const MathNodeRenderer: React.FC<any> = ({
       const targetIndex = prev.findIndex((f) => f.id === targetFnId);
       if (targetIndex === -1) return prev;
 
+      const targetFn = prev[targetIndex];
+      const newColor = getNextVariationColor({
+        mode: colorVariationMode,
+        targetColor: targetFn.color,
+        baseColor: colorVariationBase,
+        existingColors: prev.map((f) => f.color),
+        fallbackIndex: prev.length,
+      });
+
       const newFn = {
         id: generateSafeId(),
         expr: "",
-        color: COLORS[prev.length % COLORS.length],
+        color: newColor,
         visible: true,
         type: "function" as const,
         autoType: true,
@@ -2165,10 +2288,18 @@ export const MathNodeRenderer: React.FC<any> = ({
       if (targetIndex === -1) return prev;
 
       const targetFn = prev[targetIndex];
+      const newColor = getNextVariationColor({
+        mode: colorVariationMode,
+        targetColor: targetFn.color,
+        baseColor: colorVariationBase,
+        existingColors: prev.map((f) => f.color),
+        fallbackIndex: prev.length,
+      });
+
       const newFn = {
         ...targetFn,
         id: generateSafeId(),
-        color: COLORS[prev.length % COLORS.length],
+        color: newColor,
       };
 
       const next = [...prev];
@@ -2493,6 +2624,12 @@ export const MathNodeRenderer: React.FC<any> = ({
   const content = (
     <div
       ref={rootRef}
+      tabIndex={0}
+      onMouseDown={() => {
+        if (nodeId || data?.id) {
+          useStore.getState().setSelectedNodeId(nodeId || data?.id);
+        }
+      }}
       className={`${appTheme} flex flex-col bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-slate-200 shadow-2xl overflow-hidden transition-[border-color,box-shadow] duration-300 ${
         // Only one position class: with both `relative` and `fixed`, Tailwind's order makes
         // `relative` win and the maximized view lands below the page, off screen.
@@ -2732,14 +2869,34 @@ export const MathNodeRenderer: React.FC<any> = ({
                       >
                         <Trash2 size={14} />
                       </button>
-                      <button
-                        onClick={handleAddFunction}
-                        className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-300 transition-colors"
-                        title="Add Function"
-                      >
-                        <Plus size={14} />
-                      </button>
                     </div>
+                  </div>
+
+                  {/* Dedicated Action Bar: Color Variation Mode (None / Tint / Shade) & Add Function */}
+                  <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-1.5 p-1 sm:p-1.5 rounded-lg bg-slate-100/90 dark:bg-slate-900/60 border border-slate-200/80 dark:border-slate-700/60 shadow-2xs">
+                    <div className="flex items-center gap-1 sm:gap-1.5 min-w-0">
+                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider hidden min-[420px]:inline">
+                        Color:
+                      </span>
+                      <ColorVariationMenu
+                        mode={colorVariationMode}
+                        setMode={setColorVariationMode}
+                        baseColor={colorVariationBase}
+                        setBaseColor={setColorVariationBase}
+                        functions={functions}
+                        setFunctions={setFunctions}
+                      />
+                    </div>
+                    <button
+                      onClick={handleAddFunction}
+                      className="flex items-center gap-1 px-2 sm:px-2.5 py-1 rounded-md bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-semibold shadow-xs transition-colors shrink-0"
+                      title="Add a new function row"
+                    >
+                      <Plus size={13} strokeWidth={2.5} />
+                      <span>
+                        Add<span className="hidden min-[360px]:inline">&nbsp;Function</span>
+                      </span>
+                    </button>
                   </div>
 
                   <div className="flex flex-col gap-3">
@@ -6116,16 +6273,26 @@ export const MathNodeRenderer: React.FC<any> = ({
                             key={tmpl.label}
                             onClick={() => {
                               setActiveExample(null); // Clear example highlight when custom item is inserted
-                              setFunctions((prev) => [
-                                ...prev,
-                                {
-                                  id: generateSafeId(),
-                                  expr: tmpl.fn,
-                                  color: COLORS[prev.length % COLORS.length],
-                                  type: (tmpl.type as any) || "function",
-                                  visible: true,
-                                },
-                              ]);
+                              setFunctions((prev) => {
+                                const lastColor = prev.length > 0 ? prev[prev.length - 1].color : undefined;
+                                const newColor = getNextVariationColor({
+                                  mode: colorVariationMode,
+                                  targetColor: lastColor,
+                                  baseColor: colorVariationBase,
+                                  existingColors: prev.map((f) => f.color),
+                                  fallbackIndex: prev.length,
+                                });
+                                return [
+                                  ...prev,
+                                  {
+                                    id: generateSafeId(),
+                                    expr: tmpl.fn,
+                                    color: newColor,
+                                    type: (tmpl.type as any) || "function",
+                                    visible: true,
+                                  },
+                                ];
+                              });
                             }}
                             className="px-2 py-1 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-mono text-[10px] rounded border border-slate-200 dark:border-slate-700 transition-colors shadow-sm"
                             title={
@@ -6162,16 +6329,26 @@ export const MathNodeRenderer: React.FC<any> = ({
                             key={fn}
                             onClick={() => {
                               setActiveExample(null); // Clear example highlight when custom equation is inserted
-                              setFunctions((prev) => [
-                                ...prev,
-                                {
-                                  id: generateSafeId(),
-                                  expr: fn,
-                                  color: COLORS[prev.length % COLORS.length],
-                                  type: "function",
-                                  visible: true,
-                                },
-                              ]);
+                              setFunctions((prev) => {
+                                const lastColor = prev.length > 0 ? prev[prev.length - 1].color : undefined;
+                                const newColor = getNextVariationColor({
+                                  mode: colorVariationMode,
+                                  targetColor: lastColor,
+                                  baseColor: colorVariationBase,
+                                  existingColors: prev.map((f) => f.color),
+                                  fallbackIndex: prev.length,
+                                });
+                                return [
+                                  ...prev,
+                                  {
+                                    id: generateSafeId(),
+                                    expr: fn,
+                                    color: newColor,
+                                    type: "function",
+                                    visible: true,
+                                  },
+                                ];
+                              });
                             }}
                             className="px-2 py-1 bg-blue-50 dark:bg-blue-900/30 hover:bg-blue-100 dark:hover:bg-blue-800/40 text-blue-600 dark:text-blue-300 font-mono text-[10px] rounded border border-blue-200 dark:border-blue-800/50 transition-colors shadow-sm"
                           >

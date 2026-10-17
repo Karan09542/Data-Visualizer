@@ -1835,6 +1835,7 @@ function NodeRenderer({
                     isExpanded={isExpanded}
                     width={fWidth}
                     height={fHeight}
+                    isSelected={isSelected}
                   />
                 )}
                 {hasChildren && isCollapsed && (

@@ -54,3 +54,5 @@ export * from "./CalculatorResult";
 export * from "./SavedScenesLibrary";
 export * from "./FormulaScanner";
 export * from "./InlineFormulaDraw";
+export * from "./colorVariations";
+export * from "./ColorVariationMenu";

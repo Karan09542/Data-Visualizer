@@ -71,6 +71,7 @@ async function getFilesFromEntry(entry: any, path = ""): Promise<{ file: File, p
 import {
   Copy,
   Plus,
+  PlusCircle,
   Image as ImageIcon,
   Send,
   MessageSquare,
@@ -117,6 +118,8 @@ import { authFetch, refreshAuthToken, handleSessionExpired } from "../lib/authFe
 import { getDeviceHandshake, DeviceInfo } from "../lib/deviceInfo";
 import { io, Socket } from "socket.io-client";
 import { SafeModelViewer } from "./SafeModelViewer";
+import { blobRegistry, getFileType, addChatMessageToCanvas } from "../utils/chatCanvasUtils";
+export { blobRegistry, getFileType };
 
 export interface Attachment {
   id: string;
@@ -129,7 +132,123 @@ export interface Attachment {
   streamProgress?: number;
 }
 
-const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, readonly = false, layout = "composer", isDark = true }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, copyStatusObj?: { id: string, status: string } | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid", isDark?: boolean }) => {
+export const AddToCanvasIconButton: React.FC<{
+  status?: "adding" | "success" | null;
+  onClick: (e: React.MouseEvent) => void;
+  isDark?: boolean;
+  size?: "sm" | "md" | "lg";
+  tooltip?: string;
+  className?: string;
+  showFloatingToast?: boolean;
+}> = ({
+  status,
+  onClick,
+  isDark = true,
+  size = "md",
+  tooltip = "Add to Canvas as Node",
+  className = "",
+  showFloatingToast = true,
+}) => {
+  const isSuccess = status === "success";
+  const isAdding = status === "adding";
+
+  const iconClasses = size === "sm" ? "w-3 h-3" : size === "lg" ? "w-4 h-4" : "w-3.5 h-3.5";
+  const buttonPadding = size === "sm" ? "p-1" : size === "lg" ? "p-3" : "p-1.5";
+
+  return (
+    <div className="relative inline-flex items-center justify-center">
+      <motion.button
+        type="button"
+        whileHover={!isAdding && !isSuccess ? { scale: 1.15 } : undefined}
+        whileTap={!isAdding ? { scale: 0.82 } : undefined}
+        onClick={(e) => {
+          e.stopPropagation();
+          if (!isAdding) onClick(e);
+        }}
+        disabled={isAdding}
+        title={isSuccess ? "Added to Canvas!" : isAdding ? "Adding to Canvas..." : tooltip}
+        aria-label={isSuccess ? "Added to Canvas!" : tooltip}
+        className={`relative ${buttonPadding} rounded-full transition-all duration-200 flex items-center justify-center cursor-pointer select-none overflow-visible ${
+          isSuccess
+            ? "bg-emerald-500/25 text-emerald-400 ring-1 ring-emerald-500/50 shadow-sm shadow-emerald-500/30"
+            : isAdding
+            ? "bg-indigo-500/20 text-indigo-400 ring-1 ring-indigo-500/30 cursor-wait"
+            : isDark
+            ? "hover:bg-indigo-500/20 hover:text-indigo-300 text-slate-300"
+            : "hover:bg-indigo-50 hover:text-indigo-600 text-slate-600"
+        } ${className}`}
+      >
+        {/* Expanding pulse ripple on click success */}
+        <AnimatePresence>
+          {isSuccess && (
+            <motion.span
+              key="ripple"
+              initial={{ scale: 0.8, opacity: 0.9 }}
+              animate={{ scale: 2.3, opacity: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
+              className="absolute inset-0 rounded-full bg-emerald-400/50 pointer-events-none"
+            />
+          )}
+        </AnimatePresence>
+
+        <AnimatePresence mode="wait">
+          {isSuccess ? (
+            <motion.div
+              key="check"
+              initial={{ scale: 0, rotate: -45 }}
+              animate={{ scale: 1, rotate: 0 }}
+              exit={{ scale: 0 }}
+              transition={{ type: "spring", stiffness: 500, damping: 25 }}
+              className="flex items-center justify-center"
+            >
+              <Check className={`${iconClasses} text-emerald-400 stroke-[2.5]`} />
+            </motion.div>
+          ) : isAdding ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0, rotate: 0 }}
+              animate={{ opacity: 1, rotate: 360 }}
+              exit={{ opacity: 0 }}
+              transition={{ repeat: Infinity, duration: 0.7, ease: "linear" }}
+              className="flex items-center justify-center"
+            >
+              <RefreshCw className={`${iconClasses} text-indigo-400 animate-spin`} />
+            </motion.div>
+          ) : (
+            <motion.div
+              key="plus"
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.8 }}
+              className="flex items-center justify-center"
+            >
+              <PlusCircle className={`${iconClasses} stroke-[2]`} />
+            </motion.div>
+          )}
+        </AnimatePresence>
+      </motion.button>
+
+      {/* Floating mini "Added!" tooltip pill right above button when clicked */}
+      <AnimatePresence>
+        {isSuccess && showFloatingToast && (
+          <motion.div
+            initial={{ opacity: 0, y: 4, scale: 0.7 }}
+            animate={{ opacity: 1, y: -26, scale: 1 }}
+            exit={{ opacity: 0, y: -30, scale: 0.7 }}
+            transition={{ type: "spring", stiffness: 450, damping: 22 }}
+            className="absolute bottom-full left-1/2 -translate-x-1/2 mb-1 pointer-events-none z-50 whitespace-nowrap px-2 py-0.5 rounded-full bg-emerald-600 text-white font-bold text-[9px] tracking-wide shadow-lg shadow-emerald-950/50 flex items-center gap-1 border border-emerald-400/50"
+          >
+            <Check className="w-2.5 h-2.5 stroke-[3]" />
+            <span>Added!</span>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+};
+
+const FilePreviewCard = React.memo(({ file, onRemove, onCopy, onAddToCanvas, copyStatusObj, addedStatusObj, readonly = false, layout = "composer", isDark = true }: { file: File | Attachment, onRemove?: () => void, onCopy?: () => void, onAddToCanvas?: () => void, copyStatusObj?: { id: string, status: string } | null, addedStatusObj?: { id: string, status: string } | null, readonly?: boolean, layout?: "composer" | "grid" | "list" | "single-grid", isDark?: boolean }) => {
   const isFileObj = file instanceof File;
   const fileName = isFileObj ? file.name : (file as Attachment).fileName;
   const fileSize = isFileObj ? file.size : (file as Attachment).fileSize;
@@ -230,6 +349,16 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, copyStatusObj, rea
 
       {/* Action Buttons Container */}
       <div className="absolute top-1 right-1 flex items-center gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity z-20">
+        {onAddToCanvas && (
+          <AddToCanvasIconButton
+            status={addedStatusObj?.id === (file as Attachment).id ? (addedStatusObj.status as any) : null}
+            onClick={() => onAddToCanvas()}
+            isDark={true}
+            size="sm"
+            showFloatingToast={false}
+            className="w-7 h-7 bg-black/60 hover:bg-black/80 text-white backdrop-blur-sm"
+          />
+        )}
         {onCopy && (
           <button
             onClick={(e) => {
@@ -297,21 +426,7 @@ interface Message {
   streamProgress?: number;
 }
 
-export const blobRegistry = new Map<string, Blob>();
 
-const getFileType = (fileName: string) => {
-  const ext = fileName.split(".").pop()?.toLowerCase();
-  if (["png", "jpg", "jpeg", "gif", "webp", "svg"].includes(ext || ""))
-    return "image";
-  if (["mp4", "webm", "ogg", "mov"].includes(ext || "")) return "video";
-  if (["mp3", "wav", "m4a", "flac"].includes(ext || "")) return "audio";
-  if (["pdf"].includes(ext || "")) return "pdf";
-  if (["txt", "md", "json", "yaml", "yml", "csv", "log"].includes(ext || ""))
-    return "text_file";
-  if (["glb", "gltf", "obj", "fbx", "stl"].includes(ext || ""))
-    return "3d_model";
-  return "file";
-};
 
 const formatFileSize = (bytes: number) => sharedFormatFileSize(bytes, 'B', 1);
 
@@ -945,6 +1060,28 @@ export const TransferNodeRenderer: React.FC<{
   const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
   const [showChrome, setShowChrome] = useState(true);
   const [copyStatus, setCopyStatus] = useState<{ id: string, status: "copying" | "success" } | null>(null);
+  const [addedStatus, setAddedStatus] = useState<{ id: string, status: "adding" | "success" } | null>(null);
+
+  const handleAddMessageToCanvas = async (msg: any) => {
+    const targetId = msg.id || "msg";
+    setAddedStatus({ id: targetId, status: "adding" });
+    try {
+      const [res] = await Promise.all([
+        addChatMessageToCanvas(msg),
+        new Promise((resolve) => setTimeout(resolve, 240)),
+      ]);
+      if (res) {
+        setAddedStatus({ id: targetId, status: "success" });
+        setTimeout(() => {
+          setAddedStatus((prev) => (prev?.id === targetId ? null : prev));
+        }, 2200);
+      } else {
+        setAddedStatus(null);
+      }
+    } catch {
+      setAddedStatus(null);
+    }
+  };
 
   useEffect(() => {
     let timeout: NodeJS.Timeout;
@@ -4677,26 +4814,39 @@ export const TransferNodeRenderer: React.FC<{
                                     : "left-full ml-2"
                                     }`}
                                 >
-                                  <button
+                                  <AddToCanvasIconButton
+                                    status={addedStatus?.id === msg.id ? addedStatus.status : null}
+                                    onClick={() => handleAddMessageToCanvas(msg)}
+                                    isDark={isDark}
+                                    size="md"
+                                    showFloatingToast={true}
+                                  />
+                                  <motion.button
+                                    type="button"
+                                    whileHover={{ scale: 1.15 }}
+                                    whileTap={{ scale: 0.85 }}
                                     onClick={() =>
                                       handleCopyMessage(msg)
                                     }
-                                    title="Copy"
-                                    className={`p-1.5 rounded-full transition-colors ${isDark ? "hover:bg-white/20 text-white" : "hover:bg-slate-100 text-slate-600"}`}
+                                    title={copyStatus?.id === msg.id && copyStatus.status === "success" ? "Copied!" : "Copy"}
+                                    className={`p-1.5 rounded-full transition-all duration-200 cursor-pointer ${copyStatus?.id === msg.id && copyStatus.status === "success" ? "bg-emerald-500/25 text-emerald-400 ring-1 ring-emerald-500/40" : isDark ? "hover:bg-white/20 text-white" : "hover:bg-slate-100 text-slate-600"}`}
                                   >
                                     {copyStatus?.id === msg.id && copyStatus.status === "success" ? (
-                                      <Check className="w-3.5 h-3.5 text-emerald-500" />
+                                      <Check className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
                                     ) : (
                                       <Copy className="w-3.5 h-3.5" />
                                     )}
-                                  </button>
-                                  <button
+                                  </motion.button>
+                                  <motion.button
+                                    type="button"
+                                    whileHover={{ scale: 1.15 }}
+                                    whileTap={{ scale: 0.85 }}
                                     onClick={() => setReplyingTo(msg)}
                                     title="Reply"
-                                    className={`p-1.5 rounded-full transition-colors ${isDark ? "hover:bg-white/20 text-white" : "hover:bg-slate-100 text-slate-600"}`}
+                                    className={`p-1.5 rounded-full transition-all duration-200 cursor-pointer ${isDark ? "hover:bg-white/20 text-white" : "hover:bg-slate-100 text-slate-600"}`}
                                   >
                                     <CornerDownRight className="w-3.5 h-3.5" />
-                                  </button>
+                                  </motion.button>
                                 </div>
 
                                 {msg.isDeleted ? (
@@ -4765,6 +4915,8 @@ export const TransferNodeRenderer: React.FC<{
                                                         layout={visuals.length === 1 ? "single-grid" : "grid"}
                                                         copyStatusObj={copyStatus}
                                                         onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
+                                                        addedStatusObj={addedStatus}
+                                                        onAddToCanvas={() => handleAddMessageToCanvas({ ...att, sender: msg.sender, timestamp: msg.timestamp })}
                                                       />
                                                       {renderStreamStateUI(att, msg.sender, att.fileName, att.fileSize || 0, true)}
                                                     </div>
@@ -4791,6 +4943,8 @@ export const TransferNodeRenderer: React.FC<{
                                                         layout="list"
                                                         copyStatusObj={copyStatus}
                                                         onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
+                                                        addedStatusObj={addedStatus}
+                                                        onAddToCanvas={() => handleAddMessageToCanvas({ ...att, sender: msg.sender, timestamp: msg.timestamp })}
                                                       />
                                                       {renderStreamStateUI(att, msg.sender, att.fileName, att.fileSize || 0, true)}
                                                     </div>
@@ -4884,19 +5038,31 @@ export const TransferNodeRenderer: React.FC<{
                                     {msg.type === "file" && (
                                       <div className="flex flex-col gap-1">
                                         {msg.fileType === "image" && (
-                                          <button
-                                            onClick={() => setSelectedMedia(msg)}
-                                            className="relative rounded-2xl overflow-hidden group/img transition-transform active:scale-[0.98]"
-                                          >
-                                            <img
-                                              src={msg.content}
-                                              alt={msg.fileName}
-                                              className="w-full max-h-[300px] object-cover"
-                                            />
-                                            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
-                                              <Eye className="w-8 h-8 text-white" />
+                                          <div className="relative rounded-2xl overflow-hidden group/img">
+                                            <button
+                                              onClick={() => setSelectedMedia(msg)}
+                                              className="w-full block transition-transform active:scale-[0.98]"
+                                            >
+                                              <img
+                                                src={msg.content}
+                                                alt={msg.fileName}
+                                                className="w-full max-h-[300px] object-cover"
+                                              />
+                                              <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
+                                                <Eye className="w-8 h-8 text-white" />
+                                              </div>
+                                            </button>
+                                            <div className="absolute top-3 right-3 z-10 opacity-0 group-hover/img:opacity-100 transition-opacity">
+                                              <AddToCanvasIconButton
+                                                status={addedStatus?.id === msg.id ? addedStatus.status : null}
+                                                onClick={() => handleAddMessageToCanvas(msg)}
+                                                isDark={true}
+                                                size="md"
+                                                showFloatingToast={true}
+                                                className="p-2 bg-black/50 hover:bg-black/80 backdrop-blur-md text-white shadow-lg"
+                                              />
                                             </div>
-                                          </button>
+                                          </div>
                                         )}
 
                                         {msg.fileType === "video" && (
@@ -4918,13 +5084,23 @@ export const TransferNodeRenderer: React.FC<{
                                                 }
                                               }}
                                             />
-                                            <button
-                                              onClick={() => setSelectedMedia(msg)}
-                                              className="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-black/80 backdrop-blur-md text-white transition-opacity z-10"
-                                              title="Expand Video"
-                                            >
-                                              <Maximize className="w-4 h-4" />
-                                            </button>
+                                            <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+                                              <AddToCanvasIconButton
+                                                status={addedStatus?.id === msg.id ? addedStatus.status : null}
+                                                onClick={() => handleAddMessageToCanvas(msg)}
+                                                isDark={true}
+                                                size="md"
+                                                showFloatingToast={true}
+                                                className="p-2 bg-black/40 hover:bg-black/80 backdrop-blur-md text-white shadow-lg"
+                                              />
+                                              <button
+                                                onClick={() => setSelectedMedia(msg)}
+                                                className="p-2 rounded-full bg-black/40 hover:bg-black/80 backdrop-blur-md text-white transition-opacity active:scale-90"
+                                                title="Expand Video"
+                                              >
+                                                <Maximize className="w-4 h-4" />
+                                              </button>
+                                            </div>
                                           </div>
                                         )}
 
@@ -4937,13 +5113,23 @@ export const TransferNodeRenderer: React.FC<{
                                               cameraControls={true}
                                               showControls={false}
                                             />
-                                            <button
-                                              onClick={() => setSelectedMedia(msg)}
-                                              className="absolute top-3 right-3 p-2 rounded-full bg-black/40 hover:bg-black/80 backdrop-blur-md text-white transition-opacity z-10"
-                                              title="Expand 3D Model"
-                                            >
-                                              <Maximize className="w-4 h-4" />
-                                            </button>
+                                            <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
+                                              <AddToCanvasIconButton
+                                                status={addedStatus?.id === msg.id ? addedStatus.status : null}
+                                                onClick={() => handleAddMessageToCanvas(msg)}
+                                                isDark={true}
+                                                size="md"
+                                                showFloatingToast={true}
+                                                className="p-2 bg-black/40 hover:bg-black/80 backdrop-blur-md text-white shadow-lg"
+                                              />
+                                              <button
+                                                onClick={() => setSelectedMedia(msg)}
+                                                className="p-2 rounded-full bg-black/40 hover:bg-black/80 backdrop-blur-md text-white transition-opacity active:scale-90"
+                                                title="Expand 3D Model"
+                                              >
+                                                <Maximize className="w-4 h-4" />
+                                              </button>
+                                            </div>
                                             <div className="absolute inset-x-0 bottom-0 p-3 bg-gradient-to-t from-black/80 to-transparent pointer-events-none">
                                               <span className="text-xs font-bold text-white drop-shadow-md flex items-center gap-2">
                                                 <Box className="w-4 h-4 text-indigo-400" />
@@ -5438,10 +5624,41 @@ export const TransferNodeRenderer: React.FC<{
                                     <FileIcon className="w-8 h-8 text-indigo-500" />
                                   </div>
                                 )}
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1">
-                                  <span className="text-[8px] font-black text-white uppercase tracking-tighter truncate max-w-full px-1">
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-1">
+                                  <span className="text-[9px] font-black text-white uppercase tracking-tighter truncate max-w-full px-1">
                                     {m.fileName}
                                   </span>
+                                  <div
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAddMessageToCanvas(m);
+                                    }}
+                                    className={`px-2.5 py-1 rounded-full text-white text-[9px] font-bold flex items-center gap-1.5 shadow-md transition-all active:scale-95 cursor-pointer ${
+                                      addedStatus?.id === m.id && addedStatus.status === "success"
+                                        ? "bg-emerald-600 ring-2 ring-emerald-400/50"
+                                        : addedStatus?.id === m.id && addedStatus.status === "adding"
+                                        ? "bg-indigo-500/80 cursor-wait"
+                                        : "bg-indigo-600 hover:bg-indigo-700"
+                                    }`}
+                                    title={addedStatus?.id === m.id && addedStatus.status === "success" ? "Added to Canvas!" : "Add to Canvas as Node"}
+                                  >
+                                    {addedStatus?.id === m.id && addedStatus.status === "success" ? (
+                                      <>
+                                        <Check className="w-3 h-3 text-emerald-200 stroke-[2.5]" />
+                                        <span>Added!</span>
+                                      </>
+                                    ) : addedStatus?.id === m.id && addedStatus.status === "adding" ? (
+                                      <>
+                                        <RefreshCw className="w-3 h-3 animate-spin text-indigo-200" />
+                                        <span>Adding...</span>
+                                      </>
+                                    ) : (
+                                      <>
+                                        <PlusCircle className="w-3 h-3" />
+                                        <span>Canvas</span>
+                                      </>
+                                    )}
+                                  </div>
                                 </div>
                               </button>
                             ))}
@@ -5482,6 +5699,28 @@ export const TransferNodeRenderer: React.FC<{
 
                             return (
                               <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => {
+                                    handleAddMessageToCanvas(targetMsg);
+                                    setTimeout(() => {
+                                      setShowContextMenu(null);
+                                    }, 1000);
+                                  }}
+                                  className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs font-bold transition-all active:scale-98 cursor-pointer ${addedStatus?.id === targetMsg.id && addedStatus?.status === "success" ? "bg-emerald-500/10 text-emerald-400" : isDark ? "hover:bg-white/5 text-slate-300" : "hover:bg-slate-50 text-slate-700"}`}
+                                >
+                                  {addedStatus?.id === targetMsg.id && addedStatus?.status === "success" ? (
+                                    <Check className="w-4 h-4 text-emerald-400 stroke-[2.5]" />
+                                  ) : addedStatus?.id === targetMsg.id && addedStatus?.status === "adding" ? (
+                                    <RefreshCw className="w-4 h-4 text-indigo-400 animate-spin" />
+                                  ) : (
+                                    <PlusCircle className="w-4 h-4 text-indigo-400" />
+                                  )}
+                                  {addedStatus?.id === targetMsg.id && addedStatus?.status === "success"
+                                    ? "Added to Canvas!"
+                                    : addedStatus?.id === targetMsg.id && addedStatus?.status === "adding"
+                                    ? "Adding to Canvas..."
+                                    : "Add to Canvas as Node"}
+                                </button>
                                 <button
                                   onClick={() => {
                                     if (targetMsg.type === "text") {
@@ -5653,6 +5892,14 @@ export const TransferNodeRenderer: React.FC<{
                           <RotateCw className="w-4 h-4" />
                         </button>
                       )}
+                      <AddToCanvasIconButton
+                        status={addedStatus?.id === item.id ? addedStatus.status : null}
+                        onClick={() => handleAddMessageToCanvas(item)}
+                        isDark={isDark}
+                        size="lg"
+                        showFloatingToast={true}
+                        className={`p-3 backdrop-blur-md ${addedStatus?.id === item.id && addedStatus.status === 'success' ? 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30' : isDark ? 'bg-white/10 hover:bg-white/20 text-white' : 'bg-slate-200/60 hover:bg-slate-300 text-slate-800'}`}
+                      />
                       <button
                           onClick={(e) => {
                           e.stopPropagation();
