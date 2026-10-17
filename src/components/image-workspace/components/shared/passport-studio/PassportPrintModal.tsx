@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { AddToCanvasButton, canvasToBlob } from "../../../../utilities/AddToCanvasButton";
 import { createPortal } from 'react-dom';
 import { Eye, Frame, Image as ImageIcon, LayoutGrid, SlidersHorizontal, Wand2 } from 'lucide-react';
-import { useStore } from '../../../../../store/useStore';
+import { useStore, useEffectiveTheme } from '../../../../../store/useStore';
 import { CameraCaptureModal } from '../../../../CameraCaptureModal';
 import { DOCUMENT_PRESETS, PAPER_SIZES, type DocPresetKey, type PaperSizeKey } from './constants';
 import type { ExportFormat, ImageFitMode, ImagePosition, Orientation, PhotoQueueItem } from './types';
@@ -43,7 +43,7 @@ const SIDEBAR_TABS: { value: SidebarTab; label: React.ReactNode }[] = [
 ];
 
 export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceImage, onClose, initialAutoAdjust = false, showAddToCanvas = false }) => {
-  const appTheme = useStore((state) => state.appTheme);
+  const appTheme = useEffectiveTheme();
   const setAppTheme = useStore((state) => state.setAppTheme);
   const isDark = appTheme === 'dark';
 

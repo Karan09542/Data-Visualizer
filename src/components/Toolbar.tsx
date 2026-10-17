@@ -102,7 +102,8 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const appTheme = useStore((state) => state.appTheme);
   const systemTheme = useStore((state) => state.systemTheme);
   const setAppTheme = useStore((state) => state.setAppTheme);
-  const isSystemDefault = appTheme === "system";
+  const isSystemDefault = useStore((state) => state.isSystemDefault);
+  const setIsSystemDefault = useStore((state) => state.setIsSystemDefault);
   const effectiveTheme = getEffectiveTheme(appTheme, systemTheme);
   const setCanvasBackgroundColor = useStore((state) => state.setCanvasBackgroundColor);
   const setCanvasPatternColor = useStore((state) => state.setCanvasPatternColor);
@@ -358,44 +359,12 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const { isFullscreen, isSupported: canGoFullscreen, toggleFullscreen } = useFullscreen();
 
   const toggleSystemDefault = () => {
-    if (isSystemDefault) {
-      // Turn off system default: lock to current effective theme
-      const current = effectiveTheme;
-      setAppTheme(current);
-      if (current === "dark") {
-        setCanvasBackgroundColor("#0d1117");
-        setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
-      } else {
-        setCanvasBackgroundColor("#f8fafc");
-        setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
-      }
-    } else {
-      // Turn on system default
-      setAppTheme("system");
-      const systemIsDark =
-        typeof window !== "undefined" &&
-        window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-      if (systemIsDark) {
-        setCanvasBackgroundColor("#0d1117");
-        setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
-      } else {
-        setCanvasBackgroundColor("#f8fafc");
-        setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
-      }
-    }
+    setIsSystemDefault(!isSystemDefault);
   };
 
   const toggleLightDarkMode = () => {
     if (isSystemDefault) return;
-    if (effectiveTheme === "dark") {
-      setAppTheme("light");
-      setCanvasBackgroundColor("#f8fafc");
-      setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
-    } else {
-      setAppTheme("dark");
-      setCanvasBackgroundColor("#0d1117");
-      setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
-    }
+    setAppTheme(effectiveTheme === "dark" ? "light" : "dark");
   };
 
 
@@ -1224,7 +1193,9 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   Upload File
                 </span>
               </UploadFileButton>
+            </div>
 
+            <div className="flex items-center space-x-1.5 flex-shrink-0 ml-auto pl-2">
               <button
                 id="main-info-btn"
                 onClick={() => setIsApiHelpOpen(true)}
@@ -1345,9 +1316,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   {shareIndicator?.label}
                 </div>
               </button>
-            </div>
 
-            <div className="flex items-center space-x-2 flex-shrink-0">
               <div className="flex items-center pr-2 border-r border-slate-300 dark:border-slate-800">
                 <button
                   onClick={formatCode}
@@ -1783,7 +1752,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     )}
                     <span>
                       {isSystemDefault
-                        ? "Mode (Auto)"
+                        ? `Mode: ${effectiveTheme === "dark" ? "Dark" : "Light"} (Auto)`
                         : effectiveTheme === "dark"
                         ? "Light Mode"
                         : "Dark Mode"}

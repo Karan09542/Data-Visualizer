@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { useStore } from '../store/useStore';
+import { useStore, useEffectiveTheme } from '../store/useStore';
 import {
   parseCurl,
   buildCurl,
@@ -161,8 +161,8 @@ export function InlineApiEditor({ initialUrl, path, initialTab, onClose }: Inlin
   const apiNodeResponses = useStore((state) => state.apiNodeResponses);
   const jsNodeResponses = useStore((state) => state.jsNodeResponses);
   const parsedData = useStore((state) => state.parsedData);
-  const appTheme = useStore((state) => state.appTheme);
-  const isDark = appTheme !== 'light';
+  const appTheme = useEffectiveTheme();
+  const isDark = appTheme === 'dark';
 
   const currentConfig = apiNodeConfig[path] || {
     method: 'GET',

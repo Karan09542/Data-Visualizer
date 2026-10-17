@@ -433,27 +433,15 @@ export const registerAllVoiceCommands = () => {
     description: "Cycles between dark, light, and system default",
     execute: () => {
       const store = useStore.getState();
-      if (store.appTheme === "dark") {
-        store.setAppTheme("light");
-        store.setCanvasBackgroundColor("#f8fafc");
-        store.setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
-        store.setNotification({ message: 'Switched to light mode', type: 'info' });
-      } else if (store.appTheme === "light") {
-        store.setAppTheme("system");
-        const systemIsDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
-        if (systemIsDark) {
-          store.setCanvasBackgroundColor("#0d1117");
-          store.setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
-        } else {
-          store.setCanvasBackgroundColor("#f8fafc");
-          store.setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
-        }
-        store.setNotification({ message: 'Switched to system default mode', type: 'info' });
-      } else {
+      if (store.isSystemDefault) {
         store.setAppTheme("dark");
-        store.setCanvasBackgroundColor("#0d1117");
-        store.setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
         store.setNotification({ message: 'Switched to dark mode', type: 'info' });
+      } else if (store.appTheme === "dark") {
+        store.setAppTheme("light");
+        store.setNotification({ message: 'Switched to light mode', type: 'info' });
+      } else {
+        store.setAppTheme("system");
+        store.setNotification({ message: 'Switched to system default mode', type: 'info' });
       }
     }
   });

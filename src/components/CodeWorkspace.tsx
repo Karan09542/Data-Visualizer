@@ -171,6 +171,7 @@ const defaultWorkspaceSettings: WorkspaceSettings = {
 export function CodeWorkspace({ path, onClose }: CodeWorkspaceProps) {
   const rawAppTheme = useStore((state) => state.appTheme);
   const systemTheme = useStore((state) => state.systemTheme);
+  const isSystemDefault = useStore((state) => state.isSystemDefault);
   const appTheme = getEffectiveTheme(rawAppTheme, systemTheme);
   const jsNodeFocusLine = useStore((state) => state.jsNodeFocusLine);
   const setJsNodeFocusLine = useStore((state) => state.setJsNodeFocusLine);
@@ -2248,30 +2249,30 @@ declare const console: {
 
                   <button
                     onClick={() => {
-                      if (rawAppTheme === "dark") {
-                        setAppTheme("light");
-                      } else if (rawAppTheme === "light") {
-                        setAppTheme("system");
-                      } else {
+                      if (isSystemDefault) {
                         setAppTheme("dark");
+                      } else if (appTheme === "dark") {
+                        setAppTheme("light");
+                      } else {
+                        setAppTheme("system");
                       }
                     }}
                     className={menuItem}
                   >
                     <div className="flex items-center gap-2">
-                      {rawAppTheme === "dark" ? (
-                        <Sun size={12} />
-                      ) : rawAppTheme === "light" ? (
+                      {isSystemDefault ? (
                         <Monitor size={12} />
+                      ) : appTheme === "dark" ? (
+                        <Sun size={12} />
                       ) : (
                         <Moon size={12} />
                       )}
                       <span>
-                        {rawAppTheme === "dark"
+                        {isSystemDefault
+                          ? `Theme: System (${appTheme})`
+                          : appTheme === "dark"
                           ? "Switch to Light Mode"
-                          : rawAppTheme === "light"
-                          ? "Switch to System Default"
-                          : "Switch to Dark Mode"}
+                          : "Switch to System Default"}
                       </span>
                     </div>
                   </button>

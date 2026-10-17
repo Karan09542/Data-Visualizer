@@ -22,7 +22,7 @@ import AnnotationRenderer from './AnnotationRenderer';
 import '@xyflow/react/dist/style.css';
 import dagre from 'dagre';
 import * as d3 from 'd3';
-import { useStore } from '../store/useStore';
+import { useStore, useEffectiveTheme } from '../store/useStore';
 import { extractSchema, SchemaNodeData, SchemaField } from '../utils/schemaEngine';
 import { ChevronRight, ChevronDown, Eye, EyeOff, Focus } from 'lucide-react';
 import { getEdgePath } from '../utils/layout';
@@ -298,7 +298,7 @@ const CustomSchemaEdge = ({
 }: EdgeProps) => {
   const edgeStyle = useStore((s) => s.edgeStyle);
   const layoutMode = useStore((s) => s.layoutMode);
-  const appTheme = useStore((s) => s.appTheme);
+  const appTheme = useEffectiveTheme();
   const nodeTheme = useStore((s) => s.nodeTheme);
   const edgeWidth = useStore((s) => s.edgeWidth ?? 1.0);
   
@@ -781,7 +781,7 @@ const edgeTypes = {
 
 function SchemaVisualizerInner() {
   const parsedData = useStore((s) => s.parsedData);
-  const appTheme = useStore((s) => s.appTheme);
+  const appTheme = useEffectiveTheme();
   const layoutMode = useStore((s) => s.layoutMode);
   const edgeStyle = useStore((s) => s.edgeStyle);
   const schemaExportActive = useStore((s) => s.schemaExportActive);

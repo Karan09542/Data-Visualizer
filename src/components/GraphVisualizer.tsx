@@ -8,7 +8,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import * as d3 from "d3";
-import { useStore } from "../store/useStore";
+import { useStore, useEffectiveTheme } from "../store/useStore";
 import { useAnnotationStore } from "../store/useAnnotationStore";
 import { computeLayout, getEdgePath } from "../utils/layout";
 import { TreeNode } from "../utils/transformer";
@@ -212,7 +212,7 @@ export default function GraphVisualizer() {
   const canvasPatternColor = useStore((s) => s.canvasPatternColor);
   const canvasBackgroundImage = useStore((s) => s.canvasBackgroundImage);
   const canvasBackgroundBlur = useStore((s) => s.canvasBackgroundBlur);
-  const appTheme = useStore((s) => s.appTheme);
+  const appTheme = useEffectiveTheme();
   const inlineApiEditor = useStore((s) => s.inlineApiEditor);
   const setInlineApiEditor = useStore((s) => s.setInlineApiEditor);
   const autoOrganizeTrigger = useStore((s) => s.autoOrganizeTrigger);

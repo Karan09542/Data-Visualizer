@@ -108,6 +108,7 @@ export const defaultSettings = {
   nodeShape: "default" as NodeShape,
   canvasTheme: "none" as CanvasTheme,
   appTheme: "dark" as AppTheme,
+  isSystemDefault: false,
   canvasBackgroundColor: "rgba(13, 17, 23, 1)",
   canvasPatternColor: "rgba(148, 163, 184, 0.15)",
   canvasBackgroundImage: "",
@@ -383,8 +384,11 @@ export interface StoreState {
   nodeShape: NodeShape;
   canvasTheme: CanvasTheme;
   appTheme: AppTheme;
+  isSystemDefault: boolean;
+  setIsSystemDefault: (enabled: boolean) => void;
   systemTheme: "dark" | "light";
   setSystemTheme: (theme: "dark" | "light") => void;
+  applySystemTheme: (detected: "dark" | "light") => void;
   canvasBackgroundColor: string;
   canvasPatternColor: string;
   canvasBackgroundImage: string;
@@ -621,6 +625,7 @@ export const useStore = create<StoreState>()(
       }
       return {
         ...defaultSettings,
+        isSystemDefault: false,
         systemTheme: (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light") as "dark" | "light",
         setSystemTheme: (theme: "dark" | "light") => set({ systemTheme: theme }),
         code: initialCode,
@@ -1296,7 +1301,61 @@ export const useStore = create<StoreState>()(
         setNodeShape: (shape: NodeShape) =>
           set({ nodeShape: shape, dragOverrides: {} }),
         setCanvasTheme: (theme: CanvasTheme) => set({ canvasTheme: theme }),
-        setAppTheme: (theme: AppTheme) => set({ appTheme: theme }),
+        setAppTheme: (theme: AppTheme) => {
+          if (theme === "system") {
+            const isDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+            const detected: "dark" | "light" = isDark ? "dark" : "light";
+            set({
+              isSystemDefault: true,
+              systemTheme: detected,
+              appTheme: detected,
+              canvasBackgroundColor: detected === "dark" ? "#0d1117" : "#f8fafc",
+              canvasPatternColor: detected === "dark" ? "rgba(148, 163, 184, 0.15)" : "rgba(51, 65, 85, 0.15)",
+            });
+            if (typeof document !== "undefined") {
+              document.documentElement.classList.toggle("dark", detected === "dark");
+            }
+          } else {
+            set({
+              isSystemDefault: false,
+              appTheme: theme,
+              canvasBackgroundColor: theme === "dark" ? "#0d1117" : "#f8fafc",
+              canvasPatternColor: theme === "dark" ? "rgba(148, 163, 184, 0.15)" : "rgba(51, 65, 85, 0.15)",
+            });
+            if (typeof document !== "undefined") {
+              document.documentElement.classList.toggle("dark", theme === "dark");
+            }
+          }
+        },
+        setIsSystemDefault: (enabled: boolean) => {
+          if (enabled) {
+            const isDark = typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches;
+            const detected: "dark" | "light" = isDark ? "dark" : "light";
+            set({
+              isSystemDefault: true,
+              systemTheme: detected,
+              appTheme: detected,
+              canvasBackgroundColor: detected === "dark" ? "#0d1117" : "#f8fafc",
+              canvasPatternColor: detected === "dark" ? "rgba(148, 163, 184, 0.15)" : "rgba(51, 65, 85, 0.15)",
+            });
+            if (typeof document !== "undefined") {
+              document.documentElement.classList.toggle("dark", detected === "dark");
+            }
+          } else {
+            set({ isSystemDefault: false });
+          }
+        },
+        applySystemTheme: (detected: "dark" | "light") => {
+          set({
+            systemTheme: detected,
+            appTheme: detected,
+            canvasBackgroundColor: detected === "dark" ? "#0d1117" : "#f8fafc",
+            canvasPatternColor: detected === "dark" ? "rgba(148, 163, 184, 0.15)" : "rgba(51, 65, 85, 0.15)",
+          });
+          if (typeof document !== "undefined") {
+            document.documentElement.classList.toggle("dark", detected === "dark");
+          }
+        },
         setCanvasBackgroundColor: (color: string) =>
           set({ canvasBackgroundColor: color }),
         setCanvasPatternColor: (color: string) =>
@@ -1775,26 +1834,49 @@ export const useStore = create<StoreState>()(
           typeof p?.edgeStyle === "string" && (EDGE_STYLES as readonly string[]).includes(p.edgeStyle)
             ? p.edgeStyle
             : currentState.edgeStyle;
-        const validAppTheme: AppTheme =
-          p?.appTheme === "light" || p?.appTheme === "system" || p?.appTheme === "dark"
-            ? p.appTheme
-            : currentState.appTheme;
+        const isSystemDefault =
+          typeof p?.isSystemDefault === "boolean"
+            ? p.isSystemDefault
+            : p?.appTheme === "system";
+        const detectedSystem: "dark" | "light" =
+          typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+        let validAppTheme: AppTheme =
+          p?.appTheme === "light" ? "light" : "dark";
+        if (isSystemDefault) {
+          validAppTheme = detectedSystem;
+        }
         return {
           ...currentState,
           ...p,
+          isSystemDefault,
           appTheme: validAppTheme,
+          systemTheme: detectedSystem,
           collapsedNodes,
           nodeTheme,
           edgeStyle,
         };
       },
       onRehydrateStorage: () => (state) => {
-        if (state && state.code) {
-          // Re-parse the hydrated code to reconstruct parsedData and treeData
-          // We use setTimeout to ensure Zustand finishes initializing first
-          setTimeout(() => {
-            useStore.getState().setCode(state.code, true);
-          }, 0);
+        if (state) {
+          const isDark = state.isSystemDefault
+            ? typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches
+            : state.appTheme === "dark";
+          if (typeof document !== "undefined") {
+            document.documentElement.classList.toggle("dark", !!isDark);
+          }
+          if (state.isSystemDefault) {
+            const detected = isDark ? "dark" : "light";
+            useStore.getState().applySystemTheme(detected);
+          }
+          if (state.code) {
+            // Re-parse the hydrated code to reconstruct parsedData and treeData
+            // We use setTimeout to ensure Zustand finishes initializing first
+            setTimeout(() => {
+              useStore.getState().setCode(state.code, true);
+            }, 0);
+          }
         }
       },
     },

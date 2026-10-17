@@ -551,25 +551,36 @@ function App() {
     if (typeof window === "undefined" || !window.matchMedia) return;
     const mediaQuery = window.matchMedia("(prefers-color-scheme: dark)");
 
-    const syncWithSystem = (e: MediaQueryListEvent | MediaQueryList) => {
-      const isDark = e.matches;
-      setSystemTheme(isDark ? "dark" : "light");
-      if (useStore.getState().appTheme === "system") {
-        if (isDark) {
-          useStore.getState().setCanvasBackgroundColor("#0d1117");
-          useStore.getState().setCanvasPatternColor("rgba(148, 163, 184, 0.15)");
-        } else {
-          useStore.getState().setCanvasBackgroundColor("#f8fafc");
-          useStore.getState().setCanvasPatternColor("rgba(51, 65, 85, 0.15)");
-        }
+    const syncWithSystem = (e?: MediaQueryListEvent | MediaQueryList) => {
+      const isDark = e ? e.matches : mediaQuery.matches;
+      const detected: "dark" | "light" = isDark ? "dark" : "light";
+      setSystemTheme(detected);
+      const { isSystemDefault, appTheme } = useStore.getState();
+      if (isSystemDefault || appTheme === "system") {
+        useStore.getState().applySystemTheme(detected);
       }
     };
 
-    syncWithSystem(mediaQuery);
+    syncWithSystem();
 
-    mediaQuery.addEventListener("change", syncWithSystem);
-    return () => mediaQuery.removeEventListener("change", syncWithSystem);
-  }, [appTheme, setSystemTheme]);
+    if (mediaQuery.addEventListener) {
+      mediaQuery.addEventListener("change", syncWithSystem);
+    } else if ((mediaQuery as any).addListener) {
+      (mediaQuery as any).addListener(syncWithSystem);
+    }
+
+    const handleFocus = () => syncWithSystem();
+    window.addEventListener("focus", handleFocus);
+
+    return () => {
+      if (mediaQuery.removeEventListener) {
+        mediaQuery.removeEventListener("change", syncWithSystem);
+      } else if ((mediaQuery as any).removeListener) {
+        (mediaQuery as any).removeListener(syncWithSystem);
+      }
+      window.removeEventListener("focus", handleFocus);
+    };
+  }, [setSystemTheme]);
 
   useEffect(() => {
     let dragCounter = 0;
