@@ -29,7 +29,8 @@ body:not(:has(.pages-layout)),
 #root:not(:has(.pages-layout)) {
   height: 100%;
   overflow: hidden;
-  overscroll-behavior: none;
+  overscroll-behavior-x: none;
+  overscroll-behavior-y: auto;
 }
 
 /* Content pages (About, Examples, Privacy, Terms) scroll naturally */

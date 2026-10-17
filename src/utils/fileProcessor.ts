@@ -63,6 +63,13 @@ export const processFiles = async (files: File[]) => {
     return;
   }
 
+  const isSqlite =
+    type === "application/x-sqlite3" ||
+    type === "application/vnd.sqlite3" ||
+    name.toLowerCase().match(/\.(sqlite|db|sqlite3)$/) !== null;
+
+  const isSqlScript = name.toLowerCase().endsWith(".sql");
+
   const isTextLike =
     type.startsWith("text/") ||
     type === "application/json" ||
@@ -70,9 +77,9 @@ export const processFiles = async (files: File[]) => {
     type === "application/yaml" ||
     name.match(/\.(json|csv|yaml|yml|tsv|txt|md|xml)$/i);
 
-  if (!isMedia && !isExcel && !isTextLike) {
+  if (!isMedia && !isExcel && !isSqlite && !isSqlScript && !isTextLike) {
     useStore.getState().setNotification({
-      message: `Unsupported file type: ${name}. Please upload text, data, or standard media files.`,
+      message: `Unsupported file type: ${name}. Please upload text, SQLite database, data, or standard media files.`,
       type: "error",
     });
     return;
@@ -86,7 +93,17 @@ export const processFiles = async (files: File[]) => {
       const result = event.target?.result;
       if (!result) return;
 
-      if (isExcel) {
+      if (isSqlite) {
+        useStore.getState().setPendingSqliteImport({
+          filename: name,
+          buffer: result as ArrayBuffer,
+        });
+      } else if (isSqlScript) {
+        useStore.getState().setPendingSqliteImport({
+          filename: name,
+          sqlText: result as string,
+        });
+      } else if (isExcel) {
         const { parseExcel } = await import("./dataFormats");
         const dataExcel = await parseExcel(result as ArrayBuffer);
         useStore.getState().setPendingImport({
@@ -128,7 +145,7 @@ export const processFiles = async (files: File[]) => {
     useStore.getState().setFileProcessing(false);
   };
 
-  if (isExcel) {
+  if (isExcel || isSqlite) {
     reader.readAsArrayBuffer(file);
   } else {
     reader.readAsText(file);

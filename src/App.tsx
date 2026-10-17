@@ -16,10 +16,12 @@ import { initDexieSync } from "./store/dexieSync";
 import { setupSyncSubscribers } from "./store/syncSubscribers";
 import { ServiceWorkerUpdater } from "./components/ServiceWorkerUpdater";
 import { OfflineBanner } from "./components/OfflineBanner";
+import { MobilePullToRefresh } from "./components/MobilePullToRefresh";
 import { useKeyboardMediaShortcuts } from "./audio/hooks/useKeyboardMediaShortcuts";
 import { lazyWithRetry } from "./utils/lazyWithRetry";
 
 const ImportModal = lazyWithRetry(() => import("./components/ImportModal").then(module => ({ default: module.ImportModal })), 'ImportModal');
+const SqliteWorkspaceModal = lazyWithRetry(() => import("./components/SqliteWorkspaceModal").then(module => ({ default: module.SqliteWorkspaceModal })), 'SqliteWorkspaceModal');
 const BlankCanvasTemplateGallery = lazyWithRetry(() => import("./components/BlankCanvasTemplateGallery").then(module => ({ default: module.BlankCanvasTemplateGallery })), 'BlankCanvasTemplateGallery');
 const IsolatedNodeView = lazyWithRetry(() => import("./components/IsolatedNodeView").then(module => ({ default: module.IsolatedNodeView })), 'IsolatedNodeView');
 const SchemaVisualizer = lazyWithRetry(() => import("./components/SchemaVisualizer"), 'SchemaVisualizer');
@@ -123,8 +125,10 @@ function App() {
 
     document.body.style.overflow = 'hidden';
     document.body.style.height = '100%';
-    document.body.style.overscrollBehavior = 'none';
-    document.documentElement.style.overscrollBehavior = 'none';
+    document.body.style.overscrollBehaviorX = 'none';
+    document.documentElement.style.overscrollBehaviorX = 'none';
+    document.body.style.overscrollBehaviorY = 'auto';
+    document.documentElement.style.overscrollBehaviorY = 'auto';
 
     return () => {
       window.visualViewport?.removeEventListener('resize', updateAppHeight);
@@ -375,6 +379,28 @@ function App() {
   useEffect(() => {
     const cleanupSync = setupSyncSubscribers();
     initDexieSync();
+
+    // If active document exists in Dexie, ensure its code is loaded if current code is default or empty
+    const syncActiveDoc = async () => {
+      const activeId = useStore.getState().activeDocumentId;
+      if (activeId) {
+        try {
+          const { db } = await import("./lib/db");
+          const doc = await db.documents.get(activeId);
+          if (doc && doc.code) {
+            const currentCode = useStore.getState().code;
+            if (!currentCode.trim() || currentCode.includes("Visual Node Engine for JSON & YAML")) {
+              useStore.getState().setCode(doc.code, true);
+              useStore.getState().setActiveDocumentName(doc.name);
+              useStore.getState().setLastSavedCode(doc.code);
+            }
+          }
+        } catch (e) {
+          console.warn("Failed to sync active document on startup", e);
+        }
+      }
+    };
+    syncActiveDoc();
 
     let gcTimeout: number | null = null;
     const unsub = useStore.subscribe((state, prevState) => {
@@ -750,6 +776,7 @@ function App() {
           </div>
         </div>
       )}
+      <MobilePullToRefresh />
       <OfflineBanner />
       <ServiceWorkerUpdater />
       <AutosaveManager />
@@ -945,6 +972,7 @@ function App() {
           onClose={() => setIsMathHelpOpen(false)}
         />
         <ImportModal />
+        <SqliteWorkspaceModal />
         <SavedDocumentsModal
           isOpen={isSavedDocsOpen}
           onClose={() => setIsSavedDocsOpen(false)}

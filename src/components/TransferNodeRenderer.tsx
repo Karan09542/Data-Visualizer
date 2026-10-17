@@ -109,6 +109,12 @@ import {
   Star,
   Radio,
   RotateCcw,
+  Database,
+  Sparkles,
+  FolderInput,
+  CheckSquare,
+  Square,
+  Layers,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -119,6 +125,9 @@ import { getDeviceHandshake, DeviceInfo } from "../lib/deviceInfo";
 import { io, Socket } from "socket.io-client";
 import { SafeModelViewer } from "./SafeModelViewer";
 import { blobRegistry, getFileType, addChatMessageToCanvas } from "../utils/chatCanvasUtils";
+import { createWorkspaceFileForTransfer } from "../utils/sqliteWorkspace";
+import { db, type SavedDocument } from "../lib/db";
+import { useLiveQuery } from "dexie-react-hooks";
 export { blobRegistry, getFileType };
 
 export interface Attachment {
@@ -335,7 +344,22 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, onAddToCanvas, cop
           </div>
         </>
       )}
-      {fType !== "audio" && fType !== "pdf" && !hasVisualContent && (
+      {fileName && /\.(sqlite|db|sqlite3|sql)$/i.test(fileName) ? (
+        <>
+          <div className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${isDark ? "bg-indigo-500/20 text-indigo-400" : "bg-indigo-100 text-indigo-600"}`}>
+            <Database className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className={`text-sm truncate font-medium flex items-center gap-1.5 ${isDark ? "text-slate-200" : "text-slate-700"}`}>
+              <span className="truncate">{fileName}</span>
+              <span className="px-1 py-0.2 rounded text-[8px] font-black uppercase bg-indigo-500/20 text-indigo-400">
+                {fileName.toLowerCase().endsWith('.sql') ? 'SQL' : 'SQLITE'}
+              </span>
+            </div>
+            <div className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>{formatFileSize(fileSize)}</div>
+          </div>
+        </>
+      ) : fType !== "audio" && fType !== "pdf" && !hasVisualContent && (
         <>
           <div className={`w-10 h-10 rounded flex items-center justify-center shrink-0 ${isDark ? "bg-slate-500/20 text-slate-400" : "bg-slate-200 text-slate-600"}`}>
             <FileIcon className="w-5 h-5" />
@@ -561,6 +585,230 @@ const VideoPlayer = ({ media, isSelected }: { media: Message; isSelected: boolea
         Your browser does not support the video tag.
       </video>
     </div>
+  );
+};
+
+interface WorkspaceTransferModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onSend: (docs: SavedDocument[], format: 'sqlite' | 'sql') => void;
+  isDark: boolean;
+}
+
+const WorkspaceTransferModal: React.FC<WorkspaceTransferModalProps> = ({ isOpen, onClose, onSend, isDark }) => {
+  const documents = useLiveQuery(() => db.documents.toArray()) ?? [];
+  const activeDocumentId = useStore((state) => state.activeDocumentId);
+  const activeDocumentName = useStore((state) => state.activeDocumentName);
+  const currentCode = useStore((state) => state.code);
+
+  const [scope, setScope] = useState<'active' | 'workspace' | 'custom'>('active');
+  const [format, setFormat] = useState<'sqlite' | 'sql'>('sqlite');
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+
+  useEffect(() => {
+    if (isOpen) {
+      setSelectedIds(new Set(documents.map((d) => d.id)));
+    }
+  }, [isOpen, documents.length]);
+
+  if (!isOpen) return null;
+
+  const handleConfirmSend = () => {
+    let docsToSend: SavedDocument[] = [];
+    if (scope === 'active') {
+      docsToSend = [
+        {
+          id: activeDocumentId || 1,
+          name: activeDocumentName || 'Active Document',
+          code: currentCode,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+        },
+      ];
+    } else if (scope === 'custom') {
+      docsToSend = documents
+        .filter((d) => selectedIds.has(d.id))
+        .map((d) => ({
+          ...d,
+          code: d.id === activeDocumentId ? currentCode : d.code,
+        }));
+    } else {
+      if (documents.length === 0) {
+        docsToSend = [
+          {
+            id: activeDocumentId || 1,
+            name: activeDocumentName || 'Active Document',
+            code: currentCode,
+            createdAt: Date.now(),
+            updatedAt: Date.now(),
+          },
+        ];
+      } else {
+        docsToSend = documents.map((d) => ({
+          ...d,
+          code: d.id === activeDocumentId ? currentCode : d.code,
+        }));
+      }
+    }
+
+    onSend(docsToSend, format);
+    onClose();
+  };
+
+  return createPortal(
+    <div
+      className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm"
+      onClick={onClose}
+    >
+      <div
+        className={`w-full max-w-md rounded-2xl border p-5 shadow-2xl ${
+          isDark ? 'bg-slate-900 border-slate-800 text-white' : 'bg-white border-slate-200 text-slate-900'
+        }`}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800 mb-4">
+          <div className="flex items-center gap-2.5">
+            <div className="p-2 rounded-lg bg-indigo-500/10 text-indigo-500">
+              <Database className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm font-bold">Send Workspace via P2P</h4>
+              <p className="text-[11px] text-slate-400">Share single or multiple documents as SQLite/SQL</p>
+            </div>
+          </div>
+          <button onClick={onClose} className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 cursor-pointer">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Scope Options */}
+        <div className="space-y-2 mb-4">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Select Documents</label>
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setScope('active')}
+              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                scope === 'active'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 font-bold'
+                  : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              <div className="text-xs font-bold">Current Doc</div>
+              <div className="text-[9px] opacity-75 truncate">{activeDocumentName || 'Editor'}</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setScope('workspace')}
+              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                scope === 'workspace'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 font-bold'
+                  : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              <div className="text-xs font-bold">All Docs</div>
+              <div className="text-[9px] opacity-75">{documents.length || 1} docs</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setScope('custom')}
+              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                scope === 'custom'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 font-bold'
+                  : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              <div className="text-xs font-bold">Custom</div>
+              <div className="text-[9px] opacity-75">{selectedIds.size} picked</div>
+            </button>
+          </div>
+        </div>
+
+        {/* Custom Document List */}
+        {scope === 'custom' && (
+          <div className="mb-4 p-2 rounded-xl border border-slate-200 dark:border-slate-800 max-h-36 overflow-y-auto space-y-1">
+            {documents.map((d) => {
+              const isChecked = selectedIds.has(d.id);
+              return (
+                <div
+                  key={d.id}
+                  onClick={() => {
+                    const next = new Set(selectedIds);
+                    if (isChecked) next.delete(d.id);
+                    else next.add(d.id);
+                    setSelectedIds(next);
+                  }}
+                  className="flex items-center justify-between p-1.5 rounded-lg text-xs cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-800"
+                >
+                  <div className="flex items-center gap-2 truncate">
+                    {isChecked ? <CheckSquare className="w-3.5 h-3.5 text-indigo-500" /> : <Square className="w-3.5 h-3.5 text-slate-400" />}
+                    <span className="truncate">{d.name}</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400">{(d.code || '').split('\n').length} lines</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Format Options */}
+        <div className="space-y-2 mb-5">
+          <label className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Transfer Format</label>
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              type="button"
+              onClick={() => setFormat('sqlite')}
+              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                format === 'sqlite'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 font-bold'
+                  : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              <div className="text-xs font-bold flex items-center gap-1.5">
+                <Database className="w-3.5 h-3.5" />
+                <span>SQLite (.sqlite)</span>
+              </div>
+              <div className="text-[9px] opacity-75">Binary WASM database</div>
+            </button>
+            <button
+              type="button"
+              onClick={() => setFormat('sql')}
+              className={`p-2.5 rounded-xl border text-left cursor-pointer transition-all ${
+                format === 'sql'
+                  ? 'border-indigo-500 bg-indigo-500/10 text-indigo-400 font-bold'
+                  : 'border-slate-200 dark:border-slate-800 text-slate-500 hover:border-slate-300'
+              }`}
+            >
+              <div className="text-xs font-bold flex items-center gap-1.5">
+                <FileText className="w-3.5 h-3.5" />
+                <span>SQL Script (.sql)</span>
+              </div>
+              <div className="text-[9px] opacity-75">Text CREATE & INSERT</div>
+            </button>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-200 dark:border-slate-800">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 rounded-xl text-xs font-semibold hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleConfirmSend}
+            className="px-4 py-2 rounded-xl text-xs font-bold bg-indigo-600 hover:bg-indigo-700 text-white flex items-center gap-2 shadow-lg shadow-indigo-600/30 transition-all cursor-pointer"
+          >
+            <Send className="w-3.5 h-3.5" />
+            <span>Send Documents</span>
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 };
 
@@ -803,6 +1051,7 @@ export const TransferNodeRenderer: React.FC<{
   const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
   const [autoClipboardSync, setAutoClipboardSync] = useState(false);
   const [largeFileMode, setLargeFileMode] = useState(false);
+  const [showWorkspaceSendModal, setShowWorkspaceSendModal] = useState(false);
   const lastClipboardTextRef = useRef<string>("");
   const lastClipboardImageRef = useRef<string>("");
   const autoClipboardSyncRef = useRef(false);
@@ -1840,6 +2089,70 @@ export const TransferNodeRenderer: React.FC<{
       setMessages((prev) =>
         prev.map((m) => (m.id === msgId ? { ...m, status: "sent" } : m)),
       );
+    }
+  };
+
+  const handleSendWorkspaceDocs = async (docsToSend: SavedDocument[], formatToSend: 'sqlite' | 'sql') => {
+    try {
+      const file = await createWorkspaceFileForTransfer(docsToSend, formatToSend);
+      if (largeFileMode) {
+        startFileStream(file, undefined, false);
+      } else {
+        setPendingFiles((prev) => [...prev, file]);
+      }
+      setNotification({
+        message: `Prepared ${docsToSend.length} document${docsToSend.length === 1 ? '' : 's'} as ${formatToSend.toUpperCase()}`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      console.error('Failed to create workspace file for transfer:', err);
+      setNotification({
+        message: `Failed to prepare workspace transfer: ${err?.message || 'Error'}`,
+        type: 'error',
+      });
+    }
+  };
+
+  const handleImportSqliteFromMessage = async (msg: Message) => {
+    try {
+      let buffer: ArrayBuffer | undefined;
+      let sqlText: string | undefined;
+
+      const isSql = msg.fileName?.toLowerCase().endsWith('.sql');
+      if (isSql) {
+        if (msg.originalBlob) {
+          sqlText = await msg.originalBlob.text();
+        } else if (msg.content) {
+          const res = await fetch(msg.content);
+          sqlText = await res.text();
+        }
+      } else {
+        if (msg.originalBlob) {
+          buffer = await msg.originalBlob.arrayBuffer();
+        } else if (msg.content) {
+          const res = await fetch(msg.content);
+          buffer = await res.arrayBuffer();
+        }
+      }
+
+      if (buffer || sqlText) {
+        useStore.getState().setPendingSqliteImport({
+          filename: msg.fileName || 'workspace.sqlite',
+          buffer,
+          sqlText,
+        });
+      } else {
+        setNotification({
+          message: 'Unable to extract file data from message',
+          type: 'error',
+        });
+      }
+    } catch (err: any) {
+      console.error('Failed to load message file for import:', err);
+      setNotification({
+        message: 'Failed to read SQLite file from message',
+        type: 'error',
+      });
     }
   };
 
@@ -5187,7 +5500,75 @@ export const TransferNodeRenderer: React.FC<{
                                           </div>
                                         )}
 
-                                        {(msg.fileType === "file" ||
+                                        {msg.fileName && /\.(sqlite|db|sqlite3|sql)$/i.test(msg.fileName) ? (
+                                          <div
+                                            className={`flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 rounded-2xl border transition-all ${
+                                              msg.sender === "me"
+                                                ? "bg-white/10 border-white/15 hover:bg-white/15"
+                                                : isDark
+                                                ? "bg-indigo-950/30 border-indigo-500/20 hover:bg-indigo-950/40"
+                                                : "bg-indigo-50/70 border-indigo-200 hover:bg-indigo-100/70"
+                                            }`}
+                                          >
+                                            <div className="flex items-center gap-3 min-w-0 flex-1">
+                                              <div
+                                                className={`p-2.5 sm:p-3 rounded-xl shadow-sm shrink-0 ${
+                                                  msg.sender === "me"
+                                                    ? "bg-white/20 text-white"
+                                                    : isDark
+                                                    ? "bg-indigo-500/20 text-indigo-400"
+                                                    : "bg-indigo-100 text-indigo-700"
+                                                }`}
+                                              >
+                                                <Database className="w-5 h-5 sm:w-6 sm:h-6" />
+                                              </div>
+                                              <div className="flex flex-col min-w-0 flex-1">
+                                                <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                                  <span className="text-xs font-black truncate leading-tight max-w-[150px] sm:max-w-none">
+                                                    {msg.fileName}
+                                                  </span>
+                                                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                                                    {msg.fileName.toLowerCase().endsWith('.sql') ? 'SQL' : 'SQLITE'}
+                                                  </span>
+                                                </div>
+                                                <div className="flex items-center gap-2 text-[9px] font-bold opacity-70 uppercase tracking-widest">
+                                                  <span>{formatFileSize(msg.fileSize || 0)}</span>
+                                                  <span className="w-1 h-1 rounded-full bg-current opacity-40" />
+                                                  <span>Workspace Data</span>
+                                                </div>
+                                              </div>
+                                            </div>
+                                            <div className="flex items-center justify-end gap-2 pt-1.5 sm:pt-0 border-t border-white/5 sm:border-0 shrink-0">
+                                              <button
+                                                type="button"
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleImportSqliteFromMessage(msg);
+                                                }}
+                                                className="px-3 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-[11px] sm:text-xs flex items-center gap-1.5 shadow-md shadow-emerald-600/30 transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                                                title="Import documents into your workspace"
+                                              >
+                                                <FolderInput className="w-3.5 h-3.5" />
+                                                <span>Import</span>
+                                              </button>
+                                              <a
+                                                href={msg.content}
+                                                download={msg.fileName}
+                                                onClick={(e) => e.stopPropagation()}
+                                                className={`p-2 rounded-xl transition-all ${
+                                                  msg.sender === "me"
+                                                    ? "hover:bg-white/20"
+                                                    : isDark
+                                                    ? "hover:bg-white/5"
+                                                    : "hover:bg-slate-200"
+                                                }`}
+                                                title="Download File"
+                                              >
+                                                <Download className="w-4 h-4" />
+                                              </a>
+                                            </div>
+                                          </div>
+                                        ) : (msg.fileType === "file" ||
                                           msg.fileType === "pdf" ||
                                           msg.fileType === "text_file") && (
                                             <div
@@ -5454,37 +5835,63 @@ export const TransferNodeRenderer: React.FC<{
                             )}
                           </AnimatePresence>
                           <div className="flex items-center gap-2">
-                            <label
-                              className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark
-                                ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
-                                : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
-                                }`}
-                            >
-                              <Plus className="w-5 h-5" />
-                              <input
-                                type="file"
-                                className="hidden"
-                                multiple
-                                onChange={(e) => {
-                                  const files = Array.from(e.target.files || []);
-                                  const validFiles = [];
-                                  const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
-                                  let hasLarge = false;
-                                  for (const f of files) {
-                                    if (f.size > currentLimit) hasLarge = true;
-                                    else validFiles.push(f);
-                                  }
-                                  if (hasLarge) {
-                                    setNotification({ message: "Files exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
-                                  }
-                                  if (validFiles.length > 0) {
-                                    setPendingFiles(prev => [...prev, ...validFiles]);
-                                  }
-                                  // clear the input so the same file can be selected again
-                                  e.target.value = '';
-                                }}
-                              />
-                            </label>
+                            <AnimatePresence initial={false}>
+                              {!chatInputFocused && (
+                                <motion.div
+                                  key="chat-upload-actions"
+                                  initial={{ opacity: 0, scale: 0.8, width: 0 }}
+                                  animate={{ opacity: 1, scale: 1, width: "auto" }}
+                                  exit={{ opacity: 0, scale: 0.8, width: 0 }}
+                                  transition={{ duration: 0.18, ease: "easeInOut" }}
+                                  className="flex items-center gap-2 overflow-hidden shrink-0"
+                                >
+                                  <label
+                                    className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark
+                                      ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
+                                      : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
+                                      }`}
+                                    title="Upload Files"
+                                  >
+                                    <Plus className="w-5 h-5" />
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      multiple
+                                      onChange={(e) => {
+                                        const files = Array.from(e.target.files || []);
+                                        const validFiles = [];
+                                        const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
+                                        let hasLarge = false;
+                                        for (const f of files) {
+                                          if (f.size > currentLimit) hasLarge = true;
+                                          else validFiles.push(f);
+                                        }
+                                        if (hasLarge) {
+                                          setNotification({ message: "Files exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
+                                        }
+                                        if (validFiles.length > 0) {
+                                          setPendingFiles(prev => [...prev, ...validFiles]);
+                                        }
+                                        // clear the input so the same file can be selected again
+                                        e.target.value = '';
+                                      }}
+                                    />
+                                  </label>
+
+                                  <button
+                                    type="button"
+                                    onClick={() => setShowWorkspaceSendModal(true)}
+                                    title="Send Workspace Documents as SQLite / SQL"
+                                    className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark
+                                      ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
+                                      : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
+                                    }`}
+                                  >
+                                    <Database className="w-5 h-5" />
+                                  </button>
+                                </motion.div>
+                              )}
+                            </AnimatePresence>
 
                             <div
                               className={`flex-1 flex items-center rounded-3xl p-1.5 border transition-all shadow-inner min-w-0 ${isDark
@@ -5548,9 +5955,10 @@ export const TransferNodeRenderer: React.FC<{
                                 </button>
                               )}
                               <button
+                                onMouseDown={(e) => e.preventDefault()}
                                 onClick={sendMessage}
                                 disabled={!chatInput.trim() && pendingFiles.length === 0}
-                                className="w-[36px] h-[36px] shrink-0 bg-indigo-600 disabled:opacity-50 text-white rounded-full hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center"
+                                className="w-[36px] h-[36px] shrink-0 bg-indigo-600 disabled:opacity-50 text-white rounded-full hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center cursor-pointer"
                               >
                                 <Send className="w-4 h-4 ml-0.5" />
                               </button>
@@ -6016,6 +6424,13 @@ export const TransferNodeRenderer: React.FC<{
               : content;
           })()}
       </div>
+
+      <WorkspaceTransferModal
+        isOpen={showWorkspaceSendModal}
+        onClose={() => setShowWorkspaceSendModal(false)}
+        onSend={handleSendWorkspaceDocs}
+        isDark={isDark}
+      />
 
       {isFullscreenQR && createPortal(
         <div className="fixed inset-0 z-[100000] flex items-center justify-center bg-black/90 backdrop-blur-md"

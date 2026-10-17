@@ -1840,6 +1840,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     </div>
                     <span className="text-[11px] font-semibold text-slate-700 dark:text-slate-300">SVG (Transp.)</span>
                   </button>
+                  <button
+                    onClick={() => {
+                      useStore.getState().setSqliteModalInitialTab('export');
+                      useStore.getState().setIsSqliteModalOpen(true);
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="col-span-2 flex items-center justify-center gap-2 p-3 bg-indigo-50/60 dark:bg-indigo-950/40 hover:bg-indigo-100 dark:hover:bg-indigo-900/40 border border-indigo-200 dark:border-indigo-800 rounded-xl transition-colors group text-indigo-700 dark:text-indigo-300 font-semibold cursor-pointer"
+                  >
+                    <Database size={16} className="text-indigo-600 dark:text-indigo-400" />
+                    <span className="text-xs">SQLite Database (.sqlite)</span>
+                  </button>
                 </div>
               </div>
 
@@ -1973,6 +1984,28 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                 <div className="flex flex-col">
                   <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-rose-600 dark:group-hover:text-rose-400 transition-colors">SVG Transparent</span>
                   <span className="text-[10px] text-slate-400 dark:text-slate-500">Vector w/o background</span>
+                </div>
+              </button>
+
+              <div className="h-px bg-slate-200 dark:bg-slate-800/60 my-0.5 mx-2"></div>
+
+              <button
+                onClick={() => {
+                  useStore.getState().setSqliteModalInitialTab('export');
+                  useStore.getState().setIsSqliteModalOpen(true);
+                  setShowExportPopover(false);
+                }}
+                className="flex items-center gap-2.5 px-2.5 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg text-left group transition-all"
+              >
+                <div className="flex items-center justify-center w-7 h-7 rounded-md bg-indigo-100 dark:bg-indigo-500/20 text-indigo-600 dark:text-indigo-400 group-hover:scale-105 transition-transform">
+                  <Database size={14} />
+                </div>
+                <div className="flex flex-col">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-xs font-semibold text-slate-700 dark:text-slate-200 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">SQLite Database</span>
+                    <span className="px-1 py-0.2 text-[8px] font-black uppercase rounded bg-indigo-500/10 text-indigo-500">WASM</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 dark:text-slate-500">Binary (.sqlite) workspace</span>
                 </div>
               </button>
             </div>

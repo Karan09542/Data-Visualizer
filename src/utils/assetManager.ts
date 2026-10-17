@@ -5,12 +5,12 @@ import { createDeviceFileStore } from "./deviceFileStore";
  * Where media bytes live: OPFS where the device can write it, the assetFiles IndexedDB table
  * where it cannot. db.assets keeps only each file's details and its storageKey.
  */
-const mediaFiles = createDeviceFileStore({
+export const mediaFiles = createDeviceFileStore({
   opfsPath: ["media"],
   table: () => db.assetFiles,
 });
 
-const storageKeyFor = (assetId: string) => `asset://${assetId}`;
+export const storageKeyFor = (assetId: string) => `asset://${assetId}`;
 
 /** Which store new media goes to on this device */
 export const mediaStorageBackend = () => mediaFiles.backend();
@@ -26,6 +26,71 @@ export async function readAssetBlob(asset: Asset): Promise<Blob | null> {
   if (!asset.storageKey) return null;
   const bytes = await mediaFiles.read(asset.storageKey);
   return bytes ? new Blob([bytes], { type: asset.mimeType }) : null;
+}
+
+/**
+ * Reads raw binary bytes for an asset. Checks inline data, device storage (OPFS/IndexedDB),
+ * and fallback storage keys.
+ */
+export async function readAssetBytes(asset: Asset): Promise<Uint8Array | null> {
+  if (asset.data) {
+    if (asset.data instanceof Blob) {
+      const buf = await asset.data.arrayBuffer();
+      return new Uint8Array(buf);
+    }
+    if (asset.data instanceof ArrayBuffer) {
+      return new Uint8Array(asset.data);
+    }
+    if (ArrayBuffer.isView(asset.data)) {
+      const v = asset.data as Uint8Array;
+      return new Uint8Array(v.buffer, v.byteOffset, v.byteLength);
+    }
+  }
+
+  const key = asset.storageKey || storageKeyFor(asset.assetId);
+  try {
+    const bytes = await mediaFiles.read(key);
+    if (bytes) {
+      return new Uint8Array(bytes);
+    }
+  } catch (err) {
+    console.warn(`Failed reading bytes for key ${key}:`, err);
+  }
+
+  try {
+    const record = await db.assetFiles.get(key);
+    if (record?.data) {
+      return new Uint8Array(record.data);
+    }
+  } catch {}
+
+  return null;
+}
+
+/**
+ * Saves binary bytes into device storage (OPFS / db.assetFiles) and updates or inserts
+ * the Asset record in db.assets.
+ */
+export async function saveAssetBinary(
+  asset: Asset,
+  bytes: Uint8Array | ArrayBuffer
+): Promise<void> {
+  const storageKey = asset.storageKey || storageKeyFor(asset.assetId);
+  const arrayBuffer =
+    bytes instanceof Uint8Array
+      ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      : bytes;
+
+  // 1. Write bytes to device store
+  await mediaFiles.write(storageKey, arrayBuffer);
+
+  // 2. Insert or update db.assets
+  await db.assets.put({
+    ...asset,
+    storageKey,
+    size: asset.size || arrayBuffer.byteLength,
+    createdAt: asset.createdAt || Date.now(),
+  });
 }
 
 /**

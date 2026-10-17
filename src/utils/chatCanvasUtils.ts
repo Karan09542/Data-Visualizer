@@ -14,6 +14,8 @@ export const getFileType = (fileName: string): string => {
   if (["pdf"].includes(ext || "")) return "pdf";
   if (["txt", "md", "json", "yaml", "yml", "csv", "log", "tsv", "xml"].includes(ext || ""))
     return "text_file";
+  if (["sqlite", "db", "sqlite3", "sql"].includes(ext || ""))
+    return "sqlite_workspace";
   if (["glb", "gltf", "obj", "fbx", "stl"].includes(ext || ""))
     return "3d_model";
   return "file";
@@ -103,6 +105,36 @@ export async function addChatMessageToCanvas(item: ChatMessageItem): Promise<str
           return { key: base, value: text };
         } catch (err) {
           console.warn("Could not read text_file blob:", err);
+        }
+      }
+
+      if (fType === "sqlite_workspace" && blob) {
+        try {
+          const { parseSqliteWorkspace, parseSqlScriptWorkspace, restoreSqliteAssets } = await import("./sqliteWorkspace");
+          let parsed;
+          if (rawFileName.toLowerCase().endsWith(".sql")) {
+            parsed = await parseSqlScriptWorkspace(await blob.text());
+          } else {
+            parsed = await parseSqliteWorkspace(await blob.arrayBuffer());
+          }
+          if (parsed && parsed.assets && parsed.assets.length > 0) {
+            await restoreSqliteAssets(parsed.assets);
+          }
+          if (parsed && parsed.documents.length > 0) {
+            return {
+              key: `${base}_sqlite_workspace`,
+              value: {
+                meta: parsed.meta,
+                documents: parsed.documents.map((d) => ({
+                  name: d.name,
+                  lineCount: d.code ? d.code.split("\n").length : 0,
+                  content: d.code,
+                })),
+              },
+            };
+          }
+        } catch (err) {
+          console.warn("Could not parse sqlite_workspace for canvas:", err);
         }
       }
 

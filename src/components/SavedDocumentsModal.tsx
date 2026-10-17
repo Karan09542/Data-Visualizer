@@ -11,6 +11,8 @@ import {
   Check,
   Clock,
   Copy,
+  Database,
+  Download,
   Edit2,
   FileCode,
   Files,
@@ -21,8 +23,10 @@ import {
   Save,
   Search,
   Trash2,
+  Upload,
   X,
 } from 'lucide-react';
+import { exportDocumentsToSqliteBinary, downloadSqliteFile } from '../utils/sqliteWorkspace';
 import { motion, AnimatePresence } from 'motion/react';
 import { createPortal } from 'react-dom';
 import CustomSelect from './CustomSelect';
@@ -195,6 +199,30 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
 
   const handleTogglePin = async (doc: SavedDocument) => {
     await db.documents.update(doc.id, { isPinned: !doc.isPinned });
+  };
+
+  const handleExportSingleSqlite = async (doc: SavedDocument) => {
+    try {
+      const codeToUse = doc.id === activeDocumentId ? useStore.getState().code : doc.code;
+      const bytes = await exportDocumentsToSqliteBinary([{ ...doc, code: codeToUse }], {
+        activeDocumentName: doc.name,
+      });
+      const safeName = doc.name.replace(/[^a-zA-Z0-9_-]/g, '_');
+      downloadSqliteFile(bytes, `${safeName}.sqlite`);
+      const sizeStr = bytes.length >= 1024 * 1024
+        ? `${(bytes.length / (1024 * 1024)).toFixed(1)} MB`
+        : `${(bytes.length / 1024).toFixed(1)} KB`;
+      useStore.getState().setNotification({
+        message: `Exported "${doc.name}" as SQLite binary database (${sizeStr})`,
+        type: 'success',
+      });
+    } catch (err: any) {
+      console.error('Failed to export document as SQLite:', err);
+      useStore.getState().setNotification({
+        message: `Failed to export SQLite: ${err?.message || 'Unknown error'}`,
+        type: 'error',
+      });
+    }
   };
 
   const handleSaveRename = async (id: number) => {
@@ -408,17 +436,46 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
                   />
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500 dark:text-slate-400">
-                  <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 dark:border-slate-800 dark:bg-slate-950 sm:px-2.5 sm:py-1">
-                    <Files size={13} />
-                    Showing {filteredAndSortedDocs.length} of {totalDocuments}
-                  </span>
-                  {pinnedDocuments > 0 && (
-                    <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 sm:px-2.5 sm:py-1">
-                      <Pin size={13} className="fill-current" />
-                      {pinnedDocuments} pinned
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-500 dark:text-slate-400">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 dark:border-slate-800 dark:bg-slate-950 sm:px-2.5 sm:py-1">
+                      <Files size={13} />
+                      Showing {filteredAndSortedDocs.length} of {totalDocuments}
                     </span>
-                  )}
+                    {pinnedDocuments > 0 && (
+                      <span className="inline-flex items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2 py-0.5 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300 sm:px-2.5 sm:py-1">
+                        <Pin size={13} className="fill-current" />
+                        {pinnedDocuments} pinned
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        useStore.getState().setSqliteModalInitialTab('export');
+                        useStore.getState().setIsSqliteModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-indigo-200 dark:border-indigo-800/60 bg-indigo-50/60 dark:bg-indigo-950/40 text-indigo-700 dark:text-indigo-300 font-semibold text-[11px] hover:bg-indigo-100 dark:hover:bg-indigo-900/40 transition-colors cursor-pointer"
+                      title="Export workspace documents to SQLite"
+                    >
+                      <Database size={13} />
+                      <span>Export SQLite</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        useStore.getState().setSqliteModalInitialTab('import');
+                        useStore.getState().setIsSqliteModalOpen(true);
+                      }}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 font-semibold text-[11px] hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Import documents from SQLite database"
+                    >
+                      <Upload size={13} />
+                      <span>Import SQLite</span>
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -572,6 +629,17 @@ export default function SavedDocumentsModal({ isOpen, onClose }: { isOpen: boole
                               aria-label="Duplicate document"
                             >
                               <Copy size={14} />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleExportSingleSqlite(doc);
+                              }}
+                              className="rounded-md p-1.5 text-indigo-600 dark:text-indigo-400 transition-colors hover:bg-indigo-50 dark:hover:bg-indigo-950/50"
+                              title="Download as SQLite Binary (.sqlite)"
+                              aria-label="Download as SQLite Binary"
+                            >
+                              <Database size={14} />
                             </button>
                             <button
                               onClick={(e) => handleDelete(doc.id, e)}

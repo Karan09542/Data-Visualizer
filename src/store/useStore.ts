@@ -587,6 +587,12 @@ export interface StoreState {
   ) => void;
   isSavedDocsOpen: boolean;
   setIsSavedDocsOpen: (isOpen: boolean) => void;
+  isSqliteModalOpen: boolean;
+  setIsSqliteModalOpen: (isOpen: boolean) => void;
+  sqliteModalInitialTab: 'export' | 'import';
+  setSqliteModalInitialTab: (tab: 'export' | 'import') => void;
+  pendingSqliteImport: { filename: string; buffer?: ArrayBuffer | Uint8Array; sqlText?: string } | null;
+  setPendingSqliteImport: (data: { filename: string; buffer?: ArrayBuffer | Uint8Array; sqlText?: string } | null) => void;
   stickyNotesEnabled: boolean;
   setStickyNotesEnabled: (enabled: boolean) => void;
   schemaExportActive: boolean;
@@ -616,6 +622,52 @@ const initialCode = `{
 
 const initialParsedData = JSON.parse(initialCode);
 
+function getInitialPersistedState(): {
+  code: string;
+  parsedData: any;
+  treeData: any;
+  error: string | null;
+} {
+  if (typeof window !== "undefined" && window.localStorage) {
+    try {
+      const raw = localStorage.getItem("json-graph-viewer-settings");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const savedCode = parsed?.state?.code;
+        if (typeof savedCode === "string" && savedCode.trim()) {
+          const { data, error } = parseInput(savedCode);
+          if (data !== null) {
+            const tree = transformToTree(
+              data,
+              "root",
+              "root",
+              parsed?.state?.apiNodeResponses || {},
+              parsed?.state?.jsNodeResponses || {},
+              parsed?.state?.jsNodeVisibility || {},
+              parsed?.state?.apiNodeConfig || {},
+            );
+            return {
+              code: savedCode,
+              parsedData: data,
+              treeData: tree,
+              error,
+            };
+          }
+        }
+      }
+    } catch {
+      // Fallback to startup data
+    }
+  }
+
+  return {
+    code: initialCode,
+    parsedData: initialParsedData,
+    treeData: transformToTree(initialParsedData, "root", "root", {}, {}, {}),
+    error: null,
+  };
+}
+
 export const useStore = create<StoreState>()(
   persist(
     (set, get) => {
@@ -623,17 +675,18 @@ export const useStore = create<StoreState>()(
       if (typeof window !== "undefined") {
         (window as any).useStore = { getState: get, setState: set };
       }
+      const initialSaved = getInitialPersistedState();
       return {
         ...defaultSettings,
         isSystemDefault: false,
         systemTheme: (typeof window !== "undefined" && window.matchMedia?.("(prefers-color-scheme: dark)").matches ? "dark" : "light") as "dark" | "light",
         setSystemTheme: (theme: "dark" | "light") => set({ systemTheme: theme }),
-        code: initialCode,
+        code: initialSaved.code,
         globalSearchErrors: [],
         globalSearchSuggestions: [],
-        parsedData: initialParsedData,
-        treeData: transformToTree(initialParsedData, "root", "root", {}, {}, {}),
-        error: null,
+        parsedData: initialSaved.parsedData,
+        treeData: initialSaved.treeData,
+        error: initialSaved.error,
         searchQuery: "",
         collapsedNodes: new Set<string>(),
         searchMatches: new Set<string>(),
@@ -652,6 +705,9 @@ export const useStore = create<StoreState>()(
         isYoutubeSearchOpen: false,
         isLearningGamesOpen: false,
         isSavedDocsOpen: false,
+        isSqliteModalOpen: false,
+        sqliteModalInitialTab: 'export',
+        pendingSqliteImport: null,
         proxyServers: [],
         setProxyServers: (proxies) =>
           set((s) => ({
@@ -1509,6 +1565,9 @@ export const useStore = create<StoreState>()(
         setIsYoutubeSearchOpen: (isOpen: boolean) => set({ isYoutubeSearchOpen: isOpen }),
         setIsLearningGamesOpen: (isOpen: boolean) => set({ isLearningGamesOpen: isOpen }),
         setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
+        setIsSqliteModalOpen: (isOpen: boolean) => set({ isSqliteModalOpen: isOpen }),
+        setSqliteModalInitialTab: (tab: 'export' | 'import') => set({ sqliteModalInitialTab: tab }),
+        setPendingSqliteImport: (data) => set({ pendingSqliteImport: data, isSqliteModalOpen: data !== null }),
         setStickyNotesEnabled: (enabled: boolean) => set({ stickyNotesEnabled: enabled }),
         setActiveDocumentId: (id: number | null) => set({ activeDocumentId: id }),
         setActiveDocumentName: (name: string | null) => set({ activeDocumentName: name }),
@@ -1847,9 +1906,32 @@ export const useStore = create<StoreState>()(
         if (isSystemDefault) {
           validAppTheme = detectedSystem;
         }
+        // Synchronously re-parse and transform treeData so the visualizer
+        // immediately renders the original persisted data instead of the startup template
+        const codeToUse = typeof p?.code === "string" && p.code.trim() ? p.code : currentState.code;
+        const { data: parsedData, error } = parseInput(codeToUse);
+        let treeData = currentState.treeData;
+        let finalParsedData = currentState.parsedData;
+        if (parsedData !== null) {
+          finalParsedData = parsedData;
+          treeData = transformToTree(
+            parsedData,
+            "root",
+            "root",
+            p?.apiNodeResponses || currentState.apiNodeResponses || {},
+            p?.jsNodeResponses || currentState.jsNodeResponses || {},
+            p?.jsNodeVisibility || currentState.jsNodeVisibility || {},
+            p?.apiNodeConfig || currentState.apiNodeConfig || {},
+          );
+        }
+
         return {
           ...currentState,
           ...p,
+          code: codeToUse,
+          parsedData: finalParsedData,
+          treeData,
+          error: error || null,
           isSystemDefault,
           appTheme: validAppTheme,
           systemTheme: detectedSystem,
@@ -1871,11 +1953,8 @@ export const useStore = create<StoreState>()(
             useStore.getState().applySystemTheme(detected);
           }
           if (state.code) {
-            // Re-parse the hydrated code to reconstruct parsedData and treeData
-            // We use setTimeout to ensure Zustand finishes initializing first
-            setTimeout(() => {
-              useStore.getState().setCode(state.code, true);
-            }, 0);
+            // Re-parse immediately to guarantee full consistency across all store subscribers
+            useStore.getState().setCode(state.code, true);
           }
         }
       },

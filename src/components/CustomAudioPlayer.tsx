@@ -4,6 +4,7 @@ import { X, Play, Pause, Volume1, Volume2, VolumeX, Repeat, Ellipsis, Loader2, A
 
 export interface CustomAudioPlayerProps {
   src: string;
+  duration?: number;
   onDelete?: (e: React.MouseEvent) => void;
   className?: string;
   /** Forces a theme; left out, the player follows the app's dark class */
@@ -23,112 +24,295 @@ const formatTime = (seconds: number) => {
 const ICON_BUTTON =
   'flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-(--cp-muted) transition-colors hover:bg-(--cp-hover) hover:text-(--cp-text) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-(--ap-accent-soft) nodrag';
 
-export default function CustomAudioPlayer({ src, onDelete, className = '', isDark }: CustomAudioPlayerProps) {
-  const [howl, setHowl] = useState<any>(null);
+export default function CustomAudioPlayer({
+  src,
+  duration: initialDuration,
+  onDelete,
+  className = '',
+  isDark,
+}: CustomAudioPlayerProps) {
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const [resolvedSrc, setResolvedSrc] = useState<string>(src);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isBuffering, setIsBuffering] = useState(false);
   const [failed, setFailed] = useState(false);
   const [progress, setProgress] = useState(0);
-  const [duration, setDuration] = useState(0);
+  const [duration, setDuration] = useState(
+    typeof initialDuration === 'number' && isFinite(initialDuration) && initialDuration > 0
+      ? initialDuration
+      : 0,
+  );
   const [speed, setSpeed] = useState(1);
   const [volume, setVolume] = useState(1);
   const [isLooping, setIsLooping] = useState(false);
-  const requestRef = useRef<number | null>(null);
 
+  const isSeekingRef = useRef(false);
+  const lastSrcRef = useRef(resolvedSrc);
   const [menuOpen, setMenuOpen] = useState(false);
   const [menuPos, setMenuPos] = useState<{ top: number; left: number; above: boolean } | null>(null);
   const menuBtnRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
-  // Load with Howler (HTML5 audio, so long files stream instead of downloading first)
+  // Support resolving asset IDs (e.g. img_..., thumb_..., asset_...) if passed directly
   useEffect(() => {
-    let sound: any = null;
-    let tempAudio: HTMLAudioElement | null = null;
-    let cancelled = false;
-    setFailed(false);
-    setProgress(0);
-    setDuration(0);
-    setIsPlaying(false);
-
-    if (src) {
-      import('howler').then(({ Howl }) => {
-        if (cancelled) return;
-        sound = new Howl({
-          src: [src],
-          html5: true,
-          format: ['webm', 'mp3', 'ogg', 'wav', 'm4a', 'mp4'],
-          onload: () => {
-            const d = sound.duration();
-            if (d && isFinite(d) && d > 0) setDuration(d);
-          },
-          onloaderror: () => setFailed(true),
-          onplayerror: () => {
-            setIsBuffering(false);
-            // Mobile browsers may refuse until audio is unlocked by a tap; retry then
-            sound.once('unlock', () => sound.play());
-          },
-          onplay: () => {
-            setIsPlaying(true);
-            setIsBuffering(false);
-          },
-          onpause: () => setIsPlaying(false),
-          onstop: () => setIsPlaying(false),
-          onend: () => {
-            if (!sound.loop()) {
-              setIsPlaying(false);
-              setProgress(0);
-            }
-          },
-          onseek: () => setProgress(sound.seek() as number),
-        });
-        setHowl(sound);
-
-        // A plain <audio> reads the length of WebM recordings, which often report Infinity
-        tempAudio = new Audio(src);
-        tempAudio.preload = 'metadata';
-        tempAudio.addEventListener('loadedmetadata', () => {
-          if (!tempAudio) return;
-          if (tempAudio.duration === Infinity || isNaN(tempAudio.duration)) {
-            tempAudio.currentTime = 1e99;
-            tempAudio.addEventListener(
-              'durationchange',
-              () => {
-                if (!tempAudio) return;
-                tempAudio.currentTime = 0;
-                if (isFinite(tempAudio.duration)) setDuration(tempAudio.duration);
-              },
-              { once: true },
-            );
-          } else if (isFinite(tempAudio.duration)) {
-            setDuration(tempAudio.duration);
-          }
+    let active = true;
+    if (src && (src.startsWith('img_') || src.startsWith('thumb_') || src.startsWith('asset_'))) {
+      import('../utils/assetManager').then(({ resolveAssetUrl }) => {
+        resolveAssetUrl(src).then((url) => {
+          if (active && url) setResolvedSrc(url);
+        }).catch(() => {
+          if (active) setFailed(true);
         });
       });
+    } else {
+      setResolvedSrc(src);
+    }
+    return () => {
+      active = false;
+    };
+  }, [src]);
+
+  // Probe duration using a background Audio element with Chromium WebM/blob seek trick
+  useEffect(() => {
+    if (!resolvedSrc) return;
+    let active = true;
+
+    // If already have a valid duration, keep it unless source changed
+    if (audioRef.current && isFinite(audioRef.current.duration) && audioRef.current.duration > 0) {
+      setDuration(audioRef.current.duration);
+      return;
+    }
+
+    const probe = new Audio(resolvedSrc);
+    probe.preload = 'metadata';
+
+    const onDurationChange = () => {
+      if (!active) return;
+      if (isFinite(probe.duration) && probe.duration > 0) {
+        setDuration(probe.duration);
+        cleanup();
+      }
+    };
+
+    const onLoaded = () => {
+      if (!active) return;
+      if (isFinite(probe.duration) && probe.duration > 0) {
+        setDuration(probe.duration);
+        cleanup();
+      } else {
+        // Chromium quirk: setting currentTime = 1e99 triggers duration calculation for WebM & blob streams
+        probe.currentTime = 1e99;
+        probe.addEventListener('durationchange', onDurationChange, { once: true });
+      }
+    };
+
+    const cleanup = () => {
+      probe.removeEventListener('loadedmetadata', onLoaded);
+      probe.removeEventListener('durationchange', onDurationChange);
+      probe.src = '';
+    };
+
+    probe.addEventListener('loadedmetadata', onLoaded);
+
+    return () => {
+      active = false;
+      cleanup();
+    };
+  }, [resolvedSrc]);
+
+  // Source change & cleanup: only reset if source actually changed
+  useEffect(() => {
+    if (lastSrcRef.current !== resolvedSrc) {
+      lastSrcRef.current = resolvedSrc;
+      const el = audioRef.current;
+      setProgress(0);
+      setDuration(
+        typeof initialDuration === 'number' && isFinite(initialDuration) && initialDuration > 0
+          ? initialDuration
+          : 0,
+      );
+      setIsPlaying(false);
+      setIsBuffering(false);
+      setFailed(false);
+
+      if (el) {
+        el.pause();
+        el.currentTime = 0;
+      }
     }
 
     return () => {
-      cancelled = true;
-      if (sound) sound.unload();
-      if (tempAudio) {
-        tempAudio.src = '';
-        tempAudio.load();
+      if (audioRef.current) {
+        audioRef.current.pause();
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [src]);
+  }, [resolvedSrc, initialDuration]);
 
-  // Follow the playhead while playing
+  // Listen for pointerup globally so dragging the slider never gets stuck
   useEffect(() => {
-    if (!isPlaying || !howl) return;
-    const tick = () => {
-      if (howl.playing()) setProgress(howl.seek() as number);
-      requestRef.current = requestAnimationFrame(tick);
+    const onPointerUp = () => {
+      isSeekingRef.current = false;
     };
-    requestRef.current = requestAnimationFrame(tick);
+    window.addEventListener('pointerup', onPointerUp);
     return () => {
-      if (requestRef.current) cancelAnimationFrame(requestRef.current);
+      window.removeEventListener('pointerup', onPointerUp);
     };
-  }, [isPlaying, howl]);
+  }, []);
+
+  // Pause when another node player starts playing
+  useEffect(() => {
+    const onOtherPlay = (e: Event) => {
+      const customEv = e as CustomEvent<{ src: string }>;
+      if (customEv.detail?.src !== resolvedSrc && audioRef.current && !audioRef.current.paused) {
+        audioRef.current.pause();
+        setIsPlaying(false);
+      }
+    };
+    window.addEventListener('antigravity:audio-play', onOtherPlay);
+    return () => {
+      window.removeEventListener('antigravity:audio-play', onOtherPlay);
+    };
+  }, [resolvedSrc]);
+
+  // Keep audio element properties in sync with state
+  useEffect(() => {
+    const el = audioRef.current;
+    if (el) {
+      el.playbackRate = speed;
+      el.volume = volume;
+      el.muted = volume === 0;
+      el.loop = isLooping;
+    }
+  }, [speed, volume, isLooping]);
+
+  // Smooth 60fps playhead tracking while playing
+  useEffect(() => {
+    if (!isPlaying) return;
+    let rafId: number;
+    const tick = () => {
+      const el = audioRef.current;
+      if (el && !el.paused && !isSeekingRef.current) {
+        setProgress(el.currentTime);
+        // If duration was not yet set, take it from active element if finite
+        if (isFinite(el.duration) && el.duration > 0) {
+          setDuration((prev) => (prev > 0 ? prev : el.duration));
+        }
+        rafId = requestAnimationFrame(tick);
+      }
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId) cancelAnimationFrame(rafId);
+    };
+  }, [isPlaying]);
+
+  const handleLoadedMetadata = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (isFinite(el.duration) && el.duration > 0) {
+      setDuration(el.duration);
+    }
+  };
+
+  const handleDurationChange = () => {
+    const el = audioRef.current;
+    if (!el) return;
+    if (isFinite(el.duration) && el.duration > 0) {
+      setDuration(el.duration);
+    }
+  };
+
+  const handleTimeUpdate = () => {
+    const el = audioRef.current;
+    if (!el || isSeekingRef.current) return;
+    setProgress(el.currentTime);
+    if (isFinite(el.duration) && el.duration > 0) {
+      setDuration((prev) => (prev > 0 ? prev : el.duration));
+    }
+  };
+
+  const handleEnded = () => {
+    if (isLooping) {
+      const el = audioRef.current;
+      if (el) {
+        el.currentTime = 0;
+        el.play().catch(() => {});
+      }
+    } else {
+      setIsPlaying(false);
+      setProgress(0);
+      if (audioRef.current) {
+        audioRef.current.currentTime = 0;
+      }
+    }
+  };
+
+  const handleError = () => {
+    if (!resolvedSrc) return;
+    setFailed(true);
+    setIsBuffering(false);
+    setIsPlaying(false);
+  };
+
+  const togglePlay = async () => {
+    const el = audioRef.current;
+    if (!el || failed) return;
+
+    if (isPlaying) {
+      el.pause();
+      setIsPlaying(false);
+    } else {
+      setIsBuffering(true);
+      try {
+        window.dispatchEvent(new CustomEvent('antigravity:audio-play', { detail: { src: resolvedSrc } }));
+        await el.play();
+        setIsPlaying(true);
+        if (isFinite(el.duration) && el.duration > 0) {
+          setDuration((prev) => (prev > 0 ? prev : el.duration));
+        }
+      } catch (err: any) {
+        if (err?.name !== 'AbortError') {
+          console.warn('Audio playback error:', err);
+        }
+      } finally {
+        setIsBuffering(false);
+      }
+    }
+  };
+
+  const seek = (value: number) => {
+    if (!isFinite(value)) return;
+    setProgress(value);
+    const el = audioRef.current;
+    if (el) {
+      el.currentTime = value;
+    }
+  };
+
+  const changeVolume = (value: number) => {
+    setVolume(value);
+    if (audioRef.current) {
+      audioRef.current.volume = value;
+      audioRef.current.muted = value === 0;
+    }
+  };
+
+  const changeSpeed = (value: number) => {
+    setSpeed(value);
+    if (audioRef.current) {
+      audioRef.current.playbackRate = value;
+    }
+  };
+
+  const cycleSpeed = () => changeSpeed(speed === 1 ? 1.5 : speed === 1.5 ? 2 : speed === 2 ? 0.5 : 1);
+
+  const toggleLoop = () => {
+    const next = !isLooping;
+    setIsLooping(next);
+    if (audioRef.current) {
+      audioRef.current.loop = next;
+    }
+  };
 
   // Place the menu by its button, above it when there is room, and close it on outside clicks
   useLayoutEffect(() => {
@@ -162,40 +346,6 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
     };
   }, [menuOpen]);
 
-  const togglePlay = () => {
-    if (!howl || failed) return;
-    if (isPlaying) {
-      howl.pause();
-    } else {
-      setIsBuffering(true);
-      howl.play();
-    }
-  };
-
-  const seek = (value: number) => {
-    setProgress(value);
-    howl?.seek(value);
-  };
-
-  const changeVolume = (value: number) => {
-    setVolume(value);
-    howl?.volume(value);
-  };
-
-  const changeSpeed = (value: number) => {
-    setSpeed(value);
-    howl?.rate(value);
-  };
-
-  /** The chip steps through the common speeds; the menu offers all of them */
-  const cycleSpeed = () => changeSpeed(speed === 1 ? 1.5 : speed === 1.5 ? 2 : speed === 2 ? 0.5 : 1);
-
-  const toggleLoop = () => {
-    const next = !isLooping;
-    setIsLooping(next);
-    howl?.loop(next);
-  };
-
   const theme = isDark === undefined ? undefined : isDark ? 'dark' : 'light';
 
   if (!src) {
@@ -207,7 +357,7 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
   }
 
   const canSeek = isFinite(duration) && duration > 0;
-  const pct = canSeek ? Math.min(100, (progress / duration) * 100) : 0;
+  const pct = canSeek ? Math.min(100, Math.max(0, (progress / duration) * 100)) : 0;
   const VolumeIcon = volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
   const speedLabel = `${speed}×`;
 
@@ -218,9 +368,42 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
       contentEditable={false}
       onPointerDown={(e) => e.stopPropagation()}
     >
+      <audio
+        ref={audioRef}
+        src={resolvedSrc}
+        preload="metadata"
+        playsInline
+        className="hidden"
+        onPlay={() => {
+          setIsPlaying(true);
+          setIsBuffering(false);
+        }}
+        onPause={() => {
+          setIsPlaying(false);
+        }}
+        onWaiting={() => {
+          setIsBuffering(true);
+        }}
+        onPlaying={() => {
+          setIsPlaying(true);
+          setIsBuffering(false);
+        }}
+        onCanPlay={() => {
+          setIsBuffering(false);
+        }}
+        onLoadedMetadata={handleLoadedMetadata}
+        onDurationChange={handleDurationChange}
+        onTimeUpdate={handleTimeUpdate}
+        onEnded={handleEnded}
+        onError={handleError}
+      />
+
       <div className="flex h-12 w-full items-center gap-2.5 rounded-xl border border-(--cp-line) bg-(--cp-bg) pl-2 pr-1 text-(--cp-text)">
         <button
-          onClick={togglePlay}
+          onClick={(e) => {
+            e.stopPropagation();
+            togglePlay();
+          }}
           disabled={failed}
           className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-(--ap-accent) text-(--cp-on-accent) transition-transform hover:brightness-110 active:scale-95 disabled:opacity-40 nodrag"
           aria-label={isPlaying ? 'Pause' : 'Play'}
@@ -249,7 +432,13 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
                 step="any"
                 value={canSeek ? Math.min(progress, duration) : 0}
                 onChange={(e) => seek(parseFloat(e.target.value))}
-                onPointerDown={(e) => e.stopPropagation()}
+                onPointerDown={(e) => {
+                  e.stopPropagation();
+                  isSeekingRef.current = true;
+                }}
+                onPointerUp={() => {
+                  isSeekingRef.current = false;
+                }}
                 disabled={!canSeek}
                 aria-label="Seek"
                 aria-valuetext={`${formatTime(progress)} of ${formatTime(duration)}`}
@@ -268,7 +457,10 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
         </div>
 
         <button
-          onClick={cycleSpeed}
+          onClick={(e) => {
+            e.stopPropagation();
+            cycleSpeed();
+          }}
           className={`${ICON_BUTTON} w-auto min-w-8 px-1.5 text-[11px] font-semibold tabular-nums ${speed !== 1 ? 'text-(--ap-accent)' : ''}`}
           aria-label={`Playback speed ${speedLabel}`}
           title="Playback speed"
@@ -278,7 +470,10 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
 
         <button
           ref={menuBtnRef}
-          onClick={() => setMenuOpen((o) => !o)}
+          onClick={(e) => {
+            e.stopPropagation();
+            setMenuOpen((o) => !o);
+          }}
           className={`${ICON_BUTTON} ${menuOpen ? 'bg-(--cp-hover) text-(--cp-text)' : ''}`}
           aria-label="More audio options"
           aria-expanded={menuOpen}
@@ -289,7 +484,10 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
 
         {onDelete && (
           <button
-            onClick={onDelete}
+            onClick={(e) => {
+              e.stopPropagation();
+              onDelete(e);
+            }}
             className={`${ICON_BUTTON} hover:bg-red-500/10 hover:text-red-500 [@media(hover:hover)]:hidden [@media(hover:hover)]:group-hover:flex`}
             aria-label="Remove audio"
             title="Remove audio"
@@ -317,7 +515,10 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
               {SPEEDS.map((s) => (
                 <button
                   key={s}
-                  onClick={() => changeSpeed(s)}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    changeSpeed(s);
+                  }}
                   className={`h-7 rounded-md text-[11px] font-semibold tabular-nums transition-colors ${
                     s === speed ? 'bg-(--ap-accent) text-(--cp-on-accent)' : 'bg-(--cp-hover) hover:text-(--ap-accent)'
                   }`}
@@ -329,7 +530,10 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
             </div>
 
             <button
-              onClick={toggleLoop}
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleLoop();
+              }}
               className="mb-2 flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-[13px] transition-colors hover:bg-(--cp-hover)"
               aria-pressed={isLooping}
             >
@@ -342,7 +546,10 @@ export default function CustomAudioPlayer({ src, onDelete, className = '', isDar
 
             <div className="flex items-center gap-2 border-t border-(--cp-line) pt-2.5">
               <button
-                onClick={() => changeVolume(volume === 0 ? 1 : 0)}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  changeVolume(volume === 0 ? 1 : 0);
+                }}
                 className={`${ICON_BUTTON} h-7 w-7`}
                 aria-label={volume === 0 ? 'Unmute' : 'Mute'}
               >
