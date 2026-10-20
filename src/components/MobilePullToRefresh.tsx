@@ -1,9 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { RefreshCw } from 'lucide-react';
+import { useAnnotationStore } from '../store/useAnnotationStore';
 
 const PULL_THRESHOLD = 65; // pixels required to trigger reload
 const MAX_PULL = 85; // maximum visual pull travel
-const TOP_TRIGGER_ZONE = 130; // maximum startY from top of screen
+
+/**
+ * Returns the bottom Y coordinate (in viewport space) of the top header.
+ * Defaults to 48px if header is not yet rendered.
+ */
+function getHeaderBottom(): number {
+  if (typeof document === 'undefined') return 48;
+  const header =
+    document.getElementById('app-header') ||
+    document.querySelector('header, [data-app-header="true"]');
+  if (header) {
+    const rect = header.getBoundingClientRect();
+    if (rect.bottom > 0) {
+      return rect.bottom;
+    }
+  }
+  return 48; // Standard 48px top header height
+}
 
 export function MobilePullToRefresh() {
   const [pullDistance, setPullDistance] = useState(0);
@@ -31,27 +49,56 @@ export function MobilePullToRefresh() {
       const touch = e.touches[0];
       const target = e.target as HTMLElement | null;
 
-      // Don't trigger if touching inside inputs, textareas, sliders, or open dialogs/drawers
+      // 1. Don't trigger if touching inside inputs, textareas, sliders, dialogs, modals, or editors
       if (
         target?.closest(
-          'input, textarea, select, [contenteditable="true"], [role="slider"], [role="dialog"], .modal, .monaco-editor'
+          'input, textarea, select, [contenteditable="true"], [role="slider"], [role="dialog"], .modal, .monaco-editor, [data-drawing-toolbar], .drawing-toolbar, [data-mobile-menu]'
         )
       ) {
         return;
       }
 
-      // Check if touch begins near the top of the viewport or top of scroll
-      const startsNearTop = touch.clientY <= TOP_TRIGGER_ZONE;
-      const scrollableParent = target?.closest('.overflow-y-auto, .overflow-auto');
-      const isScrollAtTop = !scrollableParent || scrollableParent.scrollTop <= 0;
-
-      if (startsNearTop || isScrollAtTop) {
-        startYRef.current = touch.clientY;
-        startXRef.current = touch.clientX;
-        isTrackingRef.current = true;
-        isHorizontalRef.current = false;
-        hasVibratedRef.current = false;
+      // 2. Don't trigger if touching drawing canvases, annotation elements, or transform boxes
+      if (
+        target?.closest(
+          'canvas, svg.drawing-canvas, [data-anno-id], .transform-box, .annotation-layer, [data-drawing-layer]'
+        )
+      ) {
+        return;
       }
+
+      // 3. Strictly require swipe to initiate from the top header height:
+      // Either touch.clientY must be within the top header bounds, or touch starts directly on the top header element.
+      const headerBottom = getHeaderBottom();
+      const isHeaderTarget = Boolean(
+        target?.closest?.('#app-header, header, [data-app-header="true"]')
+      );
+      const startsWithinHeaderHeight = touch.clientY <= headerBottom;
+
+      // If swipe starts from any height below the top header, ignore completely
+      if (!startsWithinHeaderHeight && !isHeaderTarget) {
+        return;
+      }
+
+      // 4. When drawing toolbar or drawing mode is active, strictly require the touch
+      // to be on the header element itself to avoid accidental triggers while drawing near top
+      const isDrawingToolbarVisible = useAnnotationStore.getState().isToolbarVisible;
+      if (isDrawingToolbarVisible && !isHeaderTarget) {
+        return;
+      }
+
+      // 5. Must be at the top of the page / scrollable container
+      const scrollY = window.scrollY || document.documentElement.scrollTop || 0;
+      if (scrollY > 0) return;
+
+      const scrollableParent = target?.closest('.overflow-y-auto, .overflow-auto');
+      if (scrollableParent && scrollableParent.scrollTop > 0) return;
+
+      startYRef.current = touch.clientY;
+      startXRef.current = touch.clientX;
+      isTrackingRef.current = true;
+      isHorizontalRef.current = false;
+      hasVibratedRef.current = false;
     };
 
     const handleTouchMove = (e: TouchEvent) => {
@@ -71,6 +118,7 @@ export function MobilePullToRefresh() {
 
       if (isHorizontalRef.current) return;
 
+      // Only vertical swiping downwards (top to bottom) increases pull
       if (deltaY > 0) {
         // Apply rubber-band damping
         const damped = Math.min(Math.pow(deltaY, 0.85) * 1.4, MAX_PULL);

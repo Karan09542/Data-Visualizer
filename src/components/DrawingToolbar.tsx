@@ -1049,6 +1049,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
   return (
     <>
       <div
+        data-drawing-toolbar="true"
         className="fixed bottom-20 left-1/2 -translate-x-1/2 z-[100] flex items-center gap-2"
         style={{ opacity: store.toolbarOpacity, visibility: store.toolbarOpacity < 0.05 ? 'hidden' : 'visible' }}
       >
@@ -1113,6 +1114,7 @@ function MobileDrawingToolbar({ isInitialLoad }: { isInitialLoad: boolean }) {
               />
 
               <motion.div
+                data-drawing-toolbar="true"
                 initial={{ y: "100%" }}
                 animate={{ y: 0 }}
                 exit={{ y: "100%" }}
@@ -2104,6 +2106,7 @@ export default function DrawingToolbar() {
   return (
     <div
       ref={toolbarRef}
+      data-drawing-toolbar="true"
       className={`absolute z-[100] ${isInitialLoad ? 'animate-in fade-in duration-200' : ''} ${placementClass} pointer-events-none`}
       style={{
         ...placementStyle,

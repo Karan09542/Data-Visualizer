@@ -898,7 +898,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
           </div>
         </div>
       )}
-      <div className="flex items-center justify-between gap-2 lg:gap-4 py-2 px-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-[500] relative transition-colors h-[48px] shrink-0">
+      <header id="app-header" data-app-header="true" className="flex items-center justify-between gap-2 lg:gap-4 py-2 px-3 bg-white dark:bg-[#0d1117] border-b border-slate-300 dark:border-slate-800 text-sm shadow-sm select-none z-[500] relative transition-colors h-[48px] shrink-0">
         <div className="flex items-center gap-2 lg:gap-3 mr-1 lg:mr-2 min-w-0 lg:border-r border-slate-300 dark:border-slate-800 lg:pr-4 lg:flex-shrink-0">
           <button
             onClick={() => setIsEditorPanelOpen(!isEditorPanelOpen)}
@@ -1388,7 +1388,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             {isMobileMenuOpen ? <X size={20} /> : <Menu size={20} />}
           </button>
         </div>
-      </div>
+      </header>
 
       {isMobileMenuOpen && (
         <>
@@ -1396,7 +1396,7 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
             className="lg:hidden fixed inset-0 z-[490]"
             onClick={() => setIsMobileMenuOpen(false)}
           />
-          <div className="lg:hidden fixed top-[48px] left-0 right-0 bottom-0 bg-slate-50 dark:bg-[#0f172a] z-[510] shadow-2xl overflow-y-auto custom-scrollbar flex flex-col">
+          <div data-mobile-menu="true" role="dialog" aria-label="Mobile Navigation Menu" className="lg:hidden fixed top-[48px] left-0 right-0 bottom-0 bg-slate-50 dark:bg-[#0f172a] z-[510] shadow-2xl overflow-y-auto custom-scrollbar flex flex-col">
             <div className="p-4 pb-16 grid grid-cols-2 gap-4">
               {/* Account / User Section for Mobile */}
               <div className="col-span-2">

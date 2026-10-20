@@ -58,7 +58,7 @@ const PagesLayout = () => {
 
   return (
     <div className="pages-layout min-h-screen bg-slate-50 dark:bg-[#0d1117] text-slate-800 dark:text-slate-300 font-sans flex flex-col transition-colors">
-      <header className="border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-[#161b22]/90 backdrop-blur-md sticky top-0 z-50 transition-colors">
+      <header id="app-header" data-app-header="true" className="border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-[#161b22]/90 backdrop-blur-md sticky top-0 z-50 transition-colors">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-3.5 flex items-center justify-between">
           <Link to="/" className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5 group">
             <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-transform">
