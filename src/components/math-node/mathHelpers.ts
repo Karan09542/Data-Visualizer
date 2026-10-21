@@ -315,3 +315,168 @@ export const decoupleGeometry = (f: MathFunction, baseScope: any) => {
   }
   return { newExpr, changed };
 };
+
+/**
+ * Normalizes user-typed filter expressions into mathjs-compatible syntax.
+ * Supports:
+ * - filter(...) or filter: ... prefixes
+ * - '===' / '!==' to '==' / '!='
+ * - standalone '=' to '=='
+ * - '&&' / '||' to 'and' / 'or'
+ */
+export function normalizeFilter(str: string): string {
+  let s = str.trim();
+  const filterMatch = s.match(/^filter\s*[:(]\s*(.*?)\s*\)?$/i);
+  if (filterMatch) {
+    s = filterMatch[1];
+  }
+  s = s.replace(/===/g, "==").replace(/!==/g, "!=");
+  s = s.replace(/(?<![=<>!])=(?!=)/g, "==");
+  s = s.replace(/&&/g, " and ").replace(/\|\|/g, " or ");
+  return s;
+}
+
+export interface EvaluatedStepResult {
+  valid: boolean;
+  value: number;
+  formattedValue?: string;
+  filterExpr?: string;
+  isFilter?: boolean;
+}
+
+/**
+ * Evaluates an axis step size expression into a positive real number or a filter expression.
+ * Supports:
+ * - Numbers ("0.5", "2"), fractions ("1/2", "3/4"), constants ("pi", "π", "tau", "τ", "e")
+ * - Implicit multiplication ("2pi", "0.5pi", "2π", "3pi/2", "2sqrt(3)")
+ * - Functions ("sqrt(2)", "2^0.5") and variables in extraScope
+ * - Filters ("n%5 == 0", "n%5=0", "filter(n%5 == 0)", "n > 0", "n%2 == 0", "abs(n) <= 5")
+ * - Combined step and filter ("1; n%5 == 0", "2, n%4 == 0", "pi/2; n%2 == 0")
+ */
+export function evaluateStepExpression(
+  exprStr: string,
+  extraScope?: Record<string, any>
+): EvaluatedStepResult {
+  if (!exprStr || !exprStr.trim()) {
+    return { valid: false, value: 1 };
+  }
+
+  const trimmed = exprStr.trim();
+  let stepStr = "";
+  let filterStr = "";
+
+  // Check for combined 'step; filter' or 'filter; step' (also allowing comma or pipe)
+  const sepMatch = trimmed.match(/^([^;,|]+)[;,|](.+)$/);
+  if (sepMatch) {
+    let p1 = sepMatch[1].trim();
+    let p2 = sepMatch[2].trim();
+    if (/(^filter\s*[:(]|==|!=|<=|>=|<|>|\b[nxyk]\s*%|%\s*\d|\b[nxyk]\b)/i.test(p1)) {
+      filterStr = p1;
+      stepStr = p2.replace(/^step\s*[:=]\s*/i, "");
+    } else {
+      stepStr = p1.replace(/^step\s*[:=]\s*/i, "");
+      filterStr = p2.replace(/^filter\s*[:=]\s*/i, "");
+    }
+  } else {
+    // Single expression: check if it represents a filter condition
+    if (/(^filter\s*[:(]|==|!=|<=|>=|<|>|(?<![=<>!])=(?!=)|\b[nxyk]\s*%|%\s*\d|\b[nxyk]\b)/i.test(trimmed)) {
+      filterStr = trimmed;
+      stepStr = "1";
+    } else {
+      stepStr = trimmed;
+    }
+  }
+
+  let filterValid = false;
+  let normalizedFilter = "";
+  if (filterStr) {
+    try {
+      normalizedFilter = normalizeFilter(filterStr);
+      const compiled = mathjs.compile(normalizedFilter);
+      // Verify evaluation across sample tick values
+      const scope0 = { n: 0, x: 0, y: 0, k: 0, pi: Math.PI, e: Math.E, ...extraScope };
+      const scope1 = { n: 1, x: 1, y: 1, k: 1, pi: Math.PI, e: Math.E, ...extraScope };
+      const scope5 = { n: 5, x: 5, y: 5, k: 5, pi: Math.PI, e: Math.E, ...extraScope };
+      compiled.evaluate(scope0);
+      compiled.evaluate(scope1);
+      compiled.evaluate(scope5);
+      filterValid = true;
+    } catch {
+      filterValid = false;
+    }
+  }
+
+  // Evaluate step numeric value
+  let stepValid = false;
+  let stepVal = 1;
+  let stepFormatted = "";
+
+  let normalizedStep = stepStr
+    .trim()
+    .replace(/π/g, "pi")
+    .replace(/τ/g, "tau")
+    .replace(/√\s*(\d+(\.\d+)?|[a-zA-Z]+|\([^)]+\))/g, "sqrt($1)")
+    .replace(/×/g, "*")
+    .replace(/÷/g, "/");
+
+  normalizedStep = normalizedStep
+    .replace(/(\d)\s*(pi|tau|e|sqrt|[a-zA-Z]|\()/gi, "$1*$2")
+    .replace(/\)\s*(\d|pi|tau|e|sqrt|[a-zA-Z]|\()/gi, ")*$1");
+
+  const scope = {
+    pi: Math.PI,
+    PI: Math.PI,
+    tau: 2 * Math.PI,
+    TAU: 2 * Math.PI,
+    e: Math.E,
+    E: Math.E,
+    ...extraScope,
+  };
+
+  try {
+    const res = mathjs.evaluate(normalizedStep, scope);
+    const num = Number(res);
+    if (typeof num === "number" && isFinite(num) && num > 0) {
+      stepValid = true;
+      stepVal = num;
+      stepFormatted = num % 1 === 0 ? num.toString() : parseFloat(num.toFixed(4)).toString();
+    }
+  } catch {
+    try {
+      const res = mathjs.evaluate(stepStr, scope);
+      const num = Number(res);
+      if (typeof num === "number" && isFinite(num) && num > 0) {
+        stepValid = true;
+        stepVal = num;
+        stepFormatted = num % 1 === 0 ? num.toString() : parseFloat(num.toFixed(4)).toString();
+      }
+    } catch {}
+  }
+
+  if (filterStr) {
+    if (filterValid && (stepValid || !stepStr)) {
+      const stepDisplay = stepVal !== 1 ? ` (step ${stepFormatted})` : "";
+      return {
+        valid: true,
+        value: stepVal,
+        filterExpr: normalizedFilter,
+        isFilter: true,
+        formattedValue: `Filter: ${filterStr.trim()}${stepDisplay}`,
+      };
+    }
+    return { valid: false, value: 1 };
+  }
+
+  if (stepValid) {
+    return {
+      valid: true,
+      value: stepVal,
+      formattedValue: stepFormatted,
+      isFilter: false,
+    };
+  }
+
+  return { valid: false, value: 1 };
+}
+
+

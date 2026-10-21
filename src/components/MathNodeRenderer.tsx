@@ -101,6 +101,7 @@ import {
   InequalityPlot,
   AdaptiveGrid,
   AxisSettingsPanel,
+  evaluateStepExpression,
   dependencyKey,
   SmoothCurve,
   curveSamplingForQuality,
@@ -623,11 +624,62 @@ export const MathNodeRenderer: React.FC<any> = ({
         settings.axisThousandsSep !== undefined
           ? settings.axisThousandsSep
           : false,
+      separateAxes:
+        settings.separateAxes !== undefined ? Boolean(settings.separateAxes) : false,
+      axisPiSymbol:
+        settings.axisPiSymbol !== undefined ? Boolean(settings.axisPiSymbol) : false,
+      axisComplexNotation:
+        settings.axisComplexNotation !== undefined ? Boolean(settings.axisComplexNotation) : false,
+      axisFilterX:
+        settings.axisFilterX === "even" || settings.axisFilterX === "odd" || settings.axisFilterX === "custom" || settings.axisFilterX === "all"
+          ? settings.axisFilterX
+          : ("all" as "all" | "even" | "odd" | "custom"),
+      axisFilterY:
+        settings.axisFilterY === "even" || settings.axisFilterY === "odd" || settings.axisFilterY === "custom" || settings.axisFilterY === "all"
+          ? settings.axisFilterY
+          : ("all" as "all" | "even" | "odd" | "custom"),
+      axisCustomFilterX:
+        typeof settings.axisCustomFilterX === "string" ? settings.axisCustomFilterX : "",
+      axisCustomFilterY:
+        typeof settings.axisCustomFilterY === "string" ? settings.axisCustomFilterY : "",
+      axisPiSymbolX:
+        settings.axisPiSymbolX !== undefined
+          ? settings.axisPiSymbolX
+          : settings.axisPiSymbol !== undefined
+            ? settings.axisPiSymbol
+            : false,
+      axisPiSymbolY:
+        settings.axisPiSymbolY !== undefined
+          ? settings.axisPiSymbolY
+          : settings.axisPiSymbol !== undefined
+            ? settings.axisPiSymbol
+            : false,
+      axisComplexNotationX:
+        settings.axisComplexNotationX !== undefined
+          ? settings.axisComplexNotationX
+          : settings.axisComplexNotation === true && settings.axisComplexTarget === "both"
+            ? true
+            : false,
+      axisComplexNotationY:
+        settings.axisComplexNotationY !== undefined
+          ? settings.axisComplexNotationY
+          : settings.axisComplexNotation === true
+            ? true
+            : false,
       samplingDepth:
         settings.samplingDepth !== undefined ? settings.samplingDepth : 14,
       gridSubdivisions:
         settings.gridSubdivisions !== undefined ? settings.gridSubdivisions : 4,
+      zoomMin:
+        typeof settings.zoomMin === "number" && settings.zoomMin > 0
+          ? settings.zoomMin
+          : 0.1,
+      zoomMax:
+        typeof settings.zoomMax === "number" && settings.zoomMax > 0
+          ? settings.zoomMax
+          : 20,
       panelPosition:
+
         settings.panelPosition === "right" || settings.panelPosition === "bottom"
           ? settings.panelPosition
           : ("left" as PanelPosition),
@@ -702,14 +754,24 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [axisStepStr, setAxisStepStr] = useState<string>(
     initialGridSettings.axisStepStr,
   );
-  const parsedAxisStep = useMemo(() => {
-    try {
-      const val = mathjs.evaluate(axisStepStr);
-      return typeof val === "number" && val > 0 ? val : 1;
-    } catch {
-      return 1;
+  const variableScope = useMemo(() => {
+    const s: Record<string, number> = {};
+    if (Array.isArray(variables)) {
+      for (const v of variables) {
+        if (v && v.name && typeof v.value === "number") {
+          s[v.name] = v.value;
+        }
+      }
     }
-  }, [axisStepStr]);
+    return s;
+  }, [variables]);
+
+  const evaluatedStep = useMemo(() => {
+    return evaluateStepExpression(axisStepStr, variableScope);
+  }, [axisStepStr, variableScope]);
+  const parsedAxisStep = evaluatedStep.valid ? evaluatedStep.value : 1;
+  const stepFilterExpr = evaluatedStep.filterExpr;
+
   const [axisAutoFit, setAxisAutoFit] = useState<boolean>(
     initialGridSettings.axisAutoFit,
   );
@@ -720,6 +782,39 @@ export const MathNodeRenderer: React.FC<any> = ({
   );
   const [axisThousandsSep, setAxisThousandsSep] = useState(
     initialGridSettings.axisThousandsSep,
+  );
+  const [separateAxes, setSeparateAxes] = useState<boolean>(
+    initialGridSettings.separateAxes,
+  );
+  const [axisPiSymbol, setAxisPiSymbol] = useState<boolean>(
+    initialGridSettings.axisPiSymbol,
+  );
+  const [axisComplexNotation, setAxisComplexNotation] = useState<boolean>(
+    initialGridSettings.axisComplexNotation,
+  );
+  const [axisFilterX, setAxisFilterX] = useState<"all" | "even" | "odd" | "custom">(
+    initialGridSettings.axisFilterX,
+  );
+  const [axisFilterY, setAxisFilterY] = useState<"all" | "even" | "odd" | "custom">(
+    initialGridSettings.axisFilterY,
+  );
+  const [axisCustomFilterX, setAxisCustomFilterX] = useState<string>(
+    initialGridSettings.axisCustomFilterX,
+  );
+  const [axisCustomFilterY, setAxisCustomFilterY] = useState<string>(
+    initialGridSettings.axisCustomFilterY,
+  );
+  const [axisPiSymbolX, setAxisPiSymbolX] = useState<boolean>(
+    initialGridSettings.axisPiSymbolX,
+  );
+  const [axisPiSymbolY, setAxisPiSymbolY] = useState<boolean>(
+    initialGridSettings.axisPiSymbolY,
+  );
+  const [axisComplexNotationX, setAxisComplexNotationX] = useState<boolean>(
+    initialGridSettings.axisComplexNotationX,
+  );
+  const [axisComplexNotationY, setAxisComplexNotationY] = useState<boolean>(
+    initialGridSettings.axisComplexNotationY,
   );
   const [showAdvancedAxisControls, setShowAdvancedAxisControls] =
     useState(false);
@@ -739,6 +834,9 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [gridSubdivisions, setGridSubdivisions] = useState(
     initialGridSettings.gridSubdivisions,
   );
+  const [zoomMin, setZoomMin] = useState<number>(initialGridSettings.zoomMin);
+  const [zoomMax, setZoomMax] = useState<number>(initialGridSettings.zoomMax);
+
 
   // Where the Functions & Equations panel is docked, the way VS Code moves its
   // terminal. Only applies from md up; on a phone the panel is always a drawer.
@@ -874,8 +972,21 @@ export const MathNodeRenderer: React.FC<any> = ({
     axisSuffix,
     axisDecimals,
     axisThousandsSep,
+    separateAxes,
+    axisPiSymbol,
+    axisComplexNotation,
+    axisFilterX,
+    axisFilterY,
+    axisCustomFilterX,
+    axisCustomFilterY,
+    axisPiSymbolX,
+    axisPiSymbolY,
+    axisComplexNotationX,
+    axisComplexNotationY,
     samplingDepth,
     gridSubdivisions,
+    zoomMin,
+    zoomMax,
     panelPosition,
     sidebarWidth,
     sidebarHeight,
@@ -907,8 +1018,21 @@ export const MathNodeRenderer: React.FC<any> = ({
       axisSuffix,
       axisDecimals,
       axisThousandsSep,
+      separateAxes,
+      axisPiSymbol,
+      axisComplexNotation,
+      axisFilterX,
+      axisFilterY,
+      axisCustomFilterX,
+      axisCustomFilterY,
+      axisPiSymbolX,
+      axisPiSymbolY,
+      axisComplexNotationX,
+      axisComplexNotationY,
       samplingDepth,
       gridSubdivisions,
+      zoomMin,
+      zoomMax,
       panelPosition,
       sidebarWidth,
       sidebarHeight,
@@ -929,8 +1053,21 @@ export const MathNodeRenderer: React.FC<any> = ({
     axisSuffix,
     axisDecimals,
     axisThousandsSep,
+    separateAxes,
+    axisPiSymbol,
+    axisComplexNotation,
+    axisFilterX,
+    axisFilterY,
+    axisCustomFilterX,
+    axisCustomFilterY,
+    axisPiSymbolX,
+    axisPiSymbolY,
+    axisComplexNotationX,
+    axisComplexNotationY,
     samplingDepth,
     gridSubdivisions,
+    zoomMin,
+    zoomMax,
     panelPosition,
     sidebarWidth,
     sidebarHeight,
@@ -943,6 +1080,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     colorVariationMode,
     colorVariationBase,
   ]);
+
 
   // compiledKey is runtime state too: saved, it tells a tab that loads the row that
   // it is already compiled, so the row is never compiled there and draws nothing.
@@ -1042,11 +1180,53 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setAxisDecimals(parsed.gridSettings.axisDecimals);
               if (parsed.gridSettings.axisThousandsSep !== undefined)
                 setAxisThousandsSep(parsed.gridSettings.axisThousandsSep);
+              if (parsed.gridSettings.separateAxes !== undefined)
+                setSeparateAxes(Boolean(parsed.gridSettings.separateAxes));
+              if (parsed.gridSettings.axisPiSymbol !== undefined)
+                setAxisPiSymbol(Boolean(parsed.gridSettings.axisPiSymbol));
+              if (parsed.gridSettings.axisComplexNotation !== undefined)
+                setAxisComplexNotation(Boolean(parsed.gridSettings.axisComplexNotation));
+              if (parsed.gridSettings.axisFilterX !== undefined)
+                setAxisFilterX(parsed.gridSettings.axisFilterX);
+              if (parsed.gridSettings.axisFilterY !== undefined)
+                setAxisFilterY(parsed.gridSettings.axisFilterY);
+              if (parsed.gridSettings.axisCustomFilterX !== undefined)
+                setAxisCustomFilterX(parsed.gridSettings.axisCustomFilterX);
+              if (parsed.gridSettings.axisCustomFilterY !== undefined)
+                setAxisCustomFilterY(parsed.gridSettings.axisCustomFilterY);
+              if (parsed.gridSettings.axisPiSymbolX !== undefined)
+                setAxisPiSymbolX(parsed.gridSettings.axisPiSymbolX);
+              if (parsed.gridSettings.axisPiSymbolY !== undefined)
+                setAxisPiSymbolY(parsed.gridSettings.axisPiSymbolY);
+              if (parsed.gridSettings.axisComplexNotationX !== undefined)
+                setAxisComplexNotationX(parsed.gridSettings.axisComplexNotationX);
+              if (parsed.gridSettings.axisComplexNotationY !== undefined)
+                setAxisComplexNotationY(parsed.gridSettings.axisComplexNotationY);
+              if (parsed.gridSettings.axisPiSymbol !== undefined) {
+                if (parsed.gridSettings.axisPiSymbolX === undefined)
+                  setAxisPiSymbolX(parsed.gridSettings.axisPiSymbol);
+                if (parsed.gridSettings.axisPiSymbolY === undefined)
+                  setAxisPiSymbolY(parsed.gridSettings.axisPiSymbol);
+              }
+              if (parsed.gridSettings.axisComplexNotation !== undefined) {
+                if (parsed.gridSettings.axisComplexNotationY === undefined)
+                  setAxisComplexNotationY(parsed.gridSettings.axisComplexNotation);
+                if (parsed.gridSettings.axisComplexNotationX === undefined)
+                  setAxisComplexNotationX(
+                    parsed.gridSettings.axisComplexNotation &&
+                      parsed.gridSettings.axisComplexTarget === "both",
+                  );
+              }
               if (parsed.gridSettings.samplingDepth !== undefined)
                 setSamplingDepth(parsed.gridSettings.samplingDepth);
               if (parsed.gridSettings.gridSubdivisions !== undefined)
                 setGridSubdivisions(parsed.gridSettings.gridSubdivisions);
+              if (typeof parsed.gridSettings.zoomMin === "number" && parsed.gridSettings.zoomMin > 0)
+                setZoomMin(parsed.gridSettings.zoomMin);
+              if (typeof parsed.gridSettings.zoomMax === "number" && parsed.gridSettings.zoomMax > 0)
+                setZoomMax(parsed.gridSettings.zoomMax);
               if (
+
                 parsed.gridSettings.panelPosition === "left" ||
                 parsed.gridSettings.panelPosition === "right" ||
                 parsed.gridSettings.panelPosition === "bottom"
@@ -1161,9 +1341,23 @@ export const MathNodeRenderer: React.FC<any> = ({
     axisSuffix,
     axisDecimals,
     axisThousandsSep,
+    separateAxes,
+    axisPiSymbol,
+    axisComplexNotation,
+    axisFilterX,
+    axisFilterY,
+    axisCustomFilterX,
+    axisCustomFilterY,
+    axisPiSymbolX,
+    axisPiSymbolY,
+    axisComplexNotationX,
+    axisComplexNotationY,
     samplingDepth,
     gridSubdivisions,
+    zoomMin,
+    zoomMax,
     panelPosition,
+
     sidebarWidth,
     sidebarHeight,
     liveDrag,
@@ -1250,7 +1444,37 @@ export const MathNodeRenderer: React.FC<any> = ({
     axisThousandsSep,
     axisPrefix,
     axisSuffix,
-  }), [axisDecimals, axisThousandsSep, axisPrefix, axisSuffix]);
+    stepFilterExpr,
+    separateAxes,
+    axisPiSymbol,
+    axisComplexNotation,
+    axisFilterX,
+    axisFilterY,
+    axisCustomFilterX,
+    axisCustomFilterY,
+    axisPiSymbolX,
+    axisPiSymbolY,
+    axisComplexNotationX,
+    axisComplexNotationY,
+  }), [
+    axisDecimals,
+    axisThousandsSep,
+    axisPrefix,
+    axisSuffix,
+    stepFilterExpr,
+    separateAxes,
+    axisPiSymbol,
+    axisComplexNotation,
+    axisFilterX,
+    axisFilterY,
+    axisCustomFilterX,
+    axisCustomFilterY,
+    axisPiSymbolX,
+    axisPiSymbolY,
+    axisComplexNotationX,
+    axisComplexNotationY,
+  ]);
+
 
   useEffect(() => {
     if (!graphContainerRef.current) return;
@@ -6703,6 +6927,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               axisStepStr={axisStepStr}
               setAxisStepStr={setAxisStepStr}
               parsedAxisStep={parsedAxisStep}
+              variableScope={variableScope}
               axisAutoFit={axisAutoFit}
               setAxisAutoFit={setAxisAutoFit}
               axisDecimals={axisDecimals}
@@ -6713,6 +6938,32 @@ export const MathNodeRenderer: React.FC<any> = ({
               setAxisPrefix={setAxisPrefix}
               axisSuffix={axisSuffix}
               setAxisSuffix={setAxisSuffix}
+              separateAxes={separateAxes}
+              setSeparateAxes={setSeparateAxes}
+              axisPiSymbol={axisPiSymbol}
+              setAxisPiSymbol={setAxisPiSymbol}
+              axisComplexNotation={axisComplexNotation}
+              setAxisComplexNotation={setAxisComplexNotation}
+              axisFilterX={axisFilterX}
+              setAxisFilterX={setAxisFilterX}
+              axisFilterY={axisFilterY}
+              setAxisFilterY={setAxisFilterY}
+              axisCustomFilterX={axisCustomFilterX}
+              setAxisCustomFilterX={setAxisCustomFilterX}
+              axisCustomFilterY={axisCustomFilterY}
+              setAxisCustomFilterY={setAxisCustomFilterY}
+              axisPiSymbolX={axisPiSymbolX}
+              setAxisPiSymbolX={setAxisPiSymbolX}
+              axisPiSymbolY={axisPiSymbolY}
+              setAxisPiSymbolY={setAxisPiSymbolY}
+              axisComplexNotationX={axisComplexNotationX}
+              setAxisComplexNotationX={setAxisComplexNotationX}
+              axisComplexNotationY={axisComplexNotationY}
+              setAxisComplexNotationY={setAxisComplexNotationY}
+              zoomMin={zoomMin}
+              setZoomMin={setZoomMin}
+              zoomMax={zoomMax}
+              setZoomMax={setZoomMax}
               getAxisLabel={getAxisLabel}
               onClose={closeAxisPanel}
             />
@@ -6723,20 +6974,34 @@ export const MathNodeRenderer: React.FC<any> = ({
             key={viewResetKey}
             width={graphSize.width}
             height={graphSize.height}
-            zoom={{ min: 0.1, max: 20 }}
+            zoom={{ min: Math.min(zoomMin, zoomMax), max: Math.max(zoomMin, zoomMax) }}
             viewBox={focusView ?? homeView}
             preserveAspectRatio="contain"
             pan={drawTool !== "select"}
           >
+
             <AdaptiveGrid
               gridType={gridType}
               gridSubdivisions={gridSubdivisions}
               parsedAxisStep={parsedAxisStep}
+              stepFilterExpr={stepFilterExpr}
               axisAutoFit={axisAutoFit}
+
               axisDecimals={axisDecimals}
               axisThousandsSep={axisThousandsSep}
               axisPrefix={axisPrefix}
               axisSuffix={axisSuffix}
+              separateAxes={separateAxes}
+              axisPiSymbol={axisPiSymbol}
+              axisComplexNotation={axisComplexNotation}
+              axisFilterX={axisFilterX}
+              axisFilterY={axisFilterY}
+              axisCustomFilterX={axisCustomFilterX}
+              axisCustomFilterY={axisCustomFilterY}
+              axisPiSymbolX={axisPiSymbolX}
+              axisPiSymbolY={axisPiSymbolY}
+              axisComplexNotationX={axisComplexNotationX}
+              axisComplexNotationY={axisComplexNotationY}
             />
 
 
