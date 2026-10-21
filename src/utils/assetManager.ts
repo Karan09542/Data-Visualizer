@@ -76,9 +76,9 @@ export async function saveAssetBinary(
   bytes: Uint8Array | ArrayBuffer
 ): Promise<void> {
   const storageKey = asset.storageKey || storageKeyFor(asset.assetId);
-  const arrayBuffer =
+  const arrayBuffer: ArrayBuffer =
     bytes instanceof Uint8Array
-      ? bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength)
+      ? (bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer)
       : bytes;
 
   // 1. Write bytes to device store
@@ -362,10 +362,6 @@ export function collectReferencedAssetIds(obj: any): Set<string> {
       if (typeof current.assetRef === "string" && current.assetRef) {
         ids.add(current.assetRef);
       }
-      // Or if a string itself is an asset ID, match prefix as fallback
-      if (typeof current === "string" && (current.startsWith("img_") || current.startsWith("thumb_"))) {
-        ids.add(current);
-      }
 
       for (const key of Object.keys(current)) {
         traverse(current[key]);
@@ -373,6 +369,15 @@ export function collectReferencedAssetIds(obj: any): Set<string> {
     } else if (typeof current === "string") {
       if (current.startsWith("img_") || current.startsWith("thumb_")) {
         ids.add(current);
+      } else if (current.length > 2 && (current[0] === "{" || current[0] === "[")) {
+        // Todo lists (and potentially other nodes) are stored as JSON strings
+        // inside parsedData. Parse them so imageHashes inside tasks are found.
+        try {
+          const parsed = JSON.parse(current);
+          traverse(parsed);
+        } catch {
+          // Not valid JSON — nothing to scan.
+        }
       }
     }
   }
