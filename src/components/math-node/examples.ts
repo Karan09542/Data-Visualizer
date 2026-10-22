@@ -147,6 +147,12 @@ export const EXAMPLE_GALLERY: {
       activeClass: "bg-cyan-500/10 border-cyan-400 dark:border-cyan-500 ring-1 ring-cyan-400/50",
       labelClass: "text-cyan-600 dark:text-cyan-400 group-hover:text-cyan-700 dark:group-hover:text-cyan-300",
     },
+    {
+      key: "EulerPolyhedra", category: "Geometry · Topology", label: "Euler's Polyhedra",
+      hint: "V − E + F = 2: 3D rotating polyhedron demonstrating Euler's formula for vertices, edges and faces",
+      activeClass: "bg-indigo-500/10 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50",
+      labelClass: "text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300",
+    },
   ];
 
 const TAU = 2 * Math.PI;
@@ -864,6 +870,100 @@ function complexMultiplication(): ExampleScene {
   };
 }
 
+// ─── Euler's Formula for Polyhedra (V − E + F = 2) ───────────────────────────
+
+function eulerPolyhedra(): ExampleScene {
+  const r = sceneRows("poly");
+  return {
+    functions: [
+      // 3D rotation angles: slider base + gentle tumbling if timeline is running
+      r.define("yaw = yaw0 + (time > 0.001 ? 0.7 * time : 0)"),
+      r.define("pitch = pitch0 + (time > 0.001 ? 0.25 * sin(0.8 * time) : 0)"),
+      r.define("cy = cos(yaw)"),
+      r.define("sy = sin(yaw)"),
+      r.define("cp = cos(pitch)"),
+      r.define("sp = sin(pitch)"),
+
+      // 8 Projected Vertices of the Cube ([-1, 1]³):
+      // Bottom square (y = -1):
+      r.define("v1 = S * [-cy + sy, -cp - (-sy - cy)*sp]"),
+      r.define("v2 = S * [ cy + sy, -cp - ( sy - cy)*sp]"),
+      r.define("v3 = S * [ cy - sy, -cp - ( sy + cy)*sp]"),
+      r.define("v4 = S * [-cy - sy, -cp - (-sy + cy)*sp]"),
+      // Top square (y = +1):
+      r.define("v5 = S * [-cy + sy,  cp - (-sy - cy)*sp]"),
+      r.define("v6 = S * [ cy + sy,  cp - ( sy - cy)*sp]"),
+      r.define("v7 = S * [ cy - sy,  cp - ( sy + cy)*sp]"),
+      r.define("v8 = S * [-cy - sy,  cp - (-sy + cy)*sp]"),
+
+      // Invariant counts for this Polyhedron
+      r.define("V_count = 8"),
+      r.define("E_count = 12"),
+      r.define("F_count = 6"),
+      r.define("chi = V_count - E_count + F_count"),
+
+      // 3D Principal axes at center of polyhedron (Red: X, Green: Y, Blue: Z)
+      r.arrow("Vector([0, 0], 0.75 * S * [cy, -sy*sp])", RED, { outlineWidth: 1.5, label: "+X", showLabel: true, labelAlignment: "right" }),
+      r.arrow("Vector([0, 0], 0.75 * S * [0, cp])", GREEN, { outlineWidth: 1.5, label: "+Y", showLabel: true, labelAlignment: "above" }),
+      r.arrow("Vector([0, 0], 0.75 * S * [-sy, -cy*sp])", BLUE, { outlineWidth: 1.5, label: "+Z", showLabel: true, labelAlignment: "below" }),
+
+      // 6 Translucent Shaded Faces (F = 6)
+      r.shape("[v1, v2, v3, v4]", INDIGO, { fillOpacity: 0.15, outlineWidth: 1, showAngles: false }),
+      r.shape("[v5, v6, v7, v8]", SKY, { fillOpacity: 0.18, outlineWidth: 1, showAngles: false }),
+      r.shape("[v1, v2, v6, v5]", BLUE, { fillOpacity: 0.13, outlineWidth: 1, showAngles: false }),
+      r.shape("[v2, v3, v7, v6]", PURPLE, { fillOpacity: 0.13, outlineWidth: 1, showAngles: false }),
+      r.shape("[v3, v4, v8, v7]", AMBER, { fillOpacity: 0.10, outlineWidth: 1, showAngles: false }),
+      r.shape("[v4, v1, v5, v8]", PINK, { fillOpacity: 0.10, outlineWidth: 1, showAngles: false }),
+
+      // 12 Edges (E = 12)
+      // Bottom 4 edges
+      r.path("v1 + t*(v2 - v1)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
+      r.path("v2 + t*(v3 - v2)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
+      r.path("v3 + t*(v4 - v3)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
+      r.path("v4 + t*(v1 - v4)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
+      // Top 4 edges
+      r.path("v5 + t*(v6 - v5)", SKY, [0, 1], { outlineWidth: 2.2 }),
+      r.path("v6 + t*(v7 - v6)", SKY, [0, 1], { outlineWidth: 2.2 }),
+      r.path("v7 + t*(v8 - v7)", SKY, [0, 1], { outlineWidth: 2.2 }),
+      r.path("v8 + t*(v5 - v8)", SKY, [0, 1], { outlineWidth: 2.2 }),
+      // 4 Vertical pillar edges
+      r.path("v1 + t*(v5 - v1)", PURPLE, [0, 1], { outlineWidth: 2 }),
+      r.path("v2 + t*(v6 - v2)", PURPLE, [0, 1], { outlineWidth: 2 }),
+      r.path("v3 + t*(v7 - v3)", PURPLE, [0, 1], { outlineWidth: 2 }),
+      r.path("v4 + t*(v8 - v4)", PURPLE, [0, 1], { outlineWidth: 2 }),
+
+      // 8 Vertices (V = 8)
+      r.point("v1", INDIGO, { label: "v₁", showLabel: true, labelAlignment: "left" }),
+      r.point("v2", INDIGO, { label: "v₂", showLabel: true, labelAlignment: "right" }),
+      r.point("v3", INDIGO, { label: "v₃", showLabel: true, labelAlignment: "right" }),
+      r.point("v4", INDIGO, { label: "v₄", showLabel: true, labelAlignment: "left" }),
+      r.point("v5", SKY, { label: "v₅", showLabel: true, labelAlignment: "left" }),
+      r.point("v6", SKY, { label: "v₆", showLabel: true, labelAlignment: "right" }),
+      r.point("v7", PINK, { label: "v₇ (drag)", showLabel: true, labelAlignment: "above", dragVars: ["yaw0", "pitch0"] }),
+      r.point("v8", SKY, { label: "v₈", showLabel: true, labelAlignment: "left" }),
+
+      // Top Educational Readouts
+      r.readout("[0, 4.4]", "Euler's Polyhedron Formula:  V − E + F = 2", INDIGO),
+      r.readout("[0, 3.8]", "Cube (Hexahedron):  V = {{V_count}} vertices,  E = {{E_count}} edges,  F = {{F_count}} faces", SKY),
+      r.readout("[0, 3.2]", "Verification:  {{V_count}} − {{E_count}} + {{F_count}} = {{chi}}  ✓   (Euler Characteristic χ = 2)", GREEN),
+
+      // Bottom Educational Readouts
+      r.readout("[0, -3.2]", "Topological Invariant: Any simply connected polyhedron homeomorphic to a sphere has χ = 2", TEXT),
+      r.readout("[0, -3.8]", "Tetrahedron (4 − 6 + 4 = 2)  ·  Octahedron (6 − 12 + 8 = 2)  ·  Icosahedron (12 − 30 + 20 = 2)", PURPLE),
+      r.readout("[0, -4.4]", "Dodecahedron (20 − 30 + 12 = 2)  ·  Drag corner v₇ or sliders to rotate, or Play to tumble", AMBER),
+    ],
+    variables: [
+      sceneSlider("yaw0", "Yaw (horizontal rot)", 0.65, [-3.14, 3.14, 0.02], "Rotate around vertical Y-axis. Or drag pink corner v₇.", "poly"),
+      sceneSlider("pitch0", "Pitch (tilt rot)", 0.45, [-1.5, 1.5, 0.02], "Tilt 3D view up or down. Or drag pink corner v₇.", "poly"),
+      sceneSlider("S", "Scale / Size", 1.6, [0.8, 2.4, 0.05], "Adjust visual scale of the polyhedron.", "poly"),
+    ],
+    groups: [sceneGroup("poly", "Euler's Polyhedron (V − E + F = 2)")],
+    timeline: { mode: "loop", min: 0, max: TAU, speed: 0.5 },
+    view: { x: [-5.6, 5.6], y: [-5.0, 5.0] },
+    gridType: "cartesian",
+  };
+}
+
 export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Lissajous: {
     functions: [
@@ -987,4 +1087,5 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   DeMoivre: deMoivre(),
   RootsOfUnity: rootsOfUnity(),
   ComplexMultiplication: complexMultiplication(),
+  EulerPolyhedra: eulerPolyhedra(),
 };
