@@ -372,11 +372,15 @@ export const MATH_COMPLETIONS = [
   { name: "isPrime", desc: "Checks if number is prime", insert: "isPrime(" },
 
   // Complex numbers
-  { name: "complex", desc: "Create a complex number", insert: "complex(" },
+  { name: "complex", desc: "Create a complex number: complex(re, im)", insert: "complex(" },
   { name: "conj", desc: "Conjugate of a complex number", insert: "conj(" },
   { name: "re", desc: "Real part of complex number", insert: "re(" },
   { name: "im", desc: "Imaginary part of complex number", insert: "im(" },
-  { name: "arg", desc: "Argument / phase of complex number", insert: "arg(" },
+  { name: "real", desc: "Real part of complex number", insert: "real(" },
+  { name: "imag", desc: "Imaginary part of complex number", insert: "imag(" },
+  { name: "arg", desc: "Argument / phase angle of complex number", insert: "arg(" },
+  { name: "cis", desc: "cis(θ) = cos(θ) + i*sin(θ) = e^(i*θ)", insert: "cis(" },
+  { name: "polar", desc: "Complex number from polar: polar(r, θ)", insert: "polar(" },
 
   // Constants
   { name: "pi", desc: "Constant π (3.14159...)", insert: "pi" },

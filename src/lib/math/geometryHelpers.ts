@@ -15,6 +15,11 @@ const DEG = Math.PI / 180;
 
 /** A point as [x, y], whether it arrives as an array or a mathjs matrix. */
 const xy = (v: any): Vec => {
+  if (v && typeof v === "object" && !Array.isArray(v)) {
+    if (v.isComplex || ("re" in v && "im" in v)) {
+      return [Number(v.re), Number(v.im)];
+    }
+  }
   const a = v && typeof v.toArray === "function" ? v.toArray() : v;
   return [Number(a?.[0]), Number(a?.[1])];
 };
@@ -36,6 +41,21 @@ export const GEOMETRY_HELPERS = {
     let d = Math.atan2(qy - vy, qx - vx) - a;
     d = ((((d + Math.PI) % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI)) - Math.PI; // the short way round
     return [vx + radius * Math.cos(a + s * d), vy + radius * Math.sin(a + s * d)];
+  },
+  distance: (A: any, B: any): number => {
+    const [ax, ay] = xy(A);
+    const [bx, by] = xy(B);
+    return Math.hypot(bx - ax, by - ay);
+  },
+  dist: (A: any, B: any): number => {
+    const [ax, ay] = xy(A);
+    const [bx, by] = xy(B);
+    return Math.hypot(bx - ax, by - ay);
+  },
+  midpoint: (A: any, B: any): Vec => {
+    const [ax, ay] = xy(A);
+    const [bx, by] = xy(B);
+    return [(ax + bx) / 2, (ay + by) / 2];
   },
 };
 

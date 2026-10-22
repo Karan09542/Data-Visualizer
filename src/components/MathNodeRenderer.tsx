@@ -228,7 +228,7 @@ import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { PointMenu, PointMenuTrigger, type PointMenuTarget } from "./math-node/PointMenu";
 import { useNodeResize } from "../hooks/useNodeResize";
 import { splitRelation } from "../lib/math/splitRelation";
-import { inferType } from "../lib/math/inferType";
+import { inferType, isComplexExpr } from "../lib/math/inferType";
 import { parseOdeSystemCached } from "../lib/math/odeSystem";
 import { getOdeExtent } from "../lib/math/odeCurveData";
 import { odeSystemToLatex } from "../lib/math/odeLatex";
@@ -254,15 +254,25 @@ type PanelPosition = "left" | "right" | "bottom";
  */
 function defaultFunctionLabel(fn: MathFunction): string {
   // A point's equation holds its position as it was: label it with live
-  // coordinates instead, so the label follows the point ("A = {{xy}}").
+  // coordinates instead, so the label follows the point ("A = {{xy}}" or "z = {{z}}").
   if (fn.type === "point") {
     const name = pointRowName(fn.expr);
-    return name ? `${name} = ${POINT_COORDINATES_LABEL}` : POINT_COORDINATES_LABEL;
+    const isComplex = isComplexExpr(fn.expr) || /\b[0-9]*\.?[0-9]*i\b/.test(fn.expr) || /\bi\b/.test(fn.expr);
+    const coordLabel = isComplex ? "{{z}}" : POINT_COORDINATES_LABEL;
+    return name ? `${name} = ${coordLabel}` : coordLabel;
   }
   // For an ODE the expression is the whole system; it's shown as stacked equations,
   // so it reads fine on the canvas.
   return (fn as any).latex || fn.expr || "";
 }
+
+export const toRealVal = (val: any): number => {
+  if (typeof val === "number") return val;
+  if (val && typeof val === "object" && (val.isComplex || "im" in val)) {
+    return Math.abs(val.im) < 1e-9 ? Number(val.re) : NaN;
+  }
+  return Number(val);
+};
 
 
 const DEFAULT_VIEW: GraphView = { x: [-5, 5], y: [-5, 5] };
@@ -403,14 +413,28 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (typeof data.value === "string") {
       try {
         const parsed = JSON.parse(data.value);
-        if (parsed && Array.isArray(parsed.functions)) return parsed.functions;
+        if (parsed && Array.isArray(parsed.functions)) {
+          return parsed.functions.map((fn: MathFunction) => {
+            if (fn.autoType && fn.expr && fn.type !== "calculator") {
+              const inferred = inferType(fn.expr);
+              if (inferred) return { ...fn, type: inferred };
+            }
+            return fn;
+          });
+        }
       } catch (e) { }
     } else if (
       data.value &&
       typeof data.value === "object" &&
       Array.isArray(data.value.functions)
     ) {
-      return data.value.functions;
+      return data.value.functions.map((fn: MathFunction) => {
+        if (fn.autoType && fn.expr && fn.type !== "calculator") {
+          const inferred = inferType(fn.expr);
+          if (inferred) return { ...fn, type: inferred };
+        }
+        return fn;
+      });
     }
     return [
       {
@@ -1143,6 +1167,12 @@ export const MathNodeRenderer: React.FC<any> = ({
               return parsed.functions.map((raw: any) => {
                 // Older saves carry compiledKey; dropping it makes the row compile here.
                 const { compiledKey: _stale, compiled: _c, compiled2: _c2, compiledOde: _o, ...incomingF } = raw;
+                if (incomingF.autoType && incomingF.expr && incomingF.type !== "calculator") {
+                  const inferred = inferType(incomingF.expr);
+                  if (inferred && inferred !== incomingF.type) {
+                    incomingF.type = inferred;
+                  }
+                }
                 const existing = compiledMap.get(incomingF.id);
                 // Keep what's compiled (including a solved equation) while the formula is
                 // the same; anything else is compiled afresh.
@@ -2002,7 +2032,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       prev.map((f) => {
         if (f.id !== id) return f;
         // Auto rows follow what is typed; an unfinished expression keeps the type it has.
-        const inferred = f.autoType && f.type !== "calculator" ? inferType(expr) : null;
+        const inferred = f.autoType && f.type !== "calculator" ? inferType(expr, baseScope) : null;
         return inferred && inferred !== f.type ? { ...f, expr, type: inferred } : { ...f, expr };
       }),
     );
@@ -2057,7 +2087,7 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   /** An example from the empty graph: fills the blank row if there is one. */
   const handleExampleRow = (expr: string) => {
-    const type = inferType(expr) ?? "function";
+    const type = inferType(expr, baseScope) ?? "function";
     setFunctions((prev) => {
       const blank = prev.find((f) => !f.expr.trim());
       if (blank) return prev.map((f) => (f === blank ? { ...f, expr, type, autoType: true } : f));
@@ -2612,6 +2642,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       setFunctions([]);
       setVariables([]);
       setActiveExample(null);
+      setAxisComplexNotationY(false);
       return;
     }
     setActiveExample(exampleName);
@@ -2629,6 +2660,10 @@ export const MathNodeRenderer: React.FC<any> = ({
         exampleData.timeline ?? { mode: "continuous", min: 0, max: 10, autoplay: true },
         exampleData.view ?? { x: [-5, 5], y: [-5, 5] },
       );
+      setAxisComplexNotationY(exampleData.axisComplexNotationY ?? false);
+      if (exampleData.gridType) {
+        setGridType(exampleData.gridType);
+      }
     }
   };
 
@@ -3239,7 +3274,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 prev.map((fn) => {
                                   if (fn.id !== f.id) return fn;
                                   // "Auto" goes back to following the expression; any other choice sticks.
-                                  if (choice === "auto") return { ...fn, autoType: true, type: inferType(fn.expr) ?? fn.type };
+                                  if (choice === "auto") return { ...fn, autoType: true, type: inferType(fn.expr, baseScope) ?? fn.type };
                                   return { ...fn, type: choice as any, autoType: false };
                                 }),
                               );
@@ -7139,7 +7174,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                             if (f.type === "function") {
                               for (let x of [0, 1, -1, 2, -2, 3, -3]) {
                                 try {
-                                  let y = Number(
+                                  let y = toRealVal(
                                     f.compiled.evaluate({ ...baseScope, x }),
                                   );
                                   if (isFinite(y)) {
@@ -7162,6 +7197,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                                     x: t,
                                     theta: t,
                                   });
+                                  if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                                    pt = [Number(res.re), Number(res.im)];
+                                    break;
+                                  }
                                   let arr = res.toArray ? res.toArray() : res;
                                   pt = [Number(arr[0]), Number(arr[1])];
                                   break;
@@ -7175,14 +7214,19 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 Math.PI,
                               ]) {
                                 try {
-                                  let r = Number(
-                                    f.compiled.evaluate({
-                                      ...baseScope,
-                                      theta: t,
-                                      x: t,
-                                      t,
-                                    }),
-                                  );
+                                  const val = f.compiled.evaluate({
+                                    ...baseScope,
+                                    theta: t,
+                                    x: t,
+                                    t,
+                                  });
+                                  if (val && typeof val === "object" && (val.isComplex || ("re" in val && "im" in val))) {
+                                    if (Math.abs(Number(val.im)) > 1e-9) {
+                                      pt = [Number(val.re), Number(val.im)];
+                                      break;
+                                    }
+                                  }
+                                  let r = toRealVal(val);
                                   if (isFinite(r)) {
                                     pt = [r * Math.cos(t), r * Math.sin(t)];
                                     break;
@@ -7583,12 +7627,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                               onMove={(
                                                                 newPt,
                                                               ) => {
+                                                                const isComplex = isComplexExpr(f.expr) || /\b[0-9]*\.?[0-9]*i\b/.test(f.expr) || /\bi\b/.test(f.expr);
                                                                 let newExpr = `[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
                                                                 const match =
                                                                   f.expr.match(
                                                                     /^([^=]+=\s*)/,
                                                                   );
-                                                                if (match) {
+                                                                if (isComplex) {
+                                                                  const sign = newPt[1] >= 0 ? "+" : "-";
+                                                                  const absY = Math.abs(newPt[1]).toFixed(2);
+                                                                  const complexStr = `${newPt[0].toFixed(2)} ${sign} ${absY}i`;
+                                                                  newExpr = match ? `${match[1]}${complexStr}` : complexStr;
+                                                                } else if (match) {
                                                                   newExpr = `${match[1]}[${newPt[0].toFixed(2)}, ${newPt[1].toFixed(2)}]`;
                                                                 }
                                                                 // Live drag: compile here, so the label and whatever
@@ -7847,20 +7897,28 @@ export const MathNodeRenderer: React.FC<any> = ({
                                               const tVal = fillT0 + ((fillT1 - fillT0) * i) / steps;
                                               try {
                                                 const scope = Object.create(baseScope);
+                                                const angle = tVal * angleUnit;
                                                 scope.t = tVal;
+                                                scope.theta = scope["θ"] = angle;
+                                                scope.x = angle;
                                                 const res = f.compiled.evaluate(scope);
-                                                const arr =
-                                                  res && res.toArray
-                                                    ? res.toArray()
-                                                    : res;
-                                                if (
-                                                  Array.isArray(arr) &&
-                                                  arr.length >= 2
-                                                ) {
-                                                  const p = applyCurveTransform([
-                                                    Number(arr[0]),
-                                                    Number(arr[1]),
-                                                  ]);
+                                                let pt: [number, number] | null = null;
+                                                if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                                                  pt = [Number(res.re), Number(res.im)];
+                                                } else {
+                                                  const arr =
+                                                    res && res.toArray
+                                                      ? res.toArray()
+                                                      : res;
+                                                  if (
+                                                    Array.isArray(arr) &&
+                                                    arr.length >= 2
+                                                  ) {
+                                                    pt = [Number(arr[0]), Number(arr[1])];
+                                                  }
+                                                }
+                                                if (pt) {
+                                                  const p = applyCurveTransform(pt);
                                                   if (Number.isFinite(p[0]) && Number.isFinite(p[1])) pts.push(p);
                                                 }
                                               } catch { }
@@ -7934,9 +7992,15 @@ export const MathNodeRenderer: React.FC<any> = ({
                                               xy={(t: number) => {
                                                 try {
                                                   const scope = Object.create(baseScope);
+                                                  const angle = t * angleUnit;
                                                   scope.t = t;
+                                                  scope.theta = scope["θ"] = angle;
+                                                  scope.x = angle;
                                                   scope[family.variable] = val;
                                                   const res = f.compiled.evaluate(scope);
+                                                  if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                                                    return applyCurveTransform([Number(res.re), Number(res.im)]);
+                                                  }
                                                   const arr =
                                                     res && res.toArray
                                                       ? res.toArray()
@@ -8006,8 +8070,14 @@ export const MathNodeRenderer: React.FC<any> = ({
                                           xy={(t: number) => {
                                             try {
                                               const scope = Object.create(baseScope);
+                                              const angle = t * angleUnit;
                                               scope.t = t;
+                                              scope.theta = scope["θ"] = angle;
+                                              scope.x = angle;
                                               const res = f.compiled.evaluate(scope);
+                                              if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                                                return applyCurveTransform([Number(res.re), Number(res.im)]);
+                                              }
                                               const arr =
                                                 res && res.toArray
                                                   ? res.toArray()
@@ -8142,15 +8212,21 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                 const angle = tVal * angleUnit;
                                                 if (!useThetaAsAngle) scope.t = angle;
                                                 scope.x = angle;
-                                                scope.theta = scope["θ"] = angle;
-                                                const r = Number(
-                                                  f.compiled.evaluate(scope),
-                                                );
-                                                if (Number.isFinite(r)) {
-                                                  const p = applyCurveTransform([
-                                                    r * Math.cos(tVal),
-                                                    r * Math.sin(tVal),
-                                                  ]);
+                                                const res = f.compiled.evaluate(scope);
+                                                let pt: [number, number] | null = null;
+                                                if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                                                  if (Math.abs(Number(res.im)) > 1e-9) {
+                                                    pt = [Number(res.re), Number(res.im)];
+                                                  } else {
+                                                    const r = Number(res.re);
+                                                    if (Number.isFinite(r)) pt = [r * Math.cos(tVal), r * Math.sin(tVal)];
+                                                  }
+                                                } else {
+                                                  const r = toRealVal(res);
+                                                  if (Number.isFinite(r)) pt = [r * Math.cos(tVal), r * Math.sin(tVal)];
+                                                }
+                                                if (pt) {
+                                                  const p = applyCurveTransform(pt);
                                                   if (Number.isFinite(p[0]) && Number.isFinite(p[1])) pts.push(p);
                                                 }
                                               } catch { }
@@ -8230,9 +8306,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                   scope.x = angle;
                                                   scope.theta = scope["θ"] = angle;
                                                   scope[family.variable] = val;
-                                                  const r = Number(
-                                                    f.compiled.evaluate(scope),
-                                                  );
+                                                  const res = f.compiled.evaluate(scope);
+                                                  if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                                                    if (Math.abs(Number(res.im)) > 1e-9) {
+                                                      return applyCurveTransform([Number(res.re), Number(res.im)]);
+                                                    }
+                                                    const r = Number(res.re);
+                                                    return applyCurveTransform([
+                                                      r * Math.cos(tVal),
+                                                      r * Math.sin(tVal),
+                                                    ]);
+                                                  }
+                                                  const r = toRealVal(res);
                                                   return applyCurveTransform([
                                                     r * Math.cos(tVal),
                                                     r * Math.sin(tVal),
@@ -8297,9 +8382,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                 if (!useThetaAsAngle) scope.t = angle;
                                                 scope.x = angle;
                                                 scope.theta = scope["θ"] = angle;
-                                                const r = Number(
-                                                  f.compiled.evaluate(scope),
-                                                );
+                                                const res = f.compiled.evaluate(scope);
+                                                if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                                                  if (Math.abs(Number(res.im)) > 1e-9) {
+                                                    return applyCurveTransform([Number(res.re), Number(res.im)]);
+                                                  }
+                                                  const r = Number(res.re);
+                                                  return applyCurveTransform([
+                                                    r * Math.cos(tVal),
+                                                    r * Math.sin(tVal),
+                                                  ]);
+                                                }
+                                                const r = toRealVal(res);
                                                 return applyCurveTransform([
                                                   r * Math.cos(tVal),
                                                   r * Math.sin(tVal),
@@ -8412,7 +8506,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                               try {
                                                 const scope = Object.create(baseScope);
                                                 scope.x = xVal;
-                                                const y = Number(f.compiled.evaluate(scope));
+                                                const y = toRealVal(f.compiled.evaluate(scope));
                                                 if (Number.isFinite(y)) {
                                                   const p = applyCurveTransform([xVal, y]);
                                                   if (Number.isFinite(p[0]) && Number.isFinite(p[1])) pts.push(p);
@@ -8780,9 +8874,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                                           const isSingle =
                                             points.length === 1 &&
                                             f.expr.includes("[[");
+                                          const isComplex =
+                                            points.length === 1 &&
+                                            (isComplexExpr(f.expr) || /\b[0-9]*\.?[0-9]*i\b/.test(f.expr) || /\bi\b/.test(f.expr));
 
                                           let newExpr = "";
-                                          if (isSingle) {
+                                          if (isComplex) {
+                                            const gPt = localToGlobal(points[0][0], points[0][1]);
+                                            const newX = (gPt[0] + dX).toFixed(2);
+                                            const newY = gPt[1] + dY;
+                                            const sign = newY >= 0 ? "+" : "-";
+                                            newExpr = `${prefix}${newX} ${sign} ${Math.abs(newY).toFixed(2)}i`;
+                                          } else if (isSingle) {
                                             const gPt = localToGlobal(
                                               points[0][0],
                                               points[0][1],
@@ -9496,11 +9599,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                         ? f.time
                         : 0
                       : time;
+                    const inDegrees = rowInDegrees(f, angleMode === "degrees");
+                    const angleUnit = inDegrees ? 180 / Math.PI : 1;
                     const fScope = {
                       ...baseScope,
                       t: fTime,
                       time: time,
-                      ...(rowInDegrees(f, angleMode === "degrees") ? DEGREE_TRIG : {}),
+                      ...(inDegrees ? DEGREE_TRIG : {}),
                     };
                     const baseScopeShadow = fScope;
                     try {
@@ -9514,14 +9619,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                           ...baseScopeShadow,
                           x: (fTime % 10) - 5,
                         });
-                        if (
-                          val == null ||
-                          typeof val === "object" ||
-                          typeof val === "function" ||
-                          isNaN(Number(val))
-                        )
-                          return null;
-                        const y = Number(val).toFixed(2);
+                        const realVal = toRealVal(val);
+                        if (isNaN(realVal)) return null;
+                        const y = realVal.toFixed(2);
                         return renderRow(
                           f,
                           `f(${((fTime % 10) - 5).toFixed(1)})`,
@@ -9535,15 +9635,26 @@ export const MathNodeRenderer: React.FC<any> = ({
                         if (f.type === "polar") {
                           const useThetaAsAngle = /\btheta\b|θ/.test(f.expr);
                           const scope = { ...baseScopeShadow };
+                          const angle = tVal * angleUnit;
                           if (useThetaAsAngle) {
-                            scope.theta = scope["θ"] = tVal;
-                            scope.x = tVal;
+                            scope.theta = scope["θ"] = angle;
+                            scope.x = angle;
                           } else {
-                            scope.t = tVal;
-                            scope.x = tVal;
-                            scope.theta = scope["θ"] = tVal;
+                            scope.t = angle;
+                            scope.x = angle;
+                            scope.theta = scope["θ"] = angle;
                           }
-                          const r = Number(f.compiled.evaluate(scope));
+                          const ev = f.compiled.evaluate(scope);
+                          if (ev && typeof ev === "object" && (ev.isComplex || ("re" in ev && "im" in ev))) {
+                            if (Math.abs(Number(ev.im)) > 1e-9) {
+                              return renderRow(
+                                f,
+                                `z(${tVal.toFixed(1)})`,
+                                `${Number(ev.re).toFixed(2)} ${ev.im >= 0 ? "+" : "-"} ${Math.abs(Number(ev.im)).toFixed(2)}i`,
+                              );
+                            }
+                          }
+                          const r = toRealVal(ev);
                           if (isNaN(r)) return null;
                           return renderRow(
                             f,
@@ -9554,7 +9665,17 @@ export const MathNodeRenderer: React.FC<any> = ({
                           const res = f.compiled.evaluate({
                             ...baseScopeShadow,
                             t: tVal,
+                            theta: tVal * angleUnit,
+                            "θ": tVal * angleUnit,
+                            x: tVal * angleUnit,
                           });
+                          if (res && typeof res === "object" && (res.isComplex || ("re" in res && "im" in res))) {
+                            return renderRow(
+                              f,
+                              `z(${tVal.toFixed(1)})`,
+                              `${Number(res.re).toFixed(2)} ${res.im >= 0 ? "+" : "-"} ${Math.abs(Number(res.im)).toFixed(2)}i`,
+                            );
+                          }
                           const arr = res && res.toArray ? res.toArray() : res;
                           if (
                             Array.isArray(arr) &&
@@ -9574,11 +9695,19 @@ export const MathNodeRenderer: React.FC<any> = ({
                         if (res.points && res.points.length > 0) {
                           const pt = res.points[0];
                           const named = f.expr.match(/^\s*([A-Za-z_]\w*)\s*=/)?.[1];
+                          let coordStr = `(${pt[0].toFixed(2)}, ${pt[1].toFixed(2)})`;
+                          try {
+                            const rawVal = f.compiled?.evaluate(baseScopeShadow);
+                            if (rawVal && typeof rawVal === "object" && (rawVal.isComplex || ("re" in rawVal && "im" in rawVal))) {
+                              const sign = rawVal.im >= 0 ? "+" : "-";
+                              coordStr = `${Number(rawVal.re).toFixed(2)} ${sign} ${Math.abs(Number(rawVal.im)).toFixed(2)}i`;
+                            }
+                          } catch {}
                           return renderRow(
                             f,
                             (f.label && !hasLiveValues(f.label) ? f.label : named) ||
                               (f.type === "point" ? "P" : "V"),
-                            `(${pt[0].toFixed(2)}, ${pt[1].toFixed(2)})`,
+                            coordStr,
                           );
                         }
                       }

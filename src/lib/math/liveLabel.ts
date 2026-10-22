@@ -38,12 +38,34 @@ function formatValue(value: any, decimals: number): string {
   if (Array.isArray(arr)) {
     return `(${arr.map((v: any) => formatValue(Array.isArray(v) && v.length === 1 ? v[0] : v, decimals)).join(", ")})`;
   }
-  if (value && value.isComplex) return value.format({ precision: decimals + 2 });
+  if (value && typeof value === "object" && (value.isComplex || ("re" in value && "im" in value))) {
+    const re = Number(value.re);
+    const im = Number(value.im);
+    if (!Number.isFinite(re) || !Number.isFinite(im)) return "—";
+    const reFixed = re.toFixed(decimals);
+    const reClean = /^-0(\.0+)?$/.test(reFixed) ? reFixed.slice(1) : reFixed;
+    const imFixed = Math.abs(im).toFixed(decimals);
+    const imClean = /^-0(\.0+)?$/.test(imFixed) ? imFixed.slice(1) : imFixed;
+
+    // Pure real
+    if (Math.abs(im) < 1e-9) return reClean;
+    // Pure imaginary
+    if (Math.abs(re) < 1e-9) {
+      return `${im < 0 ? "-" : ""}${imClean}i`;
+    }
+    const sign = im >= 0 ? "+" : "-";
+    return `${reClean} ${sign} ${imClean}i`;
+  }
   return value == null ? "—" : String(value);
 }
 
-/** A point's own position, for its label: {{xy}} → "(1.00, 2.00)", {{x}}, {{y}}. */
-export const pointLabelLocals = (x: number, y: number) => ({ x, y, xy: [x, y] });
+/** A point's own position, for its label: {{xy}} → "(1.00, 2.00)", {{x}}, {{y}}, {{z}} → "1.00 + 2.00i". */
+export const pointLabelLocals = (x: number, y: number) => ({
+  x,
+  y,
+  xy: [x, y],
+  z: mathjs.complex(x, y),
+});
 
 /** A label that just shows the point's position. */
 export const POINT_COORDINATES_LABEL = "{{xy}}";

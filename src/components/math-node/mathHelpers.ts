@@ -107,6 +107,17 @@ const getNumericCoordinate = (val: any): number | null => {
 export const extractPointsFromValue = (val: any): [number, number][] => {
   if (val == null) return [];
 
+  // mathjs Complex number or object with re and im
+  if (typeof val === "object" && !Array.isArray(val)) {
+    if (val.isComplex || ("re" in val && "im" in val)) {
+      const re = Number(val.re);
+      const im = Number(val.im);
+      if (Number.isFinite(re) && Number.isFinite(im)) {
+        return [[re, im]];
+      }
+    }
+  }
+
   if (Array.isArray(val) && val.length === 2) {
     const x = getNumericCoordinate(val[0]);
     const y = getNumericCoordinate(val[1]);
@@ -128,6 +139,14 @@ export const extractPointsFromValue = (val: any): [number, number][] => {
 
 export const normalizeGeometryValue = (val: any): any => {
   const resolved = resolveNestedValue(val);
+  // Keep mathjs Complex objects intact so subsequent expressions can use complex math
+  if (
+    resolved &&
+    typeof resolved === "object" &&
+    (resolved.isComplex || ("re" in resolved && "im" in resolved))
+  ) {
+    return resolved;
+  }
   const points = extractPointsFromValue(resolved);
   if (points.length === 1) return points[0];
   if (points.length > 1) return points;

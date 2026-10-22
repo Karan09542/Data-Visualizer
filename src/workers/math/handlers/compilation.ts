@@ -8,7 +8,9 @@ import { parseFamilyExpression } from "../../../lib/math/familyPlot";
 
 const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper", ...GEOMETRY_HELPER_NAMES,
   // Angle units, as in cos(t rad): not sliders.
-  "rad", "deg"];
+  "rad", "deg",
+  // Complex numbers and functions
+  "i", "re", "im", "real", "imag", "conj", "arg", "abs", "complex", "cis", "polar"];
 // theta/θ are only implicit (the swept angle) for polar curves; elsewhere a theta is a
 // normal variable the user should be offered as a slider.
 const POLAR_BUILTINS = ["theta", "θ"];
@@ -17,6 +19,16 @@ function buildScope(context: any, payload: any) {
   // theta defaults to 0 first so a user variable named theta overrides it.
   // The same helpers the graph has (angleAt, arcAt), so rows using them check out here too.
   const tempBaseScope: any = { theta: 0, ...GEOMETRY_HELPERS };
+  tempBaseScope.i = (context.math as any).complex(0, 1);
+  tempBaseScope.re = (context.math as any).re;
+  tempBaseScope.im = (context.math as any).im;
+  tempBaseScope.real = (context.math as any).re;
+  tempBaseScope.imag = (context.math as any).im;
+  tempBaseScope.conj = (context.math as any).conj;
+  tempBaseScope.arg = (context.math as any).arg;
+  tempBaseScope.complex = (context.math as any).complex;
+  tempBaseScope.cis = (angle: number) => (context.math as any).complex(Math.cos(angle), Math.sin(angle));
+  tempBaseScope.polar = (r: number, theta: number) => (context.math as any).complex({ r, phi: theta });
   for (let i = 0; i < payload.variableNames.length; i++) {
     tempBaseScope[payload.variableNames[i]] = payload.variableValues[i];
   }

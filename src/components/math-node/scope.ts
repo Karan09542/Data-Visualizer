@@ -67,7 +67,13 @@ function degreeTrig(): Record<string, (...args: any[]) => any> {
   // How dependencyKey tells the modes apart. On the function itself, so it survives
   // the scope being copied ({ ...baseScope }) where a property of the scope would not.
   (out.sin as any).inDegrees = true;
-  for (const f of ["asin", "acos", "atan", "atan2", "asec", "acsc", "acot"]) out[f] = inverse(f);
+  for (const f of ["asin", "acos", "atan", "atan2", "asec", "acsc", "acot", "arg"]) out[f] = inverse(f);
+  out.cis = (x: any) =>
+    typeof x === "number"
+      ? m.complex(Math.cos(x * DEG), Math.sin(x * DEG))
+      : m.complex(Math.cos(x), Math.sin(x));
+  out.polar = (r: any, theta: any) =>
+    m.complex({ r, phi: typeof theta === "number" ? theta * DEG : theta });
   return out;
 }
 
@@ -203,6 +209,21 @@ export function buildBaseScope(
   baseScope.ln = mathjs.log;
   baseScope.log10 = mathjs.log10;
   baseScope.indexHelper = indexHelper;
+
+  // Complex number constants and functions
+  baseScope.i = mathjs.complex(0, 1);
+  baseScope.e = Math.E;
+  baseScope.pi = Math.PI;
+  baseScope.tau = 2 * Math.PI;
+  baseScope.re = mathjs.re;
+  baseScope.im = mathjs.im;
+  baseScope.real = mathjs.re;
+  baseScope.imag = mathjs.im;
+  baseScope.conj = mathjs.conj;
+  baseScope.arg = mathjs.arg;
+  baseScope.complex = mathjs.complex;
+  baseScope.cis = (angle: number) => mathjs.complex(Math.cos(angle), Math.sin(angle));
+  baseScope.polar = (r: number, theta: number) => mathjs.complex({ r, phi: theta });
 
   // Geometry constructors
   baseScope.Line = (...args: any[]) => args;
