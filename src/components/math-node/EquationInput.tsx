@@ -68,12 +68,20 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   const [suggestions, setSuggestions] = useState<any[]>([]);
   const [selIndex, setSelIndex] = useState(0);
   const [inputRect, setInputRect] = useState<DOMRect | null>(null);
-  const [latexResult, setLatexResult] = useState<{ latex?: string; evalResult?: string }>({});
+  const [latexResult, setLatexResult] = useState<{
+    value?: string;
+    varsKey?: string;
+    latex?: string;
+    evalResult?: string;
+    failed?: boolean;
+  }>({});
   const [isComputingLatex, setIsComputingLatex] = useState(false);
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const blurTimeoutRef = useRef<number | null>(null);
+  const latexResultRef = useRef(latexResult);
+  latexResultRef.current = latexResult;
   const lastFocusSignalRef = useRef(0);
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
@@ -103,7 +111,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
       if (document.activeElement !== inputRef.current) {
         setIsFocused(false);
       }
-    }, 200);
+    }, 16);
     if (onBlur) onBlur();
   };
 
@@ -190,15 +198,26 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   }, [variables, value]);
 
   useEffect(() => {
-    if (isFocused || forceEditMode || error || !value.trim()) {
-      setLatexResult({});
+    if (error || !value.trim()) {
+      setLatexResult({ value, varsKey: latexVariablesKey });
       setIsComputingLatex(false);
       return;
     }
 
     if (latexOverride) {
       // Already-rendered syntax (ODE systems); the worker can't parse these.
-      setLatexResult({ latex: latexOverride });
+      setLatexResult({ value, varsKey: latexVariablesKey, latex: latexOverride });
+      setIsComputingLatex(false);
+      return;
+    }
+
+    // Reuse cached LaTeX when already computed for the current expression and variables
+    const cached = latexResultRef.current;
+    if (
+      cached.value === value &&
+      cached.varsKey === latexVariablesKey &&
+      (cached.latex || cached.failed)
+    ) {
       setIsComputingLatex(false);
       return;
     }
@@ -232,31 +251,44 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
       try {
         const result = await expressionToLatexWithEval(value, coloredVars, scope);
         if (!cancelled) {
-          setLatexResult({ latex: result.latex, evalResult: result.evalResult });
+          setLatexResult({
+            value,
+            varsKey: latexVariablesKey,
+            latex: result.latex,
+            evalResult: result.evalResult,
+            failed: !result.latex,
+          });
           setIsComputingLatex(false);
           clearTimeout(safetyTimeoutId);
         }
       } catch (e) {
         if (!cancelled) {
-          setLatexResult({});
+          setLatexResult({ value, varsKey: latexVariablesKey, failed: true });
           setIsComputingLatex(false);
           clearTimeout(safetyTimeoutId);
         }
       }
     };
 
-    timeoutId = setTimeout(() => {
-      if (!cancelled) {
-        setIsComputingLatex(true);
-        computeLatex();
-        // Add a safety timeout to avoid permanent skeleton if worker hangs
-        safetyTimeoutId = setTimeout(() => {
-          if (!cancelled) {
-            setIsComputingLatex(false);
-          }
-        }, 1500);
-      }
-    }, 100);
+    const startCompute = () => {
+      if (cancelled) return;
+      setIsComputingLatex(true);
+      computeLatex();
+      // Avoid getting stuck in a computing state if the worker stalls
+      safetyTimeoutId = setTimeout(() => {
+        if (!cancelled) {
+          setLatexResult({ value, varsKey: latexVariablesKey, failed: true });
+          setIsComputingLatex(false);
+        }
+      }, 1500);
+    };
+
+    // Precompute gently while typing; compute immediately on blur so LaTeX appears without a jump
+    if (!isFocused && !forceEditMode) {
+      startCompute();
+    } else {
+      timeoutId = setTimeout(startCompute, 120);
+    }
 
     return () => {
       cancelled = true;
@@ -478,23 +510,28 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
     });
   };
 
-  let renderedContent = null;
+  const isEditing = isFocused || forceEditMode;
+  const hasFreshLatex =
+    !error &&
+    !!value.trim() &&
+    latexResult.value === value &&
+    !!latexResult.latex;
+  const showMarkdownFallback =
+    !isEditing &&
+    !error &&
+    !!value.trim() &&
+    !isComputingLatex &&
+    latexResult.value === value &&
+    !latexResult.latex;
 
-  if (!isFocused && !forceEditMode && !error && value.trim()) {
-    // While an update is computed, keep showing the current preview: swapping it for a
-    // short placeholder changes the row's height and makes the whole panel jump.
-    if (isComputingLatex && !latexResult.latex) {
-      // Skeleton shimmer while computing LaTeX in worker
-      renderedContent = (
-        <div className="w-full px-2 py-2 flex items-center overflow-x-hidden">
-          <div className="h-4 bg-slate-200 dark:bg-slate-700 rounded w-1/2 animate-pulse"></div>
-        </div>
-      );
-    } else if (latexResult.latex) {
+  let renderedContent: React.ReactNode = null;
+
+  if (!isEditing && !error && value.trim()) {
+    if (hasFreshLatex && latexResult.latex) {
       try {
         const fullTex = latexResult.latex + (showEvalResult && latexResult.evalResult ? ` \\mathbf{ = ${latexResult.evalResult.replace(/ /g, "\\ ")}}` : "");
         renderedContent = (
-          <div className="w-full px-2 py-2 flex items-center overflow-x-auto custom-scrollbar relative pr-20 group/preview block">
+          <div className="w-full px-2 py-1.5 min-h-[36px] flex items-center overflow-x-auto custom-scrollbar relative pr-20 group/preview animate-in fade-in duration-150">
             <span
               className="math-rendered-block block w-full text-xs sm:text-sm pointer-events-none text-slate-805 dark:text-slate-200 [&_.katex]:text-[14px] [&_.katex-display]:m-0"
               dangerouslySetInnerHTML={{
@@ -509,15 +546,14 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
           </div>
         );
       } catch (e) {
-        // Fallback if KaTeX fails
         renderedContent = null;
       }
     }
 
-    if (!renderedContent) {
-      // Fallback to Markdown
+    if (!renderedContent && showMarkdownFallback) {
+      // Fallback to Markdown only after LaTeX conversion finishes without output
       renderedContent = (
-        <div className="markdown-body p-2 font-sans w-full text-sm text-slate-800 dark:text-slate-200">
+        <div className="markdown-body px-2 py-1.5 min-h-[36px] font-sans w-full text-sm text-slate-800 dark:text-slate-200 flex items-center">
           <Markdown
             remarkPlugins={MARKDOWN_REMARK_PLUGINS}
             rehypePlugins={MARKDOWN_REHYPE_PLUGINS}
@@ -529,20 +565,20 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
     }
   }
 
+  const showEditor = isEditing || !!error || !value.trim() || !renderedContent;
+
   return (
     <div className="relative flex-1 group/preview" ref={containerRef}>
       <div
-        className={`relative w-full rounded border group-hover/preview:border-slate-300 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isFocused || forceEditMode ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
+        className={`relative w-full rounded border group-hover/preview:border-slate-300 dark:group-hover/preview:border-slate-700/50 transition-colors cursor-text min-h-[36px] ${isEditing ? "bg-white dark:bg-slate-900 border-blue-500 dark:border-slate-500 shadow-sm" : "bg-slate-100 dark:bg-slate-900/40 border-slate-200 dark:border-transparent"}`}
         onClick={() => {
           if (!isFocused) setIsFocused(true);
           setTimeout(() => inputRef.current?.focus(), 10);
         }}
       >
-        <div
-          className={`relative w-full ${isFocused || forceEditMode || error || (!isComputingLatex && !latexResult.latex) ? "block" : "hidden"}`}
-        >
-          <div className="px-2 py-1.5 font-mono text-sm whitespace-pre-wrap break-all pointer-events-none opacity-0 select-none z-0 w-full min-h-[28px]">
-            {value + "\n."}
+        <div className={`relative w-full ${showEditor ? "block" : "hidden"}`}>
+          <div className="px-2 py-1.5 font-mono text-sm whitespace-pre-wrap break-all pointer-events-none opacity-0 select-none z-0 w-full min-h-[36px]">
+            {value.endsWith("\n") ? value + " " : value || " "}
           </div>
 
           <div className="absolute inset-0 px-2 py-1.5 pointer-events-none font-mono text-sm whitespace-pre-wrap break-all z-0">
@@ -605,7 +641,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
           )}
         </div>
 
-        {!(isFocused || forceEditMode) && !error && renderedContent}
+        {renderedContent}
       </div>
 
       {error && (
@@ -626,6 +662,7 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
         inputRect &&
         createPortal(
           <div
+            onMouseDown={(e) => e.preventDefault()}
             className="fixed bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 shadow-2xl rounded-lg overflow-hidden z-[99999] flex flex-col py-1 text-slate-800 dark:text-slate-200"
             style={{
               top: inputRect.bottom + 4,
