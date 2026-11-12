@@ -23,6 +23,7 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { triTable } from "three/examples/jsm/objects/MarchingCubes.js";
 import * as mathjs from "mathjs";
+import katex from "katex";
 import { Home, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
 import type { MathFunction, MathVariable } from "./mathTypes";
 import type { GraphView } from "./simulations";
@@ -36,6 +37,7 @@ import { evaluateFamilyValues, parseFamilyExpression } from "../../lib/math/fami
 import { splitRelation } from "../../lib/math/splitRelation";
 import { computeOdeExtent, odeAxisColumns, odePlaybackTime, solveCompiledOdeCached } from "../../lib/math/odeCurveData";
 import { sampleOdeAt } from "../../lib/math/odeSolver";
+import { hasLiveValues, pointLabelLocals, renderLiveLabel } from "../../lib/math/liveLabel";
 
 export interface Graph3DProps {
   functions: MathFunction[];
@@ -177,6 +179,28 @@ interface LabelSpec {
   dim?: boolean;
   /** A draggable point's label: beside its handle (the height grip is above it). */
   besideRow?: string;
+  /** Typeset maths (the row's label is LaTeX), in place of `text`. */
+  html?: string;
+  /** Size, relative to the usual (the row's label scale). */
+  scale?: number;
+  /** Name and coordinates, written by the view: kept up to date as the point is dragged. */
+  auto?: boolean;
+}
+
+/** LaTeX to HTML, remembered: labels are redrawn on every frame of an animation. */
+const texCache = new Map<string, string>();
+function texToHtml(tex: string): string {
+  let html = texCache.get(tex);
+  if (html === undefined) {
+    try {
+      html = katex.renderToString(tex, { throwOnError: false, output: "html" });
+    } catch {
+      html = "";
+    }
+    if (texCache.size > 400) texCache.clear();
+    texCache.set(tex, html);
+  }
+  return html;
 }
 
 interface SurfaceData {
@@ -195,6 +219,8 @@ interface RowEntry {
   labels: LabelSpec[];
   /** The row's surfaces as triangles, for contours and slices. */
   surfaces: SurfaceData[];
+  /** Notes pinned to the corner of the view (see MathFunction.labelPinned). */
+  pinned?: LabelSpec[];
   /** A row of points: it has the point menu. */
   isPoint?: boolean;
   /** A point written as plain numbers can be dragged. */
@@ -496,6 +522,7 @@ class Engine {
   private hoverDirty = false;
   private hover: { local: Vec3; color: string; rowId: string } | null = null;
   private hoverDot = document.createElement("div");
+  private pinnedEl = document.createElement("div");
   private hoverTip = document.createElement("div");
   private tangentGroup = new THREE.Group();
   private tangentPlane: THREE.Mesh;
@@ -592,7 +619,10 @@ class Engine {
       "position:absolute;left:0;top:0;width:10px;height:10px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.45);display:none";
     this.hoverTip.style.cssText =
       "position:absolute;left:0;top:0;padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;border:1.5px solid;box-shadow:0 4px 12px rgba(0,0,0,.25);display:none";
-    labelHost.append(this.hoverDot, this.hoverTip);
+    // Notes pinned to the corner: under the graph's toolbar, clear of the height legend.
+    this.pinnedEl.style.cssText =
+      "position:absolute;top:58px;right:34px;max-width:min(62%,26rem);display:none;flex-direction:column;align-items:flex-end;gap:7px;text-align:right;line-height:1.25";
+    labelHost.append(this.hoverDot, this.hoverTip, this.pinnedEl);
     (this.raycaster.params as any).Line2 = { threshold: 8 };
 
     const p = getProps();
@@ -932,12 +962,27 @@ class Engine {
         this.labelEls.push(el);
       }
       while (this.labelEls.length > this.labelSpecs.length) this.labelEls.pop()!.remove();
+      // Pinned notes: one list in the corner, in row order.
+      const pinned = [...this.rows.values()].flatMap((row) => row.pinned ?? []);
+      this.pinnedEl.style.display = pinned.length ? "flex" : "none";
+      this.pinnedEl.replaceChildren(
+        ...pinned.map((spec) => {
+          const line = document.createElement("div");
+          if (spec.html) line.innerHTML = spec.html;
+          else line.textContent = spec.text;
+          line.style.color = spec.color || "";
+          line.style.fontSize = `${Math.round(14 * (spec.scale ?? 1))}px`;
+          return line;
+        }),
+      );
       this.labelSpecs.forEach((spec, i) => {
         const el = this.labelEls[i];
-        el.textContent = spec.text;
+        if (spec.html) el.innerHTML = spec.html;
+        else el.textContent = spec.text;
         el.style.color = spec.color || "";
         el.style.fontWeight = spec.strong ? "700" : "";
-        el.style.fontSize = spec.strong ? "13px" : "";
+        // Typeset maths reads small at the size of the tick numbers.
+        el.style.fontSize = spec.html || spec.scale ? `${Math.round((spec.html ? 15 : 13) * (spec.scale ?? 1))}px` : spec.strong ? "13px" : "";
         el.style.opacity = spec.dim ? "0.2" : "";
       });
     }
@@ -1137,6 +1182,11 @@ class Engine {
         f.lineStyle,
         f.outlineWidth,
         f.showLabel,
+        // Live values in a label ("θ = {{phi}}") change without the row's own shape changing.
+        f.showLabel && f.label ? (hasLiveValues(f.label) ? renderLiveLabel(f.label, scope) : f.label) : "",
+        f.labelLatex,
+        f.labelScale,
+        f.labelPinned,
         f.showPoint,
         f.isDraggable,
         f.operator,
@@ -1265,7 +1315,12 @@ class Engine {
       if (scope.v === undefined) s.v = 0.5;
       const val = f.compiled.evaluate(s);
       const arr = val && val.toArray ? val.toArray() : val;
-      result = Array.isArray(arr) && arr.length === 3 && arr.every((c: any) => coordinate(c) !== null);
+      // NaN counts: a scene leaves a point out by giving it a NaN coordinate.
+      const numeric = (c: any) => {
+        while (Array.isArray(c) && c.length === 1) c = c[0];
+        return typeof c === "number";
+      };
+      result = Array.isArray(arr) && arr.length === 3 && arr.every(numeric);
     } catch {
       result = false;
     }
@@ -1441,7 +1496,7 @@ class Engine {
 
       case "point3": {
         const pts = extractPoints(f.compiled.evaluate(s));
-        this.addPoints(entry, f, pts);
+        this.addPoints(entry, f, pts, scope);
         break;
       }
 
@@ -1459,7 +1514,7 @@ class Engine {
         pts = pts.map(place);
 
         if (f.type === "point") {
-          this.addPoints(entry, f, pts);
+          this.addPoints(entry, f, pts, scope);
         } else if (f.type === "vector") {
           const arrows: [Vec3, Vec3][] = isTailTipVector(f)
             ? pts.length >= 2
@@ -1691,7 +1746,7 @@ class Engine {
     );
   }
 
-  private addPoints(entry: RowEntry, f: MathFunction, pts: Vec3[]) {
+  private addPoints(entry: RowEntry, f: MathFunction, pts: Vec3[], scope: any) {
     pts = pts.filter((pt) => Number.isFinite(pt[0] + pt[1] + pt[2]));
     const literal = f.expr.match(LITERAL_POINT);
     const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1] ?? "";
@@ -1718,12 +1773,24 @@ class Engine {
     }
     if (!f.showLabel) return;
     for (const pt of pts) {
-      const lift = entry.drag ? 0 : 0.07 * this.domain.half;
-      entry.labels.push({
+      // Text standing on its own (no dot) sits exactly where it was put.
+      const lift = entry.drag || f.showPoint === false ? 0 : 0.07 * this.domain.half;
+      const auto = !f.label;
+      // The row's own label, with its live values, as on the flat graph; or name and coordinates.
+      const text = auto
+        ? `${name ? `${name} ` : ""}(${pt.map(formatCoord).join(", ")})`
+        : hasLiveValues(f.label)
+          ? renderLiveLabel(f.label!, scope, pointLabelLocals(pt[0], pt[1]))
+          : f.label!;
+      const pinned = !auto && !!f.labelPinned && f.showPoint === false;
+      (pinned ? (entry.pinned ??= []) : entry.labels).push({
         pos: [pt[0], pt[1], pt[2] + lift],
-        text: `${name ? `${name} ` : ""}(${pt.map(formatCoord).join(", ")})`,
+        text,
+        html: !auto && f.labelLatex ? texToHtml(text) : undefined,
+        scale: f.labelScale,
+        auto,
         color: f.color,
-        nudge: true,
+        nudge: f.showPoint !== false,
         besideRow: entry.drag ? f.id : undefined,
       });
     }
@@ -2654,7 +2721,7 @@ class Engine {
     const label = row.labels[0];
     if (label) {
       label.pos = [pos[0], pos[1], pos[2]];
-      label.text = `${d.name ? `${d.name} ` : ""}(${pos.map(formatCoord).join(", ")})`;
+      if (label.auto) label.text = `${d.name ? `${d.name} ` : ""}(${pos.map(formatCoord).join(", ")})`;
       this.labelsDirty = true;
     }
   }
@@ -2780,6 +2847,7 @@ class Engine {
     window.clearTimeout(this.occlusionTimer);
     this.hoverDot.remove();
     this.hoverTip.remove();
+    this.pinnedEl.remove();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("wheel", this.onWheel);
     canvas.removeEventListener("pointerdown", this.onPointerDown);

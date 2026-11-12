@@ -128,6 +128,8 @@ import {
   cachedByKey,
   createAxisLabelFormatter,
   MATH_EXAMPLES,
+  exampleScene,
+  hasExample3D,
   EXAMPLE_GALLERY,
   TraceOverlay,
   TraceShapeRegistrar,
@@ -2687,8 +2689,14 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
     setActiveExample(exampleName);
 
-    const exampleData = MATH_EXAMPLES[exampleName];
+    loadExampleScene(exampleName, viewMode);
+  };
+
+  /** Puts an example on the graph: its 3D version while the graph is in 3D, if it has one. */
+  const loadExampleScene = (exampleName: string, mode: "2d" | "3d") => {
+    const exampleData = exampleScene(exampleName, mode);
     if (exampleData) {
+      if (mode === "3d" && exampleData.view3d) setView3dOptions(exampleData.view3d);
       setFunctions(exampleData.functions.map((f) => ({ ...f, angleUnit: "rad" as const })));
       setVariables(exampleData.variables);
       // Richer examples bring their own slider groups, timeline and view; plain ones
@@ -2915,6 +2923,8 @@ export const MathNodeRenderer: React.FC<any> = ({
       }
     }
     setViewMode(mode);
+    // An example with a version made for the other view changes to it.
+    if (activeExample && hasExample3D(activeExample)) loadExampleScene(activeExample, mode);
   };
   // Resizable from its corner while it sits on the canvas; `width` is only given there.
   const canResize = !isFullscreen && width !== undefined;
@@ -6729,8 +6739,19 @@ export const MathNodeRenderer: React.FC<any> = ({
                               : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
                               }`}
                           >
-                            <span className={`text-[10px] font-semibold ${ex.labelClass}`}>
+                            <span className={`flex items-center justify-between gap-1 text-[10px] font-semibold ${ex.labelClass}`}>
                               {ex.category}
+                              {hasExample3D(ex.key) && (
+                                <span
+                                  title="Has a version for the 3D view: switch to 3D to see it"
+                                  className={`shrink-0 px-1 rounded text-[8px] font-bold tracking-wide ${viewMode === "3d"
+                                    ? "bg-violet-500 text-white"
+                                    : "bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300"
+                                    }`}
+                                >
+                                  3D
+                                </span>
+                              )}
                             </span>
                             <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
                               {ex.label}

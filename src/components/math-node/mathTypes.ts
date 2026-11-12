@@ -66,6 +66,11 @@ export interface MathFunction {
   labelFlipY?: boolean;
   showLabelPoint?: boolean;
   labelAlignment?: "center" | "above" | "below" | "left" | "right" | "custom";
+  /**
+   * 3D view: a note listed in the corner of the view, where it stays readable as the
+   * graph is turned, instead of standing at a point of space.
+   */
+  labelPinned?: boolean;
   /** Calculator rows: how the answer is written, and to how many significant digits. */
   calcNotation?: "auto" | "normal" | "scientific";
   calcDigits?: number;

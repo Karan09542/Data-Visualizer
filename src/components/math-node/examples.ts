@@ -8,6 +8,7 @@ import {
   type GraphView,
   type SimulationTimeline,
 } from "./simulations";
+import type { Graph3DOptions } from "./Graph3D";
 
 /**
  * An example graph. Plain examples are just rows and sliders; the richer ones also
@@ -21,7 +22,20 @@ export interface ExampleScene {
   view?: GraphView;
   gridType?: "cartesian" | "polar" | "none";
   axisComplexNotationY?: boolean;
+  /** How the 3D view is dressed for this scene (height colours, contours, turning…). */
+  view3d?: Partial<Graph3DOptions>;
 }
+
+/**
+ * The scene to load for a gallery entry: its 3D version ("<key>3D") while the graph
+ * is in 3D, if it has one.
+ */
+export function exampleScene(key: string, mode: "2d" | "3d"): ExampleScene | undefined {
+  return (mode === "3d" ? MATH_EXAMPLES[`${key}3D`] : undefined) ?? MATH_EXAMPLES[key];
+}
+
+/** Whether a gallery entry has a version made for the 3D view. */
+export const hasExample3D = (key: string) => `${key}3D` in MATH_EXAMPLES;
 
 
 /** What the Examples Gallery shows, in order. `key` must exist in MATH_EXAMPLES. */
@@ -588,61 +602,117 @@ function linearTransformation(): ExampleScene {
   };
 }
 
-// ─── Cube Roots of Unity (1, ω, ω²) ──────────────────────────────────────────
+// ─── Complex numbers and polyhedra ────────────────────────────────────────────
+//
+// Each of these keeps its figure on the left and a short column of notes on the
+// right, clear of the axes. The notes are LaTeX with live values. Each also has a
+// version for the 3D view (below), loaded in its place while the graph is in 3D.
+
+type Rows = ReturnType<typeof sceneRows>;
+type Note = [text: string, color: string];
+
+/** A column of LaTeX notes, top to bottom from `top`; the first line is the heading. */
+const notes = (r: Rows, x: number, top: number, step: number, lines: Note[], hasAxes = true): MathFunction[] => {
+  let shift = 0;
+  return lines.map(([text, color], i) => {
+    let y = top - i * step - shift;
+    // Step over the x-axis and the tick numbers under it.
+    if (hasAxes && y < 0.45 * step && y > -0.75 * step) {
+      shift += y + 0.75 * step;
+      y = -0.75 * step;
+    }
+    return r.readout(`[${x}, ${Number(y.toFixed(3))}]`, text, color, {
+      labelLatex: true,
+      labelPlain: false,
+      labelScale: i === 0 ? 1.15 : 0.92,
+    });
+  });
+};
+
+/** A LaTeX label standing on its own at `at`: for labels that keep clear of what they name. */
+const mark = (r: Rows, at: string, text: string, color: string, scale = 1): MathFunction =>
+  r.readout(at, text, color, { labelLatex: true, labelPlain: false, labelScale: scale });
+
+/** The same for the 3D view: notes pinned to the corner of the view, in this order. */
+const notes3 = (r: Rows, at: [number, number], top: number, step: number, lines: Note[]): MathFunction[] =>
+  lines.map(([text, color], i) =>
+    r.readout(`[${at[0]}, ${at[1]}, ${Number((top - i * step).toFixed(3))}]`, text, color, {
+      labelLatex: true,
+      labelPlain: false,
+      labelPinned: true,
+      labelScale: i === 0 ? 1.15 : 0.95,
+    }),
+  );
+
+/** A LaTeX label on a point, nudged to `at` (graph units from the point). */
+const tex = (label: string, at?: [number, number]): Partial<MathFunction> => ({
+  label,
+  showLabel: true,
+  labelLatex: true,
+  ...(at ? { labelPosition: at, labelAlignment: "custom" as const } : {}),
+});
+
+/** A point of space (three coordinates): what the 3D view draws as a dot. */
+const spacePoint = (r: Rows, expr: string, color: string, extra: Partial<MathFunction> = {}): MathFunction => ({
+  ...r.define(expr),
+  color,
+  isDraggable: false,
+  ...extra,
+});
+
+/** A surface z = f(x, y) for the 3D view. */
+const surface = (r: Rows, expr: string, color: string, extra: Partial<MathFunction> = {}): MathFunction => ({
+  ...r.define(expr),
+  type: "implicit",
+  color,
+  ...extra,
+});
+
+// ─── Cube roots of unity ──────────────────────────────────────────────────────
 
 function cubeRootsOfUnity(): ExampleScene {
   const r = sceneRows("cuberoot");
   return {
     functions: [
-      r.define("ang = phi + time"),
-      // 1, omega, omega^2:
-      // omega = exp(i * 2*pi/3) = -1/2 + (sqrt(3)/2)i ≈ -0.5 + 0.866i
-      // omega^2 = exp(i * 4*pi/3) = -1/2 - (sqrt(3)/2)i ≈ -0.5 - 0.866i
       r.define("w = exp(i * 2*pi / 3)"),
-      r.define("w2 = exp(i * 4*pi / 3)"),
-      r.define("z0 = R * exp(i * ang)"),
+      r.define("z0 = R * exp(i * phi)"),
       r.define("z1 = z0 * w"),
-      r.define("z2 = z0 * w2"),
-      // Reference circle
+      r.define("z2 = z0 * w^2"),
       r.path("R * [cos(t), sin(t)]", INK, [0, TAU], { lineStyle: "dashed", outlineWidth: 1 }),
-      // Regular equilateral triangle connecting the 3 roots
-      r.shape("[z0, z1, z2]", GREEN, { fillOpacity: 0.18, outlineWidth: 2.5 }),
-      // Head-to-tail vector triangle illustrating 1 + omega + omega^2 = 0
-      r.path("[t * real(z0), t * imag(z0)]", SKY, [0, 1], { lineStyle: "dotted", outlineWidth: 2 }),
-      r.path("[real(z0) + t * real(z1), imag(z0) + t * imag(z1)]", GREEN, [0, 1], { lineStyle: "dotted", outlineWidth: 2 }),
-      r.path("[real(z0 + z1) + t * real(z2), imag(z0 + z1) + t * imag(z2)]", PURPLE, [0, 1], { lineStyle: "dotted", outlineWidth: 2 }),
-      // Radial vectors from origin to the roots
+      r.shape("[z0, z1, z2]", GREEN, { fillOpacity: 0.14, outlineWidth: 2, showAngles: false }),
+      // 120° between neighbours.
+      r.path("0.6 * [cos(phi + t), sin(phi + t)]", GREEN, [0, TAU / 3], { outlineWidth: 1.5 }),
       r.arrow("Vector([0, 0], z0)", SKY, { outlineWidth: 2.5 }),
       r.arrow("Vector([0, 0], z1)", GREEN, { outlineWidth: 2.5 }),
       r.arrow("Vector([0, 0], z2)", PURPLE, { outlineWidth: 2.5 }),
-      // Angle arcs: 120° and 240°
-      r.path("0.55 * [cos(t * 2*pi/3 + ang), sin(t * 2*pi/3 + ang)]", GREEN, [0, 1], { outlineWidth: 1.5 }),
-      r.path("0.85 * [cos(t * 4*pi/3 + ang), sin(t * 4*pi/3 + ang)]", PURPLE, [0, 1], { outlineWidth: 1.5 }),
-      // Centroid at origin: (z0 + z1 + z2) / 3 = 0
-      r.point("[0, 0]", INK, { label: "Centroid = 0", showLabel: true }),
-      // Vertices with clear mathematical labels and values
-      r.point("z0", SKY, { dragVars: ["R", "phi"], label: "1 (z₀)", showLabel: true }),
-      r.point("z1", GREEN, { label: "ω = -½ + (√3/2)i", showLabel: true }),
-      r.point("z2", PURPLE, { label: "ω² = -½ - (√3/2)i", showLabel: true }),
-      // Readouts highlighting all requested properties:
-      r.readout("[0, 4.2]", "Cube Roots of Unity:  z³ = 1  →  1,  ω,  ω²", GREEN),
-      r.readout("[0, 3.6]", "Omega value:  ω = -½ + (√3/2)i ≈ -0.5 + 0.8660i    (|ω| = 1, arg = 120°)", TEXT),
-      r.readout("[0, 3.0]", "Identity 1:  1 + ω + ω² = 0   (dotted head-to-tail vectors return to 0)", SKY),
-      r.readout("[0, -3.4]", "Identity 2:  ω · ω² = ω³ = 1   (angles add: 120° + 240° = 360° ≡ 0°)", AMBER),
-      r.readout("[0, -4.0]", "Conjugate: ω² = conj(ω) = 1/ω    |    Drag blue dot (1) to rotate or scale", TEXT),
+      r.readout("0.95 * [cos(phi + pi/3), sin(phi + pi/3)]", String.raw`120^\circ`, GREEN, { labelLatex: true, labelPlain: false, labelScale: 0.85 }),
+      r.point("z0", SKY, { dragVars: ["R", "phi"] }),
+      r.point("z1", GREEN),
+      r.point("z2", PURPLE),
+      mark(r, "z0 * (1 + 0.42/R)", "1", SKY, 1.1),
+      mark(r, "z1 * (1 + 0.42/R)", String.raw`\omega`, GREEN, 1.1),
+      mark(r, "z2 * (1 + 0.42/R)", String.raw`\omega^2`, PURPLE, 1.1),
+      ...notes(r, 5.3, 2.4, 0.8, [
+        [String.raw`z^3 = 1`, GREEN],
+        [String.raw`\omega = e^{2\pi i/3} = -\tfrac12 + \tfrac{\sqrt3}{2}\,i`, GREEN],
+        [String.raw`\omega^2 = \bar{\omega} = -\tfrac12 - \tfrac{\sqrt3}{2}\,i`, PURPLE],
+        [String.raw`1 + \omega + \omega^2 = 0`, SKY],
+        [String.raw`\omega \cdot \omega^2 = \omega^3 = 1`, AMBER],
+        [String.raw`\text{Drag the blue point}`, TEXT],
+      ]),
     ],
     variables: [
-      sceneSlider("R", "Radius R", 2.2, [0.5, 3.5, 0.05], "Radius of the circle. Drag the blue root.", "cube"),
-      sceneSlider("phi", "Rotation angle φ", 0, [0, TAU, 0.02], "Angle of z₀. Drag the blue root round.", "cube"),
+      sceneSlider("R", "Radius R", 2, [0.6, 2.6, 0.05], "Radius of the circle. Drag the blue root.", "cube"),
+      sceneSlider("phi", "Rotation angle φ", 0, [0, TAU, 0.02], "Turns all three roots together. Drag the blue root round.", "cube"),
     ],
     groups: [sceneGroup("cube", "Cube Roots of Unity")],
-    timeline: { mode: "loop", min: 0, max: TAU, speed: 0.4 },
-    view: { x: [-4.6, 4.6], y: [-4.8, 4.8] },
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.2, 8], y: [-3.3, 3.3] },
     axisComplexNotationY: true,
   };
 }
 
-// ─── Euler's Formula & Polar Form ─────────────────────────────────────────────
+// ─── Euler's formula ──────────────────────────────────────────────────────────
 
 function eulerFormula(): ExampleScene {
   const r = sceneRows("euler");
@@ -650,183 +720,178 @@ function eulerFormula(): ExampleScene {
     functions: [
       r.define("ang = theta + time"),
       r.define("phi = ang - 2*pi*floor(ang/(2*pi))"),
-      r.define("z = R * exp(i * ang)"),
-      r.define("re_z = real(z)"),
-      r.define("im_z = imag(z)"),
-      // Reference circle
+      // Not "z": inside a label that name means the label's own position.
+      r.define("zc = R * exp(i * ang)"),
+      r.define("re_z = real(zc)"),
+      r.define("im_z = imag(zc)"),
       r.path("R * [cos(t), sin(t)]", INK, [0, TAU], { lineStyle: "dashed", outlineWidth: 1 }),
-      // Component projections onto Real and Imaginary axes
-      r.arrow("Vector([0, 0], [re_z, 0])", BLUE, { outlineWidth: 2.5 }),
-      r.arrow("Vector([0, 0], [0, im_z])", RED, { outlineWidth: 2.5 }),
-      // Drop guides to z
       r.path("[re_z, t * im_z]", INK, [0, 1], { lineStyle: "dotted", outlineWidth: 1.5 }),
       r.path("[t * re_z, im_z]", INK, [0, 1], { lineStyle: "dotted", outlineWidth: 1.5 }),
-      // Phasor arrow to z
-      r.arrow("Vector([0, 0], z)", AMBER, { outlineWidth: 3 }),
-      // Angle arc
+      r.arrow("Vector([0, 0], [re_z, 0])", BLUE, { outlineWidth: 2.5 }),
+      r.arrow("Vector([0, 0], [0, im_z])", RED, { outlineWidth: 2.5 }),
+      r.arrow("Vector([0, 0], zc)", AMBER, { outlineWidth: 3 }),
       r.path("0.5 * [cos(t * phi), sin(t * phi)]", AMBER, [0, 1], { outlineWidth: 1.5 }),
-      // Points with clear labels on real and imaginary axes
-      r.point("[re_z, 0]", BLUE, { label: "cos(θ)", showLabel: true }),
-      r.point("[0, im_z]", RED, { label: "i·sin(θ)", showLabel: true }),
-      r.point("z", AMBER, { dragVars: ["R", "theta"], label: "e^(iθ)", showLabel: true }),
-      // Live readouts
-      r.readout("[0, 4.0]", "z = R · e^(iθ) = {{z}}", AMBER),
-      r.readout("[0, 3.4]", "Euler's Formula: e^(iθ) = cos(θ) + i·sin(θ)", TEXT),
-      r.readout("[0, -3.5]", "Real (cos): {{re_z}}      Imag (sin): {{im_z}}·i", TEXT),
-      r.readout("[0, -4.1]", "|z| = {{R}}      θ = {{phi}} rad ({{phi * 180 / pi}}°)", TEXT),
+      r.readout("0.85 * [cos(phi/2), sin(phi/2)]", String.raw`\theta`, AMBER, { labelLatex: true, labelPlain: false }),
+      r.point("[re_z, 0]", BLUE),
+      r.point("[0, im_z]", RED),
+      r.point("zc", AMBER, { dragVars: ["R", "theta"] }),
+      // Each label on the far side of its axis from the point, and e^(iθ) outside the circle.
+      mark(r, "[re_z, im_z > 0 ? -0.36 : 0.36]", String.raw`\cos\theta`, BLUE),
+      mark(r, "[re_z > 0 ? -0.62 : 0.62, im_z]", String.raw`i\sin\theta`, RED),
+      mark(r, "zc * (1 + 0.5/R)", String.raw`e^{i\theta}`, AMBER, 1.1),
+      ...notes(r, 5.6, 2.4, 0.8, [
+        [String.raw`e^{i\theta} = \cos\theta + i\,\sin\theta`, AMBER],
+        [String.raw`z = R\,e^{i\theta} = {{zc}}`, AMBER],
+        [String.raw`\cos\theta = {{cos(phi)}}`, BLUE],
+        [String.raw`\sin\theta = {{sin(phi)}}`, RED],
+        [String.raw`\theta = {{phi}}\ \text{rad} = {{phi*180/pi:0}}^\circ`, TEXT],
+        [String.raw`|z| = R = {{R}}`, TEXT],
+      ]),
     ],
     variables: [
-      sceneSlider("R", "Radius |z|", 2.5, [0.5, 4, 0.05], "Magnitude of the complex number. Drag the point.", "euler"),
+      sceneSlider("R", "Radius |z|", 2.2, [0.5, 3, 0.05], "Magnitude of the complex number. Drag the point.", "euler"),
       sceneSlider("theta", "Angle θ (rad)", 1.05, [0, TAU, 0.02], "Phase angle / argument. Drag the point round.", "euler"),
     ],
     groups: [sceneGroup("euler", "Complex Phasor")],
     timeline: { mode: "loop", min: 0, max: TAU, speed: 0.5 },
-    view: { x: [-4.8, 4.8], y: [-4.6, 4.4] },
+    view: { x: [-3.4, 8.2], y: [-3.4, 3.4] },
     axisComplexNotationY: true,
   };
 }
 
-// ─── Euler's Identity (e^(iπ) + 1 = 0) ────────────────────────────────────────
+// ─── Euler's identity ─────────────────────────────────────────────────────────
 
 function eulerIdentity(): ExampleScene {
   const r = sceneRows("eident");
   return {
     functions: [
       r.define("theta = time > 0.01 ? min(time, pi) : th"),
+      r.define("ez = exp(i * theta)"),
       r.define("P = [cos(theta), sin(theta)]"),
-      // Unit circle
       r.path("[cos(t), sin(t)]", INK, [0, TAU], { lineStyle: "dashed", outlineWidth: 1 }),
-      // Upper semicircle: the path of e^(it) from 1 to -1
-      r.path("[cos(t), sin(t)]", PINK, [0, Math.PI], { outlineWidth: 3 }),
-      // Phasor arrow to current point P
+      // How far e^(iθ) has come from 1.
+      r.path("[cos(t * theta), sin(t * theta)]", PINK, [0, 1], { outlineWidth: 3.5 }),
       r.arrow("Vector([0, 0], P)", PINK, { outlineWidth: 2.5 }),
-      // Vector +1 from -1 to 0 (closing the loop back to origin!)
-      r.arrow("Vector([-1, 0], [0, 0])", AMBER, { outlineWidth: 3.5 }),
-      // Angle arc for current theta
-      r.path("0.45 * [cos(t * theta), sin(t * theta)]", PINK, [0, 1], { outlineWidth: 1.5 }),
-      // Key landmark points
-      r.point("[1, 0]", SKY, { label: "1 (start: e^(i·0))", showLabel: true }),
-      r.point("[0, 1]", PURPLE, { label: "i (top: e^(iπ/2))", showLabel: true }),
-      r.point("[-1, 0]", RED, { label: "-1 (e^(iπ))", showLabel: true }),
-      r.point("[0, 0]", AMBER, { label: "0 (origin: -1 + 1 = 0)", showLabel: true }),
+      // The "+ 1" that carries −1 back to 0.
+      r.arrow("Vector([-1, -0.12], [0, -0.12])", AMBER, { outlineWidth: 3 }),
+      r.readout("[-0.5, -0.3]", "+1", AMBER, { labelLatex: true, labelPlain: false, labelScale: 0.9 }),
+      r.point("[1, 0]", SKY, tex(String.raw`e^{0} = 1`, [0.32, 0.14])),
+      r.point("[0, 1]", PURPLE, tex(String.raw`e^{i\pi/2} = i`, [0.3, 0.16])),
+      r.point("[-1, 0]", RED, tex(String.raw`e^{i\pi} = -1`, [-0.45, 0.16])),
       r.point("P", PINK, { dragVars: ["th"] }),
-      // Readouts
-      r.readout("[0, 3.2]", "Euler's Identity:  e^(iπ) + 1 = 0", PINK),
-      r.readout("[0, 2.6]", "At θ = π:  e^(iπ) = cos(π) + i·sin(π) = -1 + 0·i = -1", RED),
-      r.readout("[0, 2.0]", "Current: e^(iθ) = {{cos(theta)}} + {{sin(theta)}}·i  (θ = {{theta * 180 / pi}}°)", PINK),
-      r.readout("[0, -2.2]", "Pink arc: e^(iθ) travels from +1 around to -1 along the unit circle", TEXT),
-      r.readout("[0, -2.8]", "Gold vector: Adding +1 carries -1 directly back to 0: (-1) + 1 = 0", AMBER),
-      r.readout("[0, -3.4]", "Unites the five fundamental constants of mathematics: e, i, π, 1, and 0", TEXT),
+      ...notes(r, 3.15, 1.05, 0.36, [
+        [String.raw`e^{i\pi} + 1 = 0`, PINK],
+        [String.raw`e^{i\theta} = {{ez}}`, PINK],
+        [String.raw`\theta = {{theta}}\ \text{rad} = {{theta*180/pi:0}}^\circ`, TEXT],
+        [String.raw`\text{at } \theta = \pi:\quad e^{i\pi} = -1`, RED],
+        [String.raw`\text{add } 1:\quad -1 + 1 = 0`, AMBER],
+        [String.raw`\text{five constants: } e,\ i,\ \pi,\ 1,\ 0`, TEXT],
+      ]),
     ],
     variables: [
-      sceneSlider("th", "Angle θ (rad)", Math.PI, [0, Math.PI, 0.02], "Sweep e^(iθ) from 1 to -1 along the circle. Or press Play to animate.", "euler_id"),
+      sceneSlider("th", "Angle θ (rad)", Math.PI, [0, Math.PI, 0.02], "Sweep e^(iθ) from 1 to −1 along the circle, or press Play.", "euler_id"),
     ],
     groups: [sceneGroup("euler_id", "Euler's Identity")],
-    timeline: { mode: "loop", min: 0, max: Math.PI, speed: 0.6 },
-    view: { x: [-3.8, 3.8], y: [-4.0, 3.8] },
+    timeline: { mode: "loop", min: 0, max: Math.PI + 1.2, speed: 0.6 },
+    view: { x: [-1.7, 4.6], y: [-1.5, 1.5] },
     axisComplexNotationY: true,
   };
 }
 
-// ─── De Moivre's Theorem ((cos θ + i·sin θ)ⁿ = cos(nθ) + i·sin(nθ)) ──────────
+// ─── De Moivre's theorem ──────────────────────────────────────────────────────
 
 function deMoivre(): ExampleScene {
   const r = sceneRows("demoivre");
+  const power = (k: number, color: string) =>
+    [
+      r.point(`n >= ${k} ? r0^${k} * exp(i * ${k}*theta) : [NaN, NaN]`, color),
+      mark(r, `n >= ${k} ? (r0^${k} + 0.3) * exp(i * ${k}*theta) : [NaN, NaN]`, `z^${k}`, color),
+    ];
   return {
     functions: [
       r.define("z1 = r0 * exp(i * theta)"),
-      r.define("z2 = r0^2 * exp(i * 2*theta)"),
-      r.define("z3 = r0^3 * exp(i * 3*theta)"),
-      r.define("z4 = r0^4 * exp(i * 4*theta)"),
       r.define("zn = r0^n * exp(i * n*theta)"),
-      // Unit circle
       r.path("[cos(t), sin(t)]", INK, [0, TAU], { lineStyle: "dashed", outlineWidth: 1 }),
-      // Continuous spiral/circle path passing through all powers: (r0^t) * e^(i·t·theta)
-      r.path("(r0^t) * [cos(t * theta), sin(t * theta)]", INDIGO, [0, 5], { outlineWidth: 1.5, lineStyle: "dashed" }),
-      // Vectors for base and power
+      // Every power lies on this spiral: (r^t) e^(i t θ).
+      r.path("(r0^(t*n)) * [cos(t*n*theta), sin(t*n*theta)]", INDIGO, [0, 1], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      r.path("0.45 * [cos(t * theta), sin(t * theta)]", SKY, [0, 1], { outlineWidth: 1.5 }),
+      r.path("0.7 * [cos(t * n * theta), sin(t * n * theta)]", RED, [0, 1], { outlineWidth: 1.5 }),
       r.arrow("Vector([0, 0], z1)", SKY, { outlineWidth: 2.5 }),
       r.arrow("Vector([0, 0], zn)", RED, { outlineWidth: 3 }),
-      // Angle arcs for theta and n*theta
-      r.path("0.55 * [cos(t * theta), sin(t * theta)]", SKY, [0, 1], { outlineWidth: 1.5 }),
-      r.path("0.85 * [cos(t * n * theta), sin(t * n * theta)]", RED, [0, 1], { outlineWidth: 1.5 }),
-      // Key points
-      r.point("[1, 0]", INK, { label: "z⁰ = 1", showLabel: true }),
-      r.point("z1", SKY, { dragVars: ["r0", "theta"], label: "z¹ = r·e^(iθ)", showLabel: true }),
-      r.point("z2", GREEN, { label: "z²", showLabel: true }),
-      r.point("z3", AMBER, { label: "z³", showLabel: true }),
-      r.point("zn", RED, { label: "zⁿ = rⁿ·e^(inθ)", showLabel: true }),
-      // Readouts
-      r.readout("[0, 4.2]", "De Moivre's Theorem:  (cos θ + i·sin θ)ⁿ = cos(nθ) + i·sin(nθ)", RED),
-      r.readout("[0, 3.6]", "Base:  z = {{z1}}   (|z| = {{r0}}, θ = {{theta * 180 / pi}}°)", SKY),
-      r.readout("[0, 3.0]", "Power: z^{{n:0}} = {{zn}}   (|zⁿ| = {{r0^n}}, arg = {{(n * theta) * 180 / pi}}°)", RED),
-      r.readout("[0, -3.4]", "Rule: length is raised to power n (rⁿ), angle is multiplied by n (n·θ)", TEXT),
-      r.readout("[0, -4.0]", "When r = 1: pure rotation around the unit circle, advancing by θ each step", TEXT),
+      r.point("[1, 0]", INK, tex("1", [0.2, -0.3])),
+      ...power(2, GREEN),
+      ...power(3, AMBER),
+      ...power(4, PURPLE),
+      ...power(5, PINK),
+      r.point("z1", SKY, { dragVars: ["r0", "theta"] }),
+      mark(r, "(r0 + 0.3) * exp(i * theta)", "z", SKY),
+      ...notes(r, 4.9, 1.75, 0.58, [
+        [String.raw`(\cos\theta + i\sin\theta)^n = \cos n\theta + i\sin n\theta`, RED],
+        [String.raw`z = {{z1}}`, SKY],
+        [String.raw`z^{{{n:0}}} = {{zn}}`, RED],
+        [String.raw`|z^n| = r^n = {{r0^n}}`, TEXT],
+        [String.raw`\arg z^n = n\theta = {{n:0}} \times {{theta*180/pi:0}}^\circ = {{n*theta*180/pi:0}}^\circ`, TEXT],
+        [String.raw`\text{lengths: power } n \qquad \text{angles: times } n`, TEXT],
+      ]),
     ],
     variables: [
-      sceneSlider("n", "Power n", 3, [1, 5, 1], "Exponent in z^n.", "demoivre"),
-      sceneSlider("theta", "Angle θ (rad)", 0.785, [0, TAU, 0.02], "Angle of base z (0.785 ≈ 45°). Drag the blue point.", "demoivre"),
-      sceneSlider("r0", "Radius r", 1.0, [0.6, 1.3, 0.02], "Magnitude of base z. Set to 1 for pure circle rotation.", "demoivre"),
+      sceneSlider("n", "Power n", 3, [1, 5, 1], "Exponent in zⁿ.", "demoivre"),
+      sceneSlider("theta", "Angle θ (rad)", 0.7, [0, TAU, 0.02], "Angle of z. Drag the blue point.", "demoivre"),
+      sceneSlider("r0", "Radius r", 1.08, [0.8, 1.15, 0.01], "Length of z. At 1 every power stays on the unit circle.", "demoivre"),
     ],
     groups: [sceneGroup("demoivre", "De Moivre Powers")],
-    view: { x: [-4.6, 4.6], y: [-4.8, 4.8] },
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-2.4, 7.6], y: [-2.4, 2.4] },
     axisComplexNotationY: true,
   };
 }
 
-// ─── Roots of Unity ───────────────────────────────────────────────────────────
+// ─── Roots of unity ───────────────────────────────────────────────────────────
 
 function rootsOfUnity(): ExampleScene {
   const r = sceneRows("roots");
+  const root = (k: number, color: string) =>
+    [r.point(`z0 * w^${k}`, color), mark(r, `z0 * w^${k} * (1 + 0.42/R)`, `z_${k}`, color)];
   return {
     functions: [
-      r.define("ang = phi + time"),
       r.define("w = exp(i * 2*pi / 6)"),
-      r.define("z0 = R * exp(i * ang)"),
-      r.define("z1 = z0 * w"),
-      r.define("z2 = z1 * w"),
-      r.define("z3 = z2 * w"),
-      r.define("z4 = z3 * w"),
-      r.define("z5 = z4 * w"),
-      // Unit circle
+      r.define("z0 = R * exp(i * phi)"),
       r.path("R * [cos(t), sin(t)]", INK, [0, TAU], { lineStyle: "dashed", outlineWidth: 1 }),
-      // Regular hexagon connecting the 6 roots of unity
-      r.shape("[z0, z1, z2, z3, z4, z5]", PURPLE, { fillOpacity: 0.16, outlineWidth: 2 }),
-      // Inscribed triangle (cube roots of unity: z0, z2, z4)
-      r.shape("[z0, z2, z4]", AMBER, { fillOpacity: 0.22, outlineWidth: 2 }),
-      // Radial spokes
-      r.arrow("Vector([0, 0], z0)", PURPLE, { outlineWidth: 1.5 }),
-      r.arrow("Vector([0, 0], z1)", PURPLE, { outlineWidth: 1 }),
-      r.arrow("Vector([0, 0], z2)", AMBER, { outlineWidth: 1.5 }),
-      r.arrow("Vector([0, 0], z3)", PURPLE, { outlineWidth: 1 }),
-      r.arrow("Vector([0, 0], z4)", AMBER, { outlineWidth: 1.5 }),
-      r.arrow("Vector([0, 0], z5)", PURPLE, { outlineWidth: 1 }),
-      // Origin point (center of mass)
-      r.point("[0, 0]", INK),
-      // Vertices with labels
-      r.point("z0", PURPLE, { dragVars: ["R", "phi"], label: "z₀", showLabel: true }),
-      r.point("z1", PURPLE, { label: "z₁ = z₀·ω", showLabel: true }),
-      r.point("z2", AMBER, { label: "z₂ = z₀·ω²", showLabel: true }),
-      r.point("z3", PURPLE, { label: "z₃ = -z₀", showLabel: true }),
-      r.point("z4", AMBER, { label: "z₄ = z₀·ω⁴", showLabel: true }),
-      r.point("z5", PURPLE, { label: "z₅", showLabel: true }),
-      // Readouts
-      r.readout("[0, 4.0]", "Roots of z⁶ = R⁶:  z_k = R · e^(i(φ + 2πk/6))", PURPLE),
-      r.readout("[0, 3.4]", "Purple: 6th roots (hexagon)    Amber: 3rd roots / cube roots (triangle)", TEXT),
-      r.readout("[0, -3.6]", "Center of mass: z₀ + z₁ + z₂ + z₃ + z₄ + z₅ = 0 (perfect algebraic balance)", TEXT),
-      r.readout("[0, -4.2]", "R = {{R}}    Drag z₀ to rotate and scale all roots together", TEXT),
+      // The six roots, and the cube roots among them.
+      r.shape("[z0, z0*w, z0*w^2, z0*w^3, z0*w^4, z0*w^5]", PURPLE, { fillOpacity: 0.12, outlineWidth: 2, showAngles: false }),
+      r.shape("[z0, z0*w^2, z0*w^4]", AMBER, { fillOpacity: 0.16, outlineWidth: 2, showAngles: false }),
+      r.path("0.55 * [cos(phi + t), sin(phi + t)]", PURPLE, [0, TAU / 6], { outlineWidth: 1.5 }),
+      r.readout("0.9 * [cos(phi + pi/6), sin(phi + pi/6)]", String.raw`60^\circ`, PURPLE, { labelLatex: true, labelPlain: false, labelScale: 0.8 }),
+      r.arrow("Vector([0, 0], z0)", PURPLE, { outlineWidth: 2 }),
+      r.arrow("Vector([0, 0], z0 * w)", PURPLE, { outlineWidth: 1.5 }),
+      ...root(1, PURPLE),
+      ...root(2, AMBER),
+      ...root(3, PURPLE),
+      ...root(4, AMBER),
+      ...root(5, PURPLE),
+      r.point("z0", AMBER, { dragVars: ["R", "phi"] }),
+      mark(r, "z0 * (1 + 0.42/R)", "z_0", AMBER),
+      ...notes(r, 5.6, 2.2, 0.8, [
+        [String.raw`z^6 = 1`, PURPLE],
+        [String.raw`z_k = e^{2\pi i k/6}, \quad k = 0, \dots, 5`, PURPLE],
+        [String.raw`z_0 + z_1 + \dots + z_5 = 0`, TEXT],
+        [String.raw`z_0,\ z_2,\ z_4:\ \text{the cube roots}`, AMBER],
+        [String.raw`z_3 = -z_0`, TEXT],
+        [String.raw`\text{Drag } z_0`, TEXT],
+      ]),
     ],
     variables: [
-      sceneSlider("R", "Radius R", 2.6, [0.8, 4, 0.05], "Radius of the circle. Drag z₀.", "roots"),
-      sceneSlider("phi", "Rotation angle φ", 0, [0, TAU, 0.02], "Angle of z₀. Drag z₀ round.", "roots"),
+      sceneSlider("R", "Radius R", 2.2, [0.8, 2.8, 0.05], "Radius of the circle. Drag z₀.", "roots"),
+      sceneSlider("phi", "Rotation angle φ", 0, [0, TAU, 0.02], "Turns every root together. Drag z₀ round.", "roots"),
     ],
     groups: [sceneGroup("roots", "Roots of Unity")],
-    timeline: { mode: "loop", min: 0, max: TAU, speed: 0.4 },
-    view: { x: [-4.8, 4.8], y: [-4.6, 4.4] },
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.3, 8.3], y: [-3.3, 3.3] },
     axisComplexNotationY: true,
   };
 }
 
-// ─── Complex Multiplication as Rotation & Scaling ─────────────────────────────
+// ─── Complex multiplication ───────────────────────────────────────────────────
 
 function complexMultiplication(): ExampleScene {
   const r = sceneRows("cmul");
@@ -837,130 +902,415 @@ function complexMultiplication(): ExampleScene {
       r.define("z3 = z1 * z2"),
       r.define("r3 = r1 * r2"),
       r.define("th3 = th1 + th2"),
-      // Unit circle for reference
       r.path("[cos(t), sin(t)]", INK, [0, TAU], { lineStyle: "dashed", outlineWidth: 1 }),
-      // Angle arcs from real axis
-      r.path("0.6 * [cos(t * th1), sin(t * th1)]", SKY, [0, 1], { outlineWidth: 1.5 }),
-      r.path("0.85 * [cos(t * th2), sin(t * th2)]", AMBER, [0, 1], { outlineWidth: 1.5 }),
-      r.path("1.1 * [cos(t * th3), sin(t * th3)]", PURPLE, [0, 1], { outlineWidth: 1.5 }),
-      // Vectors from origin
+      r.path("0.5 * [cos(t * th1), sin(t * th1)]", SKY, [0, 1], { outlineWidth: 1.5 }),
+      r.path("0.75 * [cos(t * th2), sin(t * th2)]", AMBER, [0, 1], { outlineWidth: 1.5 }),
+      r.path("1.0 * [cos(t * th3), sin(t * th3)]", PURPLE, [0, 1], { outlineWidth: 1.5 }),
       r.arrow("Vector([0, 0], z1)", SKY, { outlineWidth: 2.5 }),
       r.arrow("Vector([0, 0], z2)", AMBER, { outlineWidth: 2.5 }),
       r.arrow("Vector([0, 0], z3)", PURPLE, { outlineWidth: 3 }),
-      // Draggable points
-      r.point("z1", SKY, { dragVars: ["r1", "th1"], label: "z₁", showLabel: true }),
-      r.point("z2", AMBER, { dragVars: ["r2", "th2"], label: "z₂", showLabel: true }),
-      r.point("z3", PURPLE, { label: "z₁ · z₂", showLabel: true }),
-      // Readouts
-      r.readout("[0, 4.4]", "Cyan:  z₁ = {{z1}}    (|z₁| = {{r1}}, θ₁ = {{th1 * 180 / pi}}°)", SKY),
-      r.readout("[0, 3.8]", "Amber: z₂ = {{z2}}    (|z₂| = {{r2}}, θ₂ = {{th2 * 180 / pi}}°)", AMBER),
-      r.readout("[0, 3.2]", "Purple: z₁ · z₂ = {{z3}}    (|z₃| = {{r3}}, θ₃ = {{th3 * 180 / pi}}°)", PURPLE),
-      r.readout("[0, -3.8]", "Geometric rule: |z₁ · z₂| = |z₁| · |z₂|   and   arg(z₁ · z₂) = θ₁ + θ₂", TEXT),
-      r.readout("[0, -4.4]", "Complex multiplication scales by length and rotates by angle!", TEXT),
+      r.point("z1", SKY, { dragVars: ["r1", "th1"] }),
+      r.point("z2", AMBER, { dragVars: ["r2", "th2"] }),
+      r.point("z3", PURPLE),
+      mark(r, "(r1 + 0.4) * exp(i * th1)", "z_1", SKY, 1.1),
+      mark(r, "(r2 + 0.4) * exp(i * th2)", "z_2", AMBER, 1.1),
+      mark(r, "(r3 + 0.55) * exp(i * th3)", "z_1 z_2", PURPLE, 1.1),
+      ...notes(r, 6.6, 2.7, 0.9, [
+        [String.raw`\text{lengths multiply, angles add}`, PURPLE],
+        [String.raw`z_1 = {{z1}}`, SKY],
+        [String.raw`z_2 = {{z2}}`, AMBER],
+        [String.raw`z_1 z_2 = {{z3}}`, PURPLE],
+        [String.raw`|z_1|\,|z_2| = {{r1}} \times {{r2}} = {{r3}}`, TEXT],
+        [String.raw`\theta_1 + \theta_2 = {{th1*180/pi:0}}^\circ + {{th2*180/pi:0}}^\circ = {{th3*180/pi:0}}^\circ`, TEXT],
+        [String.raw`\text{Drag } z_1 \text{ or } z_2`, TEXT],
+      ]),
     ],
     variables: [
-      sceneSlider("r1", "Length |z₁|", 1.5, [0.3, 3, 0.05], "Magnitude of z₁. Drag the cyan point.", "mult"),
-      sceneSlider("th1", "Angle θ₁ (rad)", 0.65, [0, TAU, 0.02], "Argument of z₁. Drag the cyan point.", "mult"),
-      sceneSlider("r2", "Length |z₂|", 1.4, [0.3, 3, 0.05], "Magnitude of z₂. Drag the amber point.", "mult"),
+      sceneSlider("r1", "Length |z₁|", 1.5, [0.3, 2, 0.05], "Magnitude of z₁. Drag the blue point.", "mult"),
+      sceneSlider("th1", "Angle θ₁ (rad)", 0.65, [0, TAU, 0.02], "Argument of z₁. Drag the blue point.", "mult"),
+      sceneSlider("r2", "Length |z₂|", 1.4, [0.3, 2, 0.05], "Magnitude of z₂. Drag the amber point.", "mult"),
       sceneSlider("th2", "Angle θ₂ (rad)", 1.15, [0, TAU, 0.02], "Argument of z₂. Drag the amber point.", "mult"),
     ],
     groups: [sceneGroup("mult", "Multiplication Factors")],
-    view: { x: [-4.8, 4.8], y: [-4.8, 4.8] },
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4.1, 10], y: [-4.1, 4.1] },
     axisComplexNotationY: true,
   };
 }
 
-// ─── Euler's Formula for Polyhedra (V − E + F = 2) ───────────────────────────
+// ─── Euler's formula for polyhedra ────────────────────────────────────────────
 
 function eulerPolyhedra(): ExampleScene {
   const r = sceneRows("poly");
+  const edge = (a: string, b: string, color: string) => r.path(`${a} + t*(${b} - ${a})`, color, [0, 1], { outlineWidth: 2 });
+  const corner = (name: string, color: string, extra: Partial<MathFunction> = {}) =>
+    [r.point(name, color, extra), mark(r, `${name} * (1 + 0.3/sqrt(${name}[1]^2 + ${name}[2]^2 + 0.01))`, `v_${name.slice(1)}`, color, 0.85)];
   return {
     functions: [
-      // 3D rotation angles: slider base + gentle tumbling if timeline is running
-      r.define("yaw = yaw0 + (time > 0.001 ? 0.7 * time : 0)"),
-      r.define("pitch = pitch0 + (time > 0.001 ? 0.25 * sin(0.8 * time) : 0)"),
+      // A cube seen from (yaw, pitch); it tumbles gently while the clock runs.
+      r.define("yaw = yaw0 + 0.7 * time"),
+      r.define("pitch = pitch0 + 0.2 * sin(0.8 * time)"),
       r.define("cy = cos(yaw)"),
       r.define("sy = sin(yaw)"),
       r.define("cp = cos(pitch)"),
       r.define("sp = sin(pitch)"),
-
-      // 8 Projected Vertices of the Cube ([-1, 1]³):
-      // Bottom square (y = -1):
       r.define("v1 = S * [-cy + sy, -cp - (-sy - cy)*sp]"),
       r.define("v2 = S * [ cy + sy, -cp - ( sy - cy)*sp]"),
       r.define("v3 = S * [ cy - sy, -cp - ( sy + cy)*sp]"),
       r.define("v4 = S * [-cy - sy, -cp - (-sy + cy)*sp]"),
-      // Top square (y = +1):
       r.define("v5 = S * [-cy + sy,  cp - (-sy - cy)*sp]"),
       r.define("v6 = S * [ cy + sy,  cp - ( sy - cy)*sp]"),
       r.define("v7 = S * [ cy - sy,  cp - ( sy + cy)*sp]"),
       r.define("v8 = S * [-cy - sy,  cp - (-sy + cy)*sp]"),
-
-      // Invariant counts for this Polyhedron
-      r.define("V_count = 8"),
-      r.define("E_count = 12"),
-      r.define("F_count = 6"),
-      r.define("chi = V_count - E_count + F_count"),
-
-      // 3D Principal axes at center of polyhedron (Red: X, Green: Y, Blue: Z)
-      r.arrow("Vector([0, 0], 0.75 * S * [cy, -sy*sp])", RED, { outlineWidth: 1.5, label: "+X", showLabel: true, labelAlignment: "right" }),
-      r.arrow("Vector([0, 0], 0.75 * S * [0, cp])", GREEN, { outlineWidth: 1.5, label: "+Y", showLabel: true, labelAlignment: "above" }),
-      r.arrow("Vector([0, 0], 0.75 * S * [-sy, -cy*sp])", BLUE, { outlineWidth: 1.5, label: "+Z", showLabel: true, labelAlignment: "below" }),
-
-      // 6 Translucent Shaded Faces (F = 6)
-      r.shape("[v1, v2, v3, v4]", INDIGO, { fillOpacity: 0.15, outlineWidth: 1, showAngles: false }),
-      r.shape("[v5, v6, v7, v8]", SKY, { fillOpacity: 0.18, outlineWidth: 1, showAngles: false }),
-      r.shape("[v1, v2, v6, v5]", BLUE, { fillOpacity: 0.13, outlineWidth: 1, showAngles: false }),
-      r.shape("[v2, v3, v7, v6]", PURPLE, { fillOpacity: 0.13, outlineWidth: 1, showAngles: false }),
-      r.shape("[v3, v4, v8, v7]", AMBER, { fillOpacity: 0.10, outlineWidth: 1, showAngles: false }),
-      r.shape("[v4, v1, v5, v8]", PINK, { fillOpacity: 0.10, outlineWidth: 1, showAngles: false }),
-
-      // 12 Edges (E = 12)
-      // Bottom 4 edges
-      r.path("v1 + t*(v2 - v1)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
-      r.path("v2 + t*(v3 - v2)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
-      r.path("v3 + t*(v4 - v3)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
-      r.path("v4 + t*(v1 - v4)", INDIGO, [0, 1], { outlineWidth: 2.2 }),
-      // Top 4 edges
-      r.path("v5 + t*(v6 - v5)", SKY, [0, 1], { outlineWidth: 2.2 }),
-      r.path("v6 + t*(v7 - v6)", SKY, [0, 1], { outlineWidth: 2.2 }),
-      r.path("v7 + t*(v8 - v7)", SKY, [0, 1], { outlineWidth: 2.2 }),
-      r.path("v8 + t*(v5 - v8)", SKY, [0, 1], { outlineWidth: 2.2 }),
-      // 4 Vertical pillar edges
-      r.path("v1 + t*(v5 - v1)", PURPLE, [0, 1], { outlineWidth: 2 }),
-      r.path("v2 + t*(v6 - v2)", PURPLE, [0, 1], { outlineWidth: 2 }),
-      r.path("v3 + t*(v7 - v3)", PURPLE, [0, 1], { outlineWidth: 2 }),
-      r.path("v4 + t*(v8 - v4)", PURPLE, [0, 1], { outlineWidth: 2 }),
-
-      // 8 Vertices (V = 8)
-      r.point("v1", INDIGO, { label: "v₁", showLabel: true, labelAlignment: "left" }),
-      r.point("v2", INDIGO, { label: "v₂", showLabel: true, labelAlignment: "right" }),
-      r.point("v3", INDIGO, { label: "v₃", showLabel: true, labelAlignment: "right" }),
-      r.point("v4", INDIGO, { label: "v₄", showLabel: true, labelAlignment: "left" }),
-      r.point("v5", SKY, { label: "v₅", showLabel: true, labelAlignment: "left" }),
-      r.point("v6", SKY, { label: "v₆", showLabel: true, labelAlignment: "right" }),
-      r.point("v7", PINK, { label: "v₇ (drag)", showLabel: true, labelAlignment: "above", dragVars: ["yaw0", "pitch0"] }),
-      r.point("v8", SKY, { label: "v₈", showLabel: true, labelAlignment: "left" }),
-
-      // Top Educational Readouts
-      r.readout("[0, 4.4]", "Euler's Polyhedron Formula:  V − E + F = 2", INDIGO),
-      r.readout("[0, 3.8]", "Cube (Hexahedron):  V = {{V_count}} vertices,  E = {{E_count}} edges,  F = {{F_count}} faces", SKY),
-      r.readout("[0, 3.2]", "Verification:  {{V_count}} − {{E_count}} + {{F_count}} = {{chi}}  ✓   (Euler Characteristic χ = 2)", GREEN),
-
-      // Bottom Educational Readouts
-      r.readout("[0, -3.2]", "Topological Invariant: Any simply connected polyhedron homeomorphic to a sphere has χ = 2", TEXT),
-      r.readout("[0, -3.8]", "Tetrahedron (4 − 6 + 4 = 2)  ·  Octahedron (6 − 12 + 8 = 2)  ·  Icosahedron (12 − 30 + 20 = 2)", PURPLE),
-      r.readout("[0, -4.4]", "Dodecahedron (20 − 30 + 12 = 2)  ·  Drag corner v₇ or sliders to rotate, or Play to tumble", AMBER),
+      // 6 faces
+      r.shape("[v1, v2, v3, v4]", INDIGO, { fillOpacity: 0.14, outlineWidth: 0, showAngles: false }),
+      r.shape("[v5, v6, v7, v8]", SKY, { fillOpacity: 0.16, outlineWidth: 0, showAngles: false }),
+      r.shape("[v1, v2, v6, v5]", BLUE, { fillOpacity: 0.1, outlineWidth: 0, showAngles: false }),
+      r.shape("[v2, v3, v7, v6]", PURPLE, { fillOpacity: 0.1, outlineWidth: 0, showAngles: false }),
+      r.shape("[v3, v4, v8, v7]", BLUE, { fillOpacity: 0.1, outlineWidth: 0, showAngles: false }),
+      r.shape("[v4, v1, v5, v8]", PURPLE, { fillOpacity: 0.1, outlineWidth: 0, showAngles: false }),
+      // 12 edges
+      edge("v1", "v2", INDIGO), edge("v2", "v3", INDIGO), edge("v3", "v4", INDIGO), edge("v4", "v1", INDIGO),
+      edge("v5", "v6", SKY), edge("v6", "v7", SKY), edge("v7", "v8", SKY), edge("v8", "v5", SKY),
+      edge("v1", "v5", PURPLE), edge("v2", "v6", PURPLE), edge("v3", "v7", PURPLE), edge("v4", "v8", PURPLE),
+      // 8 vertices
+      ...corner("v1", INDIGO), ...corner("v2", INDIGO), ...corner("v3", INDIGO), ...corner("v4", INDIGO),
+      ...corner("v5", SKY), ...corner("v6", SKY), ...corner("v8", SKY),
+      ...corner("v7", PINK, { dragVars: ["yaw0", "pitch0"] }),
+      ...notes(r, 6.3, 2.6, 0.82, [
+        [String.raw`V - E + F = 2`, INDIGO],
+        [String.raw`\text{Cube: } 8 - 12 + 6 = 2`, SKY],
+        [String.raw`\text{Tetrahedron: } 4 - 6 + 4 = 2`, TEXT],
+        [String.raw`\text{Octahedron: } 6 - 12 + 8 = 2`, TEXT],
+        [String.raw`\text{Dodecahedron: } 20 - 30 + 12 = 2`, TEXT],
+        [String.raw`\text{Icosahedron: } 12 - 30 + 20 = 2`, TEXT],
+        [String.raw`\text{Drag the pink corner to turn it}`, PINK],
+      ], false),
     ],
     variables: [
-      sceneSlider("yaw0", "Yaw (horizontal rot)", 0.65, [-3.14, 3.14, 0.02], "Rotate around vertical Y-axis. Or drag pink corner v₇.", "poly"),
-      sceneSlider("pitch0", "Pitch (tilt rot)", 0.45, [-1.5, 1.5, 0.02], "Tilt 3D view up or down. Or drag pink corner v₇.", "poly"),
-      sceneSlider("S", "Scale / Size", 1.6, [0.8, 2.4, 0.05], "Adjust visual scale of the polyhedron.", "poly"),
+      sceneSlider("yaw0", "Turn", 0.65, [-3.14, 3.14, 0.02], "Turn the cube about its upright axis. Or drag the pink corner.", "poly"),
+      sceneSlider("pitch0", "Tilt", 0.45, [-1.5, 1.5, 0.02], "Tilt the cube towards you. Or drag the pink corner.", "poly"),
+      sceneSlider("S", "Size", 1.4, [0.8, 1.8, 0.05], "How big the cube is drawn.", "poly"),
     ],
     groups: [sceneGroup("poly", "Euler's Polyhedron (V − E + F = 2)")],
-    timeline: { mode: "loop", min: 0, max: TAU, speed: 0.5 },
-    view: { x: [-5.6, 5.6], y: [-5.0, 5.0] },
-    gridType: "cartesian",
+    timeline: { mode: "loop", min: 0, max: 10 * TAU, speed: 0.5 },
+    view: { x: [-3.8, 9.6], y: [-3.8, 3.8] },
+    gridType: "none",
+  };
+}
+
+// ─── The same ideas in space (loaded while the graph is in 3D) ────────────────
+
+/** e^(iθ) as a helix: θ runs up the z-axis; its shadows on the walls are cos and sin. */
+function eulerFormula3D(): ExampleScene {
+  const r = sceneRows("euler3");
+  const H = "(2*a/pi - 2.4)"; // height of angle a: two turns fill the box
+  const h = (a: string) => H.replace("a", a);
+  return {
+    functions: [
+      r.define("ang = mod(theta + time, 4*pi)"),
+      r.define(`zh = ${h("ang")}`),
+      r.define("px = R*cos(ang)"),
+      r.define("py = R*sin(ang)"),
+      // The helix, and its shadows: a cosine on the back wall, a sine on the side wall.
+      r.path(`[R*cos(t), R*sin(t), ${h("t")}]`, AMBER, [0, 2 * TAU], { outlineWidth: 3.5 }),
+      r.path(`[R*cos(t), W, ${h("t")}]`, BLUE, [0, 2 * TAU], { outlineWidth: 2 }),
+      r.path(`[-W, R*sin(t), ${h("t")}]`, RED, [0, 2 * TAU], { outlineWidth: 2 }),
+      r.path("[R*cos(t), R*sin(t), -3]", INK, [0, TAU], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      // From the moving point to each shadow, and down to the circle on the floor.
+      r.path("[px, py + t*(W - py), zh]", BLUE, [0, 1], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      r.path("[px + t*(-W - px), py, zh]", RED, [0, 1], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      r.path("[px, py, zh + t*(-3 - zh)]", INK, [0, 1], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      r.arrow("Vector([0, 0, zh], [px, py, zh])", AMBER, { outlineWidth: 3 }),
+      spacePoint(r, "[px, py, zh]", AMBER, tex(String.raw`e^{i\theta}`)),
+      spacePoint(r, "[px, W, zh]", BLUE, tex(String.raw`\cos\theta`)),
+      spacePoint(r, "[-W, py, zh]", RED, tex(String.raw`\sin\theta`)),
+      spacePoint(r, "[px, py, -3]", INK),
+      ...notes3(r, [3, -3], 2.9, 0.5, [
+        [String.raw`e^{i\theta} = \cos\theta + i\,\sin\theta`, AMBER],
+        [String.raw`\theta = {{ang}}\ \text{rad}`, TEXT],
+        [String.raw`\cos\theta = {{cos(ang)}}`, BLUE],
+        [String.raw`\sin\theta = {{sin(ang)}}`, RED],
+      ]),
+    ],
+    variables: [
+      sceneSlider("R", "Radius |z|", 1.6, [0.5, 2.2, 0.05], "Radius of the helix.", "euler"),
+      sceneSlider("theta", "Angle θ (rad)", 1.05, [0, 2 * TAU, 0.02], "Where on the helix the point starts.", "euler"),
+      sceneSlider("W", "Wall distance", 3, [2.4, 3, 0.05], "How far away the walls with the cos and sin shadows are.", "euler"),
+    ],
+    groups: [sceneGroup("euler", "Helix of e^(iθ): height is θ")],
+    timeline: { mode: "loop", min: 0, max: 2 * TAU, speed: 0.6 },
+    view: { x: [-3, 3], y: [-3, 3] },
+  };
+}
+
+/** e^(iθ) climbing half a turn from 1 to −1, then the step +1 back to the axis. */
+function eulerIdentity3D(): ExampleScene {
+  const r = sceneRows("eident3");
+  return {
+    functions: [
+      r.define("theta = time > 0.01 ? min(time, pi) : th"),
+      r.define("ez = exp(i * theta)"),
+      r.define("zh = 3*theta/pi - 1.5"),
+      r.path("[1.6*cos(t), 1.6*sin(t), -1.5]", INK, [0, TAU], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      r.path("[1.6*cos(t), 1.6*sin(t), 3*t/pi - 1.5]", INK, [0, Math.PI], { outlineWidth: 1.5, lineStyle: "dotted" }),
+      r.path("[1.6*cos(t*theta), 1.6*sin(t*theta), 3*t*theta/pi - 1.5]", PINK, [0, 1], { outlineWidth: 4 }),
+      r.arrow("Vector([0, 0, zh], [1.6*cos(theta), 1.6*sin(theta), zh])", PINK, { outlineWidth: 2.5 }),
+      r.arrow("Vector([-1.6, 0, 1.5], [0, 0, 1.5])", AMBER, { outlineWidth: 3 }),
+      spacePoint(r, "[1.6, 0, -1.5]", SKY, tex(String.raw`e^{0} = 1`)),
+      spacePoint(r, "[0, 1.6, 0]", PURPLE, tex(String.raw`e^{i\pi/2} = i`)),
+      spacePoint(r, "[-1.6, 0, 1.5]", RED, tex(String.raw`e^{i\pi} = -1`)),
+      spacePoint(r, "[0, 0, 1.5]", AMBER, tex(String.raw`-1 + 1 = 0`)),
+      spacePoint(r, "[1.6*cos(theta), 1.6*sin(theta), zh]", PINK),
+      ...notes3(r, [2, -2], 1.9, 0.36, [
+        [String.raw`e^{i\pi} + 1 = 0`, PINK],
+        [String.raw`e^{i\theta} = {{ez}}`, PINK],
+        [String.raw`\theta = {{theta*180/pi:0}}^\circ \ \text{(height)}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("th", "Angle θ (rad)", Math.PI, [0, Math.PI, 0.02], "Climb from 1 to −1, or press Play.", "euler_id"),
+    ],
+    groups: [sceneGroup("euler_id", "Euler's Identity: height is θ")],
+    timeline: { mode: "loop", min: 0, max: Math.PI + 1.2, speed: 0.6 },
+    view: { x: [-2, 2], y: [-2, 2] },
+  };
+}
+
+/** The powers of z as a spiral staircase: zᵏ stands at height k. */
+function deMoivre3D(): ExampleScene {
+  const r = sceneRows("demoivre3");
+  const h = (k: string) => `(0.8*${k} - 2)`;
+  const COLORS_K = [SKY, GREEN, AMBER, PURPLE, PINK];
+  const steps = [1, 2, 3, 4, 5].flatMap((k) => {
+    const x = `r0^${k}*cos(${k}*theta)`;
+    const y = `r0^${k}*sin(${k}*theta)`;
+    const z = `(n >= ${k} ? ${h(String(k))} : NaN)`;
+    return [
+      r.arrow(`Vector([0, 0, ${z}], [${x}, ${y}, ${z}])`, COLORS_K[k - 1], { outlineWidth: 2.5 }),
+      spacePoint(r, `[${x}, ${y}, ${z}]`, COLORS_K[k - 1], tex(k === 1 ? "z" : `z^${k}`)),
+    ];
+  });
+  return {
+    functions: [
+      r.path(`[cos(t), sin(t), -2]`, INK, [0, TAU], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      // Every power lies on this spiral.
+      r.path(`[r0^(t*n)*cos(t*n*theta), r0^(t*n)*sin(t*n*theta), ${h("(t*n)")}]`, INDIGO, [0, 1], { outlineWidth: 2.5 }),
+      r.path(`[0, 0, -2 + t*(${h("n")} + 2)]`, INK, [0, 1], { outlineWidth: 1.5 }),
+      spacePoint(r, "[1, 0, -2]", INK, tex("1")),
+      ...steps,
+      ...notes3(r, [2.5, -2.5], 2.4, 0.42, [
+        [String.raw`z^n = r^n e^{i n\theta}`, RED],
+        [String.raw`z^k \text{ stands at height } k`, TEXT],
+        [String.raw`\text{each step turns by } \theta = {{theta*180/pi:0}}^\circ`, SKY],
+        [String.raw`|z^n| = {{r0^n}} \qquad \arg z^n = {{n*theta*180/pi:0}}^\circ`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("n", "Power n", 5, [1, 5, 1], "How many powers to climb.", "demoivre"),
+      sceneSlider("theta", "Angle θ (rad)", 0.9, [0, TAU, 0.02], "The turn between one power and the next.", "demoivre"),
+      sceneSlider("r0", "Radius r", 1.08, [0.8, 1.15, 0.01], "Length of z. Above 1 the staircase widens as it climbs.", "demoivre"),
+    ],
+    groups: [sceneGroup("demoivre", "De Moivre: a spiral staircase")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-2.5, 2.5], y: [-2.5, 2.5] },
+  };
+}
+
+/** |zⁿ − 1| as a landscape over the complex plane: it touches the floor at the roots. */
+function rootsLandscape(prefix: string, n: number, title: string): ExampleScene {
+  const r = sceneRows(prefix);
+  const COLORS_K = [SKY, GREEN, PURPLE, AMBER, PINK, RED, INDIGO, BLUE];
+  return {
+    functions: [
+      surface(r, "z = abs((x + i*y)^n - 1) - 1.8", PURPLE, { fillOpacity: 0.8 }),
+      r.path("[cos(t), sin(t), -1.8]", INK, [0, TAU], { outlineWidth: 2, lineStyle: "dashed" }),
+      // One marker per root; those beyond n are left out.
+      ...COLORS_K.map((color, k) =>
+        spacePoint(r, `[cos(2*pi*${k}/n), sin(2*pi*${k}/n), n > ${k} ? -1.8 : NaN]`, color, tex(k === 0 ? "1" : `z_${k}`)),
+      ),
+      ...notes3(r, [1.8, -1.8], 1.75, 0.34, [
+        [String.raw`\text{height} = |z^n - 1|`, PURPLE],
+        [String.raw`\text{it touches the floor where } z^n = 1`, TEXT],
+        [String.raw`n = {{n:0}} \text{ roots, } {{360/n:0}}^\circ \text{ apart}`, AMBER],
+      ]),
+    ],
+    variables: [
+      sceneSlider("n", "Roots n", n, [2, 8, 1], "zⁿ = 1 has n roots, evenly spaced on the unit circle.", "roots"),
+    ],
+    groups: [sceneGroup("roots", title)],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-1.8, 1.8], y: [-1.8, 1.8] },
+    view3d: { colorMode: "height", contours: true },
+  };
+}
+
+/** Multiplying on the spiral ramp of the argument: heights (angles) add. */
+function complexMultiplication3D(): ExampleScene {
+  const r = sceneRows("cmul3");
+  const h = (a: string) => `(${a}/pi*2 - 2)`; // angle 0..2π → height −2..2
+  const at = (rho: string, th: string) => `[${rho}*cos(${th}), ${rho}*sin(${th}), ${h(th)}]`;
+  return {
+    functions: [
+      r.define("r3 = r1 * r2"),
+      r.define("th3 = th1 + th2"),
+      // The ramp: a point at angle u sits at height u.
+      { ...r.define(`[(0.15 + 0.45*v)*cos(u), (0.15 + 0.45*v)*sin(u), ${h("u")}]`), color: INK, fillOpacity: 0.35 },
+      r.arrow(`Vector([0, 0, ${h("th1")}], ${at("r1", "th1")})`, SKY, { outlineWidth: 3 }),
+      r.arrow(`Vector([0, 0, ${h("th2")}], ${at("r2", "th2")})`, AMBER, { outlineWidth: 3 }),
+      r.arrow(`Vector([0, 0, ${h("th3")}], ${at("r3", "th3")})`, PURPLE, { outlineWidth: 3.5 }),
+      spacePoint(r, at("r1", "th1"), SKY, tex("z_1")),
+      spacePoint(r, at("r2", "th2"), AMBER, tex("z_2")),
+      spacePoint(r, at("r3", "th3"), PURPLE, tex("z_1 z_2")),
+      ...notes3(r, [3, -3], 2.9, 0.5, [
+        [String.raw`\text{angles add: heights add}`, PURPLE],
+        [String.raw`\theta_1 + \theta_2 = {{th1*180/pi:0}}^\circ + {{th2*180/pi:0}}^\circ = {{th3*180/pi:0}}^\circ`, TEXT],
+        [String.raw`|z_1|\,|z_2| = {{r1}} \times {{r2}} = {{r3}}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("r1", "Length |z₁|", 1.5, [0.3, 1.7, 0.05], "Magnitude of z₁.", "mult"),
+      sceneSlider("th1", "Angle θ₁ (rad)", 1.1, [0, Math.PI, 0.02], "Argument of z₁: its height on the ramp.", "mult"),
+      sceneSlider("r2", "Length |z₂|", 1.4, [0.3, 1.7, 0.05], "Magnitude of z₂.", "mult"),
+      sceneSlider("th2", "Angle θ₂ (rad)", 1.9, [0, Math.PI, 0.02], "Argument of z₂: its height on the ramp.", "mult"),
+    ],
+    groups: [sceneGroup("mult", "Multiplication on the ramp of angles")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3, 3], y: [-3, 3] },
+  };
+}
+
+/** A real cube: turn it and count 8 corners, 12 edges, 6 faces. */
+function eulerPolyhedra3D(): ExampleScene {
+  const r = sceneRows("poly3");
+  const P: [number, number, number][] = [
+    [-1, -1, -1], [1, -1, -1], [1, 1, -1], [-1, 1, -1],
+    [-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1],
+  ];
+  const v = (i: number) => `S*[${P[i].join(", ")}]`;
+  const face = (ids: number[], color: string) =>
+    r.shape(`S*[${ids.map((i) => `[${P[i].join(", ")}]`).join(", ")}]`, color, { fillOpacity: 0.22, outlineWidth: 3, showAngles: false });
+  return {
+    functions: [
+      face([0, 1, 2, 3], INDIGO),
+      face([4, 5, 6, 7], SKY),
+      face([0, 1, 5, 4], BLUE),
+      face([1, 2, 6, 5], PURPLE),
+      face([2, 3, 7, 6], BLUE),
+      face([3, 0, 4, 7], PURPLE),
+      ...P.map((_, i) => spacePoint(r, v(i), i < 4 ? INDIGO : SKY, tex(`v_${i + 1}`))),
+      ...notes3(r, [3, -3], 2.9, 0.5, [
+        [String.raw`V - E + F = 2`, INDIGO],
+        [String.raw`\text{Cube: } 8 - 12 + 6 = 2`, SKY],
+        [String.raw`\text{Drag to turn it and count}`, TEXT],
+      ]),
+    ],
+    variables: [sceneSlider("S", "Size", 1.5, [0.6, 2.2, 0.05], "Half the length of an edge.", "poly")],
+    groups: [sceneGroup("poly", "Euler's Polyhedron (V − E + F = 2)")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3, 3], y: [-3, 3] },
+    view3d: { autoRotate: true },
+  };
+}
+
+/** The Lorenz butterfly as it really is: a curve in (x, y, z). */
+function lorenz3D(): ExampleScene {
+  const r = sceneRows("lorenz3");
+  return {
+    functions: [
+      // w = z − 25, so the butterfly sits in the middle of the box.
+      r.ode("x' = s*(y - x); y' = x*(r - 25 - w) - y; w' = x*y - b*(w + 25); x(0) = 1; y(0) = 1; w(0) = -24", PINK, {
+        tRange: [0, 40],
+        odeSteps: 5000,
+        odeAxes: ["x", "y"],
+        outlineWidth: 1.5,
+      }),
+      ...notes3(r, [28, -28], 27, 4.6, [
+        [String.raw`\dot x = \sigma(y - x), \quad \dot y = x(\rho - z) - y, \quad \dot z = xy - \beta z`, PINK],
+        [String.raw`\text{height shown is } z - 25`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("s", "Sigma σ", 10, [0, 20, 0.5], "Prandtl number."),
+      sceneSlider("r", "Rho ρ", 28, [0, 50, 0.5], "Rayleigh number (28 is chaotic)."),
+      sceneSlider("b", "Beta β", 2.667, [0, 5, 0.05], "Geometry factor."),
+    ],
+    timeline: { mode: "loop", min: 0, max: 40, speed: 1 },
+    view: { x: [-28, 28], y: [-28, 28] },
+    view3d: { autoRotate: true },
+  };
+}
+
+/** Three perpendicular oscillations: a Lissajous knot. */
+function lissajous3D(): ExampleScene {
+  const r = sceneRows("liss3");
+  return {
+    functions: [
+      r.path("[A*sin(a*t + d + time), A*sin(b*t), A*sin(c*t)]", COLORS[0], [0, TAU], { outlineWidth: 3 }),
+      // Its three shadows are ordinary Lissajous curves.
+      r.path("[A*sin(a*t + d + time), A*sin(b*t), -4]", INK, [0, TAU], { outlineWidth: 1.5 }),
+      r.path("[A*sin(a*t + d + time), 4, A*sin(c*t)]", INK, [0, TAU], { outlineWidth: 1.5 }),
+      r.path("[-4, A*sin(b*t), A*sin(c*t)]", INK, [0, TAU], { outlineWidth: 1.5 }),
+    ],
+    variables: [
+      sceneSlider("A", "Amplitude", 2.8, [0.5, 3.6, 0.1], "Size of all three oscillations."),
+      sceneSlider("a", "Freq X", 3, [1, 7, 1], "Oscillations along x."),
+      sceneSlider("b", "Freq Y", 4, [1, 7, 1], "Oscillations along y."),
+      sceneSlider("c", "Freq Z", 5, [1, 7, 1], "Oscillations along z."),
+      sceneSlider("d", "Phase", Math.PI / 2, [0, TAU, 0.1], "Phase of the x oscillation."),
+    ],
+    timeline: { mode: "continuous", min: 0, max: 10, speed: 0.4, autoplay: true },
+    view: { x: [-4, 4], y: [-4, 4] },
+  };
+}
+
+/** A wave on water: rings spreading from the middle. */
+function wave3D(): ExampleScene {
+  const r = sceneRows("wave3");
+  return {
+    functions: [
+      r.define("lam = 2*pi/k"),
+      surface(r, "z = A*sin(k*sqrt(x^2 + y^2) - w*time) / (1 + 0.12*sqrt(x^2 + y^2))", SKY),
+      ...notes3(r, [6, -6], 5.4, 0.9, [
+        [String.raw`z = A\sin(kr - \omega t)`, SKY],
+        [String.raw`\lambda = 2\pi/k = {{lam}} \qquad v = \omega/k = {{w/k}}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("A", "Amplitude A", 1.2, [0.2, 2.5, 0.05], "Height of the crests.", "wave"),
+      sceneSlider("k", "Wave number k", 2, [0.5, 4, 0.05], "λ = 2π/k: bigger k packs the rings closer.", "wave"),
+      sceneSlider("w", "Angular frequency ω", 3, [0.5, 8, 0.1], "Faster shaking: the rings travel faster.", "wave"),
+    ],
+    groups: [sceneGroup("wave", "Wave")],
+    timeline: { mode: "loop", min: 0, max: 10, endExpr: "8*pi/w" },
+    view: { x: [-6, 6], y: [-6, 6] },
+    view3d: { colorMode: "height" },
+  };
+}
+
+/** The bell curve in two variables: a hill whose spread is σ. */
+function normalDistribution3D(): ExampleScene {
+  const r = sceneRows("norm3");
+  return {
+    functions: [
+      surface(r, "z = 4*exp(-0.5*(((x - mu)^2 + y^2)/sigma^2)) - 2", PURPLE),
+      // One standard deviation out, on the floor.
+      r.path("[mu + sigma*cos(t), sigma*sin(t), -2]", AMBER, [0, TAU], { outlineWidth: 2.5 }),
+      r.path("[mu + 2*sigma*cos(t), 2*sigma*sin(t), -2]", AMBER, [0, TAU], { outlineWidth: 1.5, lineStyle: "dashed" }),
+      ...notes3(r, [3, -3], 2.9, 0.5, [
+        [String.raw`f(x, y) \propto e^{-\frac{(x-\mu)^2 + y^2}{2\sigma^2}}`, PURPLE],
+        [String.raw`\text{rings: } 1\sigma \text{ and } 2\sigma \text{ from the mean}`, AMBER],
+        [String.raw`\mu = {{mu}} \qquad \sigma = {{sigma}}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("mu", "Mean μ", 0, [-1.5, 1.5, 0.05], "Where the hill stands.", "shape"),
+      sceneSlider("sigma", "Standard deviation σ", 0.9, [0.3, 1.6, 0.01], "How widely it spreads.", "shape"),
+    ],
+    groups: [sceneGroup("shape", "Shape")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3, 3], y: [-3, 3] },
+    view3d: { colorMode: "height", contours: true },
   };
 }
 
@@ -1088,4 +1438,16 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   RootsOfUnity: rootsOfUnity(),
   ComplexMultiplication: complexMultiplication(),
   EulerPolyhedra: eulerPolyhedra(),
+  // Versions for the 3D view, loaded in place of the ones above while the graph is in 3D.
+  CubeRootsOfUnity3D: rootsLandscape("cuberoot3", 3, "Cube roots: where |z³ − 1| touches the floor"),
+  RootsOfUnity3D: rootsLandscape("roots3", 6, "Roots of unity: where |zⁿ − 1| touches the floor"),
+  EulerFormula3D: eulerFormula3D(),
+  EulerIdentity3D: eulerIdentity3D(),
+  DeMoivre3D: deMoivre3D(),
+  ComplexMultiplication3D: complexMultiplication3D(),
+  EulerPolyhedra3D: eulerPolyhedra3D(),
+  Lorenz3D: lorenz3D(),
+  Lissajous3D: lissajous3D(),
+  Wave3D: wave3D(),
+  Statistics3D: normalDistribution3D(),
 };
