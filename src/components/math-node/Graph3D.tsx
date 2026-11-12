@@ -156,6 +156,14 @@ const HANDLE_CSS = `
 .g3d-tip{position:absolute;left:0;top:-24px;transform:translate(-50%,-100%);padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
 .g3d-handle.dragging .g3d-tip{display:block}
 .g3d-handle.solver .g3d-stem,.g3d-handle.solver .g3d-grip{display:none}
+.g3d-ax{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2}
+.g3d-ax-hit{position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;pointer-events:auto;cursor:pointer;touch-action:none;display:flex;align-items:center;justify-content:center;outline:none;-webkit-tap-highlight-color:transparent}
+.g3d-ax-ring{width:20px;height:20px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 8%,transparent);transition:transform .15s ease,border-color .15s ease,background .15s ease,box-shadow .15s ease}
+.g3d-ax.hot .g3d-ax-ring,.g3d-ax-hit:hover .g3d-ax-ring{border:2px solid var(--c);background:color-mix(in srgb,var(--c) 24%,transparent);box-shadow:0 0 12px color-mix(in srgb,var(--c) 65%,transparent);transform:scale(1.28)}
+.g3d-ax.dragging .g3d-ax-hit{cursor:grabbing}
+.g3d-ax.dragging .g3d-ax-ring{border:2.5px solid var(--c);background:color-mix(in srgb,var(--c) 32%,transparent);box-shadow:0 0 16px color-mix(in srgb,var(--c) 80%,transparent);transform:scale(1.38)}
+.g3d-ax-tip{position:absolute;left:0;top:-22px;transform:translate(-50%,-100%);padding:3px 7px;border-radius:6px;font-weight:600;font-size:10.5px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
+.g3d-ax.hot .g3d-ax-tip,.g3d-ax-hit:hover .g3d-ax-tip,.g3d-ax.dragging .g3d-ax-tip{display:block}
 `;
 
 // ─── Screenshots ──────────────────────────────────────────────────────────────
@@ -604,7 +612,21 @@ class Engine {
     theta0: number;
     dTheta: number;
     fromTarget: THREE.Vector3;
+    fromUp: THREE.Vector3;
   } | null = null;
+  // Constrained single-axis rotation when dragging an axis arrowhead/tip
+  private axisTips: { axis: 0 | 1 | 2; cone: THREE.Mesh; handlePos: Vec3 }[] = [];
+  private axisHandles: { axis: 0 | 1 | 2; wrap: HTMLDivElement; tip: HTMLDivElement }[] = [];
+  private axisDrag: {
+    axis: 0 | 1 | 2;
+    pointerId: number;
+    lastX: number;
+    lastY: number;
+    angle: number;
+    startOffset: THREE.Vector3;
+    startUp: THREE.Vector3;
+  } | null = null;
+  private hoverAxis: 0 | 1 | 2 | null = null;
   // Pointer: readout, tangent plane, dragging points
   private raycaster = new THREE.Raycaster();
   private occluder = new THREE.Raycaster();
@@ -659,13 +681,16 @@ class Engine {
     canvas.addEventListener("pointermove", this.onPointerMove);
     canvas.addEventListener("pointerleave", this.onPointerLeave);
     canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("pointercancel", this.onPointerUp);
     canvas.addEventListener("contextmenu", this.onContextMenu);
-    if (!document.getElementById("g3d-handle-css")) {
-      const style = document.createElement("style");
+    let style = document.getElementById("g3d-handle-css") as HTMLStyleElement | null;
+    if (!style) {
+      style = document.createElement("style");
       style.id = "g3d-handle-css";
-      style.textContent = HANDLE_CSS;
       document.head.appendChild(style);
     }
+    style.textContent = HANDLE_CSS;
+    this.buildAxisTipHandles();
 
     this.camera.up.set(0, 0, 1); // z points up, as in maths
     this.camera.position.copy(HOME_CAMERA);
@@ -806,6 +831,7 @@ class Engine {
       theta0,
       dTheta,
       fromTarget: target.clone(),
+      fromUp: this.camera.up.clone().normalize(),
     };
     this.requestRender();
   }
@@ -819,6 +845,7 @@ class Engine {
     const r = tw.r0 + (tw.r1 - tw.r0) * e;
     const phi = Math.max(0.002, tw.phi0 + (tw.phi1 - tw.phi0) * e);
     const theta = tw.theta0 + tw.dTheta * e;
+    this.camera.up.lerpVectors(tw.fromUp, new THREE.Vector3(0, 0, 1), e).normalize();
     this.camera.position.set(
       target.x + r * Math.sin(phi) * Math.cos(theta),
       target.y + r * Math.sin(phi) * Math.sin(theta),
@@ -826,7 +853,9 @@ class Engine {
     );
     this.camera.lookAt(target);
     if (k >= 1) {
+      this.camera.up.set(0, 0, 1);
       this.tween = null;
+      this.syncControlsUp();
       this.controls.update();
     }
     this.requestRender();
@@ -1019,6 +1048,216 @@ class Engine {
     this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
   }
 
+  private syncControlsUp() {
+    // Keep OrbitControls' cached up-quaternion aligned with camera.up so normal orbit never snaps or rolls unexpectedly.
+    const ctrl = this.controls as any;
+    if (ctrl._quat && ctrl._quatInverse) {
+      ctrl._quat.setFromUnitVectors(this.camera.up, new THREE.Vector3(0, 1, 0));
+      ctrl._quatInverse.copy(ctrl._quat).invert();
+    }
+    ctrl._sphericalDelta?.set(0, 0, 0);
+    ctrl._panOffset?.set(0, 0, 0);
+  }
+
+  private clientToCanvas(clientX: number, clientY: number) {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    const scaleX = r.width > 0 ? this.width / r.width : 1;
+    const scaleY = r.height > 0 ? this.height / r.height : 1;
+    return {
+      x: (clientX - r.left) * scaleX,
+      y: (clientY - r.top) * scaleY,
+      rect: r,
+    };
+  }
+
+  private buildAxisTipHandles() {
+    for (const axis of [0, 1, 2] as const) {
+      const name = AXIS_NAMES[axis];
+      const color = AXIS_COLORS[axis];
+      const wrap = document.createElement("div");
+      wrap.className = "g3d-ax";
+      wrap.style.setProperty("--c", color);
+      wrap.dataset.captureExclude = "";
+
+      const hit = document.createElement("div");
+      hit.className = "g3d-ax-hit";
+      hit.title = `Drag to rotate only around the ${name}-axis (0°–360°)`;
+
+      const ring = document.createElement("div");
+      ring.className = "g3d-ax-ring";
+      hit.appendChild(ring);
+
+      const tip = document.createElement("div");
+      tip.className = "g3d-ax-tip";
+      tip.textContent = `↻ Spin ${name}-axis`;
+      wrap.append(hit, tip);
+      this.handleHost.appendChild(wrap);
+
+      const start = (e: PointerEvent) => {
+        if (e.pointerType === "mouse" && e.button !== 0) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.beginAxisDrag(axis, e.pointerId, e.clientX, e.clientY);
+        try {
+          hit.setPointerCapture(e.pointerId);
+        } catch {
+          // Synthetic events may have no active pointer to capture.
+        }
+      };
+
+      const move = (e: PointerEvent) => {
+        if (!this.axisDrag || this.axisDrag.axis !== axis || this.axisDrag.pointerId !== e.pointerId) return;
+        e.preventDefault();
+        e.stopPropagation();
+        this.stepAxisDrag(e.clientX, e.clientY);
+      };
+
+      const end = (e: PointerEvent) => {
+        if (!this.axisDrag || this.axisDrag.axis !== axis || this.axisDrag.pointerId !== e.pointerId) return;
+        e.stopPropagation();
+        try {
+          hit.releasePointerCapture(e.pointerId);
+        } catch {
+          // Ignore if capture was already released.
+        }
+        this.endAxisDrag(e.type === "pointerup" && e.pointerType === "mouse" ? axis : null);
+      };
+
+      hit.addEventListener("pointerenter", () => {
+        if (!this.axisDrag) this.setHoveredAxis(axis);
+      });
+      hit.addEventListener("pointerleave", () => {
+        if (!this.axisDrag && this.hoverAxis === axis) this.setHoveredAxis(null);
+      });
+      hit.addEventListener("pointerdown", start);
+      hit.addEventListener("pointermove", move);
+      hit.addEventListener("pointerup", end);
+      hit.addEventListener("pointercancel", end);
+      hit.addEventListener("wheel", (e) => this.renderer.domElement.dispatchEvent(new WheelEvent(e.type, e)), {
+        passive: true,
+      });
+
+      this.axisHandles.push({ axis, wrap, tip });
+    }
+  }
+
+  private placeAxisTipHandles() {
+    const at = { x: 0, y: 0 };
+    for (const h of this.axisHandles) {
+      const tipSpec = this.axisTips.find((t) => t.axis === h.axis);
+      if (!tipSpec || !this.toScreen(tipSpec.handlePos[0], tipSpec.handlePos[1], tipSpec.handlePos[2], at)) {
+        h.wrap.style.display = "none";
+        continue;
+      }
+      h.wrap.style.display = "";
+      h.wrap.style.translate = `${at.x.toFixed(1)}px ${at.y.toFixed(1)}px`;
+    }
+  }
+
+  private setHoveredAxis(axis: 0 | 1 | 2 | null) {
+    const activeAxis = this.axisDrag ? this.axisDrag.axis : axis;
+    this.hoverAxis = axis;
+    for (const tip of this.axisTips) {
+      tip.cone.scale.setScalar(tip.axis === activeAxis ? 1.6 : 1);
+    }
+    for (const h of this.axisHandles) {
+      const isHot = h.axis === activeAxis;
+      const isDragging = this.axisDrag?.axis === h.axis;
+      h.wrap.classList.toggle("hot", isHot);
+      h.wrap.classList.toggle("dragging", isDragging);
+      if (!isDragging) h.tip.textContent = `↻ Spin ${AXIS_NAMES[h.axis]}-axis`;
+    }
+    if (activeAxis !== null) this.clearHover();
+    this.requestRender();
+  }
+
+  private beginAxisDrag(axis: 0 | 1 | 2, pointerId: number, clientX: number, clientY: number) {
+    this.tween = null;
+    this.clearHover();
+    this.controls.enabled = false;
+    this.syncControlsUp();
+    const target = this.controls.target;
+    this.axisDrag = {
+      axis,
+      pointerId,
+      lastX: clientX,
+      lastY: clientY,
+      angle: 0,
+      startOffset: this.camera.position.clone().sub(target),
+      startUp: this.camera.up.clone().normalize(),
+    };
+    const h = this.axisHandles.find((item) => item.axis === axis);
+    if (h) h.tip.textContent = `↻ ${AXIS_NAMES[axis]}: 0°`;
+    this.setHoveredAxis(axis);
+  }
+
+  private stepAxisDrag(clientX: number, clientY: number) {
+    const drag = this.axisDrag;
+    if (!drag) return;
+    const dx = clientX - drag.lastX;
+    const dy = clientY - drag.lastY;
+    drag.lastX = clientX;
+    drag.lastY = clientY;
+    if (dx === 0 && dy === 0) return;
+
+    const axisVec = new THREE.Vector3(drag.axis === 0 ? 1 : 0, drag.axis === 1 ? 1 : 0, drag.axis === 2 ? 1 : 0);
+    const target = this.controls.target;
+    const offset = this.camera.position.clone().sub(target);
+    const viewDir = offset.clone().multiplyScalar(-1).normalize();
+
+    const camRight = new THREE.Vector3(1, 0, 0).applyQuaternion(this.camera.quaternion);
+    const camUp = new THREE.Vector3(0, 1, 0).applyQuaternion(this.camera.quaternion);
+    const frontVel = new THREE.Vector3().crossVectors(viewDir, axisVec);
+    const sinAngle = frontVel.length();
+
+    const { x, y, rect } = this.clientToCanvas(clientX, clientY);
+    const scaleX = rect.width > 0 ? this.width / rect.width : 1;
+    const scaleY = rect.height > 0 ? this.height / rect.height : 1;
+    const cdx = dx * scaleX;
+    const cdy = dy * scaleY;
+    const minDim = Math.max(180, Math.min(this.width, this.height));
+
+    let linearDelta = 0;
+    if (sinAngle > 1e-4) {
+      const sx = frontVel.dot(camRight) / sinAngle;
+      const sy = -frontVel.dot(camUp) / sinAngle;
+      linearDelta = ((sx * cdx + sy * cdy) / minDim) * Math.PI * 1.8;
+    }
+
+    // End-on fallback: dragging circularly around the projected origin rotates smoothly 0-360 deg.
+    const projTarget = target.clone().project(this.camera);
+    const tx = (projTarget.x * 0.5 + 0.5) * this.width;
+    const ty = (-projTarget.y * 0.5 + 0.5) * this.height;
+    const rx = x - tx;
+    const ry = y - ty;
+    const dialSign = viewDir.dot(axisVec) < 0 ? -1 : 1;
+    const dialDelta = dialSign * ((rx * cdy - ry * cdx) / Math.max(rx * rx + ry * ry, 40 * 40));
+
+    const w = clamp((sinAngle - 0.1) / 0.35, 0, 1);
+    drag.angle += w * linearDelta + (1 - w) * dialDelta;
+
+    // Apply total angle from start so full 360-degree turns never accumulate numerical drift.
+    const rot = new THREE.Quaternion().setFromAxisAngle(axisVec, -drag.angle);
+    const rotatedOffset = drag.startOffset.clone().applyQuaternion(rot);
+    this.camera.position.copy(target).add(rotatedOffset);
+    this.camera.up.copy(drag.startUp).applyQuaternion(rot).normalize();
+    this.camera.lookAt(target);
+
+    const deg = (((Math.round((drag.angle * 180) / Math.PI) % 360) + 360) % 360);
+    const h = this.axisHandles.find((item) => item.axis === drag.axis);
+    if (h) h.tip.textContent = `↻ ${AXIS_NAMES[drag.axis]}: ${deg}°`;
+    this.requestRender();
+  }
+
+  private endAxisDrag(nextHover: 0 | 1 | 2 | null) {
+    if (!this.axisDrag) return;
+    this.axisDrag = null;
+    this.controls.enabled = true;
+    this.syncControlsUp();
+    this.controls.update();
+    this.setHoveredAxis(nextHover);
+  }
+
   private onPointerDown = (e: PointerEvent) => {
     this.tween = null; // taking hold of the view stops a glide
     this.setPointer(e);
@@ -1036,6 +1275,7 @@ class Engine {
 
   private onPointerMove = (e: PointerEvent) => {
     this.setPointer(e);
+    if (this.axisDrag) return;
     if (e.pointerType !== "mouse") return;
     if (e.buttons === 0) {
       this.hoverDirty = true;
@@ -1120,7 +1360,7 @@ class Engine {
     if (this.disposed) return;
     // Coasting and auto-rotation: each step that moves the camera asks for the next frame.
     if (this.tween) this.stepTween();
-    else this.controls.update();
+    else if (!this.axisDrag) this.controls.update();
     if (this.needsSync) {
       this.needsSync = false;
       this.syncRows();
@@ -1241,6 +1481,7 @@ class Engine {
   private buildDecor() {
     disposeGroup(this.decor);
     this.decor.clear();
+    this.axisTips = [];
     const labels: LabelSpec[] = [];
     const { cx, cy, cz, half } = this.domain;
     const lo = [cx - half, cy - half, cz - half];
@@ -1313,10 +1554,19 @@ class Engine {
       const dir = new THREE.Vector3(axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0);
       cone.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
       cone.position.set(q[0], q[1], q[2]).addScaledVector(dir, 0.04 * half);
+      const tipAxis = axis as 0 | 1 | 2;
+      const activeAxis = this.axisDrag ? this.axisDrag.axis : this.hoverAxis;
+      if (activeAxis === tipAxis) cone.scale.setScalar(1.6);
       this.decor.add(cone);
 
+      const handleVec = new THREE.Vector3(q[0], q[1], q[2]).addScaledVector(dir, 0.06 * half);
       const name = [...q] as Vec3;
       name[axis] += 0.16 * half;
+      this.axisTips.push({
+        axis: tipAxis,
+        cone,
+        handlePos: [handleVec.x, handleVec.y, handleVec.z],
+      });
       labels.push({ pos: name, text: AXIS_NAMES[axis], color: AXIS_COLORS[axis], strong: true });
 
       // Numbers sit just off the axis: below it for x and y, beside it for z.
@@ -2721,6 +2971,7 @@ class Engine {
 
   /** Puts each handle over its point, and its height grip along the z-axis as seen on screen. */
   private placeHandles() {
+    this.placeAxisTipHandles();
     if (this.handles.size === 0) return;
     const at = { x: 0, y: 0 };
     const up = { x: 0, y: 0 };
@@ -3094,6 +3345,7 @@ class Engine {
     canvas.removeEventListener("pointermove", this.onPointerMove);
     canvas.removeEventListener("pointerleave", this.onPointerLeave);
     canvas.removeEventListener("pointerup", this.onPointerUp);
+    canvas.removeEventListener("pointercancel", this.onPointerUp);
     canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.controls.dispose();
     disposeGroup(this.scene);
@@ -3103,6 +3355,8 @@ class Engine {
     this.labelEls.forEach((el) => el.remove());
     this.handles.forEach((h) => h.wrap.remove());
     this.handles.clear();
+    this.axisHandles.forEach((h) => h.wrap.remove());
+    this.axisHandles = [];
   }
 }
 
