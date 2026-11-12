@@ -21,6 +21,7 @@ import {
   Activity,
   Save,
   Settings2,
+  Box,
 } from 'lucide-react';
 import type { HelpContent } from './HelpDialog';
 
@@ -199,6 +200,7 @@ export const mathHelp: HelpContent = {
             { code: 'y', label: 'Vertical position' },
             { code: 't  or  time', label: 'The animation clock, in seconds' },
             { code: 'theta  or  θ', label: 'The angle in polar rows' },
+            { code: 'z, u, v (3D)', label: 'Third axis (`z`) and surface parameters (`u`, `v` from 0 to 2π) — only special in 3D' },
           ],
         },
         {
@@ -310,6 +312,43 @@ export const mathHelp: HelpContent = {
               text: 'Give `[x, y]` as functions of `t`, which runs from 0 to 2π.',
               code: '[cos(t*3), sin(t*2)]',
               payload: insert('parametric', '[cos(t*3), sin(t*2)]'),
+            },
+          ],
+        },
+      ],
+    },
+    {
+      id: '3d-surfaces',
+      title: '3D surfaces and curves',
+      icon: Box,
+      tone: 'cyan',
+      description: 'Switch the graph to 3D to plot surfaces, implicit shapes, space curves and 3D points.',
+      blocks: [
+        {
+          type: 'callout',
+          title: 'z, u and v are only special in 3D',
+          text: 'In 3D view, `z` is the third axis and `u`, `v` sweep from 0 to 2π across parametric surfaces without creating sliders. In 2D view, `z`, `u` and `v` have no special meaning and behave like ordinary variables.',
+        },
+        {
+          type: 'examples',
+          items: [
+            {
+              title: 'Parametric surface (torus)',
+              text: 'A parametric surface (`u`, `v` from 0 to 2π). Note: `z`, `u`, `v` are only special in 3D.',
+              code: '[(2+cos(v))*cos(u), (2+cos(v))*sin(u), sin(v)]',
+              payload: insert('parametric', '[(2+cos(v))*cos(u), (2+cos(v))*sin(u), sin(v)]'),
+            },
+            {
+              title: 'Explicit surface · z = f(x, y)',
+              text: 'Equations mentioning `z` plot a 3D surface.',
+              code: 'z = x^2 - y^2',
+              payload: insert('function', 'z = x^2 - y^2'),
+            },
+            {
+              title: 'Space curve · [x(t), y(t), z(t)]',
+              text: 'Three coordinates driven by `t` trace a curve in space.',
+              code: '[cos(t), sin(t), t/4]',
+              payload: insert('parametric', '[cos(t), sin(t), t/4]'),
             },
           ],
         },
