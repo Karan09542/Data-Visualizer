@@ -25,8 +25,11 @@ interface GraphScreenshotMenuProps {
 
 const SCALES = [1, 2, 3] as const;
 
-/** Renders the graph to a canvas with snapdom, leaving out the interface around it. */
+/** Renders the graph to a canvas, leaving out the interface around it. */
 async function captureGraph(el: HTMLElement, scale: number, background: string): Promise<HTMLCanvasElement> {
+  // The 3D view renders its own picture with three.js, at full resolution.
+  const view3d = el.querySelector("[data-graph-3d]") as (HTMLElement & { __capture3d?: (s: number) => Promise<HTMLCanvasElement> }) | null;
+  if (view3d?.__capture3d) return view3d.__capture3d(scale);
   const { snapdom } = await import("@zumer/snapdom");
   return snapdom.toCanvas(el, {
     scale,

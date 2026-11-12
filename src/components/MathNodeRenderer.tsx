@@ -933,6 +933,17 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (drawTool !== "select") setSelectedIds([]);
   }, [drawTool]);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
+  // Which edge is being dragged: the docked panel's splitter, or the phone panel's grip.
+  const resizeKindRef = useRef<"dock" | "phone">("dock");
+  // On a phone the panel slides over the graph; its width there, once dragged.
+  const [phonePanelWidth, setPhonePanelWidth] = useState<number | null>(null);
+  const startSidebarResize = (kind: "dock" | "phone") => (e: React.PointerEvent) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    resizeKindRef.current = kind;
+    setIsResizingSidebar(true);
+  };
 
   useEffect(() => {
     if (!isResizingSidebar) return;
@@ -946,10 +957,17 @@ export const MathNodeRenderer: React.FC<any> = ({
     // Clear any active selection immediately
     window.getSelection()?.removeAllRanges();
 
-    const handleMouseMove = (e: MouseEvent) => {
+    const handleMouseMove = (e: PointerEvent) => {
       const el = sidebarRef.current;
       if (!el) return;
+      e.preventDefault();
       const rect = el.getBoundingClientRect();
+      if (resizeKindRef.current === "phone") {
+        // Over the graph: leave a strip of it showing, so it can be tapped to close.
+        const room = (el.parentElement?.getBoundingClientRect().width ?? window.innerWidth) - 40;
+        setPhonePanelWidth(Math.max(240, Math.min(e.clientX - rect.left, room)));
+        return;
+      }
       // Measure from the edge the splitter sits on, so dragging tracks the
       // pointer whichever side the panel is docked to.
       if (panelPosition === "bottom") {
@@ -965,11 +983,14 @@ export const MathNodeRenderer: React.FC<any> = ({
     const handleMouseUp = () => {
       setIsResizingSidebar(false);
     };
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
+    // Pointer events: a mouse, a finger or a pen all drag the edge.
+    window.addEventListener("pointermove", handleMouseMove, { passive: false });
+    window.addEventListener("pointerup", handleMouseUp);
+    window.addEventListener("pointercancel", handleMouseUp);
     return () => {
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
+      window.removeEventListener("pointermove", handleMouseMove);
+      window.removeEventListener("pointerup", handleMouseUp);
+      window.removeEventListener("pointercancel", handleMouseUp);
       document.body.style.userSelect = "";
       document.body.style.webkitUserSelect = "";
       document.body.style.cursor = "";
@@ -3127,7 +3148,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           isPanelVisible && (
             <div
               ref={sidebarRef}
-              className={`bg-slate-50 dark:bg-slate-800 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 md:relative md:inset-auto transition-transform duration-300 md:translate-x-0 w-full sm:w-[85vw] md:w-[var(--sidebar-width)] md:h-[var(--sidebar-height)] md:max-w-none ${panelPosition === "right"
+              className={`bg-slate-50 dark:bg-slate-800 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 md:relative md:inset-auto md:translate-x-0 ${isResizingSidebar ? "" : "transition-transform duration-300"} ${phonePanelWidth ? "w-[var(--phone-panel-width)]" : "w-full sm:w-[85vw]"} md:w-[var(--sidebar-width)] md:h-[var(--sidebar-height)] md:max-w-none ${panelPosition === "right"
                 ? "md:border-l md:border-r-0 md:border-t-0"
                 : panelPosition === "bottom"
                   ? "md:border-t md:border-r-0 md:border-l-0"
@@ -3141,10 +3162,24 @@ export const MathNodeRenderer: React.FC<any> = ({
                     panelPosition === "bottom" ? "100%" : `${sidebarWidth}px`,
                   "--sidebar-height":
                     panelPosition === "bottom" ? `${sidebarHeight}px` : "auto",
+                  "--phone-panel-width": phonePanelWidth ? `${phonePanelWidth}px` : undefined,
                 } as React.CSSProperties
               }
               onClick={() => setActiveActionMenuId(null)}
             >
+              {/* Phones: a grip on the panel's edge to drag it wider or narrower. */}
+              <div
+                role="separator"
+                aria-orientation="vertical"
+                aria-label="Resize the panel"
+                title="Drag to resize"
+                onPointerDown={startSidebarResize("phone")}
+                className="md:hidden absolute top-1/2 -right-3 -translate-y-1/2 z-[60] w-6 h-16 flex items-center justify-center touch-none cursor-col-resize"
+              >
+                <span
+                  className={`w-1.5 h-12 rounded-full shadow ring-1 ring-black/10 transition-colors ${isResizingSidebar ? "bg-blue-500" : "bg-slate-400 dark:bg-slate-500"}`}
+                />
+              </div>
               <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 custom-scrollbar">
                 {/* Functions */}
                 <div className="flex flex-col gap-3">
@@ -6839,16 +6874,17 @@ export const MathNodeRenderer: React.FC<any> = ({
         {/* Splitter */}
         {(isExpanded || isFullscreen) && isPanelVisible && (
           <div
-            className={`hidden md:flex shrink-0 bg-slate-700/50 hover:bg-blue-500 z-20 justify-center items-center transition-colors relative group ${panelPosition === "bottom"
+            className={`hidden md:flex shrink-0 touch-none bg-slate-700/50 hover:bg-blue-500 z-20 justify-center items-center transition-colors relative group ${isResizingSidebar ? "!bg-blue-500" : ""} ${panelPosition === "bottom"
               ? "h-1 w-full cursor-row-resize"
               : "w-1 h-full cursor-col-resize"
               }`}
-            onMouseDown={() => setIsResizingSidebar(true)}
+            onPointerDown={startSidebarResize("dock")}
           >
+            {/* A wider target than the line itself: easy to catch with a finger. */}
             <div
-              className={`absolute z-20 ${panelPosition === "bottom"
-                ? "inset-x-0 -top-1 -bottom-1 cursor-row-resize"
-                : "inset-y-0 -left-1 -right-1 cursor-col-resize"
+              className={`absolute z-20 touch-none ${panelPosition === "bottom"
+                ? "inset-x-0 -top-2.5 -bottom-2.5 cursor-row-resize"
+                : "inset-y-0 -left-2.5 -right-2.5 cursor-col-resize"
                 }`}
             ></div>
             <div

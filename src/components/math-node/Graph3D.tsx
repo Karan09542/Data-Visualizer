@@ -158,6 +158,83 @@ const HANDLE_CSS = `
 .g3d-handle.solver .g3d-stem,.g3d-handle.solver .g3d-grip{display:none}
 `;
 
+// ─── Screenshots ──────────────────────────────────────────────────────────────
+
+/** The largest side, in pixels, a screenshot is rendered at (GPUs cap their buffers). */
+const MAX_CAPTURE_SIDE = 8192;
+
+let overlayCssPromise: Promise<string> | null = null;
+
+function blobToDataUrl(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/** An @font-face rule with its woff2 files written in, so it works inside an image. */
+async function inlineFontFace(css: string, base: string): Promise<string> {
+  let out = css;
+  for (const m of css.matchAll(/url\(["']?([^"')]+)["']?\)/g)) {
+    const url = m[1];
+    if (url.startsWith("data:") || !/\.woff2(\?|#|$)/.test(url)) continue;
+    try {
+      const res = await fetch(new URL(url, base).href);
+      if (!res.ok) continue;
+      out = out.split(url).join(await blobToDataUrl(await res.blob()));
+    } catch {
+      // Without it the maths falls back to a serif font, still laid out right.
+    }
+  }
+  return out;
+}
+
+/**
+ * The styles the labels need inside a picture: KaTeX's (with its fonts) and the point
+ * handles'. Fetched once, then kept.
+ */
+function overlayCss(): Promise<string> {
+  if (!overlayCssPromise) {
+    overlayCssPromise = (async () => {
+      const rules: string[] = [HANDLE_CSS];
+      const fonts: Promise<string>[] = [];
+      for (const sheet of Array.from(document.styleSheets)) {
+        let list: CSSRuleList;
+        try {
+          list = sheet.cssRules;
+        } catch {
+          continue; // another origin's sheet
+        }
+        const base = sheet.href || location.href;
+        for (const rule of Array.from(list)) {
+          const text = rule.cssText;
+          if (rule instanceof CSSFontFaceRule) {
+            if (/KaTeX/i.test(text)) fonts.push(inlineFontFace(text, base));
+          } else if (text.includes(".katex")) {
+            rules.push(text);
+          }
+        }
+      }
+      return [...rules, ...(await Promise.all(fonts))].join("\n");
+    })().catch((err) => {
+      overlayCssPromise = null;
+      throw err;
+    });
+  }
+  return overlayCssPromise;
+}
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("overlay image"));
+    img.src = src;
+  });
+}
+
 const GRIP_ICON =
   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M7.5 8.5 12 4l4.5 4.5M7.5 15.5 12 20l4.5-4.5"/></svg>';
 
@@ -635,6 +712,9 @@ class Engine {
     // Notes pinned to the corner: under the graph's toolbar, clear of the height legend.
     this.pinnedEl.style.cssText =
       "position:absolute;top:58px;right:34px;max-width:min(62%,26rem);display:none;flex-direction:column;align-items:flex-end;gap:7px;text-align:right;line-height:1.25";
+    // The pointer's readout isn't part of the graph: left out of screenshots.
+    this.hoverDot.dataset.captureExclude = "";
+    this.hoverTip.dataset.captureExclude = "";
     labelHost.append(this.hoverDot, this.hoverTip, this.pinnedEl);
     (this.raycaster.params as any).Line2 = { threshold: 8 };
 
@@ -772,6 +852,114 @@ class Engine {
       this.applyDomain();
     }
     this.flyTo("home");
+  }
+
+  /**
+   * The graph as a picture `scale` times its size on screen: the scene rendered again by
+   * three.js at that resolution (surfaces at their finest), with the labels, notes and
+   * points drawn over it as vectors, so everything stays sharp.
+   */
+  async capture(scale: number): Promise<HTMLCanvasElement> {
+    const w = this.width;
+    const h = this.height;
+    const s = Math.max(0.5, Math.min(scale, MAX_CAPTURE_SIDE / Math.max(w, h)));
+
+    // Bring everything up to date, surfaces at their finest, labels placed.
+    if (this.frame) {
+      cancelAnimationFrame(this.frame);
+      this.frame = 0;
+    }
+    window.clearTimeout(this.fineTimer);
+    this.fineReady = true;
+    this.needsSync = true;
+    this.tick();
+
+    const out = document.createElement("canvas");
+    out.width = Math.round(w * s);
+    out.height = Math.round(h * s);
+    const ctx = out.getContext("2d")!;
+
+    const ratio = this.renderer.getPixelRatio();
+    try {
+      this.renderer.setPixelRatio(s);
+      this.renderer.setSize(w, h, false);
+      this.renderer.render(this.scene, this.camera);
+      ctx.drawImage(this.renderer.domElement, 0, 0, out.width, out.height);
+    } finally {
+      this.renderer.setPixelRatio(ratio);
+      this.renderer.setSize(w, h, false);
+      this.requestRender();
+    }
+
+    try {
+      await this.drawOverlay(ctx, w, h, s);
+    } catch (err) {
+      console.warn("3D screenshot: labels drawn as plain text", err);
+      this.drawOverlayText(ctx, s);
+    }
+    return out;
+  }
+
+  /** Labels, notes and point handles as one vector image over the scene. */
+  private async drawOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, s: number) {
+    const css = await overlayCss();
+    const wrap = document.createElement("div");
+    wrap.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+    wrap.style.cssText = `position:relative;width:${w}px;height:${h}px;overflow:hidden;margin:0`;
+    const style = document.createElement("style");
+    style.textContent = css;
+    wrap.appendChild(style);
+    for (const host of [this.labelHost, this.handleHost]) {
+      const cs = getComputedStyle(host);
+      const clone = host.cloneNode(true) as HTMLElement;
+      clone.querySelectorAll("[data-capture-exclude]").forEach((n) => n.remove());
+      clone.removeAttribute("class");
+      // Its look came from utility classes the picture doesn't have.
+      clone.style.position = "absolute";
+      clone.style.inset = "0";
+      clone.style.overflow = "hidden";
+      clone.style.fontFamily = cs.fontFamily;
+      clone.style.fontSize = cs.fontSize;
+      clone.style.fontWeight = cs.fontWeight;
+      clone.style.color = cs.color;
+      wrap.appendChild(clone);
+    }
+    const xml = new XMLSerializer().serializeToString(wrap);
+    const svg =
+      `<svg xmlns="http://www.w3.org/2000/svg" width="${w * s}" height="${h * s}" viewBox="0 0 ${w} ${h}">` +
+      `<foreignObject x="0" y="0" width="${w}" height="${h}">${xml}</foreignObject></svg>`;
+    const img = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+
+    // Drawn on its own canvas first: if the browser won't let a picture with text in it
+    // be read back, the screenshot falls back to plain text instead of failing.
+    const layer = document.createElement("canvas");
+    layer.width = ctx.canvas.width;
+    layer.height = ctx.canvas.height;
+    const lctx = layer.getContext("2d")!;
+    lctx.drawImage(img, 0, 0, layer.width, layer.height);
+    lctx.getImageData(0, 0, 1, 1);
+    ctx.drawImage(layer, 0, 0);
+  }
+
+  /** The fallback: each label's text, where it stands, in its colour. */
+  private drawOverlayText(ctx: CanvasRenderingContext2D, s: number) {
+    const box = this.labelHost.getBoundingClientRect();
+    const els = [...this.labelEls, ...Array.from(this.pinnedEl.children)] as HTMLElement[];
+    ctx.save();
+    ctx.scale(s, s);
+    ctx.textBaseline = "middle";
+    for (const el of els) {
+      if (!el.isConnected || el.offsetParent === null) continue;
+      const text = el.innerText.trim();
+      if (!text) continue;
+      const r = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      ctx.font = `${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+      ctx.fillStyle = cs.color;
+      ctx.globalAlpha = Number(cs.opacity) || 1;
+      ctx.fillText(text, r.left - box.left, r.top - box.top + r.height / 2);
+    }
+    ctx.restore();
   }
 
   resize(width: number, height: number) {
@@ -2993,6 +3181,8 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
     }
     engineRef.current = engine;
     engine.onDomain = setDomain;
+    // The graph's screenshot button asks the 3D view for its own picture.
+    (rootRef.current as any).__capture3d = (scale: number) => engine.capture(scale);
     setDomain(engine.getDomain());
     // Pointing at a row in the list fades the others here, as it does on the flat graph.
     const root = rootRef.current!;
@@ -3000,6 +3190,7 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
     root.addEventListener("math-row-hover", onRowHover);
     return () => {
       root.removeEventListener("math-row-hover", onRowHover);
+      delete (root as any).__capture3d;
       engineRef.current = null;
       engine.dispose();
     };
