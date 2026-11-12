@@ -81,7 +81,7 @@ interface RowEntry {
 
 const AXIS_COLORS = ["#ef4444", "#22c55e", "#3b82f6"];
 const AXIS_NAMES = ["x", "y", "z"];
-const HOME_CAMERA = new THREE.Vector3(2.9, -3.7, 2.3).setLength(5.4);
+const HOME_CAMERA = new THREE.Vector3(2.9, -3.7, 2.3).setLength(4.7);
 const TWO_PI = 2 * Math.PI;
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
@@ -273,8 +273,6 @@ class Engine {
   private height = 1;
   private dark = false;
   private disposed = false;
-  private pointers = new Map<number, { x: number; y: number }>();
-  private pinchDistance = 0;
   private scratch = new THREE.Vector3();
 
   constructor(
@@ -302,12 +300,18 @@ class Engine {
       new THREE.Plane(new THREE.Vector3(0, 0, -1), e),
     ];
 
+    // Before the controls attach theirs, so a Ctrl/Shift scroll can be kept from them.
+    canvas.addEventListener("wheel", this.onWheel, { passive: false });
+
     this.camera.up.set(0, 0, 1); // z points up, as in maths
     this.camera.position.copy(HOME_CAMERA);
     this.controls = new OrbitControls(this.camera, canvas);
-    // Zooming changes the range shown rather than moving the camera (see zoomBy).
-    this.controls.enableZoom = false;
-    this.controls.enablePan = false;
+    // Scroll and pinch bring the whole graph closer; right-drag (or two fingers) slides it.
+    // Ctrl/Shift + scroll and the +/- buttons change the range of the axes instead (zoomBy).
+    this.controls.minDistance = 0.6;
+    this.controls.maxDistance = 14;
+    this.controls.zoomSpeed = 1.2;
+    this.controls.zoomToCursor = true;
     this.controls.addEventListener("change", this.requestRender);
 
     // A headlight, so a surface is lit from wherever it is looked at.
@@ -316,12 +320,6 @@ class Engine {
     this.camera.add(light);
     this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 2), this.content);
     this.content.add(this.decor, this.rowsGroup);
-
-    canvas.addEventListener("wheel", this.onWheel, { passive: false });
-    canvas.addEventListener("pointerdown", this.onPointerDown);
-    canvas.addEventListener("pointermove", this.onPointerMove);
-    canvas.addEventListener("pointerup", this.onPointerUp);
-    canvas.addEventListener("pointercancel", this.onPointerUp);
 
     const p = getProps();
     this.dark = p.dark;
@@ -397,38 +395,25 @@ class Engine {
   }
 
   private applyTheme() {
-    this.scene.background = new THREE.Color(this.dark ? "#020617" : "#ffffff");
+    const bg = this.dark ? "#020617" : "#ffffff";
+    this.scene.background = new THREE.Color(bg);
+    // A halo in the background colour keeps numbers readable over lines and surfaces.
+    this.labelHost.style.textShadow = `0 0 3px ${bg}, 0 0 3px ${bg}, 0 0 2px ${bg}`;
   }
 
   // ── Input ──
 
   private onWheel = (e: WheelEvent) => {
+    // The canvas around the graph must not zoom or scroll with it.
     e.preventDefault();
     e.stopPropagation();
-    const delta = e.deltaMode === 1 ? e.deltaY * 30 : e.deltaY;
+    // A plain scroll is the controls': it moves the camera.
+    if (!e.ctrlKey && !e.shiftKey && !e.metaKey) return;
+    e.stopImmediatePropagation();
+    // Shift turns a vertical scroll into a horizontal one on some systems.
+    const raw = e.deltaY || e.deltaX;
+    const delta = e.deltaMode === 1 ? raw * 30 : raw;
     this.zoomBy(Math.exp(clamp(delta, -300, 300) * 0.0015));
-  };
-
-  private onPointerDown = (e: PointerEvent) => {
-    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    this.pinchDistance = 0;
-  };
-
-  private onPointerMove = (e: PointerEvent) => {
-    const p = this.pointers.get(e.pointerId);
-    if (!p) return;
-    p.x = e.clientX;
-    p.y = e.clientY;
-    if (this.pointers.size !== 2) return;
-    const [a, b] = [...this.pointers.values()];
-    const d = Math.hypot(a.x - b.x, a.y - b.y);
-    if (this.pinchDistance > 0 && d > 0) this.zoomBy(this.pinchDistance / d);
-    this.pinchDistance = d;
-  };
-
-  private onPointerUp = (e: PointerEvent) => {
-    this.pointers.delete(e.pointerId);
-    this.pinchDistance = 0;
   };
 
   // ── Drawing ──
@@ -471,7 +456,7 @@ class Engine {
         el.textContent = spec.text;
         el.style.color = spec.color || "";
         el.style.fontWeight = spec.strong ? "700" : "";
-        el.style.fontSize = spec.strong ? "12px" : "";
+        el.style.fontSize = spec.strong ? "13px" : "";
       });
     }
     const v = this.scratch;
@@ -1559,10 +1544,6 @@ class Engine {
     window.clearTimeout(this.coarseTimer);
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("wheel", this.onWheel);
-    canvas.removeEventListener("pointerdown", this.onPointerDown);
-    canvas.removeEventListener("pointermove", this.onPointerMove);
-    canvas.removeEventListener("pointerup", this.onPointerUp);
-    canvas.removeEventListener("pointercancel", this.onPointerUp);
     this.controls.dispose();
     disposeGroup(this.scene);
     this.disc.dispose();
@@ -1624,7 +1605,7 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
       <div ref={hostRef} className="absolute inset-0" />
       <div
         ref={labelRef}
-        className="absolute inset-0 overflow-hidden pointer-events-none select-none font-mono text-[10px] text-slate-500 dark:text-slate-400"
+        className="absolute inset-0 overflow-hidden pointer-events-none select-none font-mono text-[11px] font-medium text-slate-600 dark:text-slate-300"
       />
       {failed && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-slate-500 dark:text-slate-400">
@@ -1635,18 +1616,18 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
         <>
           <div
             data-capture-exclude
-            className="absolute bottom-3 left-3 z-30 pointer-events-none px-2 py-1 rounded-md bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400"
+            className="hidden md:block absolute bottom-3 left-3 z-30 pointer-events-none px-2 py-1 rounded-md bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400"
           >
-            Drag to turn · scroll or pinch to zoom · use z for the third axis
+            Drag to turn · scroll or pinch to zoom · right-drag to move · +/− changes the axis range
           </div>
           <div
             data-capture-exclude
-            className="absolute bottom-3 right-3 z-30 flex flex-col overflow-hidden rounded-lg bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 cursor-default"
+            className="absolute top-14 left-2 md:top-auto md:left-auto md:bottom-3 md:right-3 z-30 flex flex-col overflow-hidden rounded-lg bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 cursor-default"
           >
-            <button type="button" className={BUTTON} title="Zoom in" aria-label="Zoom in" onClick={() => engineRef.current?.zoomBy(0.8)}>
+            <button type="button" className={BUTTON} title="Show less of the axes (Ctrl + scroll)" aria-label="Smaller axis range" onClick={() => engineRef.current?.zoomBy(0.8)}>
               <Plus size={14} />
             </button>
-            <button type="button" className={BUTTON} title="Zoom out" aria-label="Zoom out" onClick={() => engineRef.current?.zoomBy(1.25)}>
+            <button type="button" className={BUTTON} title="Show more of the axes (Ctrl + scroll)" aria-label="Larger axis range" onClick={() => engineRef.current?.zoomBy(1.25)}>
               <Minus size={14} />
             </button>
             <button type="button" className={BUTTON} title="Back to the starting view" aria-label="Reset view" onClick={() => engineRef.current?.resetView()}>
