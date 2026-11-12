@@ -5,41 +5,34 @@ import {
   evaluateFamilyValues,
   familyToLatex,
 } from "../../../lib/math/familyPlot";
+import { lambertWToTex } from "../../../lib/math/lambertW";
+
+function createTexHandler(coloredVars?: Record<string, string>) {
+  return (node: any, options: any): string | undefined => {
+    const lambertTex = lambertWToTex(node, options);
+    if (lambertTex !== undefined) return lambertTex;
+
+    if (node.isSymbolNode && coloredVars?.[node.name]) {
+      const defaultTex = node.toTex({ handler: undefined });
+      return `\\textcolor{${coloredVars[node.name]}}{${defaultTex}}`;
+    }
+    return undefined;
+  };
+}
 
 const toTex: MathWorkerHandler<{ expression: string; coloredVars?: Record<string, string> }> = (payload, context) => {
   context.cancellationToken.throwIfCancelled();
   const node = getParsedNode(context.registry, payload.expression);
-  const tex = node.toTex({
-    handler: (n: any) => {
-      if (n.isSymbolNode) {
-        if (payload.coloredVars && payload.coloredVars[n.name]) {
-          const defaultTex = n.toTex({ handler: undefined });
-          return `\\textcolor{${payload.coloredVars[n.name]}}{${defaultTex}}`;
-        }
-        return undefined;
-      }
-      return undefined;
-    },
-  });
+  const tex = node.toTex({ handler: createTexHandler(payload.coloredVars) });
   return { tex };
 };
 
 const expressionToLatex: MathWorkerHandler<{ expression: string; coloredVars?: Record<string, string> }> = (payload, context) => {
   context.cancellationToken.throwIfCancelled();
+  const handler = createTexHandler(payload.coloredVars);
   const getLatex = (exprStr: string) => {
     const n = context.math.parse(exprStr);
-    return n.toTex({
-      handler: (node: any) => {
-        if (node.isSymbolNode) {
-          if (payload.coloredVars && payload.coloredVars[node.name]) {
-            const defaultTex = node.toTex({ handler: undefined });
-            return `\\textcolor{${payload.coloredVars[node.name]}}{${defaultTex}}`;
-          }
-          return undefined;
-        }
-        return undefined;
-      },
-    });
+    return n.toTex({ handler });
   };
 
   const family = parseFamilyExpression(payload.expression);

@@ -9,8 +9,10 @@
  */
 import { all, create } from "mathjs";
 import * as mathjs from "mathjs";
+import { LAMBERT_W_SCOPE } from "./lambertW";
 
 const big = create(all, { number: "BigNumber", precision: 64 });
+big.import(LAMBERT_W_SCOPE, { override: true });
 
 /** How a number is written: normal digits, ×10^n, or whichever reads better. */
 export type CalcNotation = "auto" | "normal" | "scientific";
@@ -56,6 +58,9 @@ function toBigScope(scope: Record<string, any>): Map<string, any> {
 function toPlainScope(scope: Record<string, any>): Map<string, any> {
   const out = new Map<string, any>();
   for (const key in scope) if (scope[key] !== undefined) out.set(key, scope[key]);
+  for (const [key, fn] of Object.entries(LAMBERT_W_SCOPE)) {
+    if (!out.has(key)) out.set(key, fn);
+  }
   return out;
 }
 

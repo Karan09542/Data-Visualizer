@@ -1,6 +1,7 @@
 import * as mathjs from "mathjs";
 import { indexHelper } from "./helpers";
 import { MathScope } from "../types";
+import { LAMBERT_W_SCOPE } from "../../../lib/math/lambertW";
 
 export function createMathScope(base: Record<string, any> | MathScope): MathScope {
   const scope = {
@@ -21,6 +22,7 @@ export function createMathScope(base: Record<string, any> | MathScope): MathScop
     ...base,
     ln: mathjs.log,
     log10: mathjs.log10,
+    ...LAMBERT_W_SCOPE,
     indexHelper,
     Line: (...args: any[]) => args,
     Vector: (...args: any[]) => args,

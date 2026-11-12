@@ -457,6 +457,7 @@ const FUNCTION_LIBRARY_GROUPS = [
       { label: 'pow(x, 2)', expr: 'pow(x, 2)' },
       { label: 'sqrt(x)', expr: 'sqrt(x)' },
       { label: 'cbrt(x)', expr: 'cbrt(x)' },
+      { label: 'productLog(x)', expr: 'productLog(x)' },
     ]
   },
   {
@@ -516,7 +517,7 @@ const MORE_FUNCTIONS = FUNCTION_LIBRARY_GROUPS.map(g => ({ group: g.title, items
 const SUGGESTED_MATH_FUNCTIONS = [
   'sin', 'cos', 'tan', 'asin', 'acos', 'atan', 'atan2', 'sinh', 'cosh', 'tanh', 'asinh', 'acosh', 'atanh', 'sec', 'csc', 'cot',
   'exp', 'log', 'log10', 'log2', 'pow', 'sqrt', 'cbrt', 'abs', 'ceil', 'floor', 'round', 'fix', 'mod', 'sign',
-  'min', 'max', 'mean', 'median', 'std', 'erf', 'gamma', 'factorial'
+  'min', 'max', 'mean', 'median', 'std', 'erf', 'gamma', 'factorial', 'productLog', 'lambertW'
 ];
 
 interface MathFunctionPickerPortalProps {

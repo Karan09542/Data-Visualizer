@@ -4,9 +4,10 @@ import { formatMathError } from "../utils/helpers";
 import { splitRelation } from "../../../lib/math/splitRelation";
 import { odeExportName, parseOdeSystem } from "../../../lib/math/odeSystem";
 import { GEOMETRY_HELPERS, GEOMETRY_HELPER_NAMES } from "../../../lib/math/geometryHelpers";
+import { LAMBERT_W_NAMES, LAMBERT_W_SCOPE } from "../../../lib/math/lambertW";
 import { parseFamilyExpression } from "../../../lib/math/familyPlot";
 
-const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper", ...GEOMETRY_HELPER_NAMES,
+const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polygon", "Point", "indexHelper", ...GEOMETRY_HELPER_NAMES, ...LAMBERT_W_NAMES,
   // Angle units, as in cos(t rad): not sliders.
   "rad", "deg",
   // Complex numbers and functions
@@ -18,7 +19,7 @@ const POLAR_BUILTINS = ["theta", "θ"];
 function buildScope(context: any, payload: any) {
   // theta defaults to 0 first so a user variable named theta overrides it.
   // The same helpers the graph has (angleAt, arcAt), so rows using them check out here too.
-  const tempBaseScope: any = { theta: 0, ...GEOMETRY_HELPERS };
+  const tempBaseScope: any = { theta: 0, ...GEOMETRY_HELPERS, ...LAMBERT_W_SCOPE };
   tempBaseScope.i = (context.math as any).complex(0, 1);
   tempBaseScope.re = (context.math as any).re;
   tempBaseScope.im = (context.math as any).im;

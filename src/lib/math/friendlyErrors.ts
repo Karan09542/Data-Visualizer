@@ -7,8 +7,8 @@
 // Common mathjs functions, for "did you mean" suggestions.
 const KNOWN_FUNCTIONS = [
   "abs", "acos", "acosh", "asin", "asinh", "atan", "atan2", "atanh", "cbrt", "ceil",
-  "cos", "cosh", "cot", "csc", "det", "exp", "floor", "gamma", "hypot", "inv", "log",
-  "log10", "log2", "max", "mean", "median", "min", "mod", "norm", "nthRoot", "pow",
+  "cos", "cosh", "cot", "csc", "det", "exp", "floor", "gamma", "hypot", "inv", "lambertW", "lambertW0", "log",
+  "log10", "log2", "max", "mean", "median", "min", "mod", "norm", "nthRoot", "pow", "productLog",
   "random", "round", "sec", "sign", "simplify", "sin", "sinh", "sqrt", "square",
   "std", "sum", "tan", "tanh", "transpose", "derivative",
 ];

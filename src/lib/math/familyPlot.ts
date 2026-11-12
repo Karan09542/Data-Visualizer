@@ -137,6 +137,7 @@ function findFreeVariables(expr: string): string[] {
     "sinh", "cosh", "tanh", "asinh", "acosh", "atanh",
     "sec", "csc", "cot", "asec", "acsc", "acot",
     "exp", "log", "ln", "log10", "log2", "sqrt", "cbrt", "abs", "sign",
+    "productLog", "productlog", "lambertW", "lambertw", "lambertW0",
     "min", "max", "round", "floor", "ceil", "pow", "mod",
   ]);
 

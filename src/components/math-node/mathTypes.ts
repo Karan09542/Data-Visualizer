@@ -344,6 +344,9 @@ export const MATH_COMPLETIONS = [
   },
   { name: "factorial", desc: "Factorial of an integer", insert: "factorial(" },
   { name: "gamma", desc: "Euler gamma function", insert: "gamma(" },
+  { name: "productLog", desc: "Lambert W function W(z) or W_k(z)", insert: "productLog(" },
+  { name: "lambertW", desc: "Lambert W function W(z) or W_k(z)", insert: "lambertW(" },
+  { name: "lambertW0", desc: "Principal branch Lambert W_0(x)", insert: "lambertW0(" },
   { name: "gcd", desc: "Greatest common divisor", insert: "gcd(" },
   { name: "lcm", desc: "Least common multiple", insert: "lcm(" },
   {

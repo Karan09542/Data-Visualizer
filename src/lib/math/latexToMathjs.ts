@@ -276,6 +276,7 @@ const WORD_FUNCTIONS: Record<string, string> = {
   asin: "asin", acos: "acos", atan: "atan", sgn: "sign", sign: "sign", abs: "abs", floor: "floor",
   ceil: "ceil", round: "round", sqrt: "sqrt", cbrt: "cbrt", erf: "erf", mod: "mod", re: "re", im: "im",
   log10: "log10", log2: "log2", tr: "trace", trace: "trace", rank: "rank", diag: "diag",
+  productLog: "productLog", productlog: "productLog", lambertW: "lambertW", lambertw: "lambertW", lambertW0: "lambertW0",
 };
 
 /** Function names safe to recognise without a backslash or brackets (sin x). */

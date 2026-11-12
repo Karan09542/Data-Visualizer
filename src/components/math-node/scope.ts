@@ -16,6 +16,7 @@ import { dependencyKey } from "./dependencyKeys";
 import { objectId } from "./SmoothCurve";
 import { odeExportName, parseOdeSystemCached } from "../../lib/math/odeSystem";
 import { GEOMETRY_HELPERS } from "../../lib/math/geometryHelpers";
+import { LAMBERT_W_SCOPE } from "../../lib/math/lambertW";
 import { sampleOdeAt, type OdeSolution } from "../../lib/math/odeSolver";
 import { odePlaybackTime, solveCompiledOdeCached } from "../../lib/math/odeCurveData";
 
@@ -224,6 +225,7 @@ export function buildBaseScope(
   baseScope.complex = mathjs.complex;
   baseScope.cis = (angle: number) => mathjs.complex(Math.cos(angle), Math.sin(angle));
   baseScope.polar = (r: number, theta: number) => mathjs.complex({ r, phi: theta });
+  Object.assign(baseScope, LAMBERT_W_SCOPE);
 
   // Geometry constructors
   baseScope.Line = (...args: any[]) => args;

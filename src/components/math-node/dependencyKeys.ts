@@ -1,6 +1,7 @@
 import * as mathjs from "mathjs";
 import type { MathFunction, MathVariable } from "./mathTypes";
 import { parseOdeSystemCached } from "../../lib/math/odeSystem";
+import { LAMBERT_W_NAMES } from "../../lib/math/lambertW";
 
 // Symbols in baseScope whose values never change between renders.
 const STABLE_HELPERS = new Set([
@@ -11,6 +12,7 @@ const STABLE_HELPERS = new Set([
   "ln",
   "log10",
   "indexHelper",
+  ...LAMBERT_W_NAMES,
 ]);
 
 const isTimeSymbol = (s: string) => s === "t" || s === "time" || /^t_\w+$/.test(s);
