@@ -6830,11 +6830,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-2 pt-1 border-t border-slate-200 dark:border-slate-700/50">
-                      <h4 className="text-[10px] text-slate-500 uppercase font-semibold tracking-wider">
-                        Examples Gallery
-                      </h4>
-                      <div className="grid grid-cols-2 gap-2">
+                    <details open className="group/examples flex flex-col pt-1 border-t border-slate-200 dark:border-slate-700/50">
+                      <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold tracking-wider hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                        <span>Examples Gallery</span>
+                        <ChevronDown size={12} className="transition-transform -rotate-90 group-open/examples:rotate-0" />
+                      </summary>
+                      <div className="grid grid-cols-2 gap-2 pt-2">
                         {EXAMPLE_GALLERY.map((ex) => (
                           <button
                             key={ex.key}
@@ -6865,7 +6866,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                           </button>
                         ))}
                       </div>
-                    </div>
+                    </details>
                   </div>
                 </div>
 
