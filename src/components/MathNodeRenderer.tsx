@@ -239,6 +239,13 @@ const CHECK_CACHE = new Map<string, any>();
 // Loaded the first time it's opened.
 const VedicMathsPanel = React.lazy(() => import("./math-node/vedic/VedicMathsPanel"));
 
+// The 3D view (and three.js with it) is loaded the first time a graph is switched to 3D.
+const Graph3D = React.lazy(() => import("./math-node/Graph3D"));
+
+// Names the 3D view sweeps itself: z is the third axis, u and v run over a surface.
+// In 3D the compile check must not call them undefined or offer sliders for them.
+const SPACE_VARIABLES = ["z", "u", "v"];
+
 // Identity of this module instance. It changes when Vite hot-reloads this file, which
 // lets the cached plot-layer component below be rebuilt — otherwise an open dev page
 // keeps rendering the previous version's closure and edits appear to do nothing.
@@ -717,6 +724,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       vectorResultants: settings.vectorResultants === true,
       timeline: readTimelineSettings(settings.timeline),
       view: readGraphView(settings.view),
+      viewMode: (settings.viewMode === "3d" ? "3d" : "2d") as "2d" | "3d",
       colorVariationMode:
         settings.colorVariationMode === "tint" ||
         settings.colorVariationMode === "shade"
@@ -772,6 +780,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     setViewResetKey((k) => k + 1);
   }, [homeView]);
 
+  // The same rows drawn flat (Mafs) or in space (Graph3D).
+  const [viewMode, setViewMode] = useState<"2d" | "3d">(initialGridSettings.viewMode);
   const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
     initialGridSettings.gridType,
   );
@@ -1020,6 +1030,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     vectorResultants: showResultants,
     timeline: timelineSettings,
     view: homeView,
+    viewMode,
     colorVariationMode,
     colorVariationBase,
   });
@@ -1066,6 +1077,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       vectorResultants: showResultants,
       timeline: timelineSettings,
       view: homeView,
+      viewMode,
       colorVariationMode,
       colorVariationBase,
     };
@@ -1101,6 +1113,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     showResultants,
     timelineSettings,
     homeView,
+    viewMode,
     colorVariationMode,
     colorVariationBase,
   ]);
@@ -1290,6 +1303,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                 setTimeEndExpr(tl.endExpr);
                 setTimeBounds((b) => ({ ...b, min: tl.min, max: tl.max, speed: tl.speed }));
               }
+              if (parsed.gridSettings.viewMode === "2d" || parsed.gridSettings.viewMode === "3d")
+                setViewMode(parsed.gridSettings.viewMode);
               if (parsed.gridSettings.view) {
                 const view = readGraphView(parsed.gridSettings.view);
                 setHomeView((prev) =>
@@ -1396,6 +1411,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     showResultants,
     timelineSettings,
     homeView,
+    viewMode,
     colorVariationMode,
     colorVariationBase,
   ]);
@@ -1550,6 +1566,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           variableValues: safeVariables.map((v) => v.value),
           time,
           functionTimelines: safeFunctions.map((f) => ({ time: f.time || 0 })),
+          spaceVars: viewMode === "3d" ? SPACE_VARIABLES : [],
         });
 
         if (cancelled) return;
@@ -1647,6 +1664,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     functions.map((f) => [f.type, f.name || "", f.label || "", f.operator || ""].join(":")).join(","),
     variables.map((v) => v.name).join(","),
     functions.some((f) => !("compiledKey" in f) && !("error" in f)),
+    // z = x^2 + y^2 is an error on the flat graph and a surface in space.
+    viewMode,
   ]);
 
   // A handle whose slider is missing (deleted, or never made) can't be dragged and
@@ -6813,6 +6832,48 @@ export const MathNodeRenderer: React.FC<any> = ({
             >
               <div
                 role="radiogroup"
+                aria-label="Graph dimensions"
+                className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/70 shrink-0"
+              >
+                {(["2d", "3d"] as const).map((mode) => {
+                  const active = viewMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      role="radio"
+                      aria-checked={active}
+                      onClick={() => {
+                        if (active) return;
+                        if (mode === "3d") {
+                          // The drawing, measuring and point tools work on the flat graph.
+                          setDrawTool(null);
+                          setAreaToolActive(false);
+                          setShowAdvancedAxisControls(false);
+                          setPointMenu(null);
+                        }
+                        setViewMode(mode);
+                      }}
+                      title={
+                        mode === "3d"
+                          ? "3D: the same graph in space, with x, y and z axes. Try z = x^2 - y^2"
+                          : "2D: the flat graph, with every drawing and measuring tool"
+                      }
+                      className={`shrink-0 px-2.5 py-1.5 rounded-md text-[11px] font-semibold transition-all ${active
+                        ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm ring-1 ring-slate-200/80 dark:ring-slate-600/60"
+                        : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                        }`}
+                    >
+                      {mode.toUpperCase()}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="w-px h-5 bg-slate-200 dark:bg-slate-700 mx-0.5 shrink-0" />
+              {viewMode === "2d" && (
+              <>
+              <div
+                role="radiogroup"
                 aria-label="Grid type"
                 className="flex items-center gap-0.5 p-0.5 rounded-lg bg-slate-100 dark:bg-slate-800/70 shrink-0"
               >
@@ -6913,6 +6974,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                 <Zap size={13} className={liveDrag ? "fill-current" : ""} />
                 <span className="hidden sm:inline">Live drag</span>
               </button>
+              </>
+              )}
               <button
                 type="button"
                 onClick={() => setAngleMode((m) => (m === "degrees" ? "radians" : "degrees"))}
@@ -6929,7 +6992,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               >
                 {angleMode === "degrees" ? "DEG" : "RAD"}
               </button>
-              {areaToolActive && (
+              {viewMode === "2d" && areaToolActive && (
                 <>
                   <button
                     type="button"
@@ -6957,7 +7020,7 @@ export const MathNodeRenderer: React.FC<any> = ({
             </div>
           )}
 
-          {(isExpanded || isFullscreen) && showAdvancedAxisControls && (
+          {(isExpanded || isFullscreen) && viewMode === "2d" && showAdvancedAxisControls && (
             <AxisSettingsPanel
               axisStepStr={axisStepStr}
               setAxisStepStr={setAxisStepStr}
@@ -7004,6 +7067,33 @@ export const MathNodeRenderer: React.FC<any> = ({
             />
           )}
 
+          {viewMode === "3d" ? (
+            <React.Suspense
+              fallback={
+                <div className="absolute inset-0 flex items-center justify-center text-xs text-slate-400">
+                  Loading 3D…
+                </div>
+              }
+            >
+              <Graph3D
+                functions={functions}
+                variables={variables}
+                baseScope={baseScope}
+                time={time}
+                degrees={angleMode === "degrees"}
+                width={graphSize.width}
+                height={graphSize.height}
+                dark={appTheme === "dark"}
+                view={focusView ?? homeView}
+                quality={samplingDepth}
+                animating={
+                  (isPlaying && hasTimeDependentFunction) ||
+                  functions.some((f) => f.hasCustomTimeline && f.isPlaying)
+                }
+                compact={isCompact}
+              />
+            </React.Suspense>
+          ) : (
           <TraceScopeContext.Provider value={traceScope}>
           <Mafs
             key={viewResetKey}
@@ -9408,8 +9498,9 @@ export const MathNodeRenderer: React.FC<any> = ({
             })()}
           </Mafs>
           </TraceScopeContext.Provider>
+          )}
 
-          {!isCompact && (
+          {!isCompact && viewMode === "2d" && (
             <DrawToolbar
               tool={drawTool}
               onChange={(t) => {
@@ -9454,7 +9545,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               onClose={closePointMenu}
             />
           )}
-          {!isCompact && drawTool && (
+          {!isCompact && viewMode === "2d" && drawTool && (
             // One line, whatever the screen: a short hint on phones, the full one from md up.
             // Centred, and narrow enough to stay clear of the drawing tools on the left.
             <div
@@ -9550,7 +9641,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               onOpen={() => setIsFullscreen(true)}
             />
           )}
-          {!isCompact && !isGraphEmpty && !drawTool && <GraphTips />}
+          {!isCompact && !isGraphEmpty && !drawTool && viewMode === "2d" && <GraphTips />}
           {isFullscreen && (
             <div
               data-no-trace

@@ -163,6 +163,8 @@ export class MathWorkerClient {
     variableValues: number[];
     time: number;
     functionTimelines: Array<{ time: number }>;
+    /** Names bound by the 3D view (z, u, v): not errors, not missing sliders. */
+    spaceVars?: string[];
   }) {
     return this.request<{
       results: Array<{

@@ -32,6 +32,11 @@ function buildScope(context: any, payload: any) {
   for (let i = 0; i < payload.variableNames.length; i++) {
     tempBaseScope[payload.variableNames[i]] = payload.variableValues[i];
   }
+  // Names the 3D view sweeps itself (z, u, v): stand-in values, so rows using them
+  // check out here. A slider of the same name keeps its value.
+  for (const name of (payload.spaceVars ?? []) as string[]) {
+    if (!(name in tempBaseScope)) tempBaseScope[name] = 0;
+  }
   tempBaseScope.t = payload.time;
   tempBaseScope.time = payload.time;
 
@@ -296,7 +301,8 @@ const compileFunctions: MathWorkerHandler<any> = (payload, context) => {
   });
 
   const currentVarNames = new Set(payload.variableNames as string[]);
-  const missingVars = Array.from(varsToAdd).filter(v => !currentVarNames.has(v) && !assignedVars.has(v));
+  const spaceVars = new Set((payload.spaceVars ?? []) as string[]);
+  const missingVars = Array.from(varsToAdd).filter(v => !currentVarNames.has(v) && !assignedVars.has(v) && !spaceVars.has(v));
 
   return { results, missingVars };
 };
