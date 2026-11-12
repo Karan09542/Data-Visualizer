@@ -258,6 +258,43 @@ const MODULE_INSTANCE = {};
 /** Which edge the Functions & Equations panel is docked to, VS Code style. */
 type PanelPosition = "left" | "right" | "bottom";
 
+const FUNCTION_TYPE_META: Record<
+  MathFunction["type"],
+  { label: string; title: string }
+> = {
+  function: { label: "y =", title: "Function (y = f(x))" },
+  polar: { label: "r =", title: "Polar equation (r = f(t))" },
+  parametric: { label: "[x,y] =", title: "Parametric equation ([x(t), y(t)])" },
+  implicit: { label: "XY =", title: "Implicit equation (f(x,y) = 0)" },
+  vector: { label: "V =", title: "Vector" },
+  point: { label: "P =", title: "Point" },
+  line: { label: "Line =", title: "Line Segment" },
+  inequality: { label: "Ineq =", title: "Inequality" },
+  polygon: { label: "Poly =", title: "Polygon" },
+  differential: {
+    label: "x′ =",
+    title: "Differential equation (x' = …, solved numerically)",
+  },
+  calculator: {
+    label: "calc",
+    title: "Calculator: shows the answer as you type",
+  },
+};
+
+function getFunctionTypeMeta(
+  fn: MathFunction,
+  allFunctions: MathFunction[],
+): { shortLabel: string; title: string } {
+  const meta = FUNCTION_TYPE_META[fn.type];
+  if (fn.type === "function" && definitionName(fn, allFunctions)) {
+    return { shortLabel: "def", title: meta.title };
+  }
+  return {
+    shortLabel: meta?.label ?? fn.type,
+    title: meta?.title ?? "Select function type",
+  };
+}
+
 /**
  * Text used when "Show Label" is first ticked. For most types the expression itself
  * reads well, but an ODE's expression is a whole multi-statement system, which is
@@ -3180,9 +3217,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                   className={`w-1.5 h-12 rounded-full shadow ring-1 ring-black/10 transition-colors ${isResizingSidebar ? "bg-blue-500" : "bg-slate-400 dark:bg-slate-500"}`}
                 />
               </div>
-              <div className="flex-1 overflow-y-auto p-4 flex flex-col gap-6 custom-scrollbar">
+              <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col gap-4 sm:gap-6 custom-scrollbar">
                 {/* Functions */}
-                <div className="flex flex-col gap-3">
+                <div className="flex flex-col gap-2.5 sm:gap-3">
                   <div className="flex items-center justify-between">
                     <h3 className="font-semibold text-xs text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Functions & Equations
@@ -3282,7 +3319,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                     </button>
                   </div>
 
-                  <div className="flex flex-col gap-3">
+                  <div className="flex flex-col gap-2 sm:gap-3">
                     {functions.map((f, index) => (
                       <div
                         key={f.id}
@@ -3318,7 +3355,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                             handleDropFunction(f.id, dragOverFunctionPosition);
                           }
                         }}
-                        className={`flex flex-col md:flex-row md:flex-wrap md:items-center gap-2 bg-white dark:bg-slate-900/50 p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
+                        className={`flex flex-col md:flex-row md:flex-wrap md:items-center gap-1.5 md:gap-2 bg-white dark:bg-slate-900/50 p-1.5 sm:p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
                       ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""} ${activeActionMenuId === f.id ? "z-[100]" : activeVisualEditorId === f.id ? "z-40" : "z-10"}
                     `}
                         style={{ borderLeftColor: f.color }}
@@ -3340,20 +3377,24 @@ export const MathNodeRenderer: React.FC<any> = ({
                           )}
 
                         {/* Mobile Header Row / Desktop Left Elements */}
-                        <div className="flex items-center gap-2 w-full md:w-auto flex-shrink-0">
+                        <div className="flex items-center gap-1 sm:gap-1.5 w-full md:w-auto flex-shrink-0">
                           {/* Grip Handle */}
                           <div
                             onMouseDown={() => setCanDragFunctionId(f.id)}
                             onMouseUp={() => setCanDragFunctionId(null)}
                             onTouchStart={() => setCanDragFunctionId(f.id)}
                             onTouchEnd={() => setCanDragFunctionId(null)}
-                            className="cursor-grab active:cursor-grabbing text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 rounded md:opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            className="cursor-grab active:cursor-grabbing text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-0.5 sm:ml-0 rounded md:opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
                             title="Drag to reorder"
                           >
-                            <GripVertical size={14} />
+                            <GripVertical size={13} className="sm:w-3.5 sm:h-3.5" />
                           </div>
-                          <div
-                            className="w-4 h-4 rounded-full flex-shrink-0 cursor-pointer transition-transform hover:scale-110"
+                          {/* Toggle visibility */}
+                          <button
+                            type="button"
+                            aria-label={f.visible ? "Hide function" : "Show function"}
+                            aria-pressed={f.visible}
+                            className="w-3.5 h-3.5 sm:w-4 sm:h-4 rounded-full flex-shrink-0 cursor-pointer transition-transform hover:scale-110 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500/60"
                             style={{
                               backgroundColor: f.visible
                                 ? f.color
@@ -3387,143 +3428,130 @@ export const MathNodeRenderer: React.FC<any> = ({
                               }
                             }}
                           />
-                          <select
-                            value={f.type}
-                            onChange={(e) => {
-                              const choice = e.target.value;
-                              setFunctions((prev) =>
-                                prev.map((fn) => {
-                                  if (fn.id !== f.id) return fn;
-                                  // "Auto" goes back to following the expression; any other choice sticks.
-                                  if (choice === "auto") return { ...fn, autoType: true, type: inferType(fn.expr, baseScope) ?? fn.type };
-                                  return { ...fn, type: choice as any, autoType: false };
-                                }),
-                              );
-                            }}
-                            className="bg-slate-100 dark:bg-transparent text-slate-500 dark:text-slate-400 hover:text-blue-500 dark:hover:text-blue-400 border border-slate-200 dark:border-slate-700/50 rounded outline-none p-1 mr-2 text-xs font-semibold cursor-pointer appearance-none text-center"
-                            style={{
-                              WebkitAppearance: "none",
-                              MozAppearance: "none",
-                            }}
-                            title={
-                              f.type === "function"
-                                ? "Function (y = f(x))"
-                                : f.type === "polar"
-                                  ? "Polar equation (r = f(t))"
-                                  : f.type === "parametric"
-                                    ? "Parametric equation ([x(t), y(t)])"
-                                    : f.type === "implicit"
-                                      ? "Implicit equation (f(x,y) = 0)"
-                                      : f.type === "vector"
-                                        ? "Vector"
-                                        : f.type === "point"
-                                          ? "Point"
-                                          : f.type === "line"
-                                            ? "Line Segment"
-                                            : f.type === "inequality"
-                                              ? "Inequality"
-                                              : f.type === "polygon"
-                                                ? "Polygon"
-                                                : f.type === "differential"
-                                                  ? "Differential equation (x' = …, solved numerically)"
-                                                  : f.type === "calculator"
-                                                    ? "Calculator: shows the answer as you type"
-                                                    : "Select function type"
-                            }
-                          >
-                            <option
-                              value="auto"
-                              title="Work out the type from what is typed"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              {f.autoType ? "✓ Auto-detect" : "Auto-detect"}
-                            </option>
-                            <option
-                              value="function"
-                              title="Function, or a named value like T = 2*v0/g"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              {definitionName(f, functions) ? "def" : "y ="}
-                            </option>
-                            <option
-                              value="calculator"
-                              title="Calculator: type a calculation and see the answer as you type"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              calc
-                            </option>
-                            <option
-                              value="differential"
-                              title="Differential equation, e.g. x'' = -k*x - c*x'"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              x′ =
-                            </option>
-                            <option
-                              value="polar"
-                              title="Polar equation"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              r =
-                            </option>
-                            <option
-                              value="parametric"
-                              title="Parametric equation"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              [x,y] =
-                            </option>
-                            <option
-                              value="implicit"
-                              title="Implicit equation"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              XY =
-                            </option>
-                            <option
-                              value="vector"
-                              title="Vector"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              V =
-                            </option>
-                            <option
-                              value="point"
-                              title="Point"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              P =
-                            </option>
-                            <option
-                              value="line"
-                              title="Line Segment"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              Line =
-                            </option>
-                            <option
-                              value="inequality"
-                              title="Inequality Region"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              Ineq =
-                            </option>
-                            <option
-                              value="polygon"
-                              title="Polygon"
-                              className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
-                            >
-                              Poly =
-                            </option>
-                          </select>
-                          {f.autoType && f.type !== "calculator" && (
-                            <span
-                              className="-ml-1.5 mr-2 px-1 rounded text-[8px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 select-none"
-                              title="The type follows what you type. Pick one from the menu to fix it."
-                            >
-                              auto
-                            </span>
-                          )}
+                          {/* Compact input type selector + auto-follow indicator */}
+                          {(() => {
+                            const { shortLabel, title: typeTitle } = getFunctionTypeMeta(f, functions);
+                            return (
+                              <div className="inline-flex items-center rounded border border-slate-200 dark:border-slate-700/60 bg-slate-100/90 dark:bg-slate-800/60 overflow-hidden shrink-0">
+                                <div
+                                  className="relative inline-flex items-center justify-center px-1.5 py-0.5 sm:py-1 text-[11px] sm:text-xs font-semibold text-slate-600 dark:text-slate-300 hover:text-blue-500 dark:hover:text-blue-400 focus-within:ring-1 focus-within:ring-inset focus-within:ring-blue-500/60 cursor-pointer select-none leading-none transition-colors"
+                                  title={typeTitle}
+                                >
+                                  <span className="whitespace-nowrap">{shortLabel}</span>
+                                  <select
+                                    value={f.type}
+                                    aria-label="Select function type"
+                                    onChange={(e) => {
+                                      const choice = e.target.value;
+                                      setFunctions((prev) =>
+                                        prev.map((fn) => {
+                                          if (fn.id !== f.id) return fn;
+                                          // "Auto" goes back to following the expression; any other choice sticks.
+                                          if (choice === "auto") return { ...fn, autoType: true, type: inferType(fn.expr, baseScope) ?? fn.type };
+                                          return { ...fn, type: choice as any, autoType: false };
+                                        }),
+                                      );
+                                    }}
+                                    title={typeTitle}
+                                    className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                                  >
+                                    <option
+                                      value="auto"
+                                      title="Work out the type from what is typed"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      {f.autoType ? "✓ Auto-detect" : "Auto-detect"}
+                                    </option>
+                                    <option
+                                      value="function"
+                                      title="Function, or a named value like T = 2*v0/g"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      {definitionName(f, functions) ? "def" : "y ="}
+                                    </option>
+                                    <option
+                                      value="calculator"
+                                      title="Calculator: type a calculation and see the answer as you type"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      calc
+                                    </option>
+                                    <option
+                                      value="differential"
+                                      title="Differential equation, e.g. x'' = -k*x - c*x'"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      x′ =
+                                    </option>
+                                    <option
+                                      value="polar"
+                                      title="Polar equation"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      r =
+                                    </option>
+                                    <option
+                                      value="parametric"
+                                      title="Parametric equation"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      [x,y] =
+                                    </option>
+                                    <option
+                                      value="implicit"
+                                      title="Implicit equation"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      XY =
+                                    </option>
+                                    <option
+                                      value="vector"
+                                      title="Vector"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      V =
+                                    </option>
+                                    <option
+                                      value="point"
+                                      title="Point"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      P =
+                                    </option>
+                                    <option
+                                      value="line"
+                                      title="Line Segment"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      Line =
+                                    </option>
+                                    <option
+                                      value="inequality"
+                                      title="Inequality Region"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      Ineq =
+                                    </option>
+                                    <option
+                                      value="polygon"
+                                      title="Polygon"
+                                      className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200"
+                                    >
+                                      Poly =
+                                    </option>
+                                  </select>
+                                </div>
+                                {f.autoType && f.type !== "calculator" && (
+                                  <span
+                                    className="px-1 py-0.5 sm:py-1 border-l border-slate-200 dark:border-slate-700/60 text-[8px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 select-none leading-none flex items-center"
+                                    title="The type follows what you type. Pick one from the menu to fix it."
+                                  >
+                                    auto
+                                  </span>
+                                )}
+                              </div>
+                            );
+                          })()}
 
                           <div className="flex-1 md:hidden"></div>
                           {/* Mobile Toggle Button inside Header Row */}
@@ -3532,7 +3560,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
-                              className={`p-1.5 opacity-60 hover:opacity-100 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-all ${activeActionMenuId === f.id ? "bg-slate-100 dark:bg-slate-700" : ""}`}
+                              className={`p-1 opacity-60 hover:opacity-100 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded transition-all ${activeActionMenuId === f.id ? "bg-slate-100 dark:bg-slate-700" : ""}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setActiveActionMenuId(
@@ -3540,7 +3568,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 );
                               }}
                             >
-                              <MoreVertical size={16} />
+                              <MoreVertical size={15} />
                             </button>
                           </div>
                         </div>
