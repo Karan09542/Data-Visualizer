@@ -128,7 +128,7 @@ export const ColorVariationMenu: React.FC<ColorVariationMenuProps> = ({
           aria-checked={mode === "none"}
           onClick={() => setMode("none")}
           title="None: Assigns random/cyclic colors from default palette"
-          className={`px-1.5 sm:px-2 py-0.5 text-[10px] font-semibold rounded transition-all shrink-0 ${
+          className={`px-1 @xs:px-2 py-0.5 text-[10px] font-semibold rounded transition-all shrink-0 ${
             mode === "none"
               ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-xs"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
@@ -143,13 +143,13 @@ export const ColorVariationMenu: React.FC<ColorVariationMenuProps> = ({
           aria-checked={mode === "tint"}
           onClick={() => setMode("tint")}
           title="Tint: New, duplicated or inserted functions receive lighter tints of the same color"
-          className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 text-[10px] font-semibold rounded transition-all shrink-0 ${
+          className={`flex items-center gap-0.5 @xs:gap-1 px-1 @xs:px-2 py-0.5 text-[10px] font-semibold rounded transition-all shrink-0 ${
             mode === "tint"
               ? "bg-blue-600 text-white shadow-xs"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
           }`}
         >
-          <Sun size={11} className={mode === "tint" ? "text-amber-200" : ""} />
+          <Sun size={10} className={`@xs:w-[11px] @xs:h-[11px] ${mode === "tint" ? "text-amber-200" : ""}`} />
           <span>Tint</span>
         </button>
 
@@ -159,13 +159,13 @@ export const ColorVariationMenu: React.FC<ColorVariationMenuProps> = ({
           aria-checked={mode === "shade"}
           onClick={() => setMode("shade")}
           title="Shade: New, duplicated or inserted functions receive darker shades of the same color"
-          className={`flex items-center gap-0.5 sm:gap-1 px-1.5 sm:px-2 py-0.5 text-[10px] font-semibold rounded transition-all shrink-0 ${
+          className={`flex items-center gap-0.5 @xs:gap-1 px-1 @xs:px-2 py-0.5 text-[10px] font-semibold rounded transition-all shrink-0 ${
             mode === "shade"
               ? "bg-indigo-600 text-white shadow-xs"
               : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
           }`}
         >
-          <Moon size={11} className={mode === "shade" ? "text-indigo-200" : ""} />
+          <Moon size={10} className={`@xs:w-[11px] @xs:h-[11px] ${mode === "shade" ? "text-indigo-200" : ""}`} />
           <span>Shade</span>
         </button>
 
@@ -173,7 +173,7 @@ export const ColorVariationMenu: React.FC<ColorVariationMenuProps> = ({
         <button
           type="button"
           onClick={() => setIsOpen((prev) => !prev)}
-          className={`ml-0.5 p-1 rounded transition-colors ${
+          className={`ml-0.5 p-0.5 @xs:p-1 rounded transition-colors ${
             isOpen
               ? "bg-slate-300 dark:bg-slate-600 text-slate-800 dark:text-white"
               : "text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"

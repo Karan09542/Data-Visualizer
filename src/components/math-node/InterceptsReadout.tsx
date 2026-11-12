@@ -1,5 +1,5 @@
 import React, { useState, useSyncExternalStore } from "react";
-import { Crosshair } from "lucide-react";
+import { ChevronDown, Crosshair } from "lucide-react";
 import {
   formatTraceNumber,
   interceptsForFunction,
@@ -57,6 +57,8 @@ export const InterceptsReadout: React.FC<{ fnId: string; scope?: string }> = ({
   fnId,
   scope = "",
 }) => {
+  const [open, setOpen] = useState(false);
+
   // Refreshed a few times a second while the graph changes (a slider, a pan,
   // animation) and once more when it settles — never every frame.
   useSyncExternalStore(subscribeTraceShapesSlow, traceShapesSlowVersion, traceShapesSlowVersion);
@@ -65,38 +67,80 @@ export const InterceptsReadout: React.FC<{ fnId: string; scope?: string }> = ({
 
   return (
     <div
-      className="mt-1.5 flex flex-col gap-1.5 rounded-lg border border-slate-200 bg-slate-50/70 px-2.5 py-1.5 dark:border-slate-800 dark:bg-slate-900/40 nodrag"
+      className="mt-1.5 rounded-lg border border-slate-200 bg-slate-50/70 dark:border-slate-800 dark:bg-slate-900/40 nodrag"
       title="Axis crossings within the current view"
     >
-      {roots.length > 0 && (
-        <div className="flex items-start gap-2">
-          <span className="flex w-20 shrink-0 items-center gap-1.5 pt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            <Crosshair size={12} className="text-emerald-500" />
-            Roots
-            <span className="rounded bg-slate-200 px-1 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              {roots.length}
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-expanded={open}
+        className="flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left"
+        title={open ? "Hide roots & intercepts" : "Show roots & intercepts within the current view"}
+      >
+        <span className="flex min-w-0 flex-wrap items-center gap-1.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+          <Crosshair
+            size={12}
+            className={`shrink-0 ${roots.length > 0 ? "text-emerald-500" : "text-sky-500"}`}
+          />
+          {roots.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              Roots
+              <span className="rounded bg-slate-200 px-1 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {roots.length}
+              </span>
             </span>
-          </span>
-          <Chips
-            scope={scope}
-            items={roots}
-            value={(p) => `x = ${fmt(p.x)}`}
-            title={(p) => `Root at (${fmt(p.x)}, 0) — click to show it on the graph`}
-          />
-        </div>
-      )}
-      {yIntercepts.length > 0 && (
-        <div className="flex items-start gap-2">
-          <span className="flex w-20 shrink-0 items-center gap-1.5 pt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
-            <Crosshair size={12} className="text-sky-500" />
-            y-int
-          </span>
-          <Chips
-            scope={scope}
-            items={yIntercepts}
-            value={(p) => `y = ${fmt(p.y)}`}
-            title={(p) => `Crosses the y-axis at (0, ${fmt(p.y)}) — click to show it on the graph`}
-          />
+          )}
+          {roots.length > 0 && yIntercepts.length > 0 && (
+            <span className="text-slate-300 dark:text-slate-600">·</span>
+          )}
+          {yIntercepts.length > 0 && (
+            <span className="inline-flex items-center gap-1">
+              y-int
+              <span className="rounded bg-slate-200 px-1 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                {yIntercepts.length}
+              </span>
+            </span>
+          )}
+        </span>
+        <ChevronDown
+          size={13}
+          className={`shrink-0 text-slate-400 transition-transform duration-150 ${open ? "rotate-180" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div className="flex flex-col gap-1.5 border-t border-slate-200 px-2.5 py-1.5 dark:border-slate-800">
+          {roots.length > 0 && (
+            <div className="flex items-start gap-2">
+              <span className="flex w-20 shrink-0 items-center gap-1.5 pt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <Crosshair size={12} className="text-emerald-500" />
+                Roots
+                <span className="rounded bg-slate-200 px-1 font-mono text-[10px] text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  {roots.length}
+                </span>
+              </span>
+              <Chips
+                scope={scope}
+                items={roots}
+                value={(p) => `x = ${fmt(p.x)}`}
+                title={(p) => `Root at (${fmt(p.x)}, 0) — click to show it on the graph`}
+              />
+            </div>
+          )}
+          {yIntercepts.length > 0 && (
+            <div className="flex items-start gap-2">
+              <span className="flex w-20 shrink-0 items-center gap-1.5 pt-0.5 text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <Crosshair size={12} className="text-sky-500" />
+                y-int
+              </span>
+              <Chips
+                scope={scope}
+                items={yIntercepts}
+                value={(p) => `y = ${fmt(p.y)}`}
+                title={(p) => `Crosses the y-axis at (0, ${fmt(p.y)}) — click to show it on the graph`}
+              />
+            </div>
+          )}
         </div>
       )}
     </div>
