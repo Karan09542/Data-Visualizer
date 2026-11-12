@@ -9,7 +9,17 @@ import { liveCoordinatesLabel, pointRowName } from "../../lib/math/liveLabel";
 export interface PointMenuTarget extends DotHit {
   clientX: number;
   clientY: number;
+  /** Height, when the point was picked in the 3D view: the menu then edits z too. */
+  z?: number;
 }
+
+/**
+ * Whether a point can be dragged. A flat point opts in (as on the 2D graph); a point
+ * typed with three coordinates, which only the 3D view draws, can be dragged unless
+ * it was switched off.
+ */
+export const pointDraggable = (fn: Pick<MathFunction, "type" | "isDraggable">) =>
+  fn.type === "point" ? !!fn.isDraggable : fn.isDraggable !== false;
 
 const RIGHT_CLICK_PX = 14;
 const DOUBLE_TAP_PX = 26;
@@ -109,12 +119,15 @@ export function PointMenuTrigger({
 // ─── The menu ─────────────────────────────────────────────────────────────────
 
 const NUM = String.raw`-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?`;
-/** A point written out as numbers: "A = [1, 2]" or "[1, 2]", which the menu can move. */
-const FIXED_POINT = new RegExp(String.raw`^\s*(?:([A-Za-z][A-Za-z0-9_']*)\s*=\s*)?[[(]\s*(${NUM})\s*[,;]\s*(${NUM})\s*[\])]\s*$`, "i");
+/** A point written out as numbers: "A = [1, 2]", "[1, 2]" or "A = [1, 2, 3]", which the menu can move. */
+const FIXED_POINT = new RegExp(
+  String.raw`^\s*(?:([A-Za-z][A-Za-z0-9_']*)\s*=\s*)?[[(]\s*(${NUM})\s*[,;]\s*(${NUM})\s*(?:[,;]\s*(${NUM})\s*)?[\])]\s*$`,
+  "i",
+);
 
 export const parseFixedPoint = (expr: string) => {
   const m = expr.match(FIXED_POINT);
-  return m ? { name: m[1] as string | undefined, x: m[2], y: m[3] } : null;
+  return m ? { name: m[1] as string | undefined, x: m[2], y: m[3], z: m[4] as string | undefined } : null;
 };
 const fmt = (v: number) => {
   const r = Math.round(v * 1e4) / 1e4;
@@ -132,7 +145,7 @@ interface PointMenuProps {
   containerRef: React.RefObject<HTMLDivElement | null>;
   onPatch: (patch: Partial<MathFunction>) => void;
   /** A copy next to it; given where the point is now. */
-  onDuplicate: (at: { x: number; y: number }) => void;
+  onDuplicate: (at: { x: number; y: number; z?: number }) => void;
   onShowInList: () => void;
   onDelete: () => void;
   onClose: () => void;
@@ -157,12 +170,20 @@ export function PointMenu({ fn, target, containerRef, onPatch, onDuplicate, onSh
   const fixed = parseFixedPoint(fn.expr);
   const name = pointRowName(fn.expr);
   // Where it is now: a written-out point follows its own edits; a worked-out one is where it was picked.
-  const now = fixed && Number.isFinite(Number(fixed.x)) && Number.isFinite(Number(fixed.y)) ? { x: Number(fixed.x), y: Number(fixed.y) } : { x: target.x, y: target.y };
+  // A height to show and edit: the point has one, or it was picked in the 3D view.
+  const spatial = fixed ? fixed.z !== undefined || target.z !== undefined : target.z !== undefined;
+  const fixedZ = fixed?.z !== undefined ? Number(fixed.z) : target.z ?? 0;
+  const now: { x: number; y: number; z?: number } =
+    fixed && Number.isFinite(Number(fixed.x)) && Number.isFinite(Number(fixed.y))
+      ? { x: Number(fixed.x), y: Number(fixed.y), z: spatial ? fixedZ : undefined }
+      : { x: target.x, y: target.y, z: target.z };
   const handle = !!fn.dragVars?.length;
+  const draggable = pointDraggable(fn);
 
   const [label, setLabel] = useState(fn.label ?? "");
   const [x, setX] = useState(fixed?.x ?? fmt(target.x));
   const [y, setY] = useState(fixed?.y ?? fmt(target.y));
+  const [z, setZ] = useState(fixed?.z ?? fmt(target.z ?? 0));
   const [copied, setCopied] = useState(false);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   // On a narrow graph: a sheet along the bottom, or the top when the point is low down.
@@ -175,6 +196,7 @@ export function PointMenu({ fn, target, containerRef, onPatch, onDuplicate, onSh
     const typing = (id: string) => menuRef.current?.querySelector(`[data-field="${id}"]`) === document.activeElement;
     if (!typing("x") && fixed) setX(fixed.x);
     if (!typing("y") && fixed) setY(fixed.y);
+    if (!typing("z") && fixed) setZ(fixed.z ?? "0");
     if (!typing("label")) setLabel(fn.label ?? "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fn.expr, fn.label]);
@@ -230,20 +252,24 @@ export function PointMenu({ fn, target, containerRef, onPatch, onDuplicate, onSh
     };
   }, [onClose]);
 
-  const setPosition = (nx: string, ny: string) => {
+  const setPosition = (nx: string, ny: string, nz: string = z) => {
     setX(nx);
     setY(ny);
+    setZ(nz);
     const vx = parseNum(nx);
     const vy = parseNum(ny);
-    if (!fixed || vx === null || vy === null) return;
-    onPatch({ expr: `${fixed.name ? `${fixed.name} = ` : ""}[${vx}, ${vy}]` });
+    const vz = spatial ? parseNum(nz) : 0;
+    if (!fixed || vx === null || vy === null || vz === null) return;
+    // A height is written only when the point has one or is given one.
+    const withZ = fixed.z !== undefined || vz !== 0;
+    onPatch({ expr: `${fixed.name ? `${fixed.name} = ` : ""}[${vx}, ${vy}${withZ ? `, ${vz}` : ""}]` });
   };
   const setLabelText = (text: string) => {
     setLabel(text);
     onPatch({ label: text, showLabel: text.trim() ? true : fn.showLabel });
   };
   const copy = async () => {
-    const text = `(${fmt(now.x)}, ${fmt(now.y)})`;
+    const text = `(${fmt(now.x)}, ${fmt(now.y)}${now.z !== undefined ? `, ${fmt(now.z)}` : ""})`;
     try {
       await navigator.clipboard.writeText(text);
     } catch {
@@ -255,6 +281,7 @@ export function PointMenu({ fn, target, containerRef, onPatch, onDuplicate, onSh
   const liveLabel = liveCoordinatesLabel(fn.label, name);
   const shownX = fixed ? x : fmt(target.x);
   const shownY = fixed ? y : fmt(target.y);
+  const shownZ = fixed ? z : fmt(target.z ?? 0);
 
   return (
     <div
@@ -277,7 +304,8 @@ export function PointMenu({ fn, target, containerRef, onPatch, onDuplicate, onSh
         <div className="min-w-0 flex-1">
           <div className="truncate text-[13px] font-semibold">{name ? `Point ${name}` : "Point"}</div>
           <div className="truncate font-mono text-[11px] text-slate-500 dark:text-slate-400">
-            ({fmt(now.x)}, {fmt(now.y)})
+            ({fmt(now.x)}, {fmt(now.y)}
+            {now.z !== undefined && `, ${fmt(now.z)}`})
           </div>
         </div>
         <button
@@ -339,6 +367,7 @@ export function PointMenu({ fn, target, containerRef, onPatch, onDuplicate, onSh
               [
                 ["x", shownX, (v: string) => setPosition(v, y)],
                 ["y", shownY, (v: string) => setPosition(x, v)],
+                ...(spatial ? ([["z", shownZ, (v: string) => setPosition(x, y, v)]] as const) : []),
               ] as const
             ).map(([axis, value, set]) => (
               <label key={axis} className="flex min-w-0 flex-1 items-center gap-1.5">
@@ -389,7 +418,7 @@ export function PointMenu({ fn, target, containerRef, onPatch, onDuplicate, onSh
           </div>
           <div className="flex flex-wrap gap-1.5">
             {fixed && (
-              <button type="button" onClick={() => onPatch({ isDraggable: !fn.isDraggable })} aria-pressed={!!fn.isDraggable} className={chip(!!fn.isDraggable)}>
+              <button type="button" onClick={() => onPatch({ isDraggable: !draggable })} aria-pressed={draggable} className={chip(draggable)}>
                 <Hand size={12} /> Draggable
               </button>
             )}

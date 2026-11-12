@@ -15,7 +15,7 @@
  * demand (no render loop) and rebuilds a row only when something it depends on
  * changes, so an idle 3D graph uses no CPU.
  */
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { LineSegments2 } from "three/examples/jsm/lines/LineSegments2.js";
@@ -23,10 +23,11 @@ import { LineSegmentsGeometry } from "three/examples/jsm/lines/LineSegmentsGeome
 import { LineMaterial } from "three/examples/jsm/lines/LineMaterial.js";
 import { triTable } from "three/examples/jsm/objects/MarchingCubes.js";
 import * as mathjs from "mathjs";
-import { Home, Minus, Plus } from "lucide-react";
+import { Home, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
 import type { MathFunction, MathVariable } from "./mathTypes";
 import type { GraphView } from "./simulations";
 import { computePCA } from "./mathHelpers";
+import { pointDraggable, type PointMenuTarget } from "./PointMenu";
 import { dependencyKey } from "./dependencyKeys";
 import { objectId } from "./SmoothCurve";
 import { getFamilyCurveColor } from "./familyPlot";
@@ -54,7 +55,106 @@ export interface Graph3DProps {
   animating: boolean;
   /** The small canvas card: no buttons or hints. */
   compact?: boolean;
+  /** How the view is dressed (saved with the graph); missing fields take their defaults. */
+  options?: Partial<Graph3DOptions>;
+  onOptionsChange?: (options: Graph3DOptions) => void;
+  /** Add a ready-made row (the examples in the view's menu). */
+  onAddExample?: (expr: string, patch?: Partial<MathFunction>) => void;
+  /** A point was dragged: its row's new expression. */
+  onMovePoint?: (id: string, expr: string) => void;
+  /** A point was right-clicked or double-tapped: open its menu (the same one as in 2D). */
+  onPointMenu?: (target: PointMenuTarget) => void;
 }
+
+export interface Graph3DOptions {
+  /** Surfaces in their row's colour, or coloured by height. */
+  colorMode: "row" | "height";
+  /** Level curves on surfaces, and their shadows on the floor of the box. */
+  contours: boolean;
+  /** A cutting plane: its axis (0 = x, 1 = y, 2 = z) and where it sits across the box (-1 to 1). */
+  slice: { axis: 0 | 1 | 2; at: number } | null;
+  /** Show the tangent plane and normal where the pointer touches a surface. */
+  tangent: boolean;
+  autoRotate: boolean;
+}
+
+function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
+  const slice = o?.slice;
+  return {
+    colorMode: o?.colorMode === "height" ? "height" : "row",
+    contours: !!o?.contours,
+    slice:
+      slice && (slice.axis === 0 || slice.axis === 1 || slice.axis === 2) && Number.isFinite(slice.at)
+        ? { axis: slice.axis, at: Math.max(-1, Math.min(1, slice.at)) }
+        : null,
+    tangent: !!o?.tangent,
+    autoRotate: !!o?.autoRotate,
+  };
+}
+
+type ViewName = "home" | "top" | "front" | "side";
+
+/** A point being dragged. */
+interface DragState {
+  id: string;
+  pos: Vec3;
+  /** Where the point was, and the pointer, when this stretch of the drag began. */
+  start: Vec3;
+  startX: number;
+  startY: number;
+  /** Pointer minus the point's centre on screen at pickup, so the point doesn't jump to it. */
+  offX: number;
+  offY: number;
+  /**
+   * floor: across the point's horizontal plane (x, y);
+   * screen: in the upright plane facing the camera (for a view from the side);
+   * z: straight up and down.
+   */
+  mode: "floor" | "screen" | "z";
+  /** Taken by the height grip: stays up-and-down whatever keys are held. */
+  grip: boolean;
+  /** On screen, the pixels `zUnit` of height spans, for up-and-down moves. */
+  zAxis: [number, number];
+  zUnit: number;
+}
+
+/** The on-screen handle of a draggable point (Mafs style), with its height grip. */
+interface Handle {
+  wrap: HTMLDivElement;
+  dot: HTMLDivElement;
+  stem: HTMLDivElement;
+  grip: HTMLDivElement;
+  tip: HTMLDivElement;
+  /** Its centre on screen last frame, in canvas pixels. */
+  x: number;
+  y: number;
+}
+
+const HANDLE_CSS = `
+.g3d-handle{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;transition:opacity .2s}
+.g3d-dot{position:absolute;left:-22px;top:-22px;width:44px;height:44px;border-radius:50%;pointer-events:auto;cursor:grab;touch-action:none;outline:none;-webkit-tap-highlight-color:transparent}
+.g3d-dot::before{content:"";position:absolute;inset:7px;border-radius:50%;background:var(--c);opacity:.2;transform:scale(.72);transition:transform .16s ease,opacity .16s ease}
+.g3d-dot::after{content:"";position:absolute;inset:15.5px;border-radius:50%;background:var(--c);box-shadow:0 1px 3px rgba(0,0,0,.4);transition:transform .16s ease}
+.g3d-handle:hover .g3d-dot::before,.g3d-handle:focus-within .g3d-dot::before{transform:scale(1);opacity:.28}
+.g3d-dot:focus-visible::before{outline:2px solid var(--c);outline-offset:2px}
+.g3d-handle.dragging .g3d-dot{cursor:grabbing}
+.g3d-handle.dragging .g3d-dot::before{transform:scale(1.18);opacity:.34}
+.g3d-handle.dragging .g3d-dot::after{transform:scale(1.1)}
+.g3d-stem,.g3d-grip{visibility:hidden;opacity:0;transition:opacity .15s ease .3s,visibility 0s linear .45s}
+.g3d-handle:hover .g3d-stem,.g3d-handle:hover .g3d-grip,.g3d-handle:focus-within .g3d-stem,.g3d-handle:focus-within .g3d-grip,.g3d-handle.dragging .g3d-stem,.g3d-handle.dragging .g3d-grip{visibility:visible;opacity:1;transition-delay:0s}
+.g3d-stem{position:absolute;left:0;top:-6px;height:12px;transform-origin:0 50%;pointer-events:auto}
+.g3d-stem::after{content:"";position:absolute;left:0;right:0;top:5px;height:2px;border-radius:1px;background:var(--c);opacity:.75}
+.g3d-grip{position:absolute;left:-13px;top:-13px;width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:var(--g3d-bg);color:var(--c);border:2px solid var(--c);box-shadow:0 2px 8px rgba(0,0,0,.3);pointer-events:auto;cursor:ns-resize;touch-action:none}
+.g3d-grip:hover,.g3d-handle.dragging.z .g3d-grip{background:var(--c);color:#fff}
+.g3d-tip{position:absolute;left:0;top:-24px;transform:translate(-50%,-100%);padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
+.g3d-handle.dragging .g3d-tip{display:block}
+`;
+
+const GRIP_ICON =
+  '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v16M7.5 8.5 12 4l4.5 4.5M7.5 15.5 12 20l4.5-4.5"/></svg>';
+
+/** The height grip sits this far (px) from its point, and its stem starts and ends this far from each. */
+const GRIP_DISTANCE = 40;
 
 type Vec3 = [number, number, number];
 type Transform2 = ((x: number, y: number) => [number, number]) | null;
@@ -71,18 +171,111 @@ interface LabelSpec {
   text: string;
   color?: string;
   strong?: boolean;
+  /** A row's label: moved down a line when it would sit on another one. */
+  nudge?: boolean;
+  /** Behind a surface: drawn faintly. */
+  dim?: boolean;
+  /** A draggable point's label: beside its handle (the height grip is above it). */
+  besideRow?: string;
+}
+
+interface SurfaceData {
+  positions: Float32Array;
+  index: ArrayLike<number>;
 }
 
 interface RowEntry {
-  key: string;
+  id: string;
+  color: string;
+  /** Everything the row's drawing depends on, except how finely it is sampled. */
+  baseKey: string;
+  /** 0: coarse (while moving), 1: normal, 2: refined once the graph is at rest. */
+  tier: number;
   group: THREE.Group;
   labels: LabelSpec[];
+  /** The row's surfaces as triangles, for contours and slices. */
+  surfaces: SurfaceData[];
+  /** A row of points: it has the point menu. */
+  isPoint?: boolean;
+  /** A point written as plain numbers can be dragged. */
+  drag?: { prefix: string; name: string; three: boolean; pos: Vec3 };
 }
 
 const AXIS_COLORS = ["#ef4444", "#22c55e", "#3b82f6"];
 const AXIS_NAMES = ["x", "y", "z"];
 const HOME_CAMERA = new THREE.Vector3(2.9, -3.7, 2.3).setLength(4.7);
 const TWO_PI = 2 * Math.PI;
+
+// Kinds that cost real time to sample: drawn coarser while things move, finer at rest.
+const HEAVY_KINDS = new Set(["surface", "surface-rhs", "surface-uv", "iso", "curve2d", "region2d"]);
+
+// Low to high.
+const HEIGHT_STOPS = ["#3b4cc0", "#22a7d6", "#2fcf8f", "#f4d03f", "#e4572e"];
+const HEIGHT_COLORS = HEIGHT_STOPS.map((c) => new THREE.Color(c));
+
+/** The colour for a height, 0 (bottom of the box) to 1 (top). */
+function heightColor(t: number, out: THREE.Color): THREE.Color {
+  const x = Math.max(0, Math.min(1, t)) * (HEIGHT_COLORS.length - 1);
+  const i = Math.min(Math.floor(x), HEIGHT_COLORS.length - 2);
+  return out.copy(HEIGHT_COLORS[i]).lerp(HEIGHT_COLORS[i + 1], x - i);
+}
+
+// "[1, 2]", "A = [1, 2, 3]": a point given as plain numbers.
+const NUMBER = "-?(?:\\d+\\.?\\d*|\\.\\d+)(?:e-?\\d+)?";
+const LITERAL_POINT = new RegExp(
+  `^(\\s*(?:[A-Za-z_][A-Za-z0-9_]*\\s*=\\s*)?)\\[\\s*${NUMBER}\\s*,\\s*${NUMBER}\\s*(,\\s*${NUMBER}\\s*)?\\]\\s*$`,
+);
+
+const SECTION = new Float64Array(6);
+
+/**
+ * Where a triangle crosses the plane `coordinate[axis] = level`: calls `emit` with
+ * the two ends of the cut, if there is one.
+ */
+function cutTriangle(
+  p: Float32Array,
+  a: number,
+  b: number,
+  c: number,
+  axis: number,
+  level: number,
+  emit: (s: Float64Array) => void,
+) {
+  const va = p[a * 3 + axis] - level;
+  const vb = p[b * 3 + axis] - level;
+  const vc = p[c * 3 + axis] - level;
+  const na = va < 0;
+  const nb = vb < 0;
+  const nc = vc < 0;
+  if (na === nb && nb === nc) return;
+  let n = 0;
+  const edge = (i: number, j: number, vi: number, vj: number) => {
+    const w = vi / (vi - vj);
+    SECTION[n * 3] = p[i * 3] + (p[j * 3] - p[i * 3]) * w;
+    SECTION[n * 3 + 1] = p[i * 3 + 1] + (p[j * 3 + 1] - p[i * 3 + 1]) * w;
+    SECTION[n * 3 + 2] = p[i * 3 + 2] + (p[j * 3 + 2] - p[i * 3 + 2]) * w;
+    n++;
+  };
+  if (na !== nb) edge(a, b, va, vb);
+  if (nb !== nc && n < 2) edge(b, c, vb, vc);
+  if (nc !== na && n < 2) edge(c, a, vc, va);
+  if (n === 2) emit(SECTION);
+}
+
+/** Fades a row's shapes (while another row is pointed at in the list), or restores them. */
+function dimGroup(group: THREE.Object3D, dim: boolean) {
+  group.traverse((o: any) => {
+    const materials = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+    for (const m of materials) {
+      if (!m.userData.base) m.userData.base = { opacity: m.opacity, transparent: m.transparent, depthWrite: m.depthWrite };
+      const base = m.userData.base;
+      m.opacity = dim ? base.opacity * 0.12 : base.opacity;
+      m.transparent = dim ? true : base.transparent;
+      m.depthWrite = dim ? false : base.depthWrite;
+      m.needsUpdate = true;
+    }
+  });
+}
 
 // ─── Small helpers ────────────────────────────────────────────────────────────
 
@@ -274,10 +467,52 @@ class Engine {
   private dark = false;
   private disposed = false;
   private scratch = new THREE.Vector3();
+  private opts: Graph3DOptions;
+  /** The row being built: its surfaces are noted as they are made. */
+  private building: RowEntry | null = null;
+  private fineReady = false;
+  private fineTimer = 0;
+  private highlightId: string | null = null;
+  // Slice
+  private sliceGroup = new THREE.Group();
+  private sliceLabels: LabelSpec[] = [];
+  private sliceDirty = true;
+  // Camera moves
+  private tween: {
+    start: number;
+    duration: number;
+    r0: number;
+    r1: number;
+    phi0: number;
+    phi1: number;
+    theta0: number;
+    dTheta: number;
+    fromTarget: THREE.Vector3;
+  } | null = null;
+  // Pointer: readout, tangent plane, dragging points
+  private raycaster = new THREE.Raycaster();
+  private occluder = new THREE.Raycaster();
+  private pointer = new THREE.Vector2();
+  private hoverDirty = false;
+  private hover: { local: Vec3; color: string; rowId: string } | null = null;
+  private hoverDot = document.createElement("div");
+  private hoverTip = document.createElement("div");
+  private tangentGroup = new THREE.Group();
+  private tangentPlane: THREE.Mesh;
+  private tangentArrow: THREE.ArrowHelper;
+  private drag: DragState | null = null;
+  private handles = new Map<string, Handle>();
+  /** The point a handle is pointed at or focused on: its guide lines are drawn. */
+  private activeId: string | null = null;
+  private guideGroup = new THREE.Group();
+  private occlusionTimer = 0;
+  /** Told when the range of the axes changes. */
+  onDomain?: (domain: Domain) => void;
 
   constructor(
     private host: HTMLElement,
     private labelHost: HTMLElement,
+    private handleHost: HTMLElement,
     private getProps: () => Graph3DProps,
   ) {
     // preserveDrawingBuffer: the graph's screenshot tool reads the canvas back.
@@ -300,8 +535,20 @@ class Engine {
       new THREE.Plane(new THREE.Vector3(0, 0, -1), e),
     ];
 
-    // Before the controls attach theirs, so a Ctrl/Shift scroll can be kept from them.
+    // Before the controls attach theirs, so a Ctrl/Shift scroll, and a press on a
+    // point that can be dragged, can be kept from them.
     canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    canvas.addEventListener("pointerdown", this.onPointerDown);
+    canvas.addEventListener("pointermove", this.onPointerMove);
+    canvas.addEventListener("pointerleave", this.onPointerLeave);
+    canvas.addEventListener("pointerup", this.onPointerUp);
+    canvas.addEventListener("contextmenu", this.onContextMenu);
+    if (!document.getElementById("g3d-handle-css")) {
+      const style = document.createElement("style");
+      style.id = "g3d-handle-css";
+      style.textContent = HANDLE_CSS;
+      document.head.appendChild(style);
+    }
 
     this.camera.up.set(0, 0, 1); // z points up, as in maths
     this.camera.position.copy(HOME_CAMERA);
@@ -312,6 +559,10 @@ class Engine {
     this.controls.maxDistance = 14;
     this.controls.zoomSpeed = 1.2;
     this.controls.zoomToCursor = true;
+    // The view coasts to a stop instead of halting dead.
+    this.controls.enableDamping = true;
+    this.controls.dampingFactor = 0.12;
+    this.controls.autoRotateSpeed = 1.2;
     this.controls.addEventListener("change", this.requestRender);
 
     // A headlight, so a surface is lit from wherever it is looked at.
@@ -319,9 +570,34 @@ class Engine {
     light.position.set(0.6, 0.8, 1);
     this.camera.add(light);
     this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 2), this.content);
-    this.content.add(this.decor, this.rowsGroup);
+    this.content.add(this.decor, this.rowsGroup, this.sliceGroup, this.guideGroup);
+
+    // Tangent plane and normal, placed where the pointer touches a surface.
+    const planeGeometry = new THREE.PlaneGeometry(0.5, 0.5);
+    this.tangentPlane = new THREE.Mesh(
+      planeGeometry,
+      new THREE.MeshBasicMaterial({ transparent: true, opacity: 0.35, side: THREE.DoubleSide, depthWrite: false }),
+    );
+    this.tangentArrow = new THREE.ArrowHelper(new THREE.Vector3(0, 0, 1), new THREE.Vector3(), 0.36, 0xffffff, 0.09, 0.045);
+    this.tangentGroup.add(
+      this.tangentPlane,
+      new THREE.LineSegments(new THREE.EdgesGeometry(planeGeometry), new THREE.LineBasicMaterial({ color: 0xffffff })),
+      this.tangentArrow,
+    );
+    this.tangentGroup.visible = false;
+    this.scene.add(this.tangentGroup);
+
+    // The readout under the pointer.
+    this.hoverDot.style.cssText =
+      "position:absolute;left:0;top:0;width:10px;height:10px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.45);display:none";
+    this.hoverTip.style.cssText =
+      "position:absolute;left:0;top:0;padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;border:1.5px solid;box-shadow:0 4px 12px rgba(0,0,0,.25);display:none";
+    labelHost.append(this.hoverDot, this.hoverTip);
+    (this.raycaster.params as any).Line2 = { threshold: 8 };
 
     const p = getProps();
+    this.opts = readOptions(p.options);
+    this.controls.autoRotate = this.opts.autoRotate;
     this.dark = p.dark;
     this.domain = this.homeDomain();
     this.resize(p.width, p.height);
@@ -347,7 +623,90 @@ class Engine {
     this.content.scale.setScalar(1 / half);
     this.content.position.set(-cx / half, -cy / half, -cz / half);
     this.buildDecor();
+    this.sliceDirty = true;
+    this.clearHover();
+    this.buildGuides();
+    this.onDomain?.({ ...this.domain });
     this.sync();
+  }
+
+  getDomain(): Domain {
+    return { ...this.domain };
+  }
+
+  setOptions(options: Graph3DOptions) {
+    this.opts = options;
+    this.controls.autoRotate = options.autoRotate;
+    this.sliceDirty = true;
+    if (!options.tangent) this.tangentGroup.visible = false;
+    this.sync();
+  }
+
+  /** Fades every row but this one (null: none). */
+  highlight(id: string | null) {
+    if (id === this.highlightId) return;
+    this.highlightId = id;
+    for (const row of this.rows.values()) dimGroup(row.group, id !== null && row.id !== id);
+    this.syncHandles();
+    this.requestRender();
+  }
+
+  /** Glides the camera to a standard view. */
+  flyTo(view: ViewName) {
+    const target = this.controls.target;
+    const offset = this.camera.position.clone().sub(target);
+    const r0 = offset.length() || 1;
+    const home = HOME_CAMERA;
+    const r1 = home.length();
+    let phi1 = Math.acos(home.z / r1);
+    let theta1 = Math.atan2(home.y, home.x);
+    if (view === "top") {
+      phi1 = 0.002; // straight down, x to the right and y up: the 2D graph
+      theta1 = -Math.PI / 2;
+    } else if (view === "front") {
+      phi1 = Math.PI / 2;
+      theta1 = -Math.PI / 2;
+    } else if (view === "side") {
+      phi1 = Math.PI / 2;
+      theta1 = 0;
+    }
+    const theta0 = Math.atan2(offset.y, offset.x);
+    // The short way round.
+    const dTheta = ((((theta1 - theta0 + Math.PI) % TWO_PI) + TWO_PI) % TWO_PI) - Math.PI;
+    this.tween = {
+      start: performance.now(),
+      duration: 520,
+      r0,
+      r1,
+      phi0: Math.acos(clamp(offset.z / r0, -1, 1)),
+      phi1,
+      theta0,
+      dTheta,
+      fromTarget: target.clone(),
+    };
+    this.requestRender();
+  }
+
+  private stepTween() {
+    const tw = this.tween!;
+    const k = clamp((performance.now() - tw.start) / tw.duration, 0, 1);
+    const e = k < 0.5 ? 4 * k * k * k : 1 - Math.pow(-2 * k + 2, 3) / 2;
+    const target = this.controls.target;
+    target.copy(tw.fromTarget).multiplyScalar(1 - e);
+    const r = tw.r0 + (tw.r1 - tw.r0) * e;
+    const phi = Math.max(0.002, tw.phi0 + (tw.phi1 - tw.phi0) * e);
+    const theta = tw.theta0 + tw.dTheta * e;
+    this.camera.position.set(
+      target.x + r * Math.sin(phi) * Math.cos(theta),
+      target.y + r * Math.sin(phi) * Math.sin(theta),
+      target.z + r * Math.cos(phi),
+    );
+    this.camera.lookAt(target);
+    if (k >= 1) {
+      this.tween = null;
+      this.controls.update();
+    }
+    this.requestRender();
   }
 
   zoomBy(factor: number) {
@@ -363,11 +722,13 @@ class Engine {
   }
 
   resetView() {
-    this.camera.position.copy(HOME_CAMERA);
-    this.controls.target.set(0, 0, 0);
-    this.controls.update();
-    this.domain = this.homeDomain();
-    this.applyDomain();
+    const home = this.homeDomain();
+    const d = this.domain;
+    if (home.cx !== d.cx || home.cy !== d.cy || home.cz !== d.cz || home.half !== d.half) {
+      this.domain = home;
+      this.applyDomain();
+    }
+    this.flyTo("home");
   }
 
   resize(width: number, height: number) {
@@ -390,7 +751,9 @@ class Engine {
     this.applyTheme();
     this.buildDecor();
     // Surface mesh lines are tinted for the theme.
-    for (const row of this.rows.values()) row.key = "";
+    for (const row of this.rows.values()) row.baseKey = "";
+    this.sliceDirty = true;
+    this.clearHover();
     this.sync();
   }
 
@@ -399,6 +762,10 @@ class Engine {
     this.scene.background = new THREE.Color(bg);
     // A halo in the background colour keeps numbers readable over lines and surfaces.
     this.labelHost.style.textShadow = `0 0 3px ${bg}, 0 0 3px ${bg}, 0 0 2px ${bg}`;
+    const hs = this.handleHost.style;
+    hs.setProperty("--g3d-bg", bg);
+    hs.setProperty("--g3d-tip", this.dark ? "rgba(15,23,42,.94)" : "rgba(255,255,255,.96)");
+    hs.setProperty("--g3d-fg", this.dark ? "#f8fafc" : "#0f172a");
   }
 
   // ── Input ──
@@ -416,6 +783,95 @@ class Engine {
     this.zoomBy(Math.exp(clamp(delta, -300, 300) * 0.0015));
   };
 
+  private setPointer(e: PointerEvent) {
+    const r = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
+  }
+
+  private onPointerDown = (e: PointerEvent) => {
+    this.tween = null; // taking hold of the view stops a glide
+    this.setPointer(e);
+    if (e.pointerType !== "mouse" && e.isPrimary) this.tapDown = { x: e.clientX, y: e.clientY };
+    // Touching the graph lets go of a point that was tapped.
+    const focused = document.activeElement;
+    if (focused instanceof HTMLElement && this.handleHost.contains(focused)) focused.blur();
+    if (e.pointerType === "mouse") this.clearHover();
+    else {
+      // A tap reads the point under the finger.
+      this.hoverDirty = true;
+      this.requestRender();
+    }
+  };
+
+  private onPointerMove = (e: PointerEvent) => {
+    this.setPointer(e);
+    if (e.pointerType !== "mouse") return;
+    if (e.buttons === 0) {
+      this.hoverDirty = true;
+      this.requestRender();
+    } else if (this.hover) this.clearHover();
+  };
+
+  private onPointerLeave = (e: PointerEvent) => {
+    if (e.pointerType === "mouse") this.clearHover();
+  };
+
+  // ── Point menu: right-click a point, or double-tap it, as on the 2D graph ──
+
+  private tapDown: { x: number; y: number } | null = null;
+  private lastTap: { t: number; x: number; y: number } | null = null;
+
+  private onContextMenu = (e: MouseEvent) => {
+    e.preventDefault();
+    this.openMenuFromCanvas(e.clientX, e.clientY);
+  };
+
+  private onPointerUp = (e: PointerEvent) => {
+    if (e.pointerType === "mouse" || !e.isPrimary || !this.tapDown) return;
+    const moved = Math.hypot(e.clientX - this.tapDown.x, e.clientY - this.tapDown.y) > 10;
+    this.tapDown = null;
+    if (moved) {
+      this.lastTap = null;
+      return;
+    }
+    if (this.isDoubleTap(e.clientX, e.clientY)) this.openMenuFromCanvas(e.clientX, e.clientY);
+  };
+
+  /** Two quick taps in the same place. */
+  private isDoubleTap(x: number, y: number): boolean {
+    const now = performance.now();
+    const last = this.lastTap;
+    if (last && now - last.t < 350 && Math.hypot(x - last.x, y - last.y) < 26) {
+      this.lastTap = null;
+      return true;
+    }
+    this.lastTap = { t: now, x, y };
+    return false;
+  }
+
+  /** The menu of the (not draggable) point under the pointer, if there is one. */
+  private openMenuFromCanvas(clientX: number, clientY: number) {
+    const dots: THREE.Object3D[] = [];
+    this.rowsGroup.traverse((o) => {
+      if (o.userData.pointRow) dots.push(o);
+    });
+    if (dots.length === 0) return;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.raycaster.params.Points.threshold = 0.05;
+    const hit = this.raycaster.intersectObjects(dots, false).find((h) => this.inBox(h.point) && h.index !== undefined);
+    if (!hit) return;
+    const attribute = (hit.object as THREE.Points).geometry.getAttribute("position");
+    const i = hit.index!;
+    this.openMenu(hit.object.userData.pointRow, [attribute.getX(i), attribute.getY(i), attribute.getZ(i)], i, clientX, clientY);
+  }
+
+  private openMenu(fnId: string, pos: Vec3, index: number, clientX: number, clientY: number) {
+    this.clearHover();
+    this.getProps().onPointMenu?.({ fnId, index, x: pos[0], y: pos[1], z: pos[2], clientX, clientY });
+  }
+
   // ── Drawing ──
 
   private requestRender = () => {
@@ -431,22 +887,47 @@ class Engine {
   private tick = () => {
     this.frame = 0;
     if (this.disposed) return;
+    // Coasting and auto-rotation: each step that moves the camera asks for the next frame.
+    if (this.tween) this.stepTween();
+    else this.controls.update();
     if (this.needsSync) {
       this.needsSync = false;
       this.syncRows();
     }
+    if (this.sliceDirty) {
+      this.sliceDirty = false;
+      this.buildSlice();
+    }
+    if (this.hoverDirty) {
+      this.hoverDirty = false;
+      this.pick();
+    }
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();
+    // Once the view has been still for a moment, fade the labels a surface hides.
+    window.clearTimeout(this.occlusionTimer);
+    this.occlusionTimer = window.setTimeout(this.computeOcclusion, 160);
   };
+
+  private toScreen(x: number, y: number, z: number, out: { x: number; y: number }): boolean {
+    const v = this.scratch.set(x, y, z).applyMatrix4(this.content.matrixWorld);
+    const inside = Math.abs(v.x) <= 1.2 && Math.abs(v.y) <= 1.2 && Math.abs(v.z) <= 1.2;
+    v.project(this.camera);
+    if (!inside || v.z > 1 || !Number.isFinite(v.x + v.y)) return false;
+    out.x = (v.x * 0.5 + 0.5) * this.width;
+    out.y = (-v.y * 0.5 + 0.5) * this.height;
+    return true;
+  }
 
   private updateLabels() {
     if (this.labelsDirty) {
       this.labelsDirty = false;
-      this.labelSpecs = [...this.decorLabels];
+      this.labelSpecs = [...this.decorLabels, ...this.sliceLabels];
       for (const row of this.rows.values()) this.labelSpecs.push(...row.labels);
       while (this.labelEls.length < this.labelSpecs.length) {
         const el = document.createElement("span");
-        el.style.cssText = "position:absolute;left:0;top:0;white-space:nowrap;line-height:1;will-change:transform";
+        el.style.cssText =
+          "position:absolute;left:0;top:0;white-space:nowrap;line-height:1;will-change:transform;transition:opacity .2s";
         this.labelHost.appendChild(el);
         this.labelEls.push(el);
       }
@@ -457,25 +938,56 @@ class Engine {
         el.style.color = spec.color || "";
         el.style.fontWeight = spec.strong ? "700" : "";
         el.style.fontSize = spec.strong ? "13px" : "";
+        el.style.opacity = spec.dim ? "0.2" : "";
       });
     }
-    const v = this.scratch;
-    const m = this.content.matrixWorld;
+    const at = { x: 0, y: 0 };
+    // Row labels already placed this frame (x, y, width), to keep the next ones off them.
+    const placed: number[] = [];
     for (let i = 0; i < this.labelSpecs.length; i++) {
       const el = this.labelEls[i];
-      const [x, y, z] = this.labelSpecs[i].pos;
-      v.set(x, y, z).applyMatrix4(m);
-      const inside = Math.abs(v.x) <= 1.2 && Math.abs(v.y) <= 1.2 && Math.abs(v.z) <= 1.2;
-      v.project(this.camera);
-      if (!inside || v.z > 1 || !Number.isFinite(v.x + v.y)) {
+      const spec = this.labelSpecs[i];
+      if (!this.toScreen(spec.pos[0], spec.pos[1], spec.pos[2], at)) {
+        el.style.display = "none";
+        continue;
+      }
+      // While its point is dragged, the readout over the handle says the same.
+      if (spec.besideRow && this.drag?.id === spec.besideRow) {
         el.style.display = "none";
         continue;
       }
       el.style.display = "";
-      const px = (v.x * 0.5 + 0.5) * this.width;
-      const py = (-v.y * 0.5 + 0.5) * this.height;
-      el.style.transform = `translate(-50%,-50%) translate(${px.toFixed(1)}px,${py.toFixed(1)}px)`;
+      let py = at.y;
+      // Beside the handle's halo, reading away from it.
+      const px = spec.besideRow ? at.x + 18 : at.x;
+      if (spec.nudge) {
+        const w = spec.text.length * 6.7 + 8;
+        for (let tries = 0; tries < 8; tries++) {
+          let clash = false;
+          const mid = spec.besideRow ? px + w / 2 : px;
+          for (let j = 0; j < placed.length; j += 3) {
+            if (Math.abs(mid - placed[j]) < (w + placed[j + 2]) / 2 && Math.abs(py - placed[j + 1]) < 13) {
+              clash = true;
+              break;
+            }
+          }
+          if (!clash) break;
+          py += 14;
+        }
+        placed.push(spec.besideRow ? px + w / 2 : px, py, w);
+      }
+      el.style.transform = `translate(${spec.besideRow ? "0" : "-50%"},-50%) translate(${px.toFixed(1)}px,${py.toFixed(1)}px)`;
     }
+
+    if (this.hover && this.toScreen(this.hover.local[0], this.hover.local[1], this.hover.local[2], at)) {
+      this.hoverDot.style.display = this.hoverTip.style.display = "";
+      this.hoverDot.style.transform = `translate(${(at.x - 5).toFixed(1)}px,${(at.y - 5).toFixed(1)}px)`;
+      this.hoverTip.style.transform = `translate(-50%,-100%) translate(${at.x.toFixed(1)}px,${(at.y - 12).toFixed(1)}px)`;
+    } else {
+      this.hoverDot.style.display = this.hoverTip.style.display = "none";
+    }
+
+    this.placeHandles();
   }
 
   // ── Box, axes and grid ──
@@ -612,13 +1124,13 @@ class Engine {
       seen.add(f.id);
 
       const dep = dependencyKey(f, p.functions, scope, fTime, p.variables);
-      // A row that follows the clock is redrawn every frame: keep it light while it plays.
-      const coarse = this.coarse || (p.animating && dep.includes("@"));
-      const key = [
+      const heavy = HEAVY_KINDS.has(kind);
+      const baseKey = [
         objectId(f.compiled ?? f.compiledOde),
         objectId(f.compiled2),
         kind,
         dep,
+        f.expr,
         f.color,
         f.fillColor,
         f.fillOpacity,
@@ -626,6 +1138,7 @@ class Engine {
         f.outlineWidth,
         f.showLabel,
         f.showPoint,
+        f.isDraggable,
         f.operator,
         f.tRange?.join(","),
         f.odeAxes?.join(","),
@@ -638,29 +1151,67 @@ class Engine {
         f.isPivotEnabled && f.transformPivot?.join(","),
         inDegrees,
         p.quality,
-        coarse,
+        heavy ? `${this.opts.colorMode},${this.opts.contours}` : "",
         domainKey,
       ].join("|");
 
       const existing = this.rows.get(f.id);
-      if (existing && existing.key === key) continue;
+      const same = !!existing && existing.baseKey === baseKey;
+      // A row that follows the clock is redrawn every frame: keep it light while it
+      // plays. A row at rest is drawn once more, finer, when nothing has changed for a moment.
+      const moving = this.coarse || (p.animating && dep.includes("@"));
+      const tier = !heavy ? 1 : moving ? 0 : same ? (this.fineReady ? 2 : Math.max(1, existing!.tier)) : 1;
+      if (same && existing!.tier === tier) continue;
       if (existing) this.removeRow(f.id);
 
-      const entry: RowEntry = { key, group: new THREE.Group(), labels: [] };
+      const entry: RowEntry = {
+        id: f.id,
+        color: f.color,
+        baseKey,
+        tier,
+        group: new THREE.Group(),
+        labels: [],
+        surfaces: [],
+      };
+      entry.group.userData.rowId = f.id;
+      this.building = entry;
       try {
-        this.buildRow(kind, f, scope, fTime, inDegrees, coarse, p, entry);
+        this.buildRow(kind, f, scope, fTime, inDegrees, tier, p, entry);
+        if (this.opts.contours) this.addContours(entry);
       } catch {
         // A row that fails to evaluate draws nothing, as in 2D.
       }
+      this.building = null;
       entry.group.traverse((o) => {
         o.frustumCulled = false;
       });
+      if (this.highlightId && this.highlightId !== f.id) dimGroup(entry.group, true);
       this.rowsGroup.add(entry.group);
       this.rows.set(f.id, entry);
       this.labelsDirty = true;
+      this.sliceDirty = true;
+      if (heavy && tier === 1) this.scheduleFine();
     }
 
     for (const id of [...this.rows.keys()]) if (!seen.has(id)) this.removeRow(id);
+
+    // A row rebuilt from the graph's state mid-drag is a step behind the pointer.
+    if (this.drag) {
+      const row = this.rows.get(this.drag.id);
+      if (row?.drag) this.placeDrag(row, this.drag.pos);
+    }
+    this.syncHandles();
+    this.buildGuides();
+    if (this.hover && !this.rows.has(this.hover.rowId)) this.clearHover();
+  }
+
+  private scheduleFine() {
+    this.fineReady = false;
+    window.clearTimeout(this.fineTimer);
+    this.fineTimer = window.setTimeout(() => {
+      this.fineReady = true;
+      this.sync();
+    }, 500);
   }
 
   private removeRow(id: string) {
@@ -670,6 +1221,7 @@ class Engine {
     disposeGroup(row.group);
     this.rows.delete(id);
     this.labelsDirty = true;
+    this.sliceDirty = true;
   }
 
   /** How a row is drawn in space; null if it isn't drawn at all. */
@@ -756,7 +1308,7 @@ class Engine {
     scope: any,
     fTime: number,
     inDegrees: boolean,
-    coarse: boolean,
+    tier: number,
     p: Graph3DProps,
     entry: RowEntry,
   ) {
@@ -764,9 +1316,9 @@ class Engine {
     const { cx, cy, cz, half } = this.domain;
     const q = clamp(p.quality || 14, 1, 30);
     const curveSamples = clamp(q * 60, 240, 1800);
-    const surfaceCells = Math.round(clamp(q * 6, 24, 120) * (coarse ? 0.5 : 1));
-    const isoCells = Math.round(clamp(q * 2.6, 14, 52) * (coarse ? 0.6 : 1));
-    const planeCells = Math.round(clamp(q * 10, 60, 220) * (coarse ? 0.5 : 1));
+    const surfaceCells = Math.min(180, Math.round(clamp(q * 6, 24, 120) * [0.5, 1, 1.6][tier]));
+    const isoCells = Math.min(64, Math.round(clamp(q * 2.6, 14, 52) * [0.6, 1, 1.3][tier]));
+    const planeCells = Math.round(clamp(q * 10, 60, 220) * [0.5, 1, 1.5][tier]);
     const angleUnit = inDegrees ? 180 / Math.PI : 1;
     const s = Object.create(scope);
     const add = (o: THREE.Object3D | null) => {
@@ -1141,18 +1693,38 @@ class Engine {
 
   private addPoints(entry: RowEntry, f: MathFunction, pts: Vec3[]) {
     pts = pts.filter((pt) => Number.isFinite(pt[0] + pt[1] + pt[2]));
-    if (f.showPoint !== false) {
+    const literal = f.expr.match(LITERAL_POINT);
+    const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1] ?? "";
+    // A single point written as plain numbers, not moved by a transform, can be
+    // dragged. Flat points follow the row's own "draggable" switch, as in 2D.
+    const moved = !!f.isTransformable || !!f.transformRotate || !!f.transformTranslate?.some(Boolean);
+    entry.isPoint = true;
+    if (literal && !moved && f.showPoint !== false && pointDraggable(f)) {
+      // Read straight from the expression: a dropped point is where it was dropped,
+      // even before the row is compiled again.
+      const nums = (f.expr.slice(literal[1].length).match(/-?(?:\d+\.?\d*|\.\d+)(?:e-?\d+)?/g) ?? []).map(Number);
+      if (nums.length >= 2 && nums.every(Number.isFinite)) {
+        pts = [[nums[0], nums[1], nums[2] ?? 0]];
+        // Drawn as an on-screen handle (see syncHandles), not in the scene.
+        entry.drag = { prefix: literal[1] || "", name, three: literal[2] !== undefined, pos: [...pts[0]] };
+      }
+    }
+    if (!entry.drag && f.showPoint !== false) {
       const dots = this.points(pts, f.color);
-      if (dots) entry.group.add(dots);
+      if (dots) {
+        dots.userData.pointRow = f.id;
+        entry.group.add(dots);
+      }
     }
     if (!f.showLabel) return;
-    const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1];
     for (const pt of pts) {
-      const lift = 0.07 * this.domain.half;
+      const lift = entry.drag ? 0 : 0.07 * this.domain.half;
       entry.labels.push({
         pos: [pt[0], pt[1], pt[2] + lift],
         text: `${name ? `${name} ` : ""}(${pt.map(formatCoord).join(", ")})`,
         color: f.color,
+        nudge: true,
+        besideRow: entry.drag ? f.id : undefined,
       });
     }
   }
@@ -1215,17 +1787,20 @@ class Engine {
     const black = new THREE.Color(0, 0, 0);
     const c = new THREE.Color();
     const colors = new Float32Array(positions.length);
+    const byHeight = this.opts.colorMode === "height";
     for (let i = 0; i < positions.length; i += 3) {
       const h = clamp((positions[i + 2] - cz) / half, -1, 1);
-      c.copy(base).lerp(h > 0 ? white : black, Math.abs(h) * (h > 0 ? 0.4 : 0.35));
+      if (byHeight) heightColor((h + 1) / 2, c);
+      else c.copy(base).lerp(h > 0 ? white : black, Math.abs(h) * (h > 0 ? 0.4 : 0.35));
       colors[i] = c.r;
       colors[i + 1] = c.g;
       colors[i + 2] = c.b;
     }
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
+    this.building?.surfaces.push({ positions, index });
     const opacity = f.fillOpacity !== undefined ? clamp(f.fillOpacity, 0.05, 1) : 0.86;
-    return new THREE.Mesh(
+    const mesh = new THREE.Mesh(
       geometry,
       new THREE.MeshPhongMaterial({
         vertexColors: true,
@@ -1240,6 +1815,8 @@ class Engine {
         polygonOffsetUnits: 1,
       }),
     );
+    mesh.userData.surface = true;
+    return mesh;
   }
 
   /** A surface from a function of two parameters, with a light mesh drawn over it. */
@@ -1288,7 +1865,8 @@ class Engine {
     if (index.length === 0) return;
     group.add(this.surfaceMesh(positions, index, f));
 
-    // Mesh lines: every few samples, both ways.
+    // Mesh lines: every few samples, both ways. Contours take their place when they are on.
+    if (this.opts.contours) return;
     const stride = Math.max(1, Math.round(n / 14));
     const wire: number[] = [];
     const seg = (k0: number, k1: number) => {
@@ -1538,18 +2116,685 @@ class Engine {
     );
   }
 
+  // ── Contours and slices ──
+
+  /** Level curves of a row's surfaces, on the surface and as shadows on the floor of the box. */
+  private addContours(entry: RowEntry) {
+    if (entry.surfaces.length === 0) return;
+    const { cz, half } = this.domain;
+    const step = niceStep(half) / 2;
+    const lo = cz - half;
+    const hi = cz + half;
+    const floorZ = lo + 0.004 * half;
+    const onSurface: number[] = [];
+    const onFloor: number[] = [];
+    const floorColors: number[] = [];
+    const base = toColor(entry.color);
+    const c = new THREE.Color();
+    const byHeight = this.opts.colorMode === "height";
+    for (const { positions, index } of entry.surfaces) {
+      for (let t = 0; t < index.length; t += 3) {
+        const a = index[t];
+        const b = index[t + 1];
+        const d = index[t + 2];
+        const za = positions[a * 3 + 2];
+        const zb = positions[b * 3 + 2];
+        const zd = positions[d * 3 + 2];
+        const k0 = Math.ceil(Math.max(lo, Math.min(za, zb, zd)) / step);
+        const k1 = Math.floor(Math.min(hi, Math.max(za, zb, zd)) / step);
+        for (let k = k0; k <= k1; k++) {
+          const level = k * step;
+          cutTriangle(positions, a, b, d, 2, level, (s) => {
+            onSurface.push(s[0], s[1], s[2], s[3], s[4], s[5]);
+            onFloor.push(s[0], s[1], floorZ, s[3], s[4], floorZ);
+            if (byHeight) heightColor((level - lo) / (2 * half), c);
+            else c.copy(base);
+            floorColors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+          });
+        }
+      }
+    }
+    if (onSurface.length === 0) return;
+    const surfaceGeometry = new THREE.BufferGeometry();
+    surfaceGeometry.setAttribute("position", new THREE.Float32BufferAttribute(onSurface, 3));
+    entry.group.add(
+      new THREE.LineSegments(
+        surfaceGeometry,
+        new THREE.LineBasicMaterial({
+          color: this.dark ? 0xffffff : 0x0f172a,
+          transparent: true,
+          opacity: this.dark ? 0.6 : 0.5,
+          clippingPlanes: this.planes,
+        }),
+      ),
+    );
+    const floorGeometry = new THREE.BufferGeometry();
+    floorGeometry.setAttribute("position", new THREE.Float32BufferAttribute(onFloor, 3));
+    floorGeometry.setAttribute("color", new THREE.Float32BufferAttribute(floorColors, 3));
+    entry.group.add(
+      new THREE.LineSegments(
+        floorGeometry,
+        new THREE.LineBasicMaterial({ vertexColors: true, transparent: true, opacity: 0.9, clippingPlanes: this.planes }),
+      ),
+    );
+  }
+
+  /** The cutting plane, and the curve it cuts out of every surface. */
+  private buildSlice() {
+    disposeGroup(this.sliceGroup);
+    this.sliceGroup.clear();
+    this.sliceLabels = [];
+    this.labelsDirty = true;
+    const slice = this.opts.slice;
+    if (!slice) return;
+    const { cx, cy, cz, half } = this.domain;
+    const centre = [cx, cy, cz];
+    const axis = slice.axis;
+    const b = (axis + 1) % 3;
+    const c = (axis + 2) % 3;
+    const value = centre[axis] + slice.at * half * 0.999;
+    const color = new THREE.Color(AXIS_COLORS[axis]);
+
+    const corner = (sb: number, sc: number): number[] => {
+      const pt = [0, 0, 0];
+      pt[axis] = value;
+      pt[b] = centre[b] + sb * half;
+      pt[c] = centre[c] + sc * half;
+      return pt;
+    };
+    const quad = [corner(-1, -1), corner(1, -1), corner(1, 1), corner(-1, 1)];
+    const planeGeometry = new THREE.BufferGeometry();
+    planeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(quad.flat(), 3));
+    planeGeometry.setIndex([0, 1, 2, 0, 2, 3]);
+    this.sliceGroup.add(
+      new THREE.Mesh(
+        planeGeometry,
+        new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.1, side: THREE.DoubleSide, depthWrite: false }),
+      ),
+    );
+    const outline = new THREE.BufferGeometry();
+    outline.setAttribute(
+      "position",
+      new THREE.Float32BufferAttribute([0, 1, 1, 2, 2, 3, 3, 0].flatMap((i) => quad[i]), 3),
+    );
+    this.sliceGroup.add(
+      new THREE.LineSegments(outline, new THREE.LineBasicMaterial({ color, transparent: true, opacity: 0.8 })),
+    );
+    this.sliceLabels.push({
+      pos: corner(1, 1) as Vec3,
+      text: `${AXIS_NAMES[axis]} = ${formatCoord(value)}`,
+      color: AXIS_COLORS[axis],
+      strong: true,
+    });
+
+    // The cross-sections stand out from their surface: lighter on dark, darker on light.
+    const contrast = new THREE.Color(this.dark ? 0xffffff : 0x000000);
+    for (const row of this.rows.values()) {
+      const segments: number[] = [];
+      for (const { positions, index } of row.surfaces) {
+        for (let t = 0; t < index.length; t += 3) {
+          cutTriangle(positions, index[t], index[t + 1], index[t + 2], axis, value, (s) => {
+            segments.push(s[0], s[1], s[2], s[3], s[4], s[5]);
+          });
+        }
+      }
+      if (segments.length === 0) continue;
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(segments);
+      const line = new LineSegments2(
+        geometry,
+        new LineMaterial({
+          color: toColor(row.color).lerp(contrast, 0.55),
+          linewidth: 4,
+          clippingPlanes: this.planes,
+        }),
+      );
+      line.frustumCulled = false;
+      line.renderOrder = 2;
+      this.sliceGroup.add(line);
+    }
+  }
+
+  // ── Pointer: readout, tangent plane, dragging ──
+
+  private inBox(p: THREE.Vector3): boolean {
+    return Math.abs(p.x) <= 1.004 && Math.abs(p.y) <= 1.004 && Math.abs(p.z) <= 1.004;
+  }
+
+  /** Finds what is under the pointer and shows its coordinates there. */
+  private pick() {
+    const targets: THREE.Object3D[] = [];
+    this.rowsGroup.traverse((o: any) => {
+      if (o.isMesh || o.isPoints) targets.push(o);
+    });
+    if (targets.length === 0) return this.clearHover();
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.raycaster.params.Points.threshold = 0.035;
+    let hits: THREE.Intersection[];
+    try {
+      hits = this.raycaster.intersectObjects(targets, false);
+    } catch {
+      return this.clearHover();
+    }
+    // Nearest first; a point or curve lying on a surface wins over the surface.
+    const rank = (o: any) => (o.isPoints ? 2 : o.isLineSegments2 ? 1 : 0);
+    let best: { hit: THREE.Intersection; point: THREE.Vector3; rank: number } | null = null;
+    for (const hit of hits) {
+      const point: THREE.Vector3 = (hit as any).pointOnLine ?? hit.point;
+      if (!this.inBox(point)) continue; // clipped away: not on screen
+      if (best && hit.distance > best.hit.distance + 0.06) break;
+      const r = rank(hit.object);
+      if (!best || r > best.rank) best = { hit, point, rank: r };
+    }
+    if (!best) return this.clearHover();
+
+    let owner: THREE.Object3D | null = best.hit.object;
+    while (owner && !owner.userData.rowId) owner = owner.parent;
+    const row = owner ? this.rows.get(owner.userData.rowId) : undefined;
+    if (!row) return this.clearHover();
+
+    const local = this.content.worldToLocal(best.point.clone());
+    this.hover = { local: [local.x, local.y, local.z], color: row.color, rowId: row.id };
+    const css = `#${toColor(row.color).getHexString()}`;
+    this.hoverDot.style.background = css;
+    this.hoverTip.textContent = `(${formatCoord(local.x)}, ${formatCoord(local.y)}, ${formatCoord(local.z)})`;
+    this.hoverTip.style.background = this.dark ? "rgba(15,23,42,.94)" : "rgba(255,255,255,.96)";
+    this.hoverTip.style.color = this.dark ? "#f8fafc" : "#0f172a";
+    this.hoverTip.style.borderColor = css;
+
+    const face = best.hit.face;
+    if (this.opts.tangent && best.hit.object.userData.surface && face) {
+      const normal = face.normal.clone().transformDirection(best.hit.object.matrixWorld);
+      // Towards the viewer.
+      if (normal.dot(this.scratch.copy(this.camera.position).sub(best.point)) < 0) normal.negate();
+      this.tangentGroup.position.copy(best.point);
+      this.tangentGroup.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+      (this.tangentPlane.material as THREE.MeshBasicMaterial).color.copy(toColor(row.color));
+      this.tangentArrow.setColor(this.dark ? 0xffffff : 0x0f172a);
+      this.tangentGroup.visible = true;
+    } else {
+      this.tangentGroup.visible = false;
+    }
+  }
+
+  private clearHover() {
+    this.hoverDirty = false;
+    if (!this.hover && !this.tangentGroup.visible) return;
+    this.hover = null;
+    this.tangentGroup.visible = false;
+    this.requestRender();
+  }
+
+  // ── Draggable points ──
+
+  /** One handle per draggable point; made, recoloured and removed as rows change. */
+  private syncHandles() {
+    for (const [id, h] of this.handles) {
+      if (this.rows.get(id)?.drag) continue;
+      if (this.drag?.id === id) this.drag = null;
+      h.wrap.remove();
+      this.handles.delete(id);
+      if (this.activeId === id) this.activeId = null;
+    }
+    for (const row of this.rows.values()) {
+      if (!row.drag) continue;
+      let h = this.handles.get(row.id);
+      if (!h) {
+        h = this.makeHandle(row.id);
+        this.handles.set(row.id, h);
+      }
+      h.wrap.style.setProperty("--c", `#${toColor(row.color).getHexString()}`);
+      const name = row.drag.name ? `Point ${row.drag.name}` : "Point";
+      h.dot.setAttribute(
+        "aria-label",
+        `${name} at (${row.drag.pos.map(formatCoord).join(", ")}). Arrow keys move it; Page Up and Page Down change its height.`,
+      );
+      // Drawn faintly with the rest of its row while another row is pointed at in the list.
+      h.wrap.dataset.faded = this.highlightId && this.highlightId !== row.id ? "1" : "";
+    }
+  }
+
+  private makeHandle(id: string): Handle {
+    const wrap = document.createElement("div");
+    wrap.className = "g3d-handle";
+    const stem = document.createElement("div");
+    stem.className = "g3d-stem";
+    stem.dataset.captureExclude = "";
+    const grip = document.createElement("div");
+    grip.className = "g3d-grip";
+    grip.title = "Drag up or down to change the height (z)";
+    grip.innerHTML = GRIP_ICON;
+    grip.dataset.captureExclude = "";
+    const dot = document.createElement("div");
+    dot.className = "g3d-dot";
+    dot.tabIndex = 0;
+    dot.setAttribute("role", "slider");
+    dot.title = "Drag to move · right-click or double-tap for options";
+    const tip = document.createElement("div");
+    tip.className = "g3d-tip";
+    tip.dataset.captureExclude = "";
+    wrap.append(stem, grip, dot, tip);
+    this.handleHost.appendChild(wrap);
+    const h: Handle = { wrap, dot, stem, grip, tip, x: 0, y: 0 };
+
+    let tapDown: { x: number; y: number } | null = null;
+    const start = (e: PointerEvent, grip: boolean) => {
+      if (e.button !== 0) return;
+      tapDown = !grip && e.pointerType !== "mouse" ? { x: e.clientX, y: e.clientY } : null;
+      e.preventDefault();
+      e.stopPropagation();
+      dot.focus({ preventScroll: true });
+      (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+      this.beginDrag(id, e, grip);
+    };
+    const move = (e: PointerEvent) => {
+      if (this.drag?.id !== id) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.dragTo(e.clientX, e.clientY, e.shiftKey);
+    };
+    const end = (e: PointerEvent) => {
+      if (this.drag?.id !== id) return;
+      e.stopPropagation();
+      try {
+        (e.currentTarget as HTMLElement).releasePointerCapture(e.pointerId);
+      } catch {}
+      this.endDrag();
+      // A double tap on a point opens its menu.
+      const tapped = !!tapDown && Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y) <= 10;
+      tapDown = null;
+      if (e.type === "pointerup" && tapped && this.isDoubleTap(e.clientX, e.clientY)) this.openHandleMenu(id, e.clientX, e.clientY);
+    };
+    dot.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      this.endDrag();
+      this.openHandleMenu(id, e.clientX, e.clientY);
+    });
+    for (const el of [dot, grip, stem]) {
+      el.addEventListener("pointerdown", (e) => start(e, el !== dot));
+      el.addEventListener("pointermove", move);
+      el.addEventListener("pointerup", end);
+      el.addEventListener("pointercancel", end);
+      // The graph around must not scroll or zoom from a wheel over a handle either.
+      el.addEventListener("wheel", (e) => this.renderer.domElement.dispatchEvent(new WheelEvent(e.type, e)), { passive: true });
+    }
+    const activate = (on: boolean) => {
+      const next = on ? id : this.activeId === id ? null : this.activeId;
+      if (next === this.activeId) return;
+      this.activeId = next;
+      this.buildGuides();
+      this.requestRender();
+    };
+    wrap.addEventListener("pointerenter", () => activate(true));
+    wrap.addEventListener("pointerleave", () => {
+      if (document.activeElement !== dot) activate(false);
+    });
+    dot.addEventListener("focus", () => activate(true));
+    dot.addEventListener("blur", () => activate(false));
+    dot.addEventListener("keydown", (e) => this.onHandleKey(id, e));
+    return h;
+  }
+
+  /** Puts each handle over its point, and its height grip along the z-axis as seen on screen. */
+  private placeHandles() {
+    if (this.handles.size === 0) return;
+    const at = { x: 0, y: 0 };
+    const up = { x: 0, y: 0 };
+    const zUnit = 0.16 * this.domain.half;
+    for (const [id, h] of this.handles) {
+      const pos = this.rows.get(id)?.drag?.pos;
+      if (!pos || !this.toScreen(pos[0], pos[1], pos[2], at)) {
+        h.wrap.style.display = "none";
+        continue;
+      }
+      h.wrap.style.display = "";
+      h.x = at.x;
+      h.y = at.y;
+      h.wrap.style.translate = `${at.x.toFixed(1)}px ${at.y.toFixed(1)}px`;
+      if (h.wrap.dataset.faded) h.wrap.style.opacity = "0.15";
+      else if (h.wrap.style.opacity === "0.15") h.wrap.style.opacity = "";
+
+      // Up the z-axis on screen; straight up the screen when looking down the z-axis.
+      let dx = 0;
+      let dy = -1;
+      const raised = this.toScreen(pos[0], pos[1], pos[2] + zUnit, up) || this.toScreen(pos[0], pos[1], pos[2] - zUnit, up);
+      if (raised) {
+        const sign = this.toScreen(pos[0], pos[1], pos[2] + zUnit, up) ? 1 : -1;
+        const len = Math.hypot(up.x - at.x, up.y - at.y);
+        if (len > 6) {
+          dx = (sign * (up.x - at.x)) / len;
+          dy = (sign * (up.y - at.y)) / len;
+        }
+      }
+      const r0 = 10;
+      const r1 = GRIP_DISTANCE - 13;
+      h.grip.style.translate = `${(dx * GRIP_DISTANCE).toFixed(1)}px ${(dy * GRIP_DISTANCE).toFixed(1)}px`;
+      h.stem.style.translate = `${(dx * r0).toFixed(1)}px ${(dy * r0).toFixed(1)}px`;
+      h.stem.style.width = `${r1 - r0}px`;
+      h.stem.style.rotate = `${Math.atan2(dy, dx)}rad`;
+      // The readout sits on the side away from the grip.
+      h.tip.style.top = dy < 0 ? "38px" : "-24px";
+      h.tip.style.transform = dy < 0 ? "translate(-50%, 0)" : "translate(-50%, -100%)";
+    }
+  }
+
+  private beginDrag(id: string, e: PointerEvent, grip: boolean) {
+    const row = this.rows.get(id);
+    const h = this.handles.get(id);
+    if (!row?.drag || !h) return;
+    this.tween = null;
+    this.clearHover();
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.drag = {
+      id,
+      pos: [...row.drag.pos],
+      start: [...row.drag.pos],
+      startX: e.clientX,
+      startY: e.clientY,
+      offX: grip ? 0 : e.clientX - (rect.left + h.x),
+      offY: grip ? 0 : e.clientY - (rect.top + h.y),
+      mode: "floor",
+      grip,
+      zAxis: [0, -GRIP_DISTANCE],
+      zUnit: 0.16 * this.domain.half,
+    };
+    this.setDragMode(e.clientX, e.clientY, this.wantedMode(e.shiftKey));
+    // Turning the graph under a moving point would fight the hand moving it.
+    this.controls.autoRotate = false;
+    h.wrap.classList.add("dragging");
+    this.updateTip();
+    this.buildGuides();
+    this.requestRender();
+  }
+
+  private endDrag() {
+    const drag = this.drag;
+    if (!drag) return;
+    this.drag = null;
+    this.controls.autoRotate = this.opts.autoRotate;
+    const h = this.handles.get(drag.id);
+    h?.wrap.classList.remove("dragging", "z");
+    this.buildGuides();
+    this.requestRender();
+  }
+
+  /**
+   * Which way the point moves: up and down on the grip or with Shift; otherwise across
+   * its horizontal plane, unless that plane is seen edge-on (a view from the side), when
+   * it moves in the upright plane facing the camera and so follows the pointer anyway.
+   */
+  private wantedMode(shift: boolean): DragState["mode"] {
+    if (this.drag?.grip || shift) return "z";
+    const viewDir = this.camera.getWorldDirection(new THREE.Vector3());
+    return Math.abs(viewDir.z) < 0.3 ? "screen" : "floor";
+  }
+
+  /** Starts a new stretch of the drag, from where the point is now, in `mode`. */
+  private setDragMode(clientX: number, clientY: number, mode: DragState["mode"]) {
+    const d = this.drag!;
+    d.mode = mode;
+    d.start = [...d.pos];
+    d.startX = clientX;
+    d.startY = clientY;
+    const at = { x: 0, y: 0 };
+    const up = { x: 0, y: 0 };
+    const [x, y, z] = d.pos;
+    if (this.toScreen(x, y, z, at) && this.toScreen(x, y, z + d.zUnit, up) && Math.hypot(up.x - at.x, up.y - at.y) > 6) {
+      d.zAxis = [up.x - at.x, up.y - at.y];
+    } else {
+      d.zAxis = [0, -GRIP_DISTANCE];
+    }
+    this.handles.get(d.id)?.wrap.classList.toggle("z", mode === "z");
+  }
+
+  private dragTo(clientX: number, clientY: number, shift: boolean) {
+    const d = this.drag;
+    const row = d ? this.rows.get(d.id) : undefined;
+    if (!d || !row?.drag) return;
+    // Shift pressed or let go mid-drag switches between up-and-down and across.
+    const wanted = this.wantedMode(shift);
+    if ((wanted === "z") !== (d.mode === "z")) this.setDragMode(clientX, clientY, wanted);
+
+    const { cx, cy, cz, half } = this.domain;
+    const snap = niceStep(half) / 10;
+    const settle = (v: number, centre: number) =>
+      Number((Math.round(clamp(v, centre - half, centre + half) / snap) * snap).toFixed(8));
+    let next: Vec3;
+    if (d.mode === "z") {
+      const [sx, sy] = d.zAxis;
+      const along = ((clientX - d.startX) * sx + (clientY - d.startY) * sy) / (sx * sx + sy * sy);
+      next = [d.start[0], d.start[1], settle(d.start[2] + along * d.zUnit, cz)];
+    } else {
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.pointer.set(
+        ((clientX - d.offX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - d.offY - rect.top) / rect.height) * 2 + 1,
+      );
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const world = new THREE.Vector3(...d.start).applyMatrix4(this.content.matrixWorld);
+      const normal = new THREE.Vector3(0, 0, 1);
+      if (d.mode === "screen") {
+        this.camera.getWorldDirection(normal);
+        normal.z = 0;
+        if (normal.lengthSq() < 1e-6) return;
+        normal.normalize();
+      }
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(normal, world);
+      const hit = this.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+      if (!hit) return;
+      const local = this.content.worldToLocal(hit);
+      next =
+        d.mode === "floor"
+          ? [settle(local.x, cx), settle(local.y, cy), d.start[2]]
+          : [settle(local.x, cx), settle(local.y, cy), settle(local.z, cz)];
+    }
+    this.commitPoint(row, next);
+  }
+
+  /** Arrow keys move a focused point across the floor; Page Up / Down (or Shift + Up / Down) raise it. */
+  private onHandleKey(id: string, e: KeyboardEvent) {
+    const row = this.rows.get(id);
+    if (!row?.drag) return;
+    const step = (niceStep(this.domain.half) / 10) * (e.altKey ? 0.1 : 1);
+    const [x, y, z] = row.drag.pos;
+    let next: Vec3 | null = null;
+    if (e.key === "ArrowLeft") next = [x - step, y, z];
+    else if (e.key === "ArrowRight") next = [x + step, y, z];
+    else if (e.key === "ArrowUp") next = e.shiftKey ? [x, y, z + step] : [x, y + step, z];
+    else if (e.key === "ArrowDown") next = e.shiftKey ? [x, y, z - step] : [x, y - step, z];
+    else if (e.key === "PageUp") next = [x, y, z + step];
+    else if (e.key === "PageDown") next = [x, y, z - step];
+    else if (e.key === "Escape") (e.currentTarget as HTMLElement).blur();
+    else if (e.key === "ContextMenu" || (e.shiftKey && e.key === "F10") || e.key === "Enter") {
+      e.preventDefault();
+      e.stopPropagation();
+      const h = this.handles.get(id);
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      if (h) this.openHandleMenu(id, rect.left + h.x, rect.top + h.y);
+      return;
+    }
+    if (!next) return;
+    e.preventDefault();
+    e.stopPropagation();
+    this.commitPoint(row, next.map((v) => Number(v.toFixed(8))) as Vec3);
+  }
+
+  private openHandleMenu(id: string, clientX: number, clientY: number) {
+    const pos = this.rows.get(id)?.drag?.pos;
+    if (pos) this.openMenu(id, pos, 0, clientX, clientY);
+  }
+
+  /** Moves a point and writes its new position back to its row. */
+  private commitPoint(row: RowEntry, next: Vec3) {
+    const d = row.drag!;
+    if (next[0] === d.pos[0] && next[1] === d.pos[1] && next[2] === d.pos[2]) return;
+    if (this.drag?.id === row.id) this.drag.pos = next;
+    this.placeDrag(row, next);
+    const three = d.three || next[2] !== 0;
+    this.getProps().onMovePoint?.(row.id, `${d.prefix}[${next[0]}, ${next[1]}${three ? `, ${next[2]}` : ""}]`);
+    this.updateTip();
+    this.buildGuides();
+    this.requestRender();
+  }
+
+  private updateTip() {
+    const d = this.drag;
+    const row = d ? this.rows.get(d.id) : undefined;
+    const h = d ? this.handles.get(d.id) : undefined;
+    if (!row?.drag || !h) return;
+    const name = row.drag.name ? `${row.drag.name} ` : "";
+    h.tip.textContent = `${name}(${row.drag.pos.map(formatCoord).join(", ")})`;
+  }
+
+  private placeDrag(row: RowEntry, pos: Vec3) {
+    const d = row.drag;
+    if (!d) return;
+    d.pos = [...pos];
+    const label = row.labels[0];
+    if (label) {
+      label.pos = [pos[0], pos[1], pos[2]];
+      label.text = `${d.name ? `${d.name} ` : ""}(${pos.map(formatCoord).join(", ")})`;
+      this.labelsDirty = true;
+    }
+  }
+
+  /**
+   * While a point is pointed at or dragged: a line down to the floor, and from there to
+   * the x- and y-axes, so its three coordinates can be read off the axes.
+   */
+  private buildGuides() {
+    disposeGroup(this.guideGroup);
+    this.guideGroup.clear();
+    const id = this.drag?.id ?? this.activeId;
+    const row = id ? this.rows.get(id) : undefined;
+    if (!row?.drag) return;
+    const [x, y, z] = row.drag.pos;
+    const { cx, cy, cz, half } = this.domain;
+    // The floor is the plane the grid and the x- and y-axes lie in.
+    const floor = clamp(0, cz - half, cz + half);
+    const ax = clamp(0, cx - half, cx + half);
+    const ay = clamp(0, cy - half, cy + half);
+    const segments = [
+      [x, y, z, x, y, floor],
+      [x, y, floor, x, ay, floor],
+      [x, y, floor, ax, y, floor],
+    ].filter((s) => Math.hypot(s[3] - s[0], s[4] - s[1], s[5] - s[2]) > 1e-9);
+    const color = toColor(row.color);
+    if (segments.length > 0) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(segments.flat(), 3));
+      const lines = new THREE.LineSegments(
+        geometry,
+        new THREE.LineDashedMaterial({
+          color,
+          dashSize: 0.045 * half,
+          gapSize: 0.03 * half,
+          transparent: true,
+          opacity: 0.9,
+          depthTest: false,
+        }),
+      );
+      lines.computeLineDistances();
+      lines.renderOrder = 5;
+      this.guideGroup.add(lines);
+    }
+    // Where it stands on the floor, and where that meets each axis.
+    const marks = [
+      [x, y, floor],
+      [x, ay, floor],
+      [ax, y, floor],
+    ];
+    const markGeometry = new THREE.BufferGeometry();
+    markGeometry.setAttribute("position", new THREE.Float32BufferAttribute(marks.flat(), 3));
+    const dots = new THREE.Points(
+      markGeometry,
+      new THREE.PointsMaterial({
+        color,
+        size: 7,
+        sizeAttenuation: false,
+        map: this.disc,
+        alphaTest: 0.5,
+        transparent: true,
+        opacity: 0.9,
+        depthTest: false,
+      }),
+    );
+    dots.renderOrder = 5;
+    this.guideGroup.add(dots);
+    this.guideGroup.traverse((o) => {
+      o.frustumCulled = false;
+    });
+  }
+
+  /** Marks the labels a surface hides, so they are drawn faintly. */
+  private computeOcclusion = () => {
+    if (this.disposed || this.labelsDirty || this.labelEls.length !== this.labelSpecs.length) return;
+    const surfaces: THREE.Object3D[] = [];
+    let triangles = 0;
+    this.rowsGroup.traverse((o: any) => {
+      if (!o.userData.surface) return;
+      surfaces.push(o);
+      triangles += (o.geometry.index?.count ?? 0) / 3;
+    });
+    // Too much to test without a pause the user would notice: leave the labels be.
+    const affordable = triangles * this.labelSpecs.length < 6e6;
+    const eye = this.camera.position;
+    const direction = new THREE.Vector3();
+    this.labelSpecs.forEach((spec, i) => {
+      let hidden = false;
+      if (surfaces.length > 0 && affordable) {
+        const [x, y, z] = spec.pos;
+        direction.set(x, y, z).applyMatrix4(this.content.matrixWorld).sub(eye);
+        const distance = direction.length();
+        this.occluder.set(eye, direction.divideScalar(distance));
+        this.occluder.far = distance - 0.04;
+        hidden = this.occluder.intersectObjects(surfaces, false).some((h) => this.inBox(h.point));
+      }
+      if (hidden !== !!spec.dim) {
+        spec.dim = hidden;
+        this.labelEls[i].style.opacity = hidden ? "0.2" : "";
+      }
+    });
+    // A point behind a surface is drawn faintly too; it can still be dragged.
+    for (const [id, h] of this.handles) {
+      if (h.wrap.dataset.faded) continue;
+      const pos = this.rows.get(id)?.drag?.pos;
+      let hidden = false;
+      if (pos && surfaces.length > 0 && affordable && this.drag?.id !== id) {
+        direction.set(pos[0], pos[1], pos[2]).applyMatrix4(this.content.matrixWorld).sub(eye);
+        const distance = direction.length();
+        this.occluder.set(eye, direction.divideScalar(distance));
+        this.occluder.far = distance - 0.04;
+        hidden = this.occluder.intersectObjects(surfaces, false).some((hit) => this.inBox(hit.point));
+      }
+      h.wrap.style.opacity = hidden ? "0.45" : "";
+    }
+  };
+
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.frame);
     window.clearTimeout(this.coarseTimer);
+    window.clearTimeout(this.fineTimer);
+    window.clearTimeout(this.occlusionTimer);
+    this.hoverDot.remove();
+    this.hoverTip.remove();
     const canvas = this.renderer.domElement;
     canvas.removeEventListener("wheel", this.onWheel);
+    canvas.removeEventListener("pointerdown", this.onPointerDown);
+    canvas.removeEventListener("pointermove", this.onPointerMove);
+    canvas.removeEventListener("pointerleave", this.onPointerLeave);
+    canvas.removeEventListener("pointerup", this.onPointerUp);
+    canvas.removeEventListener("contextmenu", this.onContextMenu);
     this.controls.dispose();
     disposeGroup(this.scene);
     this.disc.dispose();
     this.renderer.dispose();
     canvas.remove();
     this.labelEls.forEach((el) => el.remove());
+    this.handles.forEach((h) => h.wrap.remove());
+    this.handles.clear();
   }
 }
 
@@ -1557,26 +2802,84 @@ class Engine {
 
 const BUTTON =
   "size-8 inline-flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors";
+const CHIP =
+  "flex-1 px-1.5 py-1 rounded-md text-[11px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors";
+const CHIP_ON = "flex-1 px-1.5 py-1 rounded-md text-[11px] font-semibold text-white bg-blue-600 transition-colors";
+const HEADING = "px-1 pt-2 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-400 dark:text-slate-500";
+
+/** Rows that show what the third axis is for. */
+const EXAMPLES: { name: string; expr: string; patch?: Partial<MathFunction> }[] = [
+  { name: "Paraboloid", expr: "z = (x^2 + y^2)/4 - 3" },
+  { name: "Saddle", expr: "z = (x^2 - y^2)/5" },
+  { name: "Ripples", expr: "z = 2*sin(sqrt(x^2 + y^2))" },
+  { name: "Sphere", expr: "x^2 + y^2 + z^2 = 16" },
+  { name: "Torus", expr: "[(3 + cos(v))*cos(u), (3 + cos(v))*sin(u), sin(v)]" },
+  { name: "Helix", expr: "[3cos(t), 3sin(t), t/2 - 3]", patch: { tRange: [0, 4 * Math.PI] } },
+];
+
+const VIEWS: { id: ViewName; label: string; title: string }[] = [
+  { id: "home", label: "3D", title: "The starting view" },
+  { id: "top", label: "Top", title: "From above: the flat graph, x across and y up" },
+  { id: "front", label: "Front", title: "From the front: x across and z up" },
+  { id: "side", label: "Side", title: "From the side: y across and z up" },
+];
+
+const Switch: React.FC<{ label: string; title: string; on: boolean; onChange: (on: boolean) => void }> = ({
+  label,
+  title,
+  on,
+  onChange,
+}) => (
+  <button
+    type="button"
+    role="switch"
+    aria-checked={on}
+    title={title}
+    onClick={() => onChange(!on)}
+    className="flex items-center justify-between gap-3 w-full px-1 py-1.5 rounded-md text-[11px] text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+  >
+    <span>{label}</span>
+    <span className={`relative w-7 h-4 shrink-0 rounded-full transition-colors ${on ? "bg-blue-600" : "bg-slate-300 dark:bg-slate-600"}`}>
+      <i className={`absolute top-0.5 size-3 rounded-full bg-white shadow transition-all ${on ? "left-3.5" : "left-0.5"}`} />
+    </span>
+  </button>
+);
 
 const Graph3D: React.FC<Graph3DProps> = (props) => {
+  const rootRef = useRef<HTMLDivElement>(null);
   const hostRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLDivElement>(null);
+  const handleRef = useRef<HTMLDivElement>(null);
   const engineRef = useRef<Engine | null>(null);
   const propsRef = useRef(props);
   propsRef.current = props;
   const [failed, setFailed] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [domain, setDomain] = useState<Domain | null>(null);
+
+  const optionsKey = JSON.stringify(props.options ?? {});
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  const options = useMemo(() => readOptions(props.options), [optionsKey]);
+  const setOptions = (patch: Partial<Graph3DOptions>) => props.onOptionsChange?.({ ...options, ...patch });
 
   useEffect(() => {
     let engine: Engine;
     try {
-      engine = new Engine(hostRef.current!, labelRef.current!, () => propsRef.current);
+      engine = new Engine(hostRef.current!, labelRef.current!, handleRef.current!, () => propsRef.current);
     } catch (e) {
       console.error("3D graph could not start", e);
       setFailed(true);
       return;
     }
     engineRef.current = engine;
+    engine.onDomain = setDomain;
+    setDomain(engine.getDomain());
+    // Pointing at a row in the list fades the others here, as it does on the flat graph.
+    const root = rootRef.current!;
+    const onRowHover = (e: Event) => engine.highlight((e as CustomEvent).detail ?? null);
+    root.addEventListener("math-row-hover", onRowHover);
     return () => {
+      root.removeEventListener("math-row-hover", onRowHover);
       engineRef.current = null;
       engine.dispose();
     };
@@ -1590,14 +2893,22 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
     engineRef.current?.setTheme(props.dark);
   }, [props.dark]);
 
+  useEffect(() => {
+    engineRef.current?.setOptions(options);
+  }, [options]);
+
   // Every render may carry new rows, slider values or time. The engine compares each
   // row's key and rebuilds only what changed, once per frame.
   useEffect(() => {
     engineRef.current?.sync();
   });
 
+  const slice = options.slice;
+  const sliceValue = slice && domain ? [domain.cx, domain.cy, domain.cz][slice.axis] + slice.at * domain.half : 0;
+
   return (
     <div
+      ref={rootRef}
       data-graph-3d
       className="absolute inset-0 nodrag nopan nowheel cursor-grab active:cursor-grabbing"
       onContextMenu={(e) => e.preventDefault()}
@@ -1607,32 +2918,166 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
         ref={labelRef}
         className="absolute inset-0 overflow-hidden pointer-events-none select-none font-mono text-[11px] font-medium text-slate-600 dark:text-slate-300"
       />
+      {/* Draggable points: above the labels, and taking the pointer from the view. */}
+      <div ref={handleRef} className="absolute inset-0 overflow-hidden pointer-events-none select-none font-mono" />
       {failed && (
         <div className="absolute inset-0 flex items-center justify-center p-6 text-center text-xs text-slate-500 dark:text-slate-400">
           The 3D view needs WebGL, which this browser or device has turned off. Switch back to 2D to keep working.
         </div>
       )}
+
+      {/* What the colours mean, when surfaces are coloured by height. */}
+      {!failed && options.colorMode === "height" && domain && (
+        <div
+          data-capture-exclude
+          className="absolute right-2 top-1/2 -translate-y-1/2 z-20 pointer-events-none flex flex-col items-center gap-1 font-mono text-[10px] text-slate-600 dark:text-slate-300"
+        >
+          <span>{formatCoord(domain.cz + domain.half)}</span>
+          <span
+            className="w-2.5 h-24 rounded-full ring-1 ring-black/10 dark:ring-white/15"
+            style={{ background: `linear-gradient(to top, ${HEIGHT_STOPS.join(", ")})` }}
+          />
+          <span>{formatCoord(domain.cz - domain.half)}</span>
+          <span className="font-sans font-semibold text-blue-500">z</span>
+        </div>
+      )}
+
       {!props.compact && !failed && (
         <>
           <div
             data-capture-exclude
             className="hidden md:block absolute bottom-3 left-3 z-30 pointer-events-none px-2 py-1 rounded-md bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400"
           >
-            Drag to turn · scroll or pinch to zoom · right-drag to move · +/− changes the axis range
+            Drag to turn · scroll to zoom · right-drag to move · drag a point, or its ↕ grip for height
           </div>
+
+          {/* Phones: top left, under the graph toolbar (the Inspector sits bottom right there). */}
           <div
             data-capture-exclude
-            className="absolute top-14 left-2 md:top-auto md:left-auto md:bottom-3 md:right-3 z-30 flex flex-col overflow-hidden rounded-lg bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 cursor-default"
+            className="absolute top-14 left-2 md:top-auto md:left-auto md:bottom-3 md:right-3 z-30 cursor-default"
           >
-            <button type="button" className={BUTTON} title="Show less of the axes (Ctrl + scroll)" aria-label="Smaller axis range" onClick={() => engineRef.current?.zoomBy(0.8)}>
-              <Plus size={14} />
-            </button>
-            <button type="button" className={BUTTON} title="Show more of the axes (Ctrl + scroll)" aria-label="Larger axis range" onClick={() => engineRef.current?.zoomBy(1.25)}>
-              <Minus size={14} />
-            </button>
-            <button type="button" className={BUTTON} title="Back to the starting view" aria-label="Reset view" onClick={() => engineRef.current?.resetView()}>
-              <Home size={14} />
-            </button>
+            <div className="flex flex-col overflow-hidden rounded-lg bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30">
+              <button
+                type="button"
+                className={`${BUTTON} ${panelOpen ? "bg-blue-600 text-white hover:bg-blue-600 dark:hover:bg-blue-600 dark:text-white" : ""}`}
+                title="3D view options"
+                aria-label="3D view options"
+                aria-expanded={panelOpen}
+                onClick={() => setPanelOpen((v) => !v)}
+              >
+                <SlidersHorizontal size={14} />
+              </button>
+              <button type="button" className={BUTTON} title="Show less of the axes (Ctrl + scroll)" aria-label="Smaller axis range" onClick={() => engineRef.current?.zoomBy(0.8)}>
+                <Plus size={14} />
+              </button>
+              <button type="button" className={BUTTON} title="Show more of the axes (Ctrl + scroll)" aria-label="Larger axis range" onClick={() => engineRef.current?.zoomBy(1.25)}>
+                <Minus size={14} />
+              </button>
+              <button type="button" className={BUTTON} title="Back to the starting view" aria-label="Reset view" onClick={() => engineRef.current?.resetView()}>
+                <Home size={14} />
+              </button>
+            </div>
+
+            {panelOpen && (
+              <div className="absolute left-full top-0 ml-2 md:left-auto md:top-auto md:right-full md:bottom-0 md:ml-0 md:mr-2 w-56 max-h-[min(26rem,70vh)] overflow-y-auto no-scrollbar p-2 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-xl shadow-slate-900/10 dark:shadow-black/40">
+                <div className="flex items-center justify-between px-1">
+                  <span className="text-[11px] font-semibold text-slate-800 dark:text-slate-100">3D view</span>
+                  <button
+                    type="button"
+                    aria-label="Close"
+                    onClick={() => setPanelOpen(false)}
+                    className="size-6 inline-flex items-center justify-center rounded-md text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+
+                <div className={HEADING}>Look from</div>
+                <div className="flex gap-1">
+                  {VIEWS.map((v) => (
+                    <button key={v.id} type="button" title={v.title} className={CHIP} onClick={() => (v.id === "home" ? engineRef.current?.resetView() : engineRef.current?.flyTo(v.id))}>
+                      {v.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className={HEADING}>Surfaces</div>
+                <Switch
+                  label="Colour by height"
+                  title="Colour surfaces from low (blue) to high (red) instead of in their row's colour"
+                  on={options.colorMode === "height"}
+                  onChange={(on) => setOptions({ colorMode: on ? "height" : "row" })}
+                />
+                <Switch
+                  label="Contour lines"
+                  title="Draw level curves on surfaces, and their shadows on the floor of the box"
+                  on={options.contours}
+                  onChange={(on) => setOptions({ contours: on })}
+                />
+                <Switch
+                  label="Tangent plane"
+                  title="Show the tangent plane and normal where the pointer touches a surface"
+                  on={options.tangent}
+                  onChange={(on) => setOptions({ tangent: on })}
+                />
+                <Switch
+                  label="Auto-rotate"
+                  title="Turn the graph slowly"
+                  on={options.autoRotate}
+                  onChange={(on) => setOptions({ autoRotate: on })}
+                />
+
+                <div className={HEADING}>Slice</div>
+                <div className="flex gap-1" role="radiogroup" aria-label="Slice plane">
+                  <button type="button" role="radio" aria-checked={!slice} className={!slice ? CHIP_ON : CHIP} onClick={() => setOptions({ slice: null })}>
+                    Off
+                  </button>
+                  {([0, 1, 2] as const).map((axis) => (
+                    <button
+                      key={axis}
+                      type="button"
+                      role="radio"
+                      aria-checked={slice?.axis === axis}
+                      title={`Cut every surface with a plane ${AXIS_NAMES[axis]} = constant`}
+                      className={slice?.axis === axis ? CHIP_ON : CHIP}
+                      onClick={() => setOptions({ slice: { axis, at: slice?.at ?? 0 } })}
+                    >
+                      {AXIS_NAMES[axis]}
+                    </button>
+                  ))}
+                </div>
+                {slice && (
+                  <label className="flex items-center gap-2 px-1 pt-2 text-[11px] font-mono text-slate-600 dark:text-slate-300">
+                    <span className="w-16 shrink-0 tabular-nums" style={{ color: AXIS_COLORS[slice.axis] }}>
+                      {AXIS_NAMES[slice.axis]} = {formatCoord(sliceValue)}
+                    </span>
+                    <input
+                      type="range"
+                      min={-1}
+                      max={1}
+                      step={0.01}
+                      value={slice.at}
+                      onChange={(e) => setOptions({ slice: { axis: slice.axis, at: Number(e.target.value) } })}
+                      className="flex-1 min-w-0 accent-blue-600"
+                      aria-label="Slice position"
+                    />
+                  </label>
+                )}
+
+                {props.onAddExample && (
+                  <>
+                    <div className={HEADING}>Add an example</div>
+                    <div className="grid grid-cols-2 gap-1">
+                      {EXAMPLES.map((ex) => (
+                        <button key={ex.name} type="button" title={ex.expr} className={CHIP} onClick={() => props.onAddExample?.(ex.expr, ex.patch)}>
+                          {ex.name}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </>
       )}

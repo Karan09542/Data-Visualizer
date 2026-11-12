@@ -214,6 +214,7 @@ import {
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
+import type { Graph3DOptions } from "./math-node/Graph3D";
 import { solveDrag, snapToStep } from "../lib/math/dragSolve";
 import {
   POINT_COORDINATES_LABEL,
@@ -725,6 +726,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       timeline: readTimelineSettings(settings.timeline),
       view: readGraphView(settings.view),
       viewMode: (settings.viewMode === "3d" ? "3d" : "2d") as "2d" | "3d",
+      view3d: (settings.view3d && typeof settings.view3d === "object" ? settings.view3d : {}) as Partial<Graph3DOptions>,
       colorVariationMode:
         settings.colorVariationMode === "tint" ||
         settings.colorVariationMode === "shade"
@@ -782,6 +784,11 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   // The same rows drawn flat (Mafs) or in space (Graph3D).
   const [viewMode, setViewMode] = useState<"2d" | "3d">(initialGridSettings.viewMode);
+  // How the 3D view is dressed: height colours, contours, slice plane…
+  const [view3dOptions, setView3dOptions] = useState<Partial<Graph3DOptions>>(initialGridSettings.view3d);
+  // Pixels per graph unit of the flat graph, kept by its plot layer, so the exact
+  // view can be read back when switching to 3D.
+  const viewScaleRef = useRef<[number, number] | null>(null);
   const [gridType, setGridType] = useState<"cartesian" | "polar" | "none">(
     initialGridSettings.gridType,
   );
@@ -975,6 +982,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (!root) return;
     root.querySelectorAll(".math-row-hover").forEach((el) => el.classList.remove("math-row-hover"));
     if (id) root.querySelectorAll(`g[data-row-id="${CSS.escape(id)}"]`).forEach((el) => el.classList.add("math-row-hover"));
+    // The 3D view fades the other rows itself.
+    root.querySelector("[data-graph-3d]")?.dispatchEvent(new CustomEvent("math-row-hover", { detail: id }));
   };
   const rawAppTheme = useStore((state) => state.appTheme);
   const systemTheme = useStore((state) => state.systemTheme);
@@ -1031,6 +1040,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     timeline: timelineSettings,
     view: homeView,
     viewMode,
+    view3d: view3dOptions,
     colorVariationMode,
     colorVariationBase,
   });
@@ -1078,6 +1088,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       timeline: timelineSettings,
       view: homeView,
       viewMode,
+      view3d: view3dOptions,
       colorVariationMode,
       colorVariationBase,
     };
@@ -1114,6 +1125,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     timelineSettings,
     homeView,
     viewMode,
+    view3dOptions,
     colorVariationMode,
     colorVariationBase,
   ]);
@@ -1305,6 +1317,10 @@ export const MathNodeRenderer: React.FC<any> = ({
               }
               if (parsed.gridSettings.viewMode === "2d" || parsed.gridSettings.viewMode === "3d")
                 setViewMode(parsed.gridSettings.viewMode);
+              if (parsed.gridSettings.view3d && typeof parsed.gridSettings.view3d === "object")
+                setView3dOptions((prev) =>
+                  JSON.stringify(prev) === JSON.stringify(parsed.gridSettings.view3d) ? prev : parsed.gridSettings.view3d,
+                );
               if (parsed.gridSettings.view) {
                 const view = readGraphView(parsed.gridSettings.view);
                 setHomeView((prev) =>
@@ -1412,6 +1428,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     timelineSettings,
     homeView,
     viewMode,
+    view3dOptions,
     colorVariationMode,
     colorVariationBase,
   ]);
@@ -2105,11 +2122,13 @@ export const MathNodeRenderer: React.FC<any> = ({
   };
 
   /** An example from the empty graph: fills the blank row if there is one. */
-  const handleExampleRow = (expr: string) => {
+  const handleExampleRow = (expr: string, patch?: Partial<MathFunction>) => {
     const type = inferType(expr, baseScope) ?? "function";
+    // Only a plain object of row fields: this is also handed to click handlers.
+    const extra = patch && typeof patch === "object" && !("nativeEvent" in patch) ? patch : {};
     setFunctions((prev) => {
       const blank = prev.find((f) => !f.expr.trim());
-      if (blank) return prev.map((f) => (f === blank ? { ...f, expr, type, autoType: true } : f));
+      if (blank) return prev.map((f) => (f === blank ? { ...f, expr, type, autoType: true, ...extra } : f));
       const lastColor = prev.length > 0 ? prev[prev.length - 1].color : undefined;
       const newColor = getNextVariationColor({
         mode: colorVariationMode,
@@ -2120,7 +2139,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       });
       return [
         ...prev,
-        { id: generateSafeId(), expr, type, autoType: true, color: newColor, visible: true },
+        { id: generateSafeId(), expr, type, autoType: true, color: newColor, visible: true, ...extra },
       ];
     });
   };
@@ -2324,7 +2343,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   const patchRow = (id: string, patch: Partial<MathFunction>) =>
     setFunctions((prev) => prev.map((f) => (f.id === id ? { ...f, ...patch } : f)));
   /** A free copy of a point, one square up and right, named after the next free letter. */
-  const duplicatePoint = (fn: MathFunction, at: { x: number; y: number }) => {
+  const duplicatePoint = (fn: MathFunction, at: { x: number; y: number; z?: number }) => {
     const name = nextPointNames(takenNames(functionsRef.current, variablesRef.current.map((v) => v.name)), 1)[0];
     const old = pointRowName(fn.expr);
     const round = (v: number) => Math.round(v * 100) / 100;
@@ -2333,7 +2352,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     const copy: MathFunction = {
       ...fn,
       id: generateSafeId(),
-      expr: `${name} = [${round(at.x + 1)}, ${round(at.y + 1)}]`,
+      expr: `${name} = [${round(at.x + 1)}, ${round(at.y + 1)}${at.z ? `, ${round(at.z)}` : ""}]`,
       label,
       isDraggable: true,
       dragVars: undefined,
@@ -2365,7 +2384,9 @@ export const MathNodeRenderer: React.FC<any> = ({
   };
   // The point went away (deleted, hidden, undone): so does its menu.
   useEffect(() => {
-    if (pointMenu && (!pointMenuFn || pointMenuFn.visible === false || pointMenuFn.type !== "point")) closePointMenu();
+    // In 3D a point typed with three coordinates ("A = [1, 2, 3]") has the menu too.
+    if (pointMenu && (!pointMenuFn || pointMenuFn.visible === false || (pointMenuFn.type !== "point" && pointMenu.z === undefined)))
+      closePointMenu();
   }, [pointMenu, pointMenuFn, closePointMenu]);
 
   const handleDeleteSelection = () => {
@@ -6845,12 +6866,27 @@ export const MathNodeRenderer: React.FC<any> = ({
                       aria-checked={active}
                       onClick={() => {
                         if (active) return;
+                        // A point's menu belongs to the view it was opened in.
+                        setPointMenu(null);
+                        highlightRow(null);
                         if (mode === "3d") {
                           // The drawing, measuring and point tools work on the flat graph.
                           setDrawTool(null);
                           setAreaToolActive(false);
                           setShowAdvancedAxisControls(false);
                           setPointMenu(null);
+                          // Remember exactly where the flat graph was panned and zoomed to:
+                          // 3D opens on the same region, and 2D comes back to it.
+                          const svg = graphContainerRef.current?.querySelector(".MafsView svg") as SVGSVGElement | null;
+                          const scale = viewScaleRef.current;
+                          const box = svg?.viewBox?.baseVal;
+                          if (box && scale && box.width > 0 && box.height > 0) {
+                            const live = {
+                              x: [box.x / scale[0], (box.x + box.width) / scale[0]] as [number, number],
+                              y: [-(box.y + box.height) / scale[1], -box.y / scale[1]] as [number, number],
+                            };
+                            if (isRange(live.x) && isRange(live.y)) setFocusView({ ...live, padding: 0 });
+                          }
                         }
                         setViewMode(mode);
                       }}
@@ -7091,6 +7127,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                   functions.some((f) => f.hasCustomTimeline && f.isPlaying)
                 }
                 compact={isCompact}
+                options={view3dOptions}
+                onOptionsChange={setView3dOptions}
+                onAddExample={handleExampleRow}
+                onMovePoint={(id, expr) => patchRow(id, { expr })}
+                onPointMenu={openPointMenu}
               />
             </React.Suspense>
           ) : (
@@ -7163,6 +7204,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                   const { viewTransform: layerView } = useTransformContext();
                   const pxX = 1 / (Math.abs(layerView[0]) || 50);
                   const pxY = 1 / (Math.abs(layerView[4]) || 50);
+                  viewScaleRef.current = [Math.abs(layerView[0]) || 50, Math.abs(layerView[4]) || 50];
                   const xRange =
                     pane && pane.xPaneRange ? pane.xPaneRange : [-10, 10];
                   const yRange =
