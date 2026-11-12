@@ -148,6 +148,7 @@ import {
   isDefinitionRow,
   isTailTipVector,
   handlePosition,
+  handlePosition3,
   odeSolveKey,
   publishedOdeNames,
   SIMULATIONS,
@@ -1981,7 +1982,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   };
 
   /** A handle row was dragged to `target`: solve for its variables and move the sliders. */
-  const handleHandleDrag = (fnId: string, target: [number, number]) => {
+  const handleHandleDrag = (fnId: string, target: number[]) => {
     const fns = functionsRef.current;
     const vars = variablesRef.current;
     const f = fns.find((fn) => fn.id === fnId);
@@ -2000,7 +2001,8 @@ export const MathNodeRenderer: React.FC<any> = ({
         reuseOdeSolutions: true,
         degrees: angleMode === "degrees",
       });
-      return handlePosition(f, scope);
+      // A target with a height comes from the 3D view.
+      return target.length === 3 ? handlePosition3(f, scope) : handlePosition(f, scope);
     };
     const solved = solveDrag(evaluate, bound, target);
     if (!solved) return;
@@ -2883,10 +2885,14 @@ export const MathNodeRenderer: React.FC<any> = ({
     "";
 
   /** Loads a physics lab or geometry lesson. Clicking the open one again starts it fresh. */
-  const handleLoadSimulation = (key: string) => {
+  const handleLoadSimulation = (key: string, requested?: "2d" | "3d") => {
+    // Also a click handler's callback: anything but a mode means "the view showing now".
+    const mode = requested === "2d" || requested === "3d" ? requested : viewMode;
     const sim = SIMULATIONS.find((item) => item.key === key) ?? GEOMETRY_LESSONS.find((item) => item.key === key);
     if (!sim) return;
-    const scene = sim.build();
+    // A lab has a layout for the 3D view too.
+    const build3d = "build3d" in sim ? sim.build3d : undefined;
+    const scene = mode === "3d" && build3d ? build3d() : sim.build();
     setActiveExample(key);
     // Written in radians: pinned, so the DEG switch (for what the user types) leaves them alone.
     setFunctions(scene.functions.map((f) => ({ ...f, angleUnit: "rad" as const })));
@@ -2925,6 +2931,9 @@ export const MathNodeRenderer: React.FC<any> = ({
     setViewMode(mode);
     // An example with a version made for the other view changes to it.
     if (activeExample && hasExample3D(activeExample)) loadExampleScene(activeExample, mode);
+    else if (activeExample && SIMULATIONS.some((sim) => sim.key === activeExample && sim.build3d)) {
+      handleLoadSimulation(activeExample, mode);
+    }
   };
   // Resizable from its corner while it sits on the canvas; `width` is only given there.
   const canResize = !isFullscreen && width !== undefined;
@@ -7155,6 +7164,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                 onAddExample={handleExampleRow}
                 onMovePoint={(id, expr) => patchRow(id, { expr })}
                 onPointMenu={openPointMenu}
+                onDragHandle={handleHandleDrag}
               />
             </React.Suspense>
           ) : (

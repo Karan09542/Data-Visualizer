@@ -66,6 +66,11 @@ export interface Graph3DProps {
   onMovePoint?: (id: string, expr: string) => void;
   /** A point was right-clicked or double-tapped: open its menu (the same one as in 2D). */
   onPointMenu?: (target: PointMenuTarget) => void;
+  /**
+   * A handle placed by sliders (a pendulum bob, a launch arrow) was dragged to `target`:
+   * the graph works out the slider values that put it there.
+   */
+  onDragHandle?: (id: string, target: [number, number, number]) => void;
 }
 
 export interface Graph3DOptions {
@@ -150,6 +155,7 @@ const HANDLE_CSS = `
 .g3d-grip:hover,.g3d-handle.dragging.z .g3d-grip{background:var(--c);color:#fff}
 .g3d-tip{position:absolute;left:0;top:-24px;transform:translate(-50%,-100%);padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
 .g3d-handle.dragging .g3d-tip{display:block}
+.g3d-handle.solver .g3d-stem,.g3d-handle.solver .g3d-grip{display:none}
 `;
 
 const GRIP_ICON =
@@ -224,7 +230,14 @@ interface RowEntry {
   /** A row of points: it has the point menu. */
   isPoint?: boolean;
   /** A point written as plain numbers can be dragged. */
-  drag?: { prefix: string; name: string; three: boolean; pos: Vec3 };
+  drag?: {
+    prefix: string;
+    name: string;
+    three: boolean;
+    pos: Vec3;
+    /** Placed by sliders: dragging it asks the graph to solve for them (see onDragHandle). */
+    solver?: boolean;
+  };
 }
 
 const AXIS_COLORS = ["#ef4444", "#22c55e", "#3b82f6"];
@@ -963,7 +976,7 @@ class Engine {
       }
       while (this.labelEls.length > this.labelSpecs.length) this.labelEls.pop()!.remove();
       // Pinned notes: one list in the corner, in row order.
-      const pinned = [...this.rows.values()].flatMap((row) => row.pinned ?? []);
+      const pinned = this.getProps().functions.flatMap((f) => this.rows.get(f.id)?.pinned ?? []);
       this.pinnedEl.style.display = pinned.length ? "flex" : "none";
       this.pinnedEl.replaceChildren(
         ...pinned.map((spec) => {
@@ -1248,7 +1261,11 @@ class Engine {
     // A row rebuilt from the graph's state mid-drag is a step behind the pointer.
     if (this.drag) {
       const row = this.rows.get(this.drag.id);
-      if (row?.drag) this.placeDrag(row, this.drag.pos);
+      // A slider-driven handle is wherever its sliders now put it.
+      if (row?.drag?.solver) {
+        this.drag.pos = [...row.drag.pos];
+        this.updateTip();
+      } else if (row?.drag) this.placeDrag(row, this.drag.pos);
     }
     this.syncHandles();
     this.buildGuides();
@@ -1522,6 +1539,10 @@ class Engine {
               : []
             : pts.map((tip) => [origin, tip]);
           for (const [tail, tip] of arrows) this.addArrow(group, f, tail, tip);
+          // An arrow set by sliders is dragged by its tip.
+          if (f.dragVars?.length && arrows.length > 0) {
+            entry.drag = { prefix: "", name: "", three: true, pos: [...arrows[arrows.length - 1][1]], solver: true };
+          }
         } else if (f.type === "line") {
           if (pts.length >= 2) add(this.line([...pts[0], ...pts[1]], f.color, f));
         } else if (pts.length > 2) {
@@ -1764,6 +1785,10 @@ class Engine {
         entry.drag = { prefix: literal[1] || "", name, three: literal[2] !== undefined, pos: [...pts[0]] };
       }
     }
+    // A point placed by sliders (a pendulum bob, a launch height): dragging it sets them.
+    if (!entry.drag && f.dragVars?.length && pts.length === 1 && f.showPoint !== false) {
+      entry.drag = { prefix: "", name, three: true, pos: [...pts[0]], solver: true };
+    }
     if (!entry.drag && f.showPoint !== false) {
       const dots = this.points(pts, f.color);
       if (dots) {
@@ -1780,7 +1805,9 @@ class Engine {
       const text = auto
         ? `${name ? `${name} ` : ""}(${pt.map(formatCoord).join(", ")})`
         : hasLiveValues(f.label)
-          ? renderLiveLabel(f.label!, scope, pointLabelLocals(pt[0], pt[1]))
+          ? // x, y and xy mean the point's own position in a point's label; text standing
+            // on its own (a readout) has no point, so there they keep the graph's meaning.
+            renderLiveLabel(f.label!, scope, f.showPoint === false ? undefined : pointLabelLocals(pt[0], pt[1]))
           : f.label!;
       const pinned = !auto && !!f.labelPinned && f.showPoint === false;
       (pinned ? (entry.pinned ??= []) : entry.labels).push({
@@ -2411,6 +2438,7 @@ class Engine {
         this.handles.set(row.id, h);
       }
       h.wrap.style.setProperty("--c", `#${toColor(row.color).getHexString()}`);
+      h.wrap.classList.toggle("solver", !!row.drag.solver);
       const name = row.drag.name ? `Point ${row.drag.name}` : "Point";
       h.dot.setAttribute(
         "aria-label",
@@ -2619,6 +2647,25 @@ class Engine {
     const d = this.drag;
     const row = d ? this.rows.get(d.id) : undefined;
     if (!d || !row?.drag) return;
+    if (row.drag.solver) {
+      // The spot under the pointer, at the handle's depth; the graph then finds the
+      // slider values that bring the handle as near to it as they can.
+      const rect = this.renderer.domElement.getBoundingClientRect();
+      this.pointer.set(
+        ((clientX - d.offX - rect.left) / rect.width) * 2 - 1,
+        -((clientY - d.offY - rect.top) / rect.height) * 2 + 1,
+      );
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      const world = new THREE.Vector3(...d.pos).applyMatrix4(this.content.matrixWorld);
+      const facing = this.camera.getWorldDirection(new THREE.Vector3());
+      const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(facing, world);
+      const hit = this.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
+      if (!hit) return;
+      const local = this.content.worldToLocal(hit);
+      this.getProps().onDragHandle?.(row.id, [local.x, local.y, local.z]);
+      this.requestRender();
+      return;
+    }
     // Shift pressed or let go mid-drag switches between up-and-down and across.
     const wanted = this.wantedMode(shift);
     if ((wanted === "z") !== (d.mode === "z")) this.setDragMode(clientX, clientY, wanted);
@@ -2684,12 +2731,17 @@ class Engine {
     if (!next) return;
     e.preventDefault();
     e.stopPropagation();
+    if (row.drag.solver) {
+      this.getProps().onDragHandle?.(id, next);
+      return;
+    }
     this.commitPoint(row, next.map((v) => Number(v.toFixed(8))) as Vec3);
   }
 
   private openHandleMenu(id: string, clientX: number, clientY: number) {
-    const pos = this.rows.get(id)?.drag?.pos;
-    if (pos) this.openMenu(id, pos, 0, clientX, clientY);
+    const row = this.rows.get(id);
+    // Only points have the menu (an arrow's handle is its tip, not a point row).
+    if (row?.isPoint && row.drag) this.openMenu(id, row.drag.pos, 0, clientX, clientY);
   }
 
   /** Moves a point and writes its new position back to its row. */

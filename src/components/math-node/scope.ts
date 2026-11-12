@@ -360,3 +360,41 @@ export function handlePosition(f: MathFunction, scope: any): Vec2 | null {
   const tip = points[points.length - 1];
   return Number.isFinite(tip[0]) && Number.isFinite(tip[1]) ? tip : null;
 }
+
+/** Every point in a value, with a height: [x, y] is on the floor (z = 0). */
+function spacePoints(val: any, out: number[][] = []): number[][] {
+  if (val == null) return out;
+  if (typeof val.toArray === "function") val = val.toArray();
+  if (typeof val === "object" && !Array.isArray(val)) {
+    if (val.isComplex || ("re" in val && "im" in val)) out.push([Number(val.re), Number(val.im), 0]);
+    return out;
+  }
+  if (!Array.isArray(val)) return out;
+  if (val.length === 2 || val.length === 3) {
+    const c = val.map((v: any) => {
+      while (Array.isArray(v) && v.length === 1) v = v[0];
+      return typeof v === "number" ? v : null;
+    });
+    if (c.every((n: number | null) => n !== null)) {
+      out.push([c[0], c[1], c[2] ?? 0]);
+      return out;
+    }
+  }
+  for (const item of val) spacePoints(item, out);
+  return out;
+}
+
+/**
+ * handlePosition for the 3D view: the row's point (or its arrow's tip) as [x, y, z].
+ * There a handle can also be a point typed with three coordinates.
+ */
+export function handlePosition3(f: MathFunction, scope: any): number[] | null {
+  if (!f.compiled) return null;
+  try {
+    const pts = spacePoints(f.compiled.evaluate(rowScope(f, scope, !!scope?.__graphDegrees)));
+    const tip = pts[pts.length - 1];
+    return tip && tip.every((v) => Number.isFinite(v)) ? tip : null;
+  } catch {
+    return null;
+  }
+}

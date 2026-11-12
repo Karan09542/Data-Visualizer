@@ -22,7 +22,8 @@ export interface DragVariable {
   step?: number;
 }
 
-type Vec2 = [number, number];
+/** A point of the plane or of space. */
+type Vec = number[];
 
 const clamp = (v: number, lo: number, hi: number) => (v < lo ? lo : v > hi ? hi : v);
 
@@ -51,9 +52,9 @@ function solveLinear(A: number[][], b: number[]): number[] | null {
  * Returns null when the handle's position can't be evaluated at all.
  */
 export function solveDrag(
-  evaluate: (values: number[]) => Vec2 | null,
+  evaluate: (values: number[]) => Vec | null,
   vars: DragVariable[],
-  target: Vec2,
+  target: Vec,
   maxIterations = 40,
 ): number[] | null {
   const n = vars.length;
@@ -63,12 +64,24 @@ export function solveDrag(
   const hi = vars.map((v) => Math.max(v.min, v.max));
   const project = (x: number[]) => x.map((v, i) => clamp(v, lo[i], hi[i]));
 
-  const residual = (x: number[]): Vec2 | null => {
+  const dims = target.length;
+  const residual = (x: number[]): Vec | null => {
     const p = evaluate(x);
-    if (!p || !Number.isFinite(p[0]) || !Number.isFinite(p[1])) return null;
-    return [p[0] - target[0], p[1] - target[1]];
+    if (!p || p.length < dims) return null;
+    const out: number[] = [];
+    for (let d = 0; d < dims; d++) {
+      if (!Number.isFinite(p[d])) return null;
+      out.push(p[d] - target[d]);
+    }
+    return out;
   };
-  const cost = (r: Vec2) => r[0] * r[0] + r[1] * r[1];
+  const dot = (a: Vec, b: Vec) => {
+    let sum = 0;
+    for (let d = 0; d < dims; d++) sum += a[d] * b[d];
+    return sum;
+  };
+  const cost = (r: Vec) => dot(r, r);
+  const scaled = (a: Vec, b: Vec, h: number) => a.map((v, d) => (v - b[d]) / h);
 
   let x = project(vars.map((v) => (Number.isFinite(v.value) ? v.value : 0)));
   let r = residual(x);
@@ -78,7 +91,7 @@ export function solveDrag(
 
   for (let iter = 0; iter < maxIterations && c > 1e-14; iter++) {
     // Jacobian columns by central differences, sized to each slider's range.
-    const J: Vec2[] = [];
+    const J: Vec[] = [];
     for (let i = 0; i < n; i++) {
       const span = hi[i] - lo[i];
       const h = Math.max(1e-7, (Number.isFinite(span) && span > 0 ? span : Math.abs(x[i]) + 1) * 1e-5);
@@ -88,10 +101,10 @@ export function solveDrag(
       xm[i] -= h;
       const rp = residual(xp);
       const rm = residual(xm);
-      if (rp && rm) J.push([(rp[0] - rm[0]) / (2 * h), (rp[1] - rm[1]) / (2 * h)]);
-      else if (rp) J.push([(rp[0] - r[0]) / h, (rp[1] - r[1]) / h]);
-      else if (rm) J.push([(r[0] - rm[0]) / h, (r[1] - rm[1]) / h]);
-      else J.push([0, 0]);
+      if (rp && rm) J.push(scaled(rp, rm, 2 * h));
+      else if (rp) J.push(scaled(rp, r!, h));
+      else if (rm) J.push(scaled(r!, rm, h));
+      else J.push(new Array(dims).fill(0));
     }
 
     // Normal equations (JᵀJ + λ·diag(JᵀJ)) δ = -Jᵀr
@@ -99,8 +112,8 @@ export function solveDrag(
     const Jtr: number[] = [];
     for (let i = 0; i < n; i++) {
       JtJ.push([]);
-      for (let j = 0; j < n; j++) JtJ[i].push(J[i][0] * J[j][0] + J[i][1] * J[j][1]);
-      Jtr.push(-(J[i][0] * r[0] + J[i][1] * r[1]));
+      for (let j = 0; j < n; j++) JtJ[i].push(dot(J[i], J[j]));
+      Jtr.push(-dot(J[i], r));
     }
     if (JtJ.every((row, i) => Math.abs(row[i]) < 1e-18)) break; // handle doesn't move with these variables
 
