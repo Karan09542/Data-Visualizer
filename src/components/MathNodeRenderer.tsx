@@ -134,6 +134,7 @@ import {
   TraceOverlay,
   TraceShapeRegistrar,
   InterceptsReadout,
+  FunctionInfoReadout,
   AreaTool,
   IntegralShade,
   MeasureReadout,
@@ -4151,6 +4152,8 @@ export const MathNodeRenderer: React.FC<any> = ({
                           {/* Roots and y-axis crossings of what this row draws. */}
                           {f.visible && <InterceptsReadout fnId={f.id} scope={traceScope} />}
                           {f.visible && <MeasureReadout fnId={f.id} type={f.type} scope={traceScope} />}
+                          {/* Domain, range, and codomain info for built-in functions used in this expression. */}
+                          <FunctionInfoReadout expr={f.expr} />
                           {/* Sliders for just this equation's parameters. They edit the
                               same variables as the Variables Manager, not copies. */}
                           <InlineVariableSliders

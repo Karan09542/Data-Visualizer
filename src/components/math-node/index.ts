@@ -23,6 +23,7 @@ export * from "./examples";
 export * from "./TraceOverlay";
 export * from "./traceGeometry";
 export * from "./InterceptsReadout";
+export * from "./FunctionInfoReadout";
 export * from "./areaMath";
 export * from "./measureStore";
 export * from "./PolygonAngles";
