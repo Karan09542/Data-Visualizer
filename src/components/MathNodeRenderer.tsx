@@ -2889,6 +2889,33 @@ export const MathNodeRenderer: React.FC<any> = ({
 
   // On the canvas (not expanded, not fullscreen) the node is a small card: graph only.
   const isCompact = !isExpanded && !isFullscreen;
+
+  /** Between the flat graph and the 3D view: from the toolbar, or the empty graph's card. */
+  const switchViewMode = (mode: "2d" | "3d") => {
+    if (mode === viewMode) return;
+    // A point's menu belongs to the view it was opened in.
+    setPointMenu(null);
+    highlightRow(null);
+    if (mode === "3d") {
+      // The drawing, measuring and point tools work on the flat graph.
+      setDrawTool(null);
+      setAreaToolActive(false);
+      setShowAdvancedAxisControls(false);
+      // Remember exactly where the flat graph was panned and zoomed to:
+      // 3D opens on the same region, and 2D comes back to it.
+      const svg = graphContainerRef.current?.querySelector(".MafsView svg") as SVGSVGElement | null;
+      const scale = viewScaleRef.current;
+      const box = svg?.viewBox?.baseVal;
+      if (box && scale && box.width > 0 && box.height > 0) {
+        const live = {
+          x: [box.x / scale[0], (box.x + box.width) / scale[0]] as [number, number],
+          y: [-(box.y + box.height) / scale[1], -box.y / scale[1]] as [number, number],
+        };
+        if (isRange(live.x) && isRange(live.y)) setFocusView({ ...live, padding: 0 });
+      }
+    }
+    setViewMode(mode);
+  };
   // Resizable from its corner while it sits on the canvas; `width` is only given there.
   const canResize = !isFullscreen && width !== undefined;
   const rootRef = useRef<HTMLDivElement>(null);
@@ -6864,32 +6891,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                       type="button"
                       role="radio"
                       aria-checked={active}
-                      onClick={() => {
-                        if (active) return;
-                        // A point's menu belongs to the view it was opened in.
-                        setPointMenu(null);
-                        highlightRow(null);
-                        if (mode === "3d") {
-                          // The drawing, measuring and point tools work on the flat graph.
-                          setDrawTool(null);
-                          setAreaToolActive(false);
-                          setShowAdvancedAxisControls(false);
-                          setPointMenu(null);
-                          // Remember exactly where the flat graph was panned and zoomed to:
-                          // 3D opens on the same region, and 2D comes back to it.
-                          const svg = graphContainerRef.current?.querySelector(".MafsView svg") as SVGSVGElement | null;
-                          const scale = viewScaleRef.current;
-                          const box = svg?.viewBox?.baseVal;
-                          if (box && scale && box.width > 0 && box.height > 0) {
-                            const live = {
-                              x: [box.x / scale[0], (box.x + box.width) / scale[0]] as [number, number],
-                              y: [-(box.y + box.height) / scale[1], -box.y / scale[1]] as [number, number],
-                            };
-                            if (isRange(live.x) && isRange(live.y)) setFocusView({ ...live, padding: 0 });
-                          }
-                        }
-                        setViewMode(mode);
-                      }}
+                      onClick={() => switchViewMode(mode)}
                       title={
                         mode === "3d"
                           ? "3D: the same graph in space, with x, y and z axes. Try z = x^2 - y^2"
@@ -9676,8 +9678,14 @@ export const MathNodeRenderer: React.FC<any> = ({
           {isGraphEmpty && !drawTool && (
             <EmptyGraph
               compact={isCompact}
+              is3d={viewMode === "3d"}
+              onToggle3d={() => switchViewMode(viewMode === "3d" ? "2d" : "3d")}
               onType={handleStartTyping}
-              onDraw={() => setDrawTool("point")}
+              onDraw={() => {
+                // The drawing tools are on the flat graph.
+                switchViewMode("2d");
+                setDrawTool("point");
+              }}
               onLessons={handleOpenLessons}
               onExample={handleExampleRow}
               onOpen={() => setIsFullscreen(true)}

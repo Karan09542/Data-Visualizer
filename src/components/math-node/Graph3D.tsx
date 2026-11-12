@@ -3046,23 +3046,54 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
                     </button>
                   ))}
                 </div>
-                {slice && (
-                  <label className="flex items-center gap-2 px-1 pt-2 text-[11px] font-mono text-slate-600 dark:text-slate-300">
-                    <span className="w-16 shrink-0 tabular-nums" style={{ color: AXIS_COLORS[slice.axis] }}>
-                      {AXIS_NAMES[slice.axis]} = {formatCoord(sliceValue)}
-                    </span>
-                    <input
-                      type="range"
-                      min={-1}
-                      max={1}
-                      step={0.01}
-                      value={slice.at}
-                      onChange={(e) => setOptions({ slice: { axis: slice.axis, at: Number(e.target.value) } })}
-                      className="flex-1 min-w-0 accent-blue-600"
-                      aria-label="Slice position"
-                    />
-                  </label>
-                )}
+                {slice && domain && (() => {
+                  const color = AXIS_COLORS[slice.axis];
+                  const centre = [domain.cx, domain.cy, domain.cz][slice.axis];
+                  const fill = ((slice.at + 1) / 2) * 100;
+                  return (
+                    <div className="flex flex-col gap-1.5 px-1 pt-2">
+                      <div className="flex items-center justify-between">
+                        <span className="font-mono text-[11px] font-semibold tabular-nums" style={{ color }}>
+                          {AXIS_NAMES[slice.axis]} = {formatCoord(sliceValue)}
+                        </span>
+                        {slice.at !== 0 && (
+                          <button
+                            type="button"
+                            onClick={() => setOptions({ slice: { axis: slice.axis, at: 0 } })}
+                            title="Back to the middle of the box"
+                            className="text-[10px] font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                          >
+                            Centre
+                          </button>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="w-7 text-right font-mono text-[10px] text-slate-500 select-none tabular-nums">
+                          {formatCoord(centre - domain.half)}
+                        </span>
+                        <input
+                          type="range"
+                          min={-1}
+                          max={1}
+                          step={0.01}
+                          value={slice.at}
+                          onChange={(e) => setOptions({ slice: { axis: slice.axis, at: Number(e.target.value) } })}
+                          aria-label="Slice position"
+                          className="flex-1 min-w-0 h-1.5 rounded-lg appearance-none cursor-pointer transition-colors [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-[currentColor] [&::-webkit-slider-thumb]:shadow-sm hover:[&::-webkit-slider-thumb]:scale-125 active:[&::-webkit-slider-thumb]:scale-110 [&::-webkit-slider-thumb]:transition-transform [&::-moz-range-thumb]:w-3 [&::-moz-range-thumb]:h-3 [&::-moz-range-thumb]:border-none [&::-moz-range-thumb]:rounded-full [&::-moz-range-thumb]:bg-[currentColor] [&::-moz-range-thumb]:shadow-sm hover:[&::-moz-range-thumb]:scale-125 active:[&::-moz-range-thumb]:scale-110 [&::-moz-range-thumb]:transition-transform"
+                          style={{
+                            color,
+                            accentColor: color,
+                            // The part up to the thumb in the axis colour.
+                            background: `linear-gradient(to right, ${color}99 ${fill}%, ${props.dark ? "#334155" : "#e2e8f0"} ${fill}%)`,
+                          }}
+                        />
+                        <span className="w-7 font-mono text-[10px] text-slate-500 select-none tabular-nums">
+                          {formatCoord(centre + domain.half)}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })()}
 
                 {props.onAddExample && (
                   <>

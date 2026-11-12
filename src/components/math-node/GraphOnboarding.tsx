@@ -1,5 +1,5 @@
 import React, { useState } from "react";
-import { BookOpen, ChevronRight, Keyboard, Lightbulb, Maximize2, PencilRuler, X } from "lucide-react";
+import { BookOpen, Box, ChevronRight, Keyboard, Lightbulb, Maximize2, PencilRuler, Square, X } from "lucide-react";
 
 /** Starting points offered on an empty graph: each is just a row, typed for you. */
 export const EXAMPLE_ROWS = [
@@ -11,8 +11,22 @@ export const EXAMPLE_ROWS = [
   { label: "A = [2, 1]", expr: "A = [2, 1]" },
 ];
 
+/** The same, for the 3D view: surfaces, a solid, a space curve and a point in space. */
+export const EXAMPLE_ROWS_3D = [
+  { label: "z = x² − y²", expr: "z = (x^2 - y^2)/4" },
+  { label: "z = sin(x)·cos(y)", expr: "z = 2*sin(x)*cos(y)" },
+  { label: "x² + y² + z² = 9", expr: "x^2 + y^2 + z^2 = 9" },
+  { label: "[3cos t, 3sin t, t/2]", expr: "[3cos(t), 3sin(t), t/2]" },
+  { label: "torus (u, v)", expr: "[(3 + cos(v))*cos(u), (3 + cos(v))*sin(u), sin(v)]" },
+  { label: "A = [1, 2, 3]", expr: "A = [1, 2, 3]" },
+];
+
 interface EmptyGraphProps {
   compact: boolean;
+  /** The graph is showing the 3D view. */
+  is3d?: boolean;
+  /** Switch between the flat graph and the 3D view. */
+  onToggle3d?: () => void;
   onType: () => void;
   onDraw: () => void;
   onLessons: () => void;
@@ -21,7 +35,7 @@ interface EmptyGraphProps {
 }
 
 /** What an empty graph shows: ways to start, so nobody faces a blank grid. */
-export const EmptyGraph: React.FC<EmptyGraphProps> = ({ compact, onType, onDraw, onLessons, onExample, onOpen }) => {
+export const EmptyGraph: React.FC<EmptyGraphProps> = ({ compact, is3d = false, onToggle3d, onType, onDraw, onLessons, onExample, onOpen }) => {
   if (compact) {
     return (
       <div data-no-trace data-capture-exclude className="absolute inset-0 z-30 flex items-center justify-center pointer-events-none">
@@ -36,13 +50,16 @@ export const EmptyGraph: React.FC<EmptyGraphProps> = ({ compact, onType, onDraw,
     );
   }
 
-  const action = (Icon: React.ElementType, title: string, hint: string, onClick: () => void) => (
+  const action = (Icon: React.ElementType, title: string, hint: string, onClick: () => void, accent = false) => (
     <button
       type="button"
       onClick={onClick}
-      className="flex items-start gap-2.5 p-2.5 rounded-lg text-left border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/10 transition-colors"
+      className={`flex items-start gap-2.5 p-2.5 rounded-lg text-left border transition-colors ${accent
+        ? "border-violet-300 dark:border-violet-500/50 bg-gradient-to-br from-violet-50 to-blue-50 dark:from-violet-500/15 dark:to-blue-500/10 hover:border-violet-400 dark:hover:border-violet-400"
+        : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800/60 hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50/50 dark:hover:bg-blue-500/10"
+        }`}
     >
-      <Icon size={16} className="mt-0.5 shrink-0 text-blue-600 dark:text-blue-400" />
+      <Icon size={16} className={`mt-0.5 shrink-0 ${accent ? "text-violet-600 dark:text-violet-300" : "text-blue-600 dark:text-blue-400"}`} />
       <span className="min-w-0">
         <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">{title}</span>
         <span className="block text-[10px] leading-snug text-slate-500 dark:text-slate-400">{hint}</span>
@@ -56,18 +73,24 @@ export const EmptyGraph: React.FC<EmptyGraphProps> = ({ compact, onType, onDraw,
         <div>
           <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Start your graph</h3>
           <p className="text-[11px] text-slate-500 dark:text-slate-400">
-            Type any equation and its kind is worked out for you, or draw shapes straight onto the grid.
+            {is3d
+              ? "Type an equation with z for a surface, three coordinates for a point or curve in space. Drag to turn the view."
+              : "Type any equation and its kind is worked out for you, or draw shapes straight onto the grid."}
           </p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-          {action(Keyboard, "Type an equation", "y = …, x² + y² = …, r = …", onType)}
-          {action(PencilRuler, "Draw a shape", "Points, circles, polygons", onDraw)}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+          {action(Keyboard, "Type an equation", is3d ? "z = …, x² + y² + z² = …" : "y = …, x² + y² = …, r = …", onType)}
+          {action(PencilRuler, "Draw a shape", is3d ? "Points, circles, polygons (in 2D)" : "Points, circles, polygons", onDraw)}
           {action(BookOpen, "Open a lesson", "Circles, conics, triangles", onLessons)}
+          {onToggle3d &&
+            (is3d
+              ? action(Square, "Back to 2D", "The flat graph and its tools", onToggle3d)
+              : action(Box, "Graph in 3D", "Surfaces, spheres, curves in space", onToggle3d, true))}
         </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Or try one</span>
           <div className="flex flex-wrap gap-1.5">
-            {EXAMPLE_ROWS.map((ex) => (
+            {(is3d ? EXAMPLE_ROWS_3D : EXAMPLE_ROWS).map((ex) => (
               <button
                 key={ex.expr}
                 type="button"
