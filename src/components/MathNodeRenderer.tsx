@@ -2161,6 +2161,28 @@ export const MathNodeRenderer: React.FC<any> = ({
     });
   };
 
+  const [focusFnRequest, setFocusFnRequest] = useState<{
+    id: string;
+    seq: number;
+  } | null>(null);
+
+  const navigateFunctionRow = useCallback(
+    (fnId: string, direction: "up" | "down") => {
+      const list = functionsRef.current;
+      const idx = list.findIndex((fn) => fn.id === fnId);
+      if (idx === -1) return;
+      const targetIdx = direction === "up" ? idx - 1 : idx + 1;
+      if (targetIdx < 0 || targetIdx >= list.length) return;
+      const target = list[targetIdx];
+      setFocusFnRequest((prev) => ({
+        id: target.id,
+        seq: (prev?.seq ?? 0) + 1,
+      }));
+      setActiveVisualEditorId((prev) => (prev === fnId ? target.id : prev));
+    },
+    [],
+  );
+
   // ─── Getting started, and drawing ──────────────────────────────────────────
   const isGraphEmpty = !functions.some((f) => f.expr && f.expr.trim());
 
@@ -3623,6 +3645,14 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 }
                                 onCloseKeyboard={() =>
                                   setActiveVisualEditorId(null)
+                                }
+                                onNavigate={(dir) =>
+                                  navigateFunctionRow(f.id, dir)
+                                }
+                                focusSignal={
+                                  focusFnRequest?.id === f.id
+                                    ? focusFnRequest.seq
+                                    : 0
                                 }
                               />
                             </div>

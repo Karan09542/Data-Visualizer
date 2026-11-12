@@ -37,6 +37,10 @@ interface EquationInputProps {
   showKeyboard?: boolean;
   onToggleKeyboard?: () => void;
   onCloseKeyboard?: () => void;
+  /** Called on Shift+ArrowUp / Shift+ArrowDown to move focus to an adjacent row. */
+  onNavigate?: (direction: "up" | "down") => void;
+  /** Incrementing signal that focuses this equation input and enters edit mode. */
+  focusSignal?: number;
 }
 
 const EquationInputBase: React.FC<EquationInputProps> = ({
@@ -56,6 +60,8 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
   showKeyboard = false,
   onToggleKeyboard,
   onCloseKeyboard,
+  onNavigate,
+  focusSignal = 0,
 }) => {
   const [isFocused, setIsFocused] = useState(false);
   const [cursorPos, setCursorPos] = useState(0);
@@ -67,10 +73,61 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
 
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const blurTimeoutRef = useRef<number | null>(null);
+  const lastFocusSignalRef = useRef(0);
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
   const appTheme = useEffectiveTheme();
   const { expressionToLatexWithEval } = useMathWorker();
 
   const effectiveMode = showKeyboard ? "virtual" : "native";
+
+  useEffect(() => {
+    return () => {
+      if (blurTimeoutRef.current !== null) clearTimeout(blurTimeoutRef.current);
+    };
+  }, []);
+
+  const handleInputFocus = () => {
+    if (blurTimeoutRef.current !== null) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsFocused(true);
+  };
+
+  const handleInputBlur = () => {
+    if (blurTimeoutRef.current !== null) clearTimeout(blurTimeoutRef.current);
+    blurTimeoutRef.current = window.setTimeout(() => {
+      blurTimeoutRef.current = null;
+      if (document.activeElement !== inputRef.current) {
+        setIsFocused(false);
+      }
+    }, 200);
+    if (onBlur) onBlur();
+  };
+
+  useEffect(() => {
+    if (!focusSignal || focusSignal === lastFocusSignalRef.current) return;
+    lastFocusSignalRef.current = focusSignal;
+    if (blurTimeoutRef.current !== null) {
+      clearTimeout(blurTimeoutRef.current);
+      blurTimeoutRef.current = null;
+    }
+    setIsFocused(true);
+    const rafId = requestAnimationFrame(() => {
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      if (el instanceof HTMLTextAreaElement) {
+        const end = el.value.length;
+        el.setSelectionRange(end, end);
+        setCursorPos(end);
+      }
+      el.closest?.("[data-fn-row]")?.scrollIntoView({ block: "nearest" });
+    });
+    return () => cancelAnimationFrame(rafId);
+  }, [focusSignal]);
 
   useEffect(() => {
     if (isFocused && inputRef.current) {
@@ -239,6 +296,21 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
         return a.name.localeCompare(b.name);
       })
       .slice(0, 8);
+
+    if (
+      e.shiftKey &&
+      !e.altKey &&
+      !e.ctrlKey &&
+      !e.metaKey &&
+      (e.key === "ArrowUp" || e.key === "ArrowDown") &&
+      onNavigateRef.current
+    ) {
+      e.preventDefault();
+      e.stopPropagation();
+      setSuggestions([]);
+      onNavigateRef.current(e.key === "ArrowUp" ? "up" : "down");
+      return;
+    }
 
     if (e.ctrlKey && e.key === " ") {
       e.preventDefault();
@@ -497,11 +569,8 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
               onSelect={(e) =>
                 setCursorPos(e.currentTarget.selectionStart || 0)
               }
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => {
-                setTimeout(() => setIsFocused(false), 200);
-                if (onBlur) onBlur();
-              }}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
               onKeyDown={handleKeyDown}
               className="absolute inset-0 w-full h-full bg-transparent outline-none caret-blue-600 dark:caret-blue-400 font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
               placeholder={isFocused ? placeholder || "e.g. a * sin(b*x + c)" : ""}
@@ -513,11 +582,8 @@ const EquationInputBase: React.FC<EquationInputProps> = ({
             <div
               ref={inputRef as any}
               tabIndex={0}
-              onFocus={() => setIsFocused(true)}
-              onBlur={() => {
-                setTimeout(() => setIsFocused(false), 200);
-                if (onBlur) onBlur();
-              }}
+              onFocus={handleInputFocus}
+              onBlur={handleInputBlur}
               onKeyDown={handleKeyDown}
               className="absolute inset-0 w-full h-full bg-transparent outline-none caret-transparent font-mono text-sm px-2 py-1.5 z-20 resize-none text-transparent whitespace-pre-wrap break-all"
               style={{ overflow: "hidden" }}
@@ -637,6 +703,7 @@ export const EquationInput = React.memo(EquationInputBase, (prev, next) => {
     prev.hoveredVar === next.hoveredVar &&
     prev.forceEditMode === next.forceEditMode &&
     prev.showKeyboard === next.showKeyboard &&
-    prev.variables === next.variables
+    prev.variables === next.variables &&
+    prev.focusSignal === next.focusSignal
   );
 });
