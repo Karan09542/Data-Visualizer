@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
+import { usePersistentOpen } from "../../hooks/usePersistentOpen";
 import { liveQuery } from "dexie";
 import { Check, ChevronDown, FolderOpen, PlusSquare, RefreshCw, Save, Search, Trash2 } from "lucide-react";
 import { db, type SavedMathScene } from "../../lib/db";
@@ -44,7 +45,8 @@ export const SavedScenesLibrary: React.FC<SavedScenesLibraryProps> = ({
   saveRequest,
 }) => {
   const [scenes, setScenes] = useState<SavedMathScene[]>([]);
-  const [open, setOpen] = useState(true);
+  // Open or folded, as it was left (remembered across reloads).
+  const [open, setOpen] = usePersistentOpen("saved");
   const [formOpen, setFormOpen] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");

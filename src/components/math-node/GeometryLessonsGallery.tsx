@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { usePersistentOpen } from "../../hooks/usePersistentOpen";
 import { BookOpen, Check, ChevronDown, Hand, Lightbulb, Target } from "lucide-react";
 import { LESSON_CATEGORIES, type LessonCategory } from "./geometryLessons";
 import { GEOMETRY_LESSONS } from "./geometryLessonsMore";
@@ -16,7 +17,8 @@ interface GeometryLessonsGalleryProps {
  */
 export const GeometryLessonsGallery: React.FC<GeometryLessonsGalleryProps> = ({ activeKey, onLoad, evaluateCheck }) => {
   const active = GEOMETRY_LESSONS.find((l) => l.key === activeKey);
-  const [open, setOpen] = useState(true);
+  // Open or folded, as it was left (remembered across reloads).
+  const [open, setOpen] = usePersistentOpen("lessons");
   const [category, setCategory] = useState<LessonCategory>(active?.category ?? "Circle");
   // How many steps of the proof are showing (0: folded away).
   const [proofSteps, setProofSteps] = useState(0);

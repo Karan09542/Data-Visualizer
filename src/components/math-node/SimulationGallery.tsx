@@ -1,4 +1,5 @@
-import React, { useState } from "react";
+import React from "react";
+import { usePersistentOpen } from "../../hooks/usePersistentOpen";
 import { ChevronDown, Hand, Play } from "lucide-react";
 import { SIMULATIONS } from "./simulations";
 
@@ -12,7 +13,8 @@ interface SimulationGalleryProps {
  * try, so opening one is a lesson rather than a wall of equations.
  */
 export const SimulationGallery: React.FC<SimulationGalleryProps> = ({ activeKey, onLoad }) => {
-  const [open, setOpen] = useState(true);
+  // Open or folded, as it was left (remembered across reloads).
+  const [open, setOpen] = usePersistentOpen("simulations");
 
   return (
     <div className="flex flex-col gap-2">

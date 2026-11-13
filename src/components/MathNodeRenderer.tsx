@@ -236,6 +236,7 @@ import {
 import { NodeOptionsMenu } from "./NodeOptionsMenu";
 import { PointMenu, PointMenuTrigger, type PointMenuTarget } from "./math-node/PointMenu";
 import { useNodeResize } from "../hooks/useNodeResize";
+import { usePersistentOpen } from "../hooks/usePersistentOpen";
 import { splitRelation } from "../lib/math/splitRelation";
 import { inferType, isComplexExpr } from "../lib/math/inferType";
 import { parseOdeSystemCached } from "../lib/math/odeSystem";
@@ -953,6 +954,10 @@ export const MathNodeRenderer: React.FC<any> = ({
   );
   // The drawing tool in hand; null lets the graph pan as usual.
   const [drawTool, setDrawTool] = useState<GraphTool | null>(null);
+  // The library's collapsible sections stay as they were left, across reloads.
+  const [examplesOpen, setExamplesOpen] = usePersistentOpen("examples");
+  const [gallery3dOpen, setGallery3dOpen] = usePersistentOpen("gallery3d");
+  const [qualityOpen, setQualityOpen] = usePersistentOpen("quality", false);
   // 3D view: the plane drawing clicks land on (by the axis it is square to: 2 is the
   // level XY plane), and how far along that axis it sits.
   const [drawPlane, setDrawPlane] = useState<0 | 1 | 2>(2);
@@ -6881,7 +6886,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                       </div>
                     </div>
 
-                    <details open className="group/examples flex flex-col pt-1 border-t border-slate-200 dark:border-slate-700/50">
+                    <details
+                      open={examplesOpen}
+                      onToggle={(e) => setExamplesOpen((e.currentTarget as HTMLDetailsElement).open)}
+                      className="group/examples flex flex-col pt-1 border-t border-slate-200 dark:border-slate-700/50"
+                    >
                       <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold tracking-wider hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
                         <span>Examples Gallery</span>
                         <ChevronDown size={12} className="transition-transform -rotate-90 group-open/examples:rotate-0" />
@@ -6919,7 +6928,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                       </div>
                     </details>
 
-                    <details open className="group/g3d flex flex-col pt-1 border-t border-slate-200 dark:border-slate-700/50">
+                    <details
+                      open={gallery3dOpen}
+                      onToggle={(e) => setGallery3dOpen((e.currentTarget as HTMLDetailsElement).open)}
+                      className="group/g3d flex flex-col pt-1 border-t border-slate-200 dark:border-slate-700/50"
+                    >
                       <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold tracking-wider hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
                         <span className="flex items-center gap-1.5">
                           3D Gallery
@@ -6951,7 +6964,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                 </div>
 
                 {/* Rendering quality: rarely changed, so out of the way */}
-                <details className="group/quality border-t border-slate-200 dark:border-slate-800 pt-3">
+                <details
+                  open={qualityOpen}
+                  onToggle={(e) => setQualityOpen((e.currentTarget as HTMLDetailsElement).open)}
+                  className="group/quality border-t border-slate-200 dark:border-slate-800 pt-3"
+                >
                   <summary className="cursor-pointer list-none flex items-center justify-between text-[11px] font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Display quality
                     <ChevronDown size={12} className="transition-transform -rotate-90 group-open/quality:rotate-0" />
