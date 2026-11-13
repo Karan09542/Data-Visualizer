@@ -183,6 +183,8 @@ export interface Graph3DOptions {
   showBox: boolean;
   /** The curves where surfaces meet (and the line where two planes meet). */
   intersections: boolean;
+  /** A parallel (orthographic) view: no perspective, so parallel lines stay parallel. */
+  ortho: boolean;
 }
 
 function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
@@ -201,6 +203,7 @@ function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
     showGrid: o?.showGrid !== false,
     showBox: o?.showBox !== false,
     intersections: o?.intersections !== false,
+    ortho: !!o?.ortho,
   };
 }
 
@@ -706,6 +709,75 @@ function formatTick(v: number, step: number): string {
 
 const formatCoord = (v: number) => String(Number(v.toFixed(2))).replace("-", "−");
 
+/** How many cells across the grid an implicit surface is found on, at each tier. */
+function isoCellsFor(tier: number, quality: number | undefined): number {
+  const q = clamp(quality || 14, 1, 30);
+  return Math.min(64, Math.round(clamp(q * 2.6, 14, 52) * [0.6, 1, 1.3][tier]));
+}
+
+/**
+ * A polygon (corners as [x, y, z, …extra], extra such as a colour carried along)
+ * cut to the box lo–hi, plane by plane.
+ */
+function clipToBox(poly: number[][], lo: number[], hi: number[]): number[][] {
+  let out = poly;
+  for (let axis = 0; axis < 3 && out.length; axis++) {
+    for (const side of [0, 1]) {
+      const inside = (p: number[]) => (side ? hi[axis] - p[axis] : p[axis] - lo[axis]);
+      const next: number[][] = [];
+      for (let i = 0; i < out.length; i++) {
+        const a = out[i];
+        const b = out[(i + 1) % out.length];
+        const da = inside(a);
+        const db = inside(b);
+        if (da >= 0) next.push(a);
+        if (da >= 0 !== db >= 0) {
+          const t = da / (da - db);
+          next.push(a.map((v, k) => v + (b[k] - v) * t));
+        }
+      }
+      out = next;
+      if (!out.length) break;
+    }
+  }
+  return out;
+}
+
+/** A segment cut to the box, or null if none of it is inside. */
+function clipSegmentToBox(a: number[], b: number[], lo: number[], hi: number[]): [number[], number[]] | null {
+  let t0 = 0;
+  let t1 = 1;
+  for (let k = 0; k < 3; k++) {
+    const d = b[k] - a[k];
+    for (const [edge, sign] of [[lo[k], 1], [hi[k], -1]] as const) {
+      const num = sign * (a[k] - edge);
+      const den = sign * d;
+      if (den === 0) {
+        if (num < 0) return null;
+      } else {
+        const t = -num / den;
+        if (den > 0) t0 = Math.max(t0, t);
+        else t1 = Math.min(t1, t);
+      }
+    }
+  }
+  if (t0 > t1) return null;
+  const at = (t: number) => a.map((v, k) => v + (b[k] - v) * t);
+  return [at(t0), at(t1)];
+}
+
+/** Saves a file the graph made (a model, a video) to the user's downloads. */
+function saveBlob(blob: Blob, name: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
+}
+
 /** The curves where surfaces meet: bright, to stand out on any surface colour. */
 const CROSS_COLOR = "#facc15";
 
@@ -937,6 +1009,20 @@ class Engine {
   /** Where surfaces meet (see buildIntersections). */
   private crossGroup = new THREE.Group();
   private crossDirty = false;
+  /** The orthographic view is on (see applyOrtho). */
+  private ortho = false;
+  /** Implicit surfaces being sampled between frames, and the grids done. */
+  private isoJobs = new Map<
+    string,
+    { id: string; key: string; n: number; k: number; values: Float32Array; value: () => number; s: any; axf: AffineTransform2 | null; dom: Domain }
+  >();
+  private isoValues = new Map<string, { key: string; n: number; values: Float32Array }>();
+  /** Rows (by their drawing key) that turned out to be planes: drawn exactly, no grid needed. */
+  private flatKeys = new Set<string>();
+  private isoTimer = 0;
+  /** A spin being recorded (see recordSpin), and what to do after each frame meanwhile. */
+  private spin: { t0: number; seconds: number; target: THREE.Vector3; start: THREE.Vector3; progress: (f: number) => void; done: () => void } | null = null;
+  private afterFrame: (() => void) | null = null;
   private rows = new Map<string, RowEntry>();
   private decorLabels: LabelSpec[] = [];
   private labelSpecs: LabelSpec[] = [];
@@ -1139,6 +1225,7 @@ class Engine {
     this.hoverDot.dataset.captureExclude = "";
     this.hoverTip.dataset.captureExclude = "";
     labelHost.append(this.hoverDot, this.hoverTip, this.pinnedEl);
+    this.pinnedEl.dataset.pinnedNotes = "1";
     (this.raycaster.params as any).Line2 = { threshold: 8 };
 
     const p = getProps();
@@ -1185,6 +1272,11 @@ class Engine {
     const decorChanged =
       options.showAxes !== this.opts.showAxes || options.showGrid !== this.opts.showGrid || options.showBox !== this.opts.showBox;
     if (options.intersections !== this.opts.intersections) this.crossDirty = true;
+    if (options.ortho !== this.ortho) {
+      this.ortho = options.ortho;
+      if (!this.ortho) this.camera.updateProjectionMatrix();
+      this.labelsDirty = true;
+    }
     this.opts = options;
     if (decorChanged) this.buildDecor();
     this.controls.autoRotate = options.autoRotate;
@@ -1387,6 +1479,7 @@ class Engine {
       // The gizmo is a tool, not part of the graph.
       this.gizmoGroup.visible = false;
       this.drawGroup.visible = false;
+      this.applyOrtho();
       this.renderer.render(this.scene, this.camera);
       ctx.drawImage(this.renderer.domElement, 0, 0, out.width, out.height);
     } finally {
@@ -1407,7 +1500,7 @@ class Engine {
   }
 
   /** Labels, notes and point handles as one vector image over the scene. */
-  private async drawOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, s: number) {
+  private async drawOverlay(ctx: CanvasRenderingContext2D, w: number, h: number, s: number, notesOnly = false) {
     const css = await overlayCss();
     const wrap = document.createElement("div");
     wrap.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
@@ -1415,10 +1508,13 @@ class Engine {
     const style = document.createElement("style");
     style.textContent = css;
     wrap.appendChild(style);
-    for (const host of [this.labelHost, this.handleHost]) {
+    for (const host of notesOnly ? [this.labelHost] : [this.labelHost, this.handleHost]) {
       const cs = getComputedStyle(host);
       const clone = host.cloneNode(true) as HTMLElement;
       clone.querySelectorAll("[data-capture-exclude]").forEach((n) => n.remove());
+      if (notesOnly) {
+        for (const c of [...clone.children]) if (!(c as HTMLElement).dataset?.pinnedNotes) c.remove();
+      }
       clone.removeAttribute("class");
       // Its look came from utility classes the picture doesn't have.
       clone.style.position = "absolute";
@@ -1448,9 +1544,9 @@ class Engine {
   }
 
   /** The fallback: each label's text, where it stands, in its colour. */
-  private drawOverlayText(ctx: CanvasRenderingContext2D, s: number) {
+  private drawOverlayText(ctx: CanvasRenderingContext2D, s: number, withNotes = true) {
     const box = this.labelHost.getBoundingClientRect();
-    const els = [...this.labelEls, ...Array.from(this.pinnedEl.children)] as HTMLElement[];
+    const els = [...this.labelEls, ...(withNotes ? Array.from(this.pinnedEl.children) : [])] as HTMLElement[];
     ctx.save();
     ctx.scale(s, s);
     ctx.textBaseline = "middle";
@@ -1480,6 +1576,7 @@ class Engine {
     this.camera.fov =
       aspect >= 1 ? base : (2 * Math.atan(Math.tan((base * Math.PI) / 360) / aspect) * 180) / Math.PI;
     this.camera.updateProjectionMatrix();
+    this.applyOrtho();
     this.requestRender();
   }
 
@@ -1838,7 +1935,7 @@ class Engine {
     if (dots.length === 0) return;
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.castRay();
     this.raycaster.params.Points.threshold = 0.05;
     const hit = this.raycaster.intersectObjects(dots, false).find((h) => this.inBox(h.point) && h.index !== undefined);
     if (!hit) return;
@@ -1868,7 +1965,8 @@ class Engine {
     this.frame = 0;
     if (this.disposed) return;
     // Coasting and auto-rotation: each step that moves the camera asks for the next frame.
-    if (this.tween) this.stepTween();
+    if (this.spin) this.stepSpin();
+    else if (this.tween) this.stepTween();
     else if (!this.axisDrag) this.controls.update();
     if (this.needsSync) {
       this.needsSync = false;
@@ -1882,8 +1980,10 @@ class Engine {
       this.hoverDirty = false;
       if (!this.drawTool) this.pick();
     }
+    this.applyOrtho();
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();
+    this.afterFrame?.();
     // Once the view has been still for a moment, fade the labels a surface hides.
     window.clearTimeout(this.occlusionTimer);
     this.occlusionTimer = window.setTimeout(this.computeOcclusion, 160);
@@ -2189,8 +2289,18 @@ class Engine {
       // A row that follows the clock is redrawn every frame: keep it light while it
       // plays. A row at rest is drawn once more, finer, when nothing has changed for a moment.
       const moving = this.coarse || (p.animating && dep.includes("@"));
-      const tier = !heavy ? 1 : moving ? 0 : same ? (this.fineReady ? 2 : Math.max(1, existing!.tier)) : 1;
+      let tier = !heavy ? 1 : moving ? 0 : same ? (this.fineReady ? 2 : Math.max(1, existing!.tier)) : 1;
       if (same && existing!.tier === tier) continue;
+      // A fine implicit surface is sampled a slice at a time between frames; meanwhile
+      // the one already drawn stays, or a coarse one is drawn straight away.
+      if (kind === "iso" && tier >= 1 && !this.flatKeys.has(baseKey)) {
+        const cells = isoCellsFor(tier, p.quality);
+        if (!this.isoReady(f.id, baseKey, cells)) {
+          this.queueIso(f, scope, baseKey, cells);
+          if (same) continue;
+          tier = 0;
+        }
+      }
       if (existing) this.removeRow(f.id);
 
       const entry: RowEntry = {
@@ -2226,6 +2336,8 @@ class Engine {
     }
 
     for (const id of [...this.rows.keys()]) if (!seen.has(id)) this.removeRow(id);
+    for (const id of [...this.isoValues.keys()]) if (!seen.has(id)) this.isoValues.delete(id);
+    for (const id of [...this.isoJobs.keys()]) if (!seen.has(id)) this.isoJobs.delete(id);
 
     // A row rebuilt from the graph's state mid-drag is a step behind the pointer.
     if (this.drag) {
@@ -2570,7 +2682,7 @@ class Engine {
     const q = clamp(p.quality || 14, 1, 30);
     const curveSamples = clamp(q * 60, 240, 1800);
     const surfaceCells = Math.min(180, Math.round(clamp(q * 6, 24, 120) * [0.5, 1, 1.6][tier]));
-    const isoCells = Math.min(64, Math.round(clamp(q * 2.6, 14, 52) * [0.6, 1, 1.3][tier]));
+    const isoCells = isoCellsFor(tier, p.quality);
     const planeCells = Math.round(clamp(q * 10, 60, 220) * [0.5, 1, 1.5][tier]);
     const angleUnit = inDegrees ? 180 / Math.PI : 1;
     const s = Object.create(scope);
@@ -3088,6 +3200,8 @@ class Engine {
           anchor = this.addFlatPlane(group, f, n, d);
           entry.implicit = (x, y, z) => n[0] * x + n[1] * y + n[2] * z + d;
           entry.flat = true;
+          if (this.flatKeys.size > 500) this.flatKeys.clear();
+          this.flatKeys.add(entry.baseKey);
         } else {
           anchor = this.addIsoSurface(group, f, s, isoCells, region);
           entry.implicit = implicit;
@@ -3518,26 +3632,15 @@ class Engine {
     const x0 = cx - half;
     const y0 = cy - half;
     const z0 = cz - half;
-    const value = this.relation(f, s);
-    const values = new Float32Array(size * size * size);
-    let p = 0;
-    for (let k = 0; k < size; k++) {
-      s.z = z0 + k * stepSize;
-      for (let j = 0; j < size; j++) {
-        const gy = y0 + j * stepSize;
-        for (let i = 0; i < size; i++) {
-          const gx = x0 + i * stepSize;
-          if (axf) {
-            const [lx, ly] = axf.inverse(gx, gy);
-            s.x = lx;
-            s.y = ly;
-          } else {
-            s.x = gx;
-            s.y = gy;
-          }
-          values[p++] = value();
-        }
-      }
+    // Sampled already between frames (see queueIso), or here and now.
+    const ready = this.isoValues.get(f.id);
+    let values: Float32Array;
+    if (ready && this.building && ready.key === this.building.baseKey && ready.n === n) {
+      values = ready.values;
+    } else {
+      const value = this.relation(f, s);
+      values = new Float32Array(size * size * size);
+      for (let k = 0; k < size; k++) this.sampleIsoSlice(values, k, n, value, s, axf, this.domain);
     }
 
     const at = (i: number, j: number, k: number) => (k * size + j) * size + i;
@@ -3960,7 +4063,7 @@ class Engine {
       if (o.isMesh || o.isPoints) targets.push(o);
     });
     if (targets.length === 0) return this.clearHover();
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.castRay();
     this.raycaster.params.Points.threshold = 0.035;
     let hits: THREE.Intersection[];
     try {
@@ -4259,7 +4362,7 @@ class Engine {
         ((clientX - d.offX - rect.left) / rect.width) * 2 - 1,
         -((clientY - d.offY - rect.top) / rect.height) * 2 + 1,
       );
-      this.raycaster.setFromCamera(this.pointer, this.camera);
+      this.castRay();
       const world = new THREE.Vector3(...d.pos).applyMatrix4(this.content.matrixWorld);
       const facing = this.camera.getWorldDirection(new THREE.Vector3());
       const plane = new THREE.Plane().setFromNormalAndCoplanarPoint(facing, world);
@@ -4289,7 +4392,7 @@ class Engine {
         ((clientX - d.offX - rect.left) / rect.width) * 2 - 1,
         -((clientY - d.offY - rect.top) / rect.height) * 2 + 1,
       );
-      this.raycaster.setFromCamera(this.pointer, this.camera);
+      this.castRay();
       const world = new THREE.Vector3(...d.start).applyMatrix4(this.content.matrixWorld);
       const normal = new THREE.Vector3(0, 0, 1);
       if (d.mode === "screen") {
@@ -5295,6 +5398,341 @@ class Engine {
     }
   }
 
+  // ── Orthographic view ──
+  //
+  // The perspective camera is kept (the controls, the drag maths and the label code
+  // all use it); only its projection is swapped, before each frame, for a parallel one
+  // exactly as wide at the point it orbits as the perspective view. Zooming moves the
+  // camera in and out as before, which shrinks or grows that width.
+
+  private applyOrtho() {
+    if (!this.ortho) return;
+    const cam = this.camera;
+    const dist = Math.max(1e-3, cam.position.distanceTo(this.controls.target));
+    const h = dist * Math.tan((cam.fov * Math.PI) / 360);
+    const w = h * cam.aspect;
+    cam.projectionMatrix.makeOrthographic(-w, w, h, -h, -100, 100);
+    cam.projectionMatrixInverse.copy(cam.projectionMatrix).invert();
+  }
+
+  /** The pointer's ray into the scene, straight ahead in the orthographic view. */
+  private castRay() {
+    if (!this.ortho) {
+      this.raycaster.setFromCamera(this.pointer, this.camera);
+      return;
+    }
+    this.applyOrtho();
+    this.camera.updateMatrixWorld();
+    const ray = this.raycaster.ray;
+    ray.origin.set(this.pointer.x, this.pointer.y, -1).unproject(this.camera);
+    ray.direction.set(0, 0, -1).transformDirection(this.camera.matrixWorld);
+    this.raycaster.camera = this.camera;
+  }
+
+  // ── Implicit surfaces, sampled between frames ──
+  //
+  // F(x, y, z) = 0 is found from F on a grid of up to 65³ points: at the finer sizes
+  // too slow to do in one go without the page stalling. So the grid is filled a slice
+  // at a time between frames while the coarser surface stays up, then swapped in.
+
+  private sampleIsoSlice(
+    values: Float32Array,
+    k: number,
+    n: number,
+    value: () => number,
+    s: any,
+    axf: AffineTransform2 | null,
+    dom: Domain,
+  ) {
+    const size = n + 1;
+    const step = (2 * dom.half) / n;
+    const x0 = dom.cx - dom.half;
+    const y0 = dom.cy - dom.half;
+    s.z = dom.cz - dom.half + k * step;
+    let p = k * size * size;
+    for (let j = 0; j < size; j++) {
+      const gy = y0 + j * step;
+      for (let i = 0; i < size; i++) {
+        const gx = x0 + i * step;
+        if (axf) {
+          const [lx, ly] = axf.inverse(gx, gy);
+          s.x = lx;
+          s.y = ly;
+        } else {
+          s.x = gx;
+          s.y = gy;
+        }
+        values[p++] = value();
+      }
+    }
+  }
+
+  private isoReady(id: string, key: string, n: number): boolean {
+    const v = this.isoValues.get(id);
+    return !!v && v.key === key && v.n === n;
+  }
+
+  private queueIso(f: MathFunction, scope: any, key: string, n: number) {
+    const job = this.isoJobs.get(f.id);
+    if (job && job.key === key && job.n === n) return;
+    const s = Object.create(scope);
+    this.isoJobs.set(f.id, {
+      id: f.id,
+      key,
+      n,
+      k: 0,
+      values: new Float32Array((n + 1) ** 3),
+      value: this.relation(f, s),
+      s,
+      axf: this.affineTransformOf(f, () => [[0, 0]]),
+      dom: { ...this.domain },
+    });
+    if (!this.isoTimer) this.isoTimer = window.setTimeout(this.runIsoJobs, 0);
+  }
+
+  private runIsoJobs = () => {
+    this.isoTimer = 0;
+    if (this.disposed) return;
+    const deadline = performance.now() + 10;
+    for (const job of [...this.isoJobs.values()]) {
+      if (this.flatKeys.has(job.key)) {
+        this.isoJobs.delete(job.id);
+        continue;
+      }
+      while (job.k <= job.n && performance.now() < deadline) {
+        this.sampleIsoSlice(job.values, job.k, job.n, job.value, job.s, job.axf, job.dom);
+        job.k++;
+      }
+      if (job.k > job.n) {
+        this.isoValues.set(job.id, { key: job.key, n: job.n, values: job.values });
+        this.isoJobs.delete(job.id);
+        this.sync();
+      }
+      if (performance.now() >= deadline) break;
+    }
+    if (this.isoJobs.size) this.isoTimer = window.setTimeout(this.runIsoJobs, 0);
+  };
+
+  // ── Export: the graph as a 3D model ──
+
+  /**
+   * The surfaces (and, for GLB, the curves) in graph units, cut to the box as they
+   * show on screen. STL is for 3D printing and keeps z up; GLB turns z to y, as 3D
+   * apps expect, and keeps colours.
+   */
+  async exportModel(format: "stl" | "glb"): Promise<Blob | null> {
+    if (this.needsSync) {
+      this.needsSync = false;
+      this.syncRows();
+    }
+    this.content.updateMatrixWorld(true);
+    const { cx, cy, cz, half } = this.domain;
+    const lo = [cx - half, cy - half, cz - half];
+    const hi = [cx + half, cy + half, cz + half];
+    const toGraph = this.content.matrixWorld.clone().invert();
+    const m = new THREE.Matrix4();
+    const v = new THREE.Vector3();
+    const root = new THREE.Group();
+    const visible = (o: THREE.Object3D) => {
+      for (let p: THREE.Object3D | null = o; p; p = p.parent) if (!p.visible) return false;
+      return true;
+    };
+    const rowColor = (o: THREE.Object3D): string => {
+      for (let p: THREE.Object3D | null = o; p; p = p.parent) {
+        const id = p.userData?.rowId;
+        if (id) return this.rows.get(id)?.color ?? "#3b82f6";
+      }
+      return CROSS_COLOR;
+    };
+
+    const addMesh = (o: THREE.Mesh, matrix: THREE.Matrix4) => {
+      const g = o.geometry as THREE.BufferGeometry;
+      const pos = g.getAttribute("position");
+      if (!pos) return;
+      const col = g.getAttribute("color");
+      const idx = g.index;
+      const count = idx ? idx.count : pos.count;
+      const out: number[] = [];
+      const outCol: number[] = [];
+      const corner = (i: number) => {
+        v.fromBufferAttribute(pos, i).applyMatrix4(matrix);
+        return col ? [v.x, v.y, v.z, col.getX(i), col.getY(i), col.getZ(i)] : [v.x, v.y, v.z];
+      };
+      for (let t = 0; t + 2 < count; t += 3) {
+        const a = idx ? idx.getX(t) : t;
+        const b = idx ? idx.getX(t + 1) : t + 1;
+        const c = idx ? idx.getX(t + 2) : t + 2;
+        const poly = clipToBox([corner(a), corner(b), corner(c)], lo, hi);
+        for (let k = 1; k + 1 < poly.length; k++) {
+          for (const p of [poly[0], poly[k], poly[k + 1]]) {
+            out.push(p[0], p[1], p[2]);
+            if (col) outCol.push(p[3], p[4], p[5]);
+          }
+        }
+      }
+      if (!out.length) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
+      if (col) geometry.setAttribute("color", new THREE.Float32BufferAttribute(outCol, 3));
+      geometry.computeVertexNormals();
+      const src = o.material as any;
+      const color = src?.color instanceof THREE.Color ? src.color.clone() : new THREE.Color(rowColor(o));
+      const opacity = typeof src?.opacity === "number" ? src.opacity : 1;
+      root.add(
+        new THREE.Mesh(
+          geometry,
+          new THREE.MeshStandardMaterial({
+            color: col ? 0xffffff : color,
+            vertexColors: !!col,
+            side: THREE.DoubleSide,
+            transparent: opacity < 1,
+            opacity,
+            roughness: 0.6,
+            metalness: 0,
+          }),
+        ),
+      );
+    };
+
+    const addLines = (o: LineSegments2, matrix: THREE.Matrix4) => {
+      const g = o.geometry as any;
+      const start = g.attributes.instanceStart;
+      const end = g.attributes.instanceEnd;
+      if (!start || !end) return;
+      const out: number[] = [];
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      for (let i = 0; i < start.count; i++) {
+        a.fromBufferAttribute(start, i).applyMatrix4(matrix);
+        b.fromBufferAttribute(end, i).applyMatrix4(matrix);
+        const seg = clipSegmentToBox([a.x, a.y, a.z], [b.x, b.y, b.z], lo, hi);
+        if (seg) out.push(...seg[0], ...seg[1]);
+      }
+      if (!out.length) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
+      const mat = o.material as LineMaterial;
+      root.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: mat.vertexColors ? new THREE.Color(rowColor(o)) : mat.color.clone() })));
+    };
+
+    for (const group of [this.rowsGroup, this.crossGroup]) {
+      group.traverse((o) => {
+        if (!visible(o)) return;
+        if (o instanceof LineSegments2) {
+          if (format === "glb") addLines(o, m.multiplyMatrices(toGraph, o.matrixWorld));
+        } else if (o instanceof THREE.InstancedMesh) {
+          const inst = new THREE.Matrix4();
+          for (let i = 0; i < o.count; i++) {
+            o.getMatrixAt(i, inst);
+            addMesh(o, new THREE.Matrix4().multiplyMatrices(toGraph, o.matrixWorld).multiply(inst));
+          }
+        } else if (o instanceof THREE.Mesh) {
+          addMesh(o, new THREE.Matrix4().multiplyMatrices(toGraph, o.matrixWorld));
+        }
+      });
+    }
+    if (!root.children.length) return null;
+
+    if (format === "stl") {
+      const { STLExporter } = await import("three/examples/jsm/exporters/STLExporter.js");
+      const data = new STLExporter().parse(root, { binary: true }) as unknown as DataView;
+      return new Blob([data.buffer as ArrayBuffer], { type: "model/stl" });
+    }
+    // glTF is y-up.
+    root.rotation.x = -Math.PI / 2;
+    const { GLTFExporter } = await import("three/examples/jsm/exporters/GLTFExporter.js");
+    const data = (await new GLTFExporter().parseAsync(root, { binary: true })) as ArrayBuffer;
+    return new Blob([data], { type: "model/gltf-binary" });
+  }
+
+  // ── A spin round the graph, as a video ──
+
+  private stepSpin() {
+    const sp = this.spin!;
+    const f = Math.min(1, (performance.now() - sp.t0) / (sp.seconds * 1000));
+    // Eased in and out, so the loop starts and ends gently.
+    const e = f < 0.5 ? 2 * f * f : 1 - 2 * (1 - f) * (1 - f);
+    this.camera.position.copy(sp.target).add(sp.start.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), e * TWO_PI));
+    this.camera.lookAt(sp.target);
+    sp.progress(f);
+    if (f >= 1) {
+      this.spin = null;
+      sp.done();
+    } else this.requestRender();
+  }
+
+  /**
+   * One slow turn round the graph, recorded as a video (MP4 where the browser can,
+   * otherwise WebM), with its labels and corner notes. Null if the browser can't record.
+   */
+  async recordSpin(seconds: number, progress: (f: number) => void): Promise<{ blob: Blob; ext: string } | null> {
+    if (typeof MediaRecorder === "undefined" || this.spin) return null;
+    const type = ["video/mp4;codecs=avc1", "video/mp4", "video/webm;codecs=vp9", "video/webm"].find((t) => MediaRecorder.isTypeSupported(t));
+    if (!type) return null;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const even = (x: number) => Math.max(2, Math.round(x / 2) * 2);
+    const comp = document.createElement("canvas");
+    comp.width = even(this.width * dpr);
+    comp.height = even(this.height * dpr);
+    const ctx = comp.getContext("2d");
+    if (!ctx || typeof (comp as any).captureStream !== "function") return null;
+
+    // The notes in the corner don't move: drawn once, as they look.
+    let notes: HTMLCanvasElement | null = null;
+    if (this.pinnedEl.style.display !== "none" && this.pinnedEl.childElementCount) {
+      notes = document.createElement("canvas");
+      notes.width = comp.width;
+      notes.height = comp.height;
+      try {
+        await this.drawOverlay(notes.getContext("2d")!, this.width, this.height, comp.width / this.width, true);
+      } catch {
+        notes = null;
+      }
+    }
+
+    const stream: MediaStream = (comp as any).captureStream(30);
+    const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8_000_000 });
+    const chunks: Blob[] = [];
+    recorder.ondataavailable = (e) => {
+      if (e.data.size) chunks.push(e.data);
+    };
+    const stopped = new Promise<void>((resolve) => (recorder.onstop = () => resolve()));
+
+    const target = this.controls.target.clone();
+    const startPos = this.camera.position.clone();
+    const startUp = this.camera.up.clone();
+    this.camera.up.set(0, 0, 1);
+    const wasAuto = this.controls.autoRotate;
+    this.controls.autoRotate = false;
+    this.controls.enabled = false;
+    this.afterFrame = () => {
+      ctx.drawImage(this.renderer.domElement, 0, 0, comp.width, comp.height);
+      this.drawOverlayText(ctx, comp.width / this.width, false);
+      if (notes) ctx.drawImage(notes, 0, 0);
+    };
+    recorder.start(250);
+    try {
+      await new Promise<void>((resolve) => {
+        this.spin = { t0: performance.now(), seconds, target, start: startPos.clone().sub(target), progress, done: resolve };
+        this.requestRender();
+      });
+      // A last moment on the final frame, so players don't cut it short.
+      await new Promise((r) => setTimeout(r, 300));
+    } finally {
+      this.afterFrame = null;
+      recorder.stop();
+      await stopped;
+      stream.getTracks().forEach((t) => t.stop());
+      this.camera.position.copy(startPos);
+      this.camera.up.copy(startUp);
+      this.camera.lookAt(target);
+      this.controls.enabled = true;
+      this.controls.autoRotate = wasAuto;
+      this.requestRender();
+    }
+    return { blob: new Blob(chunks, { type: type.split(";")[0] }), ext: type.startsWith("video/mp4") ? "mp4" : "webm" };
+  }
+
   // ── Where surfaces meet ──
   //
   // Every surface row that can say which side of it a point is on (z = f(x, y), or
@@ -5632,7 +6070,7 @@ class Engine {
   private localRay(clientX: number, clientY: number): [THREE.Vector3, THREE.Vector3] {
     const rect = this.renderer.domElement.getBoundingClientRect();
     this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
-    this.raycaster.setFromCamera(this.pointer, this.camera);
+    this.castRay();
     const o = this.content.worldToLocal(this.raycaster.ray.origin.clone());
     const d = this.content.worldToLocal(this.raycaster.ray.origin.clone().add(this.raycaster.ray.direction)).sub(o).normalize();
     return [o, d];
@@ -5829,6 +6267,8 @@ class Engine {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.frame);
+    window.clearTimeout(this.isoTimer);
+    this.isoJobs.clear();
     window.clearTimeout(this.coarseTimer);
     window.clearTimeout(this.fineTimer);
     window.clearTimeout(this.occlusionTimer);
@@ -5922,6 +6362,15 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
   propsRef.current = props;
   const [failed, setFailed] = useState(false);
   const [panelOpen, setPanelOpen] = useState(false);
+  /** An export or recording in progress, and a short message after one. */
+  const [busy, setBusy] = useState<"stl" | "glb" | "video" | null>(null);
+  const [spinProgress, setSpinProgress] = useState(0);
+  const [notice, setNotice] = useState<string | null>(null);
+  useEffect(() => {
+    if (!notice) return;
+    const t = window.setTimeout(() => setNotice(null), 4000);
+    return () => window.clearTimeout(t);
+  }, [notice]);
   const [domain, setDomain] = useState<Domain | null>(null);
 
   const optionsKey = JSON.stringify(props.options ?? {});
@@ -6192,11 +6641,72 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
                   onChange={(on) => setOptions({ showBox: on })}
                 />
                 <Switch
+                  label="Orthographic"
+                  title="No perspective: parallel lines stay parallel and sizes don't shrink with distance, as in a technical drawing"
+                  on={options.ortho}
+                  onChange={(on) => setOptions({ ortho: on })}
+                />
+                <Switch
                   label="Auto-rotate"
                   title="Turn the graph slowly"
                   on={options.autoRotate}
                   onChange={(on) => setOptions({ autoRotate: on })}
                 />
+
+                <div className={HEADING}>Export</div>
+                <div className="flex gap-1">
+                  {(["stl", "glb"] as const).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      disabled={!!busy}
+                      title={format === "stl" ? "The surfaces as an STL file, for 3D printing" : "Surfaces and curves, in colour, as a GLB file for 3D apps"}
+                      className={CHIP}
+                      onClick={async () => {
+                        const engine = engineRef.current;
+                        if (!engine) return;
+                        setBusy(format);
+                        try {
+                          const blob = await engine.exportModel(format);
+                          if (blob) saveBlob(blob, `graph-3d.${format}`);
+                          else setNotice("Nothing to export: add a surface first.");
+                        } catch (err) {
+                          console.warn("3D export failed", err);
+                          setNotice("Export failed.");
+                        } finally {
+                          setBusy(null);
+                        }
+                      }}
+                    >
+                      {busy === format ? "…" : format.toUpperCase()}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    title="Record one slow turn round the graph as a video"
+                    className={busy === "video" ? CHIP_ON : CHIP}
+                    onClick={async () => {
+                      const engine = engineRef.current;
+                      if (!engine) return;
+                      setBusy("video");
+                      setSpinProgress(0);
+                      try {
+                        const result = await engine.recordSpin(8, setSpinProgress);
+                        if (result) saveBlob(result.blob, `graph-3d-spin.${result.ext}`);
+                        else setNotice("This browser can't record video.");
+                      } catch (err) {
+                        console.warn("3D video failed", err);
+                        setNotice("Recording failed.");
+                      } finally {
+                        setBusy(null);
+                      }
+                    }}
+                  >
+                    {busy === "video" ? `Recording ${Math.round(spinProgress * 100)}%` : "Spin video"}
+                  </button>
+                </div>
+                {notice && <div className="px-1 pt-1 text-[10px] text-amber-600 dark:text-amber-400">{notice}</div>}
 
                 <div className={HEADING}>Slice</div>
                 <div className="flex gap-1" role="radiogroup" aria-label="Slice plane">
