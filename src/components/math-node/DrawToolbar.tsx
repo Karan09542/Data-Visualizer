@@ -1,11 +1,6 @@
 import React, { useState } from "react";
 import {
-  ArrowDownToLine,
   ArrowUpRight,
-  BookOpen,
-  Crosshair,
-  MoveDiagonal,
-  Layers,
   Check,
   ChevronLeft,
   Circle,
@@ -23,6 +18,7 @@ import {
 } from "lucide-react";
 import { DRAW_TOOL_HINTS, SELECT_TOOL_HINT, SPACE_TOOLS, type DrawToolKind, type GraphTool, type SolidMode } from "./DrawTool";
 import type { VectorOptions } from "./drawRows";
+import { DihedralIcon, FootIcon, LinePlaneIcon, PlaneIcon, SkewLinesIcon } from "./spaceToolIcons";
 
 const TOOLS: { id: GraphTool | null; label: string; Icon: React.ElementType }[] = [
   { id: null, label: "Move the graph", Icon: MousePointer2 },
@@ -35,11 +31,11 @@ const TOOLS: { id: GraphTool | null; label: string; Icon: React.ElementType }[] 
   { id: "polygon", label: "Polygon", Icon: Pentagon },
   { id: "distance", label: "Measure distance", Icon: RulerDimensionLine },
   { id: "angle", label: "Measure angle", Icon: Triangle },
-  { id: "plane", label: "Plane through 3 points", Icon: Layers },
-  { id: "foot", label: "Perpendicular foot", Icon: ArrowDownToLine },
-  { id: "dihedral", label: "Angle between planes", Icon: BookOpen },
-  { id: "lineplane", label: "Line meets plane", Icon: Crosshair },
-  { id: "skew", label: "Distance between lines", Icon: MoveDiagonal },
+  { id: "plane", label: "Plane through 3 points", Icon: PlaneIcon },
+  { id: "foot", label: "Perpendicular foot", Icon: FootIcon },
+  { id: "dihedral", label: "Angle between planes", Icon: DihedralIcon },
+  { id: "lineplane", label: "Line meets plane", Icon: LinePlaneIcon },
+  { id: "skew", label: "Distance between lines", Icon: SkewLinesIcon },
 ];
 
 const HIDDEN_KEY = "mathNode.drawToolsHidden";

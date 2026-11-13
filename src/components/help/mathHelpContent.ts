@@ -22,17 +22,15 @@ import {
   Save,
   Settings2,
   Box,
-  Crosshair,
   Download,
-  MoveDiagonal,
   Eye,
   Orbit,
-  Ruler,
   ScanLine,
   Video,
   Wind,
 } from 'lucide-react';
 import type { HelpContent } from './HelpDialog';
+import { DihedralIcon, FootIcon, LinePlaneIcon, PlaneIcon, SkewLinesIcon } from '../math-node/spaceToolIcons';
 
 /** What "Insert" adds to the graph: a row of this type with this expression */
 export type MathRowType =
@@ -450,27 +448,27 @@ export const mathHelp: HelpContent = {
           type: 'cards',
           items: [
             {
-              icon: Layers,
+              icon: PlaneIcon,
               title: 'Plane through 3 points',
               text: 'In the drawing tools (3D only): click three points for the plane through them, with its equation, e.g. 4x − 5y + 16z = 18. Two planes show the line where they meet.',
             },
             {
-              icon: Ruler,
+              icon: FootIcon,
               title: 'Perpendicular foot',
               text: 'Click a point, then three points of a plane: marks the foot of the perpendicular and the shortest distance from the point to the plane.',
             },
             {
-              icon: BookOpen,
+              icon: DihedralIcon,
               title: 'Angle between planes',
               text: 'Click the two ends of the edge two planes share, then one point on each plane: shows both faces and the angle between them.',
             },
             {
-              icon: Crosshair,
+              icon: LinePlaneIcon,
               title: 'Line meets plane',
               text: 'Click two points for a line, then three for a plane: marks the point where they meet.',
             },
             {
-              icon: MoveDiagonal,
+              icon: SkewLinesIcon,
               title: 'Distance between lines',
               text: 'Click two points on each of two lines: the shortest segment between them (square to both) and its length. Works for skew lines that never meet.',
             },
