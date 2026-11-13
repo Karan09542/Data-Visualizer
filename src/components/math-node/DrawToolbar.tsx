@@ -16,7 +16,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { DRAW_TOOL_HINTS, DRAW_TOOL_TIPS, SELECT_TOOL_HINT, SPACE_TOOLS, type DrawToolKind, type GraphTool, type SolidMode } from "./DrawTool";
+import { DRAW_TOOL_HINTS, DRAW_TOOL_TIPS, SELECT_TOOL_HINT, SELECT_TOOL_HINT_3D, SPACE_TOOLS, type DrawToolKind, type GraphTool, type SolidMode } from "./DrawTool";
 import type { VectorOptions } from "./drawRows";
 import { DihedralIcon, FootIcon, LinePlaneIcon, PlaneIcon, SkewLinesIcon } from "./spaceToolIcons";
 
@@ -263,7 +263,7 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
       // rather than squeeze together or run off its top and bottom.
       className={`${SHELL} flex flex-col gap-0.5 p-1 max-h-[calc(100%-1rem)] overflow-y-auto overscroll-contain no-scrollbar *:shrink-0`}
     >
-      {TOOLS.filter(({ id }) => !(in3d && id === "select") && !(!in3d && SPACE_TOOLS.has(id as DrawToolKind))).map(({ id, label, Icon }, i) => {
+      {TOOLS.filter(({ id }) => !(!in3d && SPACE_TOOLS.has(id as DrawToolKind))).map(({ id, label, Icon }, i) => {
         const active = tool === id;
         return (
           <React.Fragment key={label}>
@@ -272,7 +272,7 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
               type="button"
               onClick={() => onChange(active && id ? null : id)}
               aria-pressed={active}
-              title={`${label}\n${id === "select" ? SELECT_TOOL_HINT : id ? (DRAW_TOOL_TIPS[id] ?? DRAW_TOOL_HINTS[id]) : in3d ? "Drag to turn, scroll to zoom" : "Drag to pan, scroll to zoom"}`}
+              title={`${label}\n${id === "select" ? (in3d ? SELECT_TOOL_HINT_3D : SELECT_TOOL_HINT) : id ? (DRAW_TOOL_TIPS[id] ?? DRAW_TOOL_HINTS[id]) : in3d ? "Drag to turn, scroll to zoom" : "Drag to pan, scroll to zoom"}`}
               className={`size-8 inline-flex items-center justify-center rounded-lg transition-colors ${
                 active
                   ? "bg-blue-600 text-white shadow-sm"

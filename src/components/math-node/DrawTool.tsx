@@ -40,6 +40,9 @@ export interface DrawSolid {
 export type GraphTool = DrawToolKind | "select";
 
 export const SELECT_TOOL_HINT = "Click a shape, or drag a box round several, then move, turn, resize or delete them. Shift adds to the selection.";
+/** The same in the 3D view, where a drag turns the view and the handles are arrows. */
+export const SELECT_TOOL_HINT_3D =
+  "Click a shape to select it (Shift-click adds more). Drag the arrows to move it along x, y or z, the yellow handle to turn it, the green one to resize it. Delete removes it.";
 
 export const DRAW_TOOL_CLICKS: Record<DrawToolKind, number> = {
   point: 1,
@@ -127,6 +130,7 @@ export const DRAW_TOOL_SHORT_HINTS: Record<DrawToolKind, string> = {
 };
 
 export const SELECT_TOOL_SHORT_HINT = "Tap a shape or drag a box";
+export const SELECT_TOOL_SHORT_HINT_3D = "Tap a shape to select it";
 
 /** A clicked spot: an existing named point, or a new position. */
 export interface DrawPick {

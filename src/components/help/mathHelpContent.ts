@@ -448,6 +448,11 @@ export const mathHelp: HelpContent = {
           type: 'cards',
           items: [
             {
+              icon: MousePointer2,
+              title: 'Select and transform',
+              text: 'The Select tool works in 3D too: click a shape (Shift-click adds more), then drag the red, green and blue arrows to move it along x, y and z, the yellow handle to turn it, and the green one to resize it. Delete removes it. Dragging empty space still turns the view.',
+            },
+            {
               icon: PlaneIcon,
               title: 'Plane through 3 points',
               text: 'In the drawing tools (3D only): click three points for the plane through them, with its equation, e.g. 4x − 5y + 16z = 18. Two planes show the line where they meet.',

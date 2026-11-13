@@ -12,21 +12,28 @@
 import type { MathFunction, MathVariable } from "./mathTypes";
 
 const NUM = String.raw`-?(?:\d+\.?\d*|\.\d+)(?:e[-+]?\d+)?`;
-/** `A = [1, 2]`: a point whose equation is its position. */
-const FREE_POINT = new RegExp(String.raw`^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\[\s*(${NUM})\s*,\s*(${NUM})\s*\]\s*$`, "i");
+/** `A = [1, 2]` or, in space, `A = [1, 2, 3]`: a point whose equation is its position. */
+const FREE_POINT = new RegExp(
+  String.raw`^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*\[\s*(${NUM})\s*,\s*(${NUM})\s*(?:,\s*(${NUM})\s*)?\]\s*$`,
+  "i",
+);
 const ASSIGNED = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*(?:\([^)]*\))?\s*=(?!=)/;
 const IDENT = /[A-Za-z_][A-Za-z0-9_]*/g;
 /** `[A, B, C]` or `tri = [A, B, C]`. */
 const NAME_LIST =
   /^(\s*(?:[A-Za-z_][A-Za-z0-9_]*\s*=\s*)?)\[\s*([A-Za-z_][A-Za-z0-9_]*(?:\s*,\s*[A-Za-z_][A-Za-z0-9_]*)*)\s*\]\s*$/;
 /** The radius of a circle drawn as centre + radius·[cos, sin]. */
-const CIRCLE_RADIUS = /\+\s*([A-Za-z_][A-Za-z0-9_]*)\s*\*\s*\[\s*cos\(/;
+const CIRCLE_RADIUS = /\+\s*([A-Za-z_][A-Za-z0-9_]*)\s*\*\s*\[\s*(?:0\s*,\s*)?cos\(/;
+/** A circle (or a solid on one) standing on an upright plane: `[cos(t), 0, sin(t)]`, `[0, cos(t), sin(t)]`. */
+const UPRIGHT_CIRCLE = /\[\s*0\s*,\s*cos\(|\[\s*cos\([^\]]*?,\s*0\s*,\s*sin\(/;
 
 export interface SelectedPoint {
   id: string;
   name: string;
   x: number;
   y: number;
+  /** Its height, for a point written with three coordinates; a flat point has none. */
+  z?: number;
 }
 
 export interface Selection {
@@ -45,7 +52,8 @@ const definedName = (f: MathFunction) => f.expr?.match(ASSIGNED)?.[1];
 export function freePoint(f: MathFunction): SelectedPoint | null {
   if (f.type !== "point") return null;
   const m = f.expr?.match(FREE_POINT);
-  return m ? { id: f.id, name: m[1], x: Number(m[2]), y: Number(m[3]) } : null;
+  if (!m) return null;
+  return { id: f.id, name: m[1], x: Number(m[2]), y: Number(m[3]), ...(m[4] !== undefined ? { z: Number(m[4]) } : {}) };
 }
 
 /** The rows that make up the drawn shape `fnId` belongs to. */
@@ -102,19 +110,91 @@ export function selectionCentre(sel: Selection): [number, number] | null {
   return [sel.points.reduce((s, p) => s + p.x, 0) / n, sel.points.reduce((s, p) => s + p.y, 0) / n];
 }
 
-export type Motion =
-  | { kind: "move"; dx: number; dy: number }
-  | { kind: "rotate"; angle: number; centre: [number, number] }
-  | { kind: "scale"; factor: number; centre: [number, number] };
+/**
+ * The 3D view's centre of a selection: the average of its points, heights included.
+ * A flat point counts as standing on the floor.
+ */
+export function selectionCentre3(sel: Selection): [number, number, number] | null {
+  if (!sel.points.length) return null;
+  const n = sel.points.length;
+  return [
+    sel.points.reduce((s, p) => s + p.x, 0) / n,
+    sel.points.reduce((s, p) => s + p.y, 0) / n,
+    sel.points.reduce((s, p) => s + (p.z ?? 0), 0) / n,
+  ];
+}
 
-const moved = (m: Motion, x: number, y: number): [number, number] => {
-  if (m.kind === "move") return [x + m.dx, y + m.dy];
+/**
+ * A step of moving, turning or resizing. In space a move can also go up (`dz`), a turn
+ * is about the upright line through `centre`, and a resize is about `centre` at the
+ * height `centreZ` (left out on the flat graph, where heights stay as they are).
+ */
+export type Motion =
+  | { kind: "move"; dx: number; dy: number; dz?: number }
+  | { kind: "rotate"; angle: number; centre: [number, number] }
+  | { kind: "scale"; factor: number; centre: [number, number]; centreZ?: number };
+
+const moved = (m: Motion, x: number, y: number, z: number): [number, number, number] => {
+  if (m.kind === "move") return [x + m.dx, y + m.dy, z + (m.dz ?? 0)];
   const [cx, cy] = m.centre;
-  if (m.kind === "scale") return [cx + (x - cx) * m.factor, cy + (y - cy) * m.factor];
+  if (m.kind === "scale") {
+    const cz = m.centreZ;
+    return [cx + (x - cx) * m.factor, cy + (y - cy) * m.factor, cz === undefined ? z : cz + (z - cz) * m.factor];
+  }
   const c = Math.cos(m.angle);
   const s = Math.sin(m.angle);
-  return [cx + (x - cx) * c - (y - cy) * s, cy + (x - cx) * s + (y - cy) * c];
+  return [cx + (x - cx) * c - (y - cy) * s, cy + (x - cx) * s + (y - cy) * c, z];
 };
+
+/**
+ * Whether the selection can be turned about the upright axis as it stands: a circle
+ * drawn on an upright plane is written for that plane, and would not turn with its points.
+ */
+export function canTurnInSpace(sel: Selection, functions: MathFunction[]): boolean {
+  const ids = new Set(sel.rowIds);
+  return !functions.some((f) => ids.has(f.id) && UPRIGHT_CIRCLE.test(f.expr ?? ""));
+}
+
+/**
+ * Whether the selection's flat points can be given a height without breaking anything.
+ * A row written for the flat graph (`A + r*[cos(t), sin(t)]`), or a shape that shares
+ * a corner with one that isn't selected, can't mix flat points with points in space.
+ * Rather than guess from how rows are written, this tries it: every row that works
+ * now must still work with the points lifted.
+ */
+export function canLiftPoints(
+  sel: Selection,
+  functions: MathFunction[],
+  baseScope: Record<string, unknown> | null | undefined,
+  toValue: (coords: number[]) => unknown,
+): boolean {
+  if (!sel.points.some((p) => p.z === undefined)) return true;
+  const own = new Set(sel.points.map((p) => p.id));
+  const scopeWith = (lifted: boolean) => {
+    const s: Record<string, unknown> = Object.create(baseScope ?? null);
+    for (const k of ["x", "y", "t", "u", "v"]) if (s[k] === undefined) s[k] = 0.5;
+    for (const p of sel.points) s[p.name] = toValue(lifted || p.z !== undefined ? [p.x, p.y, (p.z ?? 0) + (lifted ? 1 : 0)] : [p.x, p.y]);
+    return s;
+  };
+  const before = scopeWith(false);
+  const after = scopeWith(true);
+  const works = (f: MathFunction, scope: Record<string, unknown>) => {
+    try {
+      f.compiled.evaluate(scope);
+      return true;
+    } catch {
+      return false;
+    }
+  };
+  for (const f of functions) {
+    if (own.has(f.id) || typeof f.compiled?.evaluate !== "function") continue;
+    // Both are run even when the first fails: a row that names a value passes it on.
+    const was = works(f, before);
+    const is = works(f, after);
+    if (was && !is) return false;
+  }
+  return true;
+}
 
 /**
  * A selection built on points, transformed: the new equations of its points, and
@@ -127,8 +207,10 @@ export function transformPoints(
 ): { exprs: Map<string, string>; sliderValues: Map<string, number> } {
   const exprs = new Map<string, string>();
   for (const p of sel.points) {
-    const [x, y] = moved(motion, p.x, p.y);
-    exprs.set(p.id, `${p.name} = [${fmt(x)}, ${fmt(y)}]`);
+    const [x, y, z] = moved(motion, p.x, p.y, p.z ?? 0);
+    // A flat point stays flat (and so on the flat graph) until it is given a height.
+    const flat = p.z === undefined && Math.abs(z) < 5e-7;
+    exprs.set(p.id, flat ? `${p.name} = [${fmt(x)}, ${fmt(y)}]` : `${p.name} = [${fmt(x)}, ${fmt(y)}, ${fmt(z)}]`);
   }
   const sliderValues = new Map<string, number>();
   if (motion.kind === "scale") {

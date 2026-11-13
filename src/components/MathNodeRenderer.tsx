@@ -179,7 +179,9 @@ import {
   type VectorOptions,
   SelectTool,
   SELECT_TOOL_HINT,
+  SELECT_TOOL_HINT_3D,
   SELECT_TOOL_SHORT_HINT,
+  SELECT_TOOL_SHORT_HINT_3D,
   DRAW_TOOL_SHORT_HINTS,
   SELECT_MOVE,
   SELECT_ROTATE,
@@ -187,6 +189,9 @@ import {
   describeSelection,
   describeSelections,
   selectionCentre,
+  selectionCentre3,
+  canLiftPoints,
+  canTurnInSpace,
   transformPoints,
   transformRow,
   deleteRows,
@@ -223,7 +228,7 @@ import {
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
-import type { Graph3DOptions } from "./math-node/Graph3D";
+import type { Graph3DOptions, Selection3D } from "./math-node/Graph3D";
 import { solveDrag, snapToStep } from "../lib/math/dragSolve";
 import {
   POINT_COORDINATES_LABEL,
@@ -2343,6 +2348,26 @@ export const MathNodeRenderer: React.FC<any> = ({
       toolSelection = { rowIds: selection.rowIds, centre: null, canRotate: false, canResize: false };
     }
   }
+
+  // The same selection as the 3D view holds it: its points' centre in space, and what
+  // can be done to it there without breaking a row.
+  const selectionIn3d = viewMode === "3d" && drawTool === "select" ? selection : null;
+  const selection3dKey = selectionIn3d
+    ? JSON.stringify([
+        selectionIn3d.rowIds,
+        selectionCentre3(selectionIn3d),
+        selectionIn3d.points.length,
+        selectionIn3d.sliders.length,
+        selectionIn3d.points.length ? canLiftPoints(selectionIn3d, functions, baseScope, (c) => mathjs.matrix(c)) : false,
+        selectionIn3d.points.length >= 2 && canTurnInSpace(selectionIn3d, functions),
+      ])
+    : "";
+  // Held by its contents, so the 3D view isn't handed a new one on every render.
+  const selection3d = useMemo<Selection3D | null>(() => {
+    if (!selection3dKey) return null;
+    const [rowIds, centre, points, sliders, canLift, canRotate] = JSON.parse(selection3dKey);
+    return { rowIds, centre, canLift, canRotate, canResize: points >= 2 || (points > 0 && sliders > 0) };
+  }, [selection3dKey]);
 
   const handleSelect = (fnIds: string[], middle: [number, number] | null, add: boolean) => {
     // Shift adds what isn't selected yet and lets go of what is.
@@ -7389,6 +7414,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                 onPointMenu={openPointMenu}
                 onDragHandle={handleHandleDrag}
                 drawTool={!isCompact && drawTool && drawTool !== "select" ? drawTool : null}
+                selectTool={!isCompact && drawTool === "select"}
+                selection={selection3d}
+                onSelect={handleSelect}
+                onSelectionMotion={handleSelectionMotion}
                 drawHeight={drawHeight}
                 onDrawHeight={setDrawHeight}
                 drawPlane={drawPlane}
@@ -9870,7 +9899,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               onClose={closePointMenu}
             />
           )}
-          {!isCompact && drawTool && (viewMode === "2d" || drawTool !== "select") && (
+          {!isCompact && drawTool && (
             // One line, whatever the screen: a short hint on phones, the full one from md up.
             // Centred, and narrow enough to stay clear of the drawing tools on the left.
             <div
@@ -9881,11 +9910,17 @@ export const MathNodeRenderer: React.FC<any> = ({
             >
               {drawTool !== "select" || !selection ? (
                 <span className="min-w-0 truncate">
-                  <span className="md:hidden">{drawTool === "select" ? SELECT_TOOL_SHORT_HINT : DRAW_TOOL_SHORT_HINTS[drawTool]}</span>
+                  <span className="md:hidden">
+                    {drawTool === "select" ? (viewMode === "3d" ? SELECT_TOOL_SHORT_HINT_3D : SELECT_TOOL_SHORT_HINT) : DRAW_TOOL_SHORT_HINTS[drawTool]}
+                  </span>
                   <span className="hidden md:inline">
-                    {drawTool === "select" ? SELECT_TOOL_HINT : DRAW_TOOL_HINTS[drawTool]}{" "}
+                    {drawTool === "select" ? (viewMode === "3d" ? SELECT_TOOL_HINT_3D : SELECT_TOOL_HINT) : DRAW_TOOL_HINTS[drawTool]}{" "}
                     <span className="text-white/50">
-                      {viewMode === "3d" ? "Pick the plane below; Page Up/Down moves it. Drag to turn. Esc to stop." : "Esc to stop."}
+                      {viewMode !== "3d"
+                        ? "Esc to stop."
+                        : drawTool === "select"
+                          ? "Drag to turn the view. Esc to stop."
+                          : "Pick the plane below; Page Up/Down moves it. Drag to turn. Esc to stop."}
                     </span>
                   </span>
                 </span>
@@ -9901,15 +9936,22 @@ export const MathNodeRenderer: React.FC<any> = ({
                       "Selected"
                     )}
                   </span>
-                  {toolSelection?.centre && (
+                  {(viewMode === "3d" ? selection3d?.centre || selectedRow?.handlesOnSelect : toolSelection?.centre) && (
                     // Which handle does what: dots on a phone, words from sm up.
                     <span className="min-w-0 flex items-center gap-2 pl-1 text-white/70">
                       {(
-                        [
-                          [SELECT_MOVE, "move", true],
-                          [SELECT_ROTATE, "turn", toolSelection.canRotate],
-                          [SELECT_RESIZE, "resize", toolSelection.canResize],
-                        ] as const
+                        (viewMode === "3d"
+                          ? [
+                              // In space the arrows move it; a row with no points behind it has every handle.
+                              [SELECT_MOVE, "move", true],
+                              ["#eab308", "turn", selection3d?.centre ? selection3d.canRotate : true],
+                              [SELECT_RESIZE, "resize", selection3d?.centre ? selection3d.canResize : true],
+                            ]
+                          : [
+                              [SELECT_MOVE, "move", true],
+                              [SELECT_ROTATE, "turn", !!toolSelection?.canRotate],
+                              [SELECT_RESIZE, "resize", !!toolSelection?.canResize],
+                            ]) as [string, string, boolean][]
                       )
                         .filter(([, , shown]) => shown)
                         .map(([color, word]) => (

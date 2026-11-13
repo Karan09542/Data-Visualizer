@@ -30,6 +30,7 @@ import type { GraphView } from "./simulations";
 import { computePCA, parseAndAdjustForCompile } from "./mathHelpers";
 import { pointDraggable, type PointMenuTarget } from "./PointMenu";
 import { DRAW_TOOL_CLICKS, type DrawPick, type DrawSolid, type DrawToolKind, type SolidMode } from "./DrawTool";
+import type { Motion } from "./selection";
 import { dependencyKey } from "./dependencyKeys";
 import { objectId } from "./SmoothCurve";
 import { getFamilyCurveColor } from "./familyPlot";
@@ -99,7 +100,41 @@ export interface Graph3DProps {
   onDrawComplete?: (tool: DrawToolKind, picks: DrawPick[], solid?: DrawSolid) => void;
   /** Escape with nothing pending: put the tool down. */
   onDrawExit?: () => void;
+  /** The Select tool is in hand: a click picks the shape under it (a drag still turns the view). */
+  selectTool?: boolean;
+  /** What is selected, and how it may be moved. */
+  selection?: Selection3D | null;
+  /**
+   * What was picked: one row by a click, none by a click on empty space. `add` (Shift)
+   * adds to or takes from what's selected. `middle` is the middle of what shows of the
+   * row, for one that needs a point to turn about.
+   */
+  onSelect?: (fnIds: string[], middle: [number, number] | null, add: boolean) => void;
+  /** A handle of a selection built on points was dragged a step. */
+  onSelectionMotion?: (motion: Motion) => void;
 }
+
+/** What the Select tool has hold of in the 3D view. */
+export interface Selection3D {
+  rowIds: string[];
+  /**
+   * The centre of the points the selection is built on: its handles stand here, and it
+   * turns and resizes about it. Null for rows with no points behind them: one such row
+   * shows its own transform gizmo, several can only be deleted.
+   */
+  centre: [number, number, number] | null;
+  /** Its points can be given a height (see canLiftPoints). */
+  canLift: boolean;
+  canRotate: boolean;
+  canResize: boolean;
+}
+
+/** The gizmo of a selection built on points (no row has this id). */
+const SELECTION_ID = "__selection__";
+const SELECT_COLOR = "#3b82f6";
+const SELECT_HANDLE_ANGLE = (5 * Math.PI) / 4;
+/** Kinds of row whose drawing follows the in-plane transform (move, turn, resize across the floor). */
+const PLANAR_KINDS = new Set(["function", "parametric", "polar", "point3", "geometry", "ode", "surface", "surface-rhs", "surface-uv", "iso", "curve2d", "region2d"]);
 
 type GizmoKind = "center" | "x" | "y" | "z" | "rotate" | "scale";
 
@@ -122,6 +157,10 @@ interface GizmoFrame {
   pivot: boolean;
   rotatable: boolean;
   resizable: boolean;
+  /** It can be moved, turned and resized across the floor (not every kind of row can). */
+  planar: boolean;
+  /** It can be moved up and down. */
+  liftable: boolean;
 }
 
 /** The two axes that run along each drawing plane (by the axis it is square to). */
@@ -147,6 +186,16 @@ const DRAW_PLANES: { plane: 0 | 1 | 2; label: string; title: string }[] = [
   { plane: 1, label: "XZ", title: "Upright plane facing the front: y stays the same" },
   { plane: 0, label: "YZ", title: "Upright plane facing the side: x stays the same" },
 ];
+
+/** The handles a gizmo has: only what its row (or selection) can do. */
+const gizmoKinds = (g: GizmoFrame): GizmoKind[] => {
+  const kinds: GizmoKind[] = [];
+  if (g.planar) kinds.push("center", "x", "y");
+  if (g.liftable) kinds.push("z");
+  if (g.planar && g.rotatable) kinds.push("rotate");
+  if (g.planar && g.resizable) kinds.push("scale");
+  return kinds;
+};
 
 const GIZMO_COLORS: Partial<Record<GizmoKind, string>> = {
   x: "#ef4444",
@@ -269,7 +318,8 @@ const HANDLE_CSS = `
 .g3d-gz .g3d-dot{left:-17px;top:-17px;width:34px;height:34px}
 .g3d-gz .g3d-dot::before{inset:5px}
 .g3d-gz .g3d-dot::after{inset:11px;box-shadow:0 0 0 2px rgba(255,255,255,.92),0 1px 4px rgba(0,0,0,.45)}
-.g3d-gz-center{z-index:3}
+.g3d-gz{z-index:4}
+.g3d-gz-center{z-index:5}
 .g3d-drawing .g3d-dot,.g3d-drawing .g3d-grip,.g3d-drawing .g3d-stem{pointer-events:none}
 .g3d-gz-center .g3d-dot{cursor:move}
 .g3d-gz-x .g3d-dot,.g3d-gz-y .g3d-dot{cursor:grab}
@@ -468,6 +518,8 @@ interface RowEntry {
   };
   /** A transformable row's gizmo (see syncGizmos). */
   gizmo?: GizmoFrame;
+  /** Its gizmo was set up by the Select tool: shown only while the row is selected. */
+  gizmoOnSelect?: boolean;
   /** Where the row's own drag or label handle sits (a representative point of it). */
   anchor?: Vec3;
   /** Its frame for the gizmo, noted while it is built (see affineTransformOf). */
@@ -1066,7 +1118,21 @@ class Engine {
     start: GizmoFrame;
     hit0: THREE.Vector3 | null;
     along0: number | null;
+    /** A selection's drag: how far it has been taken so far (each step reports the rest). */
+    applied: { move: Vec3; angle: number; rawAngle: number; lastAngle: number | null; factor: number; dist0: number | null };
+    /** The height a selection is resized about. */
+    centreZ: number;
   } | null = null;
+  // Select tool
+  private selectTool = false;
+  private selection: Selection3D | null = null;
+  private selKey = "";
+  private selDown: { x: number; y: number } | null = null;
+  /** How far the selection has been turned since it was picked: where its turn handle sits. */
+  private selTurn = 0;
+  /** The resize under way (1 at rest): where its resize handle sits. */
+  private selScale = 1;
+  private selFrame: GizmoFrame | null = null;
   private handles = new Map<string, Handle>();
   /** The point a handle is pointed at or focused on: its guide lines are drawn. */
   private activeId: string | null = null;
@@ -1793,6 +1859,7 @@ class Engine {
       this.drawDown = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
       return;
     }
+    if (this.selectTool) this.selDown = e.button === 0 && e.isPrimary ? { x: e.clientX, y: e.clientY } : null;
     if (e.pointerType !== "mouse" && e.isPrimary) this.tapDown = { x: e.clientX, y: e.clientY };
     // Touching the graph lets go of a point that was tapped.
     const focused = document.activeElement;
@@ -1852,6 +1919,16 @@ class Engine {
         // A finger has no hover: show where it landed until the next tap.
         if (e.pointerType !== "mouse") this.drawHover = this.drawSnap(e.clientX, e.clientY);
         this.drawClick(e.clientX, e.clientY, e.shiftKey);
+      }
+      return;
+    }
+    if (this.selectTool) {
+      // A click (not a drag, which turns the view) picks what is under it.
+      const from = this.selDown;
+      this.selDown = null;
+      this.tapDown = null;
+      if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) <= (e.pointerType === "mouse" ? 5 : 10)) {
+        this.selectClick(e.clientX, e.clientY, e.shiftKey);
       }
       return;
     }
@@ -2273,7 +2350,7 @@ class Engine {
       }
       this.building = null;
       this.applyRowHeight(entry, f);
-      this.makeGizmoFrame(entry, f);
+      this.makeGizmoFrame(entry, f, kind);
       entry.group.traverse((o) => {
         o.frustumCulled = false;
       });
@@ -2317,8 +2394,12 @@ class Engine {
   }
 
   /** A transformable row's gizmo: where it stands and the transform it shows. */
-  private makeGizmoFrame(entry: RowEntry, f: MathFunction) {
-    if (!f.isTransformable || f.handlesOnSelect) return;
+  private makeGizmoFrame(entry: RowEntry, f: MathFunction, kind: string) {
+    if (!f.isTransformable) return;
+    // Set up by the Select tool: shown while selected, with every handle the row can use.
+    const onSelect = !!f.handlesOnSelect;
+    entry.gizmoOnSelect = onSelect;
+    const planar = PLANAR_KINDS.has(kind);
     const { cx, cy, cz, half } = this.domain;
     const fr = entry.frame ?? { px: 0, py: 0, base: 0, spread: 0 };
     const tz = f.transformTranslateZ || 0;
@@ -2342,9 +2423,12 @@ class Engine {
       sx: f.transformScale?.[0] || 1,
       sy: f.transformScale?.[1] || 1,
       cz: clamp(z, cz - half, cz + half),
-      pivot: !!f.isPivotEnabled,
-      rotatable: !!f.isRotatable,
-      resizable: !!f.isResizable,
+      // The Select tool's middle handle moves the shape, not the point it turns about.
+      pivot: !!f.isPivotEnabled && !onSelect,
+      rotatable: onSelect || !!f.isRotatable,
+      resizable: onSelect || !!f.isResizable,
+      planar,
+      liftable: true,
     };
   }
 
@@ -4017,20 +4101,20 @@ class Engine {
     return Math.abs(p.x) <= 1.004 && Math.abs(p.y) <= 1.004 && Math.abs(p.z) <= 1.004;
   }
 
-  /** Finds what is under the pointer and shows its coordinates there. */
-  private pick() {
+  /** The row under the pointer, and where on it: nearest first, what is clipped away left out. */
+  private rowHit(): { best: { hit: THREE.Intersection; point: THREE.Vector3; rank: number }; row: RowEntry } | null {
     const targets: THREE.Object3D[] = [];
     this.rowsGroup.traverse((o: any) => {
       if (o.isMesh || o.isPoints) targets.push(o);
     });
-    if (targets.length === 0) return this.clearHover();
+    if (targets.length === 0) return null;
     this.castRay();
     this.raycaster.params.Points.threshold = 0.035;
     let hits: THREE.Intersection[];
     try {
       hits = this.raycaster.intersectObjects(targets, false);
     } catch {
-      return this.clearHover();
+      return null;
     }
     // Nearest first; a point or curve lying on a surface wins over the surface.
     const rank = (o: any) => (o.isPoints ? 2 : o.isLineSegments2 ? 1 : 0);
@@ -4042,12 +4126,19 @@ class Engine {
       const r = rank(hit.object);
       if (!best || r > best.rank) best = { hit, point, rank: r };
     }
-    if (!best) return this.clearHover();
+    if (!best) return null;
 
     let owner: THREE.Object3D | null = best.hit.object;
     while (owner && !owner.userData.rowId) owner = owner.parent;
     const row = owner ? this.rows.get(owner.userData.rowId) : undefined;
-    if (!row) return this.clearHover();
+    return row ? { best, row } : null;
+  }
+
+  /** Finds what is under the pointer and shows its coordinates there. */
+  private pick() {
+    const found = this.rowHit();
+    if (!found) return this.clearHover();
+    const { best, row } = found;
 
     const local = this.content.worldToLocal(best.point.clone());
     this.hover = { local: [local.x, local.y, local.z], color: row.color, rowId: row.id };
@@ -4137,9 +4228,11 @@ class Engine {
     const h: Handle = { wrap, dot, stem, grip, tip, x: 0, y: 0 };
 
     let tapDown: { x: number; y: number } | null = null;
+    let pressed: { x: number; y: number } | null = null;
     const start = (e: PointerEvent, grip: boolean) => {
       if (e.button !== 0) return;
       tapDown = !grip && e.pointerType !== "mouse" ? { x: e.clientX, y: e.clientY } : null;
+      pressed = grip ? null : { x: e.clientX, y: e.clientY };
       e.preventDefault();
       e.stopPropagation();
       dot.focus({ preventScroll: true });
@@ -4162,6 +4255,13 @@ class Engine {
       // A double tap on a point opens its menu.
       const tapped = !!tapDown && Math.hypot(e.clientX - tapDown.x, e.clientY - tapDown.y) <= 10;
       tapDown = null;
+      // With the Select tool, a click on a point (not a drag of it) selects it.
+      const clicked = !!pressed && Math.hypot(e.clientX - pressed.x, e.clientY - pressed.y) <= 5;
+      pressed = null;
+      if (this.selectTool && e.type === "pointerup" && clicked) {
+        this.getProps().onSelect?.([id], null, e.shiftKey);
+        return;
+      }
       if (e.type === "pointerup" && tapped && this.isDoubleTap(e.clientX, e.clientY)) this.openHandleMenu(id, e.clientX, e.clientY);
     };
     dot.addEventListener("contextmenu", (e) => {
@@ -6093,34 +6193,287 @@ class Engine {
     disposeGroup(this.gizmoGroup);
     this.gizmoGroup.clear();
     const live = new Set<string>();
+    this.selFrame = this.selectionFrame();
+    const frames: { id: string; g: GizmoFrame; color: string }[] = [];
     for (const row of this.rows.values()) {
-      const g = row.gizmo;
-      if (!g) continue;
-      const kinds: GizmoKind[] = ["center", "x", "y", "z"];
-      if (g.rotatable) kinds.push("rotate");
-      if (g.resizable) kinds.push("scale");
-      for (const kind of kinds) {
-        const key = `${row.id}:${kind}`;
+      const g = this.gizmoOf(row.id);
+      if (g) frames.push({ id: row.id, g, color: `#${toColor(row.color).getHexString()}` });
+    }
+    if (this.selFrame) frames.push({ id: SELECTION_ID, g: this.selFrame, color: SELECT_COLOR });
+    for (const { id, g, color: own } of frames) {
+      for (const kind of gizmoKinds(g)) {
+        const key = `${id}:${kind}`;
         live.add(key);
         let el = this.gizmoEls.get(key);
         if (!el) {
-          el = this.makeGizmoHandle(row.id, kind);
+          el = this.makeGizmoHandle(id, kind);
           this.gizmoEls.set(key, el);
         }
-        const color = GIZMO_COLORS[kind] ?? (g.pivot ? "#3b82f6" : `#${toColor(row.color).getHexString()}`);
+        const color = GIZMO_COLORS[kind] ?? (g.pivot ? "#3b82f6" : own);
         el.style.setProperty("--c", color);
         const dot = el.firstElementChild as HTMLElement;
         dot.title = GIZMO_TITLES[kind === "center" ? (g.pivot ? "pivot" : "move") : kind];
       }
-      this.buildGizmoScene(row, g);
+      this.buildGizmoScene(id, g);
     }
+    this.buildSelectionOutline();
     for (const [key, el] of this.gizmoEls) {
       if (live.has(key)) continue;
       el.remove();
       this.gizmoEls.delete(key);
     }
-    if (this.gz && !this.rows.get(this.gz.id)?.gizmo) this.endGizmoDrag();
+    if (this.gz && !this.gizmoOf(this.gz.id)) this.endGizmoDrag();
   }
+
+  // ── Select tool ──
+  //
+  // As on the flat graph: click a shape to select it (Shift adds), then move, turn or
+  // resize it. A shape built on points is moved by moving those points, so everything
+  // drawn on them follows; the steps go to the graph as motions. A row with no points
+  // behind it shows its own transform gizmo while it is selected. Dragging still turns
+  // the view: only a click selects.
+
+  setSelectTool(on: boolean) {
+    if (on === this.selectTool) return;
+    this.selectTool = on;
+    this.selDown = null;
+    this.refreshSelection();
+  }
+
+  setSelection(sel: Selection3D | null) {
+    const key = sel ? sel.rowIds.join("|") : "";
+    const same = (a: Selection3D | null, b: Selection3D | null) =>
+      a === b ||
+      (!!a &&
+        !!b &&
+        a.canLift === b.canLift &&
+        a.canRotate === b.canRotate &&
+        a.canResize === b.canResize &&
+        (a.centre === b.centre || (!!a.centre && !!b.centre && a.centre.every((v, i) => v === b.centre![i]))));
+    if (key === this.selKey && same(sel, this.selection)) return;
+    if (key !== this.selKey) {
+      this.selKey = key;
+      this.selTurn = 0;
+      this.selScale = 1;
+      // A different selection: a drag of the old one's handles is over.
+      if (this.gz?.id === SELECTION_ID) this.endGizmoDrag();
+    }
+    this.selection = sel;
+    this.refreshSelection();
+  }
+
+  private refreshSelection() {
+    this.syncGizmos();
+    this.requestRender();
+  }
+
+  /** The row under the pointer (set by setPointer or pointAt), if any. */
+  private rowUnderPointer(): string | null {
+    return this.rowHit()?.row.id ?? null;
+  }
+
+  private pointAt(clientX: number, clientY: number) {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+  }
+
+  /** A click with the Select tool: the shape under it, or nothing (which lets go). */
+  private selectClick(clientX: number, clientY: number, add: boolean) {
+    this.pointAt(clientX, clientY);
+    const id = this.rowUnderPointer();
+    const p = this.getProps();
+    if (!id) {
+      // Shift-clicking empty space keeps what is selected.
+      if (!add) p.onSelect?.([], null, false);
+      return;
+    }
+    p.onSelect?.([id], this.rowMiddle(id), add);
+  }
+
+  /** What rows take up of the box, in graph units; null when nothing of them shows. */
+  private rowsBox(ids: string[]): THREE.Box3 | null {
+    const { cx, cy, cz, half } = this.domain;
+    this.content.updateMatrixWorld(true);
+    const out = new THREE.Box3();
+    const world = new THREE.Box3();
+    const corner = new THREE.Vector3();
+    for (const id of ids) {
+      const row = this.rows.get(id);
+      if (!row) continue;
+      row.group.traverse((o: any) => {
+        if (!(o.isMesh || o.isPoints || o.isLine) || !o.geometry) return;
+        try {
+          if (!o.geometry.boundingBox) o.geometry.computeBoundingBox();
+        } catch {
+          return;
+        }
+        const b = o.geometry.boundingBox as THREE.Box3 | null;
+        if (!b || b.isEmpty() || !Number.isFinite(b.min.x + b.min.y + b.min.z + b.max.x + b.max.y + b.max.z)) return;
+        world.copy(b).applyMatrix4(o.matrixWorld);
+        for (let i = 0; i < 8; i++) {
+          corner.set(i & 1 ? world.max.x : world.min.x, i & 2 ? world.max.y : world.min.y, i & 4 ? world.max.z : world.min.z);
+          out.expandByPoint(this.content.worldToLocal(corner));
+        }
+      });
+      // A point drawn as a handle has no geometry of its own.
+      if (row.drag) out.expandByPoint(corner.set(row.drag.pos[0], row.drag.pos[1], row.drag.pos[2]));
+    }
+    if (out.isEmpty()) return null;
+    // Only what is inside the box of the graph.
+    out.min.max(corner.set(cx - half, cy - half, cz - half));
+    out.max.min(corner.set(cx + half, cy + half, cz + half));
+    return out.min.x <= out.max.x && out.min.y <= out.max.y && out.min.z <= out.max.z ? out : null;
+  }
+
+  /** The middle (across the floor) of what shows of a row: what it turns about once selected. */
+  private rowMiddle(id: string): [number, number] | null {
+    const box = this.rowsBox([id]);
+    if (!box) return null;
+    const round = (v: number) => Number(v.toFixed(4));
+    return [round((box.min.x + box.max.x) / 2), round((box.min.y + box.max.y) / 2)];
+  }
+
+  /** The gizmo of a selection built on points: at their centre, reporting motions. */
+  private selectionFrame(): GizmoFrame | null {
+    const sel = this.selection;
+    if (!this.selectTool || !sel?.centre) return null;
+    const { cz, half } = this.domain;
+    const box = this.rowsBox(sel.rowIds);
+    const reach = box ? Math.hypot(box.max.x - box.min.x, box.max.y - box.min.y) / 2 : 0;
+    return {
+      px: sel.centre[0],
+      py: sel.centre[1],
+      // The turn and resize handles start on the far side, clear of the x and y arrows.
+      base: SELECT_HANDLE_ANGLE,
+      radius: clamp(reach + 0.08 * half, 0.28 * half, 0.75 * half),
+      tx: 0,
+      ty: 0,
+      tz: 0,
+      rot: this.selTurn,
+      sx: this.selScale,
+      sy: this.selScale,
+      cz: clamp(sel.centre[2], cz - half, cz + half),
+      pivot: false,
+      rotatable: sel.canRotate,
+      resizable: sel.canResize,
+      planar: true,
+      liftable: sel.canLift,
+    };
+  }
+
+  /** The gizmo standing for `id` right now: a row's own, or the selection's. */
+  private gizmoOf(id: string): GizmoFrame | undefined {
+    if (id === SELECTION_ID) return this.selFrame ?? undefined;
+    const row = this.rows.get(id);
+    if (!row?.gizmo) return undefined;
+    // A row set up by the Select tool shows its handles only while it alone is selected.
+    if (row.gizmoOnSelect) {
+      const sel = this.selection;
+      if (!this.selectTool || !sel || sel.centre || sel.rowIds.length !== 1 || sel.rowIds[0] !== id) return undefined;
+    }
+    return row.gizmo;
+  }
+
+  /** A dashed box round what is selected. */
+  private buildSelectionOutline() {
+    const sel = this.selection;
+    if (!this.selectTool || !sel?.rowIds.length) return;
+    const box = this.rowsBox(sel.rowIds);
+    if (!box) return;
+    const pad = 0.025 * this.domain.half;
+    const lo = [box.min.x - pad, box.min.y - pad, box.min.z - pad];
+    const hi = [box.max.x + pad, box.max.y + pad, box.max.z + pad];
+    const pts: number[] = [];
+    const corner = (i: number) => [i & 1 ? hi[0] : lo[0], i & 2 ? hi[1] : lo[1], i & 4 ? hi[2] : lo[2]];
+    // The 12 edges: corners that differ in exactly one coordinate.
+    for (let i = 0; i < 8; i++) for (const bit of [1, 2, 4]) if (!(i & bit)) pts.push(...corner(i), ...corner(i | bit));
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+    const material = new THREE.LineDashedMaterial({
+      color: SELECT_COLOR,
+      opacity: 0.85,
+      transparent: true,
+      depthTest: false,
+      dashSize: 0.035 * this.domain.half,
+      gapSize: 0.025 * this.domain.half,
+    });
+    const outline = new THREE.LineSegments(geometry, material);
+    outline.computeLineDistances();
+    outline.renderOrder = 6;
+    outline.frustumCulled = false;
+    this.gizmoGroup.add(outline);
+  }
+
+  /** A step of dragging one of the selection's handles: reported as a motion of its points. */
+  private stepSelectionDrag(clientX: number, clientY: number, shift: boolean, alt: boolean) {
+    const gz = this.gz;
+    const emit = this.getProps().onSelectionMotion;
+    if (!gz || !emit) return;
+    const s = gz.start;
+    const a = gz.applied;
+    const half = this.domain.half;
+    const snapStep = (niceStep(half) / 10) * (alt ? 0.1 : 1);
+    const snap = (v: number) => Number((Math.round(v / snapStep) * snapStep).toFixed(6));
+    const tidy = (v: number) => Number(v.toFixed(6));
+
+    if (gz.kind === "x" || gz.kind === "y" || gz.kind === "z") {
+      const axis = gz.kind === "x" ? 0 : gz.kind === "y" ? 1 : 2;
+      const now = this.alongAxis(clientX, clientY, [s.px, s.py, s.cz], axis);
+      if (now === null || gz.along0 === null) return;
+      const total = snap(now - gz.along0);
+      const step = tidy(total - a.move[axis]);
+      if (!step) return;
+      a.move[axis] = total;
+      emit({ kind: "move", dx: axis === 0 ? step : 0, dy: axis === 1 ? step : 0, ...(axis === 2 ? { dz: step } : {}) });
+    } else {
+      const hit = this.hitHeight(clientX, clientY, s.cz);
+      if (!hit) return;
+      if (gz.kind === "center") {
+        if (!gz.hit0) return;
+        const tx = snap(hit.x - gz.hit0.x);
+        const ty = snap(hit.y - gz.hit0.y);
+        const dx = tidy(tx - a.move[0]);
+        const dy = tidy(ty - a.move[1]);
+        if (!dx && !dy) return;
+        a.move[0] = tx;
+        a.move[1] = ty;
+        emit({ kind: "move", dx, dy });
+      } else if (gz.kind === "rotate") {
+        // Turned about where the selection stood when the drag began: nothing drifts.
+        const angle = Math.atan2(hit.y - s.py, hit.x - s.px);
+        if (a.lastAngle === null) {
+          a.lastAngle = angle;
+          return;
+        }
+        const d = angle - a.lastAngle;
+        a.rawAngle += Math.atan2(Math.sin(d), Math.cos(d));
+        a.lastAngle = angle;
+        const unit = ((shift ? 15 : 1) * Math.PI) / 180;
+        const total = Math.round(a.rawAngle / unit) * unit;
+        const step = total - a.angle;
+        if (Math.abs(step) < 1e-9) return;
+        a.angle = total;
+        this.selTurn = s.rot + total;
+        emit({ kind: "rotate", angle: step, centre: [s.px, s.py] });
+      } else if (gz.kind === "scale") {
+        const dist = Math.hypot(hit.x - s.px, hit.y - s.py);
+        if (a.dist0 === null) {
+          // Too near the middle to mean a size.
+          if (dist > 1e-6) a.dist0 = dist;
+          return;
+        }
+        const total = Number(clamp(dist / a.dist0, 0.05, 50).toFixed(3));
+        const step = total / a.factor;
+        if (Math.abs(step - 1) < 1e-9) return;
+        a.factor = total;
+        this.selScale = total;
+        emit({ kind: "scale", factor: step, centre: [s.px, s.py], centreZ: gz.centreZ });
+      }
+    }
+    this.syncGizmos();
+    this.requestRender();
+  }
+
 
   /** Where a gizmo's handles are, in graph units. */
   private gizmoSpots(g: GizmoFrame): Record<GizmoKind, Vec3> {
@@ -6151,7 +6504,7 @@ class Engine {
   }
 
   /** The ring, the arrows and the line to the resize handle. */
-  private buildGizmoScene(row: RowEntry, g: GizmoFrame) {
+  private buildGizmoScene(id: string, g: GizmoFrame) {
     const spots = this.gizmoSpots(g);
     const [cx, cy, cz] = spots.center;
     const over = (m: THREE.Material) => {
@@ -6170,9 +6523,10 @@ class Engine {
       obj.renderOrder = 6;
       this.gizmoGroup.add(obj);
     };
-    const active = this.gz?.id === row.id ? this.gz.kind : null;
+    const active = this.gz?.id === id ? this.gz.kind : null;
+    const kinds = gizmoKinds(g);
 
-    if (g.rotatable) {
+    if (kinds.includes("rotate")) {
       // The ring the turn handle runs round, through the handle itself.
       const r = Math.hypot(spots.rotate[0] - cx, spots.rotate[1] - cy);
       const ring: number[] = [];
@@ -6198,10 +6552,11 @@ class Engine {
         lines(fan, GIZMO_COLORS.rotate!, 0.35);
       }
     }
-    if (g.resizable) lines([cx, cy, cz, ...spots.scale], GIZMO_COLORS.scale!, 0.6, true);
+    if (kinds.includes("scale")) lines([cx, cy, cz, ...spots.scale], GIZMO_COLORS.scale!, 0.6, true);
 
     // Arrows along the axes, with heads.
     (["x", "y", "z"] as const).forEach((kind, axis) => {
+      if (!kinds.includes(kind)) return;
       const tip = spots[kind];
       const color = AXIS_COLORS[axis];
       lines([cx, cy, cz, ...tip], color, active === kind ? 1 : 0.75);
@@ -6268,7 +6623,7 @@ class Engine {
       const i = key.lastIndexOf(":");
       const id = key.slice(0, i);
       const kind = key.slice(i + 1) as GizmoKind;
-      const g = this.rows.get(id)?.gizmo;
+      const g = this.gizmoOf(id);
       if (!g) {
         el.style.display = "none";
         continue;
@@ -6287,7 +6642,7 @@ class Engine {
       el.style.opacity = this.gz && !(this.gz.id === id && this.gz.kind === kind) ? "0.35" : "";
     }
     const gz = this.gz;
-    const g = gz ? this.rows.get(gz.id)?.gizmo : undefined;
+    const g = gz ? this.gizmoOf(gz.id) : undefined;
     if (gz && g) {
       const c = this.gizmoSpots(g).center;
       if (this.toScreen(c[0], c[1], c[2], at)) {
@@ -6312,6 +6667,10 @@ class Engine {
       return Math.abs(g.sx - g.sy) < 1e-3 ? `Scale ${g.sx.toFixed(2)}×` : `Scale ${g.sx.toFixed(2)} × ${g.sy.toFixed(2)}  (Shift: keep shape)`;
     }
     if (kind === "center" && g.pivot) return `Pivot (${f(g.px + g.tx)}, ${f(g.py + g.ty)})`;
+    if (this.gz?.id === SELECTION_ID) {
+      const [dx, dy, dz] = this.gz.applied.move;
+      return `Move (${f(dx)}, ${f(dy)}, ${f(dz)})`;
+    }
     return `Shift (${f(g.tx)}, ${f(g.ty)}, ${f(g.tz)})`;
   }
 
@@ -6365,17 +6724,30 @@ class Engine {
   }
 
   private beginGizmoDrag(id: string, kind: GizmoKind, e: PointerEvent) {
-    const g = this.rows.get(id)?.gizmo;
+    const g = this.gizmoOf(id);
     if (!g) return;
     this.tween = null;
     this.clearHover();
     const center = this.gizmoSpots(g).center;
+    const hit0 = this.hitHeight(e.clientX, e.clientY, g.cz);
+    const sel = id === SELECTION_ID ? this.selection : null;
+    const reach0 = hit0 ? Math.hypot(hit0.x - center[0], hit0.y - center[1]) : 0;
     this.gz = {
       id,
       kind,
       start: { ...g },
-      hit0: this.hitHeight(e.clientX, e.clientY, g.cz),
+      hit0,
       along0: kind === "x" || kind === "y" || kind === "z" ? this.alongAxis(e.clientX, e.clientY, center, kind === "x" ? 0 : kind === "y" ? 1 : 2) : null,
+      applied: {
+        move: [0, 0, 0],
+        angle: 0,
+        rawAngle: 0,
+        lastAngle: hit0 ? Math.atan2(hit0.y - center[1], hit0.x - center[0]) : null,
+        factor: 1,
+        dist0: reach0 > 1e-6 ? reach0 : null,
+      },
+      // Flat points that can't be lifted stay on the floor: resized about it.
+      centreZ: sel?.centre && sel.canLift ? sel.centre[2] : 0,
     };
     // Heavy rows are redrawn coarsely while they move, then refined.
     this.coarse = true;
@@ -6388,6 +6760,7 @@ class Engine {
   private stepGizmoDrag(clientX: number, clientY: number, shift: boolean, alt: boolean) {
     const gz = this.gz;
     if (!gz) return;
+    if (gz.id === SELECTION_ID) return this.stepSelectionDrag(clientX, clientY, shift, alt);
     const s = gz.start;
     const half = this.domain.half;
     const snapStep = (niceStep(half) / 10) * (alt ? 0.1 : 1);
@@ -6454,13 +6827,16 @@ class Engine {
     }
     if (!patch) return;
     const p = this.getProps();
-    (p.onTransformRow ?? p.onPatchRow)?.(gz.id, patch);
+    // A row the Select tool set up moves as it does on the flat graph: through its settings alone.
+    if (this.rows.get(gz.id)?.gizmoOnSelect) p.onPatchRow?.(gz.id, patch);
+    else (p.onTransformRow ?? p.onPatchRow)?.(gz.id, patch);
     this.requestRender();
   }
 
   private endGizmoDrag() {
     if (!this.gz) return;
     this.gz = null;
+    this.selScale = 1;
     this.controls.autoRotate = this.opts.autoRotate;
     // Now at rest: draw everything at full quality again.
     this.coarse = false;
@@ -6668,6 +7044,14 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
   useEffect(() => {
     engineRef.current?.setDrawTool(props.drawTool ?? null);
   }, [props.drawTool]);
+
+  useEffect(() => {
+    engineRef.current?.setSelectTool(!!props.selectTool);
+  }, [props.selectTool]);
+
+  useEffect(() => {
+    engineRef.current?.setSelection(props.selection ?? null);
+  }, [props.selection]);
 
   useEffect(() => {
     engineRef.current?.setDrawPlane(props.drawPlane ?? 2);
