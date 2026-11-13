@@ -167,6 +167,12 @@ export const EXAMPLE_GALLERY: {
       activeClass: "bg-indigo-500/10 border-indigo-400 dark:border-indigo-500 ring-1 ring-indigo-400/50",
       labelClass: "text-indigo-600 dark:text-indigo-400 group-hover:text-indigo-700 dark:group-hover:text-indigo-300",
     },
+    {
+      key: "MongeTheorem", category: "Geometry", label: "Monge's Theorem",
+      hint: "Three circles: the meeting points of each pair's outer tangents lie on one line. In 3D: the proof with cones",
+      activeClass: "bg-red-500/10 border-red-400 dark:border-red-500 ring-1 ring-red-400/50",
+      labelClass: "text-red-600 dark:text-red-400 group-hover:text-red-700 dark:group-hover:text-red-300",
+    },
   ];
 
 const TAU = 2 * Math.PI;
@@ -1314,6 +1320,135 @@ function normalDistribution3D(): ExampleScene {
   };
 }
 
+// ─── Monge's theorem ──────────────────────────────────────────────────────────
+//
+// For three circles of different sizes, the outer tangents of each pair meet at a
+// point (their external centre of similitude); the three points lie on one line.
+
+/** Where the outer tangents of circles (P, rP) and (Q, rQ) meet. */
+const outerCentre = (P: string, rP: string, Q: string, rQ: string) => `((${rQ}*${P} - ${rP}*${Q})/(${rQ} - ${rP}))`;
+
+const MONGE_CIRCLES: { name: string; at: [number, number]; r: number; color: string }[] = [
+  { name: "A", at: [-4, 0], r: 2, color: BLUE },
+  { name: "B", at: [0, 2], r: 1.2, color: GREEN },
+  { name: "C", at: [1, -2], r: 0.7, color: PURPLE },
+];
+
+/** Each pair of circles, with the name of its meeting point. */
+const MONGE_PAIRS: [number, number, string][] = [
+  [0, 1, "AB"],
+  [1, 2, "BC"],
+  [2, 0, "CA"],
+];
+
+function mongeTheorem(): ExampleScene {
+  const r = sceneRows("monge");
+  const rad = (i: number) => `r_${MONGE_CIRCLES[i].name}`;
+  const E = (i: number, j: number) => outerCentre(MONGE_CIRCLES[i].name, rad(i), MONGE_CIRCLES[j].name, rad(j));
+  const [e1, e2, e3] = MONGE_PAIRS.map(([i, j]) => E(i, j));
+  return {
+    functions: [
+      // The direction of a tangent from E to the circle (P, r): s = 1 or −1 for each side.
+      r.define("tdir(E, P, r, s) = [(P - E)[1]*cos(s*asin(r/norm(P - E))) - (P - E)[2]*sin(s*asin(r/norm(P - E))), (P - E)[1]*sin(s*asin(r/norm(P - E))) + (P - E)[2]*cos(s*asin(r/norm(P - E)))]/norm(P - E)"),
+      // The centres first (drag them): before anything uses A, B, C, which mathjs
+      // would otherwise read as units (ampere, byte, coulomb).
+      ...MONGE_CIRCLES.map((c) => r.point(`${c.name} = [${c.at[0]}, ${c.at[1]}]`, c.color, { isDraggable: true, ...tex(c.name, [0.25, 0.3]) })),
+      ...MONGE_CIRCLES.map((c, i) =>
+        r.path(`${c.name} + ${rad(i)}*[cos(t), sin(t)]`, c.color, [0, TAU], { outlineWidth: 2.5, ...fill(c.color, 0.08) }),
+      ),
+      // Each pair's two outer tangents, from where they meet past both circles.
+      ...MONGE_PAIRS.flatMap(([i, j]) =>
+        [1, -1].map((s) =>
+          r.path(`${E(i, j)} + t*tdir(${E(i, j)}, ${MONGE_CIRCLES[i].name}, ${rad(i)}, ${s})`, INK, [0, 30], { outlineWidth: 1.2 }),
+        ),
+      ),
+      // The line they all lie on.
+      r.path(`${e1} + t*(${e2} - ${e1})/norm(${e2} - ${e1})`, RED, [-60, 60], { outlineWidth: 2.5, lineStyle: "dashed" }),
+      ...MONGE_PAIRS.map(([i, j, name]) => r.point(E(i, j), AMBER, tex(`E_{${name}}`, [0.3, 0.35]))),
+      ...notes(r, -4, -4.6, 0.85, [
+        [String.raw`\text{Monge's theorem}`, RED],
+        [String.raw`\text{the outer tangents of each pair meet at } E`, TEXT],
+        [String.raw`E_{AB}, E_{BC}, E_{CA} \text{ lie on one line}`, AMBER],
+        [String.raw`E_{AB} = \dfrac{r_B\,A - r_A\,B}{r_B - r_A}`, TEXT],
+        [String.raw`\text{area of } E_{AB}E_{BC}E_{CA} = {{abs((${e2} - ${e1})[1]*(${e3} - ${e1})[2] - (${e2} - ${e1})[2]*(${e3} - ${e1})[1])/2:4}}`, TEXT],
+        [String.raw`\text{Drag the centres, change the radii}`, TEXT],
+      ], false),
+    ],
+    variables: MONGE_CIRCLES.map((c, i) =>
+      sceneSlider(rad(i), `Radius of ${c.name}`, c.r, [0.2, 3, 0.05], `Size of circle ${c.name}. Equal radii send its meeting points off to infinity.`, "monge"),
+    ),
+    groups: [sceneGroup("monge", "Three circles")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-9, 10], y: [-10.5, 7] },
+  };
+}
+
+/**
+ * The proof in space: stand a cone on each circle with its tip as high as the circle
+ * is wide. The line through two tips meets the floor exactly at those two circles'
+ * meeting point E. So every E lies on the plane through the three tips and on the
+ * floor: on the line where those two planes cross.
+ */
+function mongeTheorem3D(): ExampleScene {
+  const r = sceneRows("monge3");
+  const rad = (i: number) => `r_${MONGE_CIRCLES[i].name}`;
+  const P = (i: number) => `p3(${MONGE_CIRCLES[i].name})`;
+  const tip = (i: number) => `(${P(i)} + [0, 0, ${rad(i)}])`;
+  const E = (i: number, j: number) => outerCentre(P(i), rad(i), P(j), rad(j));
+  const [e1, e2] = MONGE_PAIRS.map(([i, j]) => E(i, j));
+  // u, v run 0 to 2π: the plane through the three tips, a little past them.
+  const s = "(u/pi*1.6 - 0.6)";
+  const w = "(v/pi*1.6 - 0.6)";
+  return {
+    functions: [
+      // As in 2D: the direction of a tangent from E to the circle (P, r), here laid on
+      // the floor (s = 1 or −1 for each side).
+      r.define("tdir(E, P, r, s) = [(P - E)[1]*cos(s*asin(r/norm(P - E))) - (P - E)[2]*sin(s*asin(r/norm(P - E))), (P - E)[1]*sin(s*asin(r/norm(P - E))) + (P - E)[2]*cos(s*asin(r/norm(P - E)))]/norm(P - E)"),
+      r.define("tfloor(E, P, r, s) = [tdir(E, P, r, s)[1], tdir(E, P, r, s)[2], 0]"),
+      // The centres first, so A, B, C are never read as units.
+      ...MONGE_CIRCLES.map((c) => r.point(`${c.name} = [${c.at[0]}, ${c.at[1]}]`, c.color, { isDraggable: true, ...tex(c.name) })),
+      ...MONGE_CIRCLES.flatMap((c, i) => [
+        r.path(`${P(i)} + ${rad(i)}*[cos(t), sin(t), 0]`, c.color, [0, TAU], { outlineWidth: 3 }),
+        // A cone as tall as the circle is wide.
+        { ...r.define(`(1 - v/(2*pi))*(${P(i)} + ${rad(i)}*[cos(u), sin(u), 0]) + (v/(2*pi))*${tip(i)}`), color: c.color, fillColor: c.color, fillOpacity: 0.35 },
+        spacePoint(r, tip(i), c.color),
+      ]),
+      // The plane through the three tips.
+      { ...r.define(`${tip(0)} + ${s}*(${tip(1)} - ${tip(0)}) + ${w}*(${tip(2)} - ${tip(0)})`), color: AMBER, fillColor: AMBER, fillOpacity: 0.16 },
+      // The 2D picture on the floor: each pair's two outer tangents, meeting at E.
+      ...MONGE_PAIRS.flatMap(([i, j]) =>
+        [1, -1].map((sd) =>
+          r.path(`${E(i, j)} + t*tfloor(${E(i, j)}, ${P(i)}, ${rad(i)}, ${sd})`, SKY, [0, 30], { outlineWidth: 1.5 }),
+        ),
+      ),
+      // The three tips are NOT in a line: they mark out a triangle, which fixes the plane.
+      r.path(`${tip(0)} + t*(${tip(1)} - ${tip(0)})`, AMBER, [0, 1], { outlineWidth: 2.5 }),
+      r.path(`${tip(1)} + t*(${tip(2)} - ${tip(1)})`, AMBER, [0, 1], { outlineWidth: 2.5 }),
+      r.path(`${tip(2)} + t*(${tip(0)} - ${tip(2)})`, AMBER, [0, 1], { outlineWidth: 2.5 }),
+      // From one tip, through the other, down to the floor at E.
+      ...MONGE_PAIRS.map(([i, j]) => r.path(`${tip(i)} + t*(${E(i, j)} - ${tip(i)})`, INK, [0, 1], { outlineWidth: 1.5, lineStyle: "dashed" })),
+      ...MONGE_PAIRS.map(([i, j, name]) => spacePoint(r, E(i, j), AMBER, tex(`E_{${name}}`))),
+      // Where the tip plane meets the floor: Monge's line.
+      r.path(`${e1} + t*(${e2} - ${e1})/norm(${e2} - ${e1})`, RED, [-40, 40], { outlineWidth: 3.5 }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Monge's theorem: why it is true}`, RED],
+        [String.raw`\text{blue on the floor: the outer tangents from 2D, meeting at each } E`, SKY],
+        [String.raw`\text{a cone on each circle, as tall as it is wide}`, TEXT],
+        [String.raw`\text{the tips are not in a line: their triangle fixes the amber plane}`, AMBER],
+        [String.raw`\text{the line through two tips meets the floor at that pair's } E`, TEXT],
+        [String.raw`\text{so each } E \text{ is on the amber plane and on the floor}`, AMBER],
+        [String.raw`\text{two planes meet in a line: the } E\text{'s are collinear}`, RED],
+      ]),
+    ],
+    variables: MONGE_CIRCLES.map((c, i) =>
+      sceneSlider(rad(i), `Radius of ${c.name}`, c.r, [0.2, 3, 0.05], `Size of circle ${c.name}, and the height of its cone.`, "monge"),
+    ),
+    groups: [sceneGroup("monge", "Three circles")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-8, 8], y: [-8, 8] },
+  };
+}
+
 // ─── 3D Gallery: scenes made for the 3D view ──────────────────────────────────
 //
 // Each is a well-known surface, solid or curve with sliders to explore it and notes
@@ -1719,6 +1854,8 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   RootsOfUnity: rootsOfUnity(),
   ComplexMultiplication: complexMultiplication(),
   EulerPolyhedra: eulerPolyhedra(),
+  MongeTheorem: mongeTheorem(),
+  MongeTheorem3D: mongeTheorem3D(),
   // Versions for the 3D view, loaded in place of the ones above while the graph is in 3D.
   CubeRootsOfUnity3D: rootsLandscape("cuberoot3", 3, "Cube roots: where |z³ − 1| touches the floor"),
   RootsOfUnity3D: rootsLandscape("roots3", 6, "Roots of unity: where |zⁿ − 1| touches the floor"),
