@@ -3,6 +3,8 @@ import {
   ArrowDownToLine,
   ArrowUpRight,
   BookOpen,
+  Crosshair,
+  MoveDiagonal,
   Layers,
   Check,
   ChevronLeft,
@@ -36,6 +38,8 @@ const TOOLS: { id: GraphTool | null; label: string; Icon: React.ElementType }[] 
   { id: "plane", label: "Plane through 3 points", Icon: Layers },
   { id: "foot", label: "Perpendicular foot", Icon: ArrowDownToLine },
   { id: "dihedral", label: "Angle between planes", Icon: BookOpen },
+  { id: "lineplane", label: "Line meets plane", Icon: Crosshair },
+  { id: "skew", label: "Distance between lines", Icon: MoveDiagonal },
 ];
 
 const HIDDEN_KEY = "mathNode.drawToolsHidden";

@@ -22,7 +22,9 @@ import {
   Save,
   Settings2,
   Box,
+  Crosshair,
   Download,
+  MoveDiagonal,
   Eye,
   Orbit,
   Ruler,
@@ -463,6 +465,16 @@ export const mathHelp: HelpContent = {
               text: 'Click the two ends of the edge two planes share, then one point on each plane: shows both faces and the angle between them.',
             },
             {
+              icon: Crosshair,
+              title: 'Line meets plane',
+              text: 'Click two points for a line, then three for a plane: marks the point where they meet.',
+            },
+            {
+              icon: MoveDiagonal,
+              title: 'Distance between lines',
+              text: 'Click two points on each of two lines: the shortest segment between them (square to both) and its length. Works for skew lines that never meet.',
+            },
+            {
               icon: Eye,
               title: 'Orthographic view',
               text: 'In the 3D options, under Display: no perspective, so parallel lines stay parallel and far things don’t shrink, as in a technical drawing.',
@@ -470,7 +482,7 @@ export const mathHelp: HelpContent = {
             {
               icon: Download,
               title: 'Export STL or GLB',
-              text: 'In the 3D options, under Export. STL saves the surfaces for 3D printing; GLB saves surfaces and curves in colour for 3D apps like Blender. Both are cut to the box.',
+              text: 'In the 3D options, under Export. STL saves surfaces for 3D printing, with curves as thin tubes; GLB saves surfaces and curves in colour for 3D apps like Blender. Both are cut to the box.',
             },
             {
               icon: Video,
@@ -491,6 +503,9 @@ export const mathHelp: HelpContent = {
             { code: 'footOnPlane(P, A, B, C)', label: 'The foot of the perpendicular from P to the plane ABC' },
             { code: 'planeAngle(A, B, C, D)', label: 'The angle in degrees between planes ABC and ABD, which share the edge AB' },
             { code: 'planeArc(A, B, C, D, s, r)', label: 'The point a fraction s of the way round that angle, r out from the middle of AB' },
+            { code: 'linePlane(A, B, C, D, E)', label: 'Where the line AB meets the plane CDE' },
+            { code: 'lineDistance(A, B, C, D)', label: 'The shortest distance between the lines AB and CD; nearestOnLines(A, B, C, D, k) gives the closest points' },
+            { code: 'surfaceArea(f, a, b, c, d)', label: 'The area of z = f(x, y) over a rectangle, for f written as f(x, y) = …' },
             { code: 'planeEquation(A, B, C)', label: 'The plane as text in its simplest form, for labels: {{planeEquation(A, B, C)}}' },
           ],
         },

@@ -16,10 +16,12 @@ export type DrawToolKind =
   // 3D view only:
   | "plane"
   | "foot"
-  | "dihedral";
+  | "dihedral"
+  | "lineplane"
+  | "skew";
 
 /** The tools that only make sense in space (the 3D view). */
-export const SPACE_TOOLS = new Set<DrawToolKind>(["plane", "foot", "dihedral"]);
+export const SPACE_TOOLS = new Set<DrawToolKind>(["plane", "foot", "dihedral", "lineplane", "skew"]);
 
 /**
  * 3D view: what a drawn polygon or circle becomes. Flat; extruded (a prism, or a
@@ -51,6 +53,8 @@ export const DRAW_TOOL_CLICKS: Record<DrawToolKind, number> = {
   plane: 3,
   foot: 4,
   dihedral: 4,
+  lineplane: 5,
+  skew: 4,
 };
 
 export const DRAW_TOOL_HINTS: Record<DrawToolKind, string> = {
@@ -65,6 +69,8 @@ export const DRAW_TOOL_HINTS: Record<DrawToolKind, string> = {
   plane: "Click three points for the plane through them. Two planes show the line where they meet.",
   foot: "Click a point, then three points of a plane: the foot of the perpendicular and the distance.",
   dihedral: "Click the two ends of the shared edge, then a point on each plane: the angle between them.",
+  lineplane: "Click two points for a line, then three for a plane: where the line meets the plane.",
+  skew: "Click two points on each of two lines: the shortest distance between them, square to both.",
 };
 
 /** The same, short enough for one line on a phone. */
@@ -80,6 +86,8 @@ export const DRAW_TOOL_SHORT_HINTS: Record<DrawToolKind, string> = {
   plane: "Tap three points",
   foot: "Tap a point, then 3 on the plane",
   dihedral: "Tap the edge's ends, then 1 on each plane",
+  lineplane: "Tap 2 for a line, then 3 for a plane",
+  skew: "Tap 2 points on each line",
 };
 
 export const SELECT_TOOL_SHORT_HINT = "Tap a shape or drag a box";

@@ -7,6 +7,8 @@
  *   planeNormal(A, B, C), footOnPlane(P, A, B, C), planeAngle(A, B, C, D),
  *   planeArc(A, B, C, D, s, radius), planeEquation(A, B, C)   planes in space
  *   divergence(F, P), curl(F, P)   of a field F(x, y, z) = [P, Q, R], at the point P
+ *   linePlane(A, B, C, D, E), nearestOnLines(A, B, C, D, k), lineDistance(A, B, C, D)   lines in space
+ *   surfaceArea(f, a, b, c, d)   of z = f(x, y) over a rectangle
  *
  * Shared by the graph's scope and the worker that checks rows for errors, so a
  * row using them is never reported as calling an unknown function.
@@ -48,6 +50,43 @@ const v3 = (A: any): Vec => {
   const a = coords(A);
   return [a[0], a[1], a[2] ?? 0];
 };
+/** The points on lines AB and CD closest to each other (for parallel lines, any such pair). */
+const nearestPair = (A: any, B: any, C: any, D: any): [Vec, Vec] => {
+  const [a, b, c, d] = [A, B, C, D].map(v3);
+  const u = sub(b, a);
+  const v = sub(d, c);
+  const w = sub(a, c);
+  const uu = dot(u, u), uv = dot(u, v), vv = dot(v, v), uw = dot(u, w), vw = dot(v, w);
+  const den = uu * vv - uv * uv;
+  let s = 0;
+  let t = vv ? vw / vv : 0;
+  if (den > 1e-12 * uu * vv) {
+    s = (uv * vw - vv * uw) / den;
+    t = (uu * vw - uv * uw) / den;
+  }
+  return [a.map((x, i) => x + s * u[i]), c.map((x, i) => x + t * v[i])];
+};
+
+/** The area of z = g(x, y) over a rectangle: Simpson's rule on √(1 + g_x² + g_y²). */
+export const surfaceAreaOf = (g: (x: number, y: number) => number, a: number, b: number, c: number, d: number, m = 48): number => {
+  const hx = (b - a) / m;
+  const hy = (d - c) / m;
+  const e = 1e-4 * Math.max(Math.abs(b - a), Math.abs(d - c), 1);
+  const w = (k: number) => (k === 0 || k === m ? 1 : k % 2 ? 4 : 2);
+  let sum = 0;
+  for (let i = 0; i <= m; i++) {
+    for (let j = 0; j <= m; j++) {
+      const x = a + i * hx;
+      const y = c + j * hy;
+      const gx = (g(x + e, y) - g(x - e, y)) / (2 * e);
+      const gy = (g(x, y + e) - g(x, y - e)) / (2 * e);
+      const k = Math.sqrt(1 + gx * gx + gy * gy);
+      if (Number.isFinite(k)) sum += w(i) * w(j) * k;
+    }
+  }
+  return (sum * hx * hy) / 9;
+};
+
 /** A vector field given as a function F(x, y, z) → [P, Q, R], as plain numbers. */
 const fieldFn = (F: any) => (x: number, y: number, z: number): Vec => {
   if (typeof F !== "function") throw new Error("Give the field as a function: F(x, y, z) = [P, Q, R]");
@@ -215,6 +254,38 @@ export const GEOMETRY_HELPERS = {
     });
     const d = num(d0);
     return out ? `${out} = ${d < 0 ? "−" : ""}${Math.abs(d)}` : "—";
+  },
+  /**
+   * surfaceArea(f, a, b, c, d): the area of the surface z = f(x, y) over the rectangle
+   * a ≤ x ≤ b, c ≤ y ≤ d, for f written as a function, f(x, y) = ….
+   */
+  surfaceArea: (f: any, a: number, b: number, c: number, d: number): number => {
+    if (typeof f !== "function") throw new Error("Give the surface as a function: f(x, y) = …");
+    return surfaceAreaOf((x, y) => Number(f(x, y)), a, b, c, d);
+  },
+  /** Where the line through A and B meets the plane through C, D and E (NaN if they are parallel). */
+  linePlane: (A: any, B: any, C: any, D: any, E: any): Vec => {
+    const [a, b, c, d, e] = [A, B, C, D, E].map(v3);
+    const u = sub(b, a);
+    const n = cross(sub(d, c), sub(e, c));
+    const den = dot(u, n);
+    if (Math.abs(den) < 1e-12 * (len(u) * len(n) || 1)) return [NaN, NaN, NaN];
+    const t = dot(sub(c, a), n) / den;
+    return a.map((v, i) => v + t * u[i]);
+  },
+  /**
+   * The two points, one on line AB and one on line CD, that are closest together:
+   * nearestOnLines(A, B, C, D, 0) is on AB, (…, 1) on CD. The segment between them
+   * is square to both lines.
+   */
+  nearestOnLines: (A: any, B: any, C: any, D: any, which: number): Vec => {
+    const [p, q] = nearestPair(A, B, C, D);
+    return which ? q : p;
+  },
+  /** The shortest distance between the lines AB and CD (skew, crossing or parallel). */
+  lineDistance: (A: any, B: any, C: any, D: any): number => {
+    const [p, q] = nearestPair(A, B, C, D);
+    return len(sub(q, p));
   },
   /** A point in space: [x, y] becomes [x, y, 0]. Shapes drawn in 3D use it to join points of either kind. */
   p3: (A: any): Vec => {

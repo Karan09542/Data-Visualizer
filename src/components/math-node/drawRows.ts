@@ -352,7 +352,7 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     ...extra,
   });
 
-  const spatial = !!opts.spatialHint || isSpatial(picks) || !!opts.solid || tool === "plane" || tool === "foot" || tool === "dihedral";
+  const spatial = !!opts.spatialHint || isSpatial(picks) || !!opts.solid || tool === "plane" || tool === "foot" || tool === "dihedral" || tool === "lineplane" || tool === "skew";
   const P = (name: string) => (spatial ? `p3(${name})` : name);
   // Name every click: an existing point keeps its name, "#i" is this shape's i-th click again.
   const fresh = picks.filter((p) => !p.name).length;
@@ -463,6 +463,28 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
       rows.push(row("point", `${F} = footOnPlane(${Pn}, ${Q}, ${R}, ${S})`, opts.color, { showLabel: true, label: F }));
       rows.push(row("parametric", `${P(Pn)} + t*(${F} - ${P(Pn)})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
       rows.push(readout(`(${P(Pn)} + ${F})/2 + [0, 0, 0.35]`, `${Pn}${F} = {{norm(${F} - ${P(Pn)})}} (shortest distance to the plane)`));
+      break;
+    }
+    case "lineplane": {
+      // The line through A and B, the plane through C, D and E, and where they meet.
+      const [, , Cn, D, E] = named;
+      const [X] = nextPointNames(opts.taken, 1);
+      rows.push(row("parametric", `${P(A)} + t*(${P(B)} - ${P(A)})/norm(${P(B)} - ${P(A)})`, opts.color, { tRange: [-500, 500] }));
+      rows.push(row("polygon", `[${P(Cn)}, ${P(D)}, ${P(E)}]`, opts.color, { fillColor: opts.color, fillOpacity: 0.14, fillPattern: "solid", showAngles: false }));
+      rows.push(row("point", `${X} = linePlane(${A}, ${B}, ${Cn}, ${D}, ${E})`, opts.color, { showLabel: true, label: `${X} = {{${X}}}` }));
+      break;
+    }
+    case "skew": {
+      // Lines AB and CD, and the shortest segment between them: square to both.
+      const [, , Cn, D] = named;
+      const [M, N] = nextPointNames(opts.taken, 2);
+      const args = `${A}, ${B}, ${Cn}, ${D}`;
+      rows.push(row("parametric", `${P(A)} + t*(${P(B)} - ${P(A)})/norm(${P(B)} - ${P(A)})`, opts.color, { tRange: [-500, 500] }));
+      rows.push(row("parametric", `${P(Cn)} + t*(${P(D)} - ${P(Cn)})/norm(${P(D)} - ${P(Cn)})`, opts.color, { tRange: [-500, 500] }));
+      rows.push(row("point", `${M} = nearestOnLines(${args}, 0)`, opts.color, { showLabel: true, label: M }));
+      rows.push(row("point", `${N} = nearestOnLines(${args}, 1)`, opts.color, { showLabel: true, label: N }));
+      rows.push(row("parametric", `${M} + t*(${N} - ${M})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
+      rows.push(readout(`(${M} + ${N})/2 + [0, 0, 0.35]`, `${M}${N} = {{lineDistance(${args})}} (shortest distance between the lines)`));
       break;
     }
     case "dihedral": {

@@ -37,6 +37,7 @@ import { DEGREE_TRIG, isDefinitionRow, isTailTipVector, odeRange, odeSolveKey, r
 import { evaluateFamilyValues, parseFamilyExpression } from "../../lib/math/familyPlot";
 import { splitRelation } from "../../lib/math/splitRelation";
 import { clipSegmentToBox, clipToBox } from "../../lib/math/clip3d";
+import { surfaceAreaOf } from "../../lib/math/geometryHelpers";
 import { computeOdeExtent, odeAxisColumns, odePlaybackTime, solveCompiledOdeCached } from "../../lib/math/odeCurveData";
 import { sampleOdeAt } from "../../lib/math/odeSolver";
 import { odeSystemToLatex } from "../../lib/math/odeLatex";
@@ -3011,9 +3012,11 @@ class Engine {
           f,
           4 * half,
         );
-        if (!axf) {
+        {
+          // Points tested where the row was before it was moved, turned or resized.
           const own = Object.create(s);
-          entry.implicit = (x, y, z) => {
+          entry.implicit = (gx, gy, z) => {
+            const [x, y] = axf ? axf.inverse(gx, gy) : [gx, gy];
             own.x = x;
             own.y = y;
             try {
@@ -3136,12 +3139,14 @@ class Engine {
 
       case "iso": {
         const region = f.type === "inequality" ? f.operator || f.expr2 || "<" : undefined;
-        const untransformed = !this.affineTransformOf(f, () => [[0, 0]]);
+        const isoXf = this.affineTransformOf(f, () => [[0, 0]]);
         let implicit: ((x: number, y: number, z: number) => number) | undefined;
-        if (untransformed) {
+        {
+          // Points tested where the row was before it was moved, turned or resized.
           const own = Object.create(s);
           const value = this.relation(f, own);
-          implicit = (x, y, z) => {
+          implicit = (gx, gy, z) => {
+            const [x, y] = isoXf ? isoXf.inverse(gx, gy) : [gx, gy];
             own.x = x;
             own.y = y;
             own.z = z;
@@ -5386,6 +5391,13 @@ class Engine {
         color: f.color,
         scale: 0.85,
       },
+      {
+        pos: [0, 0, 0],
+        text: "",
+        html: texToHtml(String.raw`\text{surface area over } R = ${formatCoord(surfaceAreaOf(g, a, b, c, d))}`),
+        color: f.color,
+        scale: 0.85,
+      },
     ];
     if (anchor) {
       this.pushRowLabel(entry, f, s, anchor);
@@ -5715,11 +5727,55 @@ class Engine {
       root.add(new THREE.LineSegments(geometry, new THREE.LineBasicMaterial({ color: mat.vertexColors ? new THREE.Color(rowColor(o)) : mat.color.clone() })));
     };
 
+    // STL holds only surfaces: a curve goes in as a thin six-sided tube, so it prints.
+    const addTubes = (o: LineSegments2, matrix: THREE.Matrix4) => {
+      const g = o.geometry as any;
+      const start = g.attributes.instanceStart;
+      const end = g.attributes.instanceEnd;
+      if (!start || !end) return;
+      const width = (o.material as LineMaterial).linewidth || 2;
+      const radius = 0.004 * half * clamp(width, 1, 6);
+      const out: number[] = [];
+      const a = new THREE.Vector3();
+      const b = new THREE.Vector3();
+      const dir = new THREE.Vector3();
+      const e1 = new THREE.Vector3();
+      const e2 = new THREE.Vector3();
+      const ring = (c: number[], k: number) => {
+        const ang = (k / 6) * TWO_PI;
+        const cs = Math.cos(ang) * radius;
+        const sn = Math.sin(ang) * radius;
+        return [c[0] + e1.x * cs + e2.x * sn, c[1] + e1.y * cs + e2.y * sn, c[2] + e1.z * cs + e2.z * sn];
+      };
+      for (let i = 0; i < start.count; i++) {
+        a.fromBufferAttribute(start, i).applyMatrix4(matrix);
+        b.fromBufferAttribute(end, i).applyMatrix4(matrix);
+        const seg = clipSegmentToBox([a.x, a.y, a.z], [b.x, b.y, b.z], lo, hi);
+        if (!seg) continue;
+        dir.set(seg[1][0] - seg[0][0], seg[1][1] - seg[0][1], seg[1][2] - seg[0][2]);
+        if (dir.lengthSq() < 1e-18) continue;
+        dir.normalize();
+        e1.set(Math.abs(dir.x) < 0.9 ? 1 : 0, Math.abs(dir.x) < 0.9 ? 0 : 1, 0).cross(dir).normalize();
+        e2.copy(dir).cross(e1);
+        for (let k = 0; k < 6; k++) {
+          const p0 = ring(seg[0], k), p1 = ring(seg[0], k + 1), q0 = ring(seg[1], k), q1 = ring(seg[1], k + 1);
+          out.push(...p0, ...q0, ...q1, ...p0, ...q1, ...p1);
+        }
+      }
+      if (!out.length) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(out, 3));
+      geometry.computeVertexNormals();
+      root.add(new THREE.Mesh(geometry, new THREE.MeshStandardMaterial({ color: (o.material as LineMaterial).color.clone() })));
+    };
+
     for (const group of [this.rowsGroup, this.crossGroup]) {
       group.traverse((o) => {
         if (!visible(o)) return;
         if (o instanceof LineSegments2) {
-          if (format === "glb") addLines(o, m.multiplyMatrices(toGraph, o.matrixWorld));
+          const lm = m.multiplyMatrices(toGraph, o.matrixWorld);
+          if (format === "glb") addLines(o, lm);
+          else addTubes(o, lm);
         } else if (o instanceof THREE.InstancedMesh) {
           const inst = new THREE.Matrix4();
           for (let i = 0; i < o.count; i++) {
@@ -5746,6 +5802,92 @@ class Engine {
   }
 
   // ── A spin round the graph, as a video ──
+
+  /**
+   * Each label as a picture, typeset as it shows: made once before a recording, then
+   * drawn wherever the label stands in each frame (its words don't change during a spin).
+   * Labels that can't be pictured are left out, and drawn as plain text instead.
+   */
+  private async labelImages(s: number): Promise<Map<HTMLElement, HTMLCanvasElement>> {
+    const out = new Map<HTMLElement, HTMLCanvasElement>();
+    let css: string;
+    try {
+      css = await overlayCss();
+    } catch {
+      return out;
+    }
+    const host = getComputedStyle(this.labelHost);
+    for (const el of this.labelEls.slice(0, 150)) {
+      if (!el.isConnected || el.offsetParent === null || !el.textContent?.trim()) continue;
+      const r = el.getBoundingClientRect();
+      if (!(r.width > 0 && r.height > 0)) continue;
+      const w = Math.ceil(r.width) + 2;
+      const h = Math.ceil(r.height) + 2;
+      const clone = el.cloneNode(true) as HTMLElement;
+      // Where it stands and how faded it is come from the frame, not the picture.
+      clone.style.position = "absolute";
+      clone.style.left = "1px";
+      clone.style.top = "1px";
+      clone.style.right = "auto";
+      clone.style.bottom = "auto";
+      clone.style.transform = "none";
+      clone.style.opacity = "1";
+      clone.style.margin = "0";
+      const wrap = document.createElement("div");
+      wrap.setAttribute("xmlns", "http://www.w3.org/1999/xhtml");
+      wrap.style.cssText =
+        `position:relative;width:${w}px;height:${h}px;overflow:hidden;margin:0;` +
+        `font-family:${host.fontFamily};font-size:${host.fontSize};font-weight:${host.fontWeight};color:${host.color};` +
+        `text-shadow:${this.labelHost.style.textShadow}`;
+      const style = document.createElement("style");
+      style.textContent = css;
+      wrap.append(style, clone);
+      const svg =
+        `<svg xmlns="http://www.w3.org/2000/svg" width="${w * s}" height="${h * s}" viewBox="0 0 ${w} ${h}">` +
+        `<foreignObject x="0" y="0" width="${w}" height="${h}">${new XMLSerializer().serializeToString(wrap)}</foreignObject></svg>`;
+      try {
+        const img = await loadImage(`data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`);
+        const c = document.createElement("canvas");
+        c.width = Math.ceil(w * s);
+        c.height = Math.ceil(h * s);
+        const cx = c.getContext("2d")!;
+        cx.drawImage(img, 0, 0, c.width, c.height);
+        // A picture the browser won't let be read back would spoil the whole video.
+        cx.getImageData(0, 0, 1, 1);
+        out.set(el, c);
+      } catch {
+        // Drawn as text instead.
+      }
+    }
+    return out;
+  }
+
+  /** The labels over a frame: their pictures where there are some, plain text otherwise. */
+  private drawLabelFrame(ctx: CanvasRenderingContext2D, s: number, images: Map<HTMLElement, HTMLCanvasElement>) {
+    const box = this.labelHost.getBoundingClientRect();
+    ctx.save();
+    ctx.textBaseline = "middle";
+    for (const el of this.labelEls) {
+      if (!el.isConnected || el.offsetParent === null) continue;
+      const cs = getComputedStyle(el);
+      const alpha = Number(cs.opacity);
+      if (!(alpha > 0.01)) continue;
+      const r = el.getBoundingClientRect();
+      ctx.globalAlpha = Number.isFinite(alpha) ? alpha : 1;
+      const img = images.get(el);
+      if (img) {
+        ctx.drawImage(img, (r.left - box.left - 1) * s, (r.top - box.top - 1) * s);
+        continue;
+      }
+      const text = el.innerText.trim();
+      if (!text) continue;
+      ctx.font = `${cs.fontWeight} ${parseFloat(cs.fontSize) * s}px ${cs.fontFamily}`;
+      ctx.fillStyle = cs.color;
+      ctx.fillText(text, (r.left - box.left) * s, (r.top - box.top + r.height / 2) * s);
+    }
+    ctx.restore();
+  }
+
 
   private stepSpin() {
     const sp = this.spin!;
@@ -5790,6 +5932,7 @@ class Engine {
       }
     }
 
+    const labelPics = await this.labelImages(comp.width / this.width);
     const stream: MediaStream = (comp as any).captureStream(30);
     const recorder = new MediaRecorder(stream, { mimeType: type, videoBitsPerSecond: 8_000_000 });
     const chunks: Blob[] = [];
@@ -5807,7 +5950,7 @@ class Engine {
     this.controls.enabled = false;
     this.afterFrame = () => {
       ctx.drawImage(this.renderer.domElement, 0, 0, comp.width, comp.height);
-      this.drawOverlayText(ctx, comp.width / this.width, false);
+      this.drawLabelFrame(ctx, comp.width / this.width, labelPics);
       if (notes) ctx.drawImage(notes, 0, 0);
     };
     recorder.start(250);
@@ -5865,12 +6008,18 @@ class Engine {
         let g: (x: number, y: number, z: number) => number;
         // Cut along the finer mesh: a plane's few triangles would make a curve look jagged.
         const preferB = !!B.flat && !A.flat;
+        // A row lifted up the z-axis is tested where it is now.
+        const lifted = (r: RowEntry) => {
+          const lift = r.group.position.z;
+          const fn = r.implicit!;
+          return lift ? (x: number, y: number, z: number) => fn(x, y, z - lift) : fn;
+        };
         if (B.implicit && A.surfaces.length && !(preferB && A.implicit && B.surfaces.length)) {
           mesh = A;
-          g = B.implicit;
+          g = lifted(B);
         } else if (A.implicit && B.surfaces.length) {
           mesh = B;
-          g = A.implicit;
+          g = lifted(A);
         } else continue;
         const lift = mesh.group.position.z;
         for (const surf of mesh.surfaces) {

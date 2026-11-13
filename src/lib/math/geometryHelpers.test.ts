@@ -56,6 +56,36 @@ test("divergence and curl of fields written as functions", () => {
   assert.throws(() => G.divergence([1, 2, 3], [0, 0, 0]));
 });
 
+test("linePlane: where a line meets a plane", () => {
+  // The z-axis meets the plane z = 2 at (0, 0, 2).
+  closeVec(G.linePlane([0, 0, 0], [0, 0, 1], [0, 0, 2], [1, 0, 2], [0, 1, 2]), [0, 0, 2]);
+  // A slanted line through (1, 1, 1) meets x + y + z = 3 at (1, 1, 1).
+  closeVec(G.linePlane([0, 0, 0], [2, 2, 2], [3, 0, 0], [0, 3, 0], [0, 0, 3]), [1, 1, 1]);
+  // Parallel: no meeting point.
+  assert.ok(G.linePlane([0, 0, 1], [1, 0, 1], [0, 0, 0], [1, 0, 0], [0, 1, 0]).every(Number.isNaN));
+});
+
+test("nearestOnLines and lineDistance", () => {
+  // The x-axis, and a line along y at height 3: skew, 3 apart.
+  const A = [0, 0, 0], B = [1, 0, 0], C = [2, -1, 3], D = [2, 1, 3];
+  close(G.lineDistance(A, B, C, D), 3);
+  closeVec(G.nearestOnLines(A, B, C, D, 0), [2, 0, 0]);
+  closeVec(G.nearestOnLines(A, B, C, D, 1), [2, 0, 3]);
+  // Lines that cross are 0 apart.
+  close(G.lineDistance([0, 0, 0], [1, 1, 0], [1, 0, 0], [0, 1, 0]), 0);
+  // Parallel lines: the distance between them.
+  close(G.lineDistance([0, 0, 0], [1, 0, 0], [5, 0, 4], [6, 0, 4]), 4);
+});
+
+test("surfaceArea", () => {
+  // A flat floor over a 2 × 3 rectangle: area 6.
+  close(G.surfaceArea((x: number, y: number) => 0 * x * y, 0, 2, 0, 3), 6, 1e-6);
+  // The plane z = x over [0, 1]²: area √2.
+  close(G.surfaceArea((x: number) => x, 0, 1, 0, 1), Math.SQRT2, 1e-6);
+  // The paraboloid z = x² + y² over [-1, 1]² (known value ≈ 7.4463).
+  close(G.surfaceArea((x: number, y: number) => x * x + y * y, -1, 1, -1, 1), 7.4463, 1e-3);
+});
+
 test("clipToBox keeps what is inside and cuts at the walls", () => {
   const lo = [-1, -1, -1];
   const hi = [1, 1, 1];

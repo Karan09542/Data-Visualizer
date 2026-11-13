@@ -1938,6 +1938,25 @@ function divergenceCurl(): ExampleScene {
   };
 }
 
+/** Level surfaces of a function of three variables: F(x, y, z) = c as c changes. */
+function levelSurfaces(): ExampleScene {
+  const r = sceneRows("g3level");
+  return {
+    functions: [
+      surface(r, "sin(x)*cos(y) + sin(y)*cos(z) + sin(z)*cos(x) = c", PURPLE, { fillOpacity: 0.8 }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`F(x, y, z) = \sin x\cos y + \sin y\cos z + \sin z\cos x = c`, PURPLE],
+        [String.raw`c = {{c}}: \text{ each } c \text{ gives one level surface}`, TEXT],
+        [String.raw`\text{at } c = 0 \text{ it is the gyroid: two matching mazes}`, TEXT],
+      ]),
+    ],
+    variables: [sceneSlider("c", "Level c", 0, [-1.4, 1.4, 0.05], "Which level surface: drag to watch it change.", "level")],
+    groups: [sceneGroup("level", "Level surface")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.2, 3.2], y: [-3.2, 3.2] },
+  };
+}
+
 /** The 3D Gallery: scenes made for the 3D view, in order. `key` must exist in MATH_EXAMPLES. */
 export const EXAMPLE_GALLERY_3D: {
   key: string;
@@ -1956,6 +1975,7 @@ export const EXAMPLE_GALLERY_3D: {
   { key: "Space_Revolution", category: "Calculus", label: "Solids of Revolution", hint: "Spin y = k·xᵖ round the x-axis: discs and the volume π∫f²", accent: "text-blue-600 dark:text-blue-400" },
   { key: "Space_Spherical", category: "Coordinates", label: "Spherical ρ(θ, φ)", hint: "ρ = f(θ, φ): a bumpy sphere in spherical coordinates", accent: "text-purple-600 dark:text-purple-400" },
   { key: "Space_Cylindrical", category: "Coordinates", label: "Cylindrical r(θ, z)", hint: "r = f(θ, z): a twisted, fluted vase", accent: "text-sky-600 dark:text-sky-400" },
+  { key: "Space_Level", category: "Surfaces", label: "Level Surfaces", hint: "F(x, y, z) = c: drag c through the gyroid's family", accent: "text-purple-600 dark:text-purple-400" },
   { key: "Space_Intersections", category: "Surfaces", label: "Where Surfaces Meet", hint: "A sphere, a plane and a bowl: the curves where each pair crosses", accent: "text-yellow-600 dark:text-yellow-400" },
   { key: "Space_Regions", category: "Surfaces", label: "Solid Regions", hint: "Inequalities in x, y, z fill space: a ball, the space above a bowl", accent: "text-purple-600 dark:text-purple-400" },
   { key: "Space_LinearMap", category: "Linear algebra", label: "Matrix on a Cube", hint: "A 3×3 matrix turns the unit cube into a box: det M is its volume", accent: "text-blue-600 dark:text-blue-400" },
@@ -2122,6 +2142,7 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Space_VolumeUnder: volumeUnderSurface(),
   Space_DivCurl: divergenceCurl(),
   Space_LinearMap: linearMap3D(),
+  Space_Level: levelSurfaces(),
   Space_Intersections: surfaceIntersections(),
   Space_Regions: solidRegions(),
   Space_Revolution: solidOfRevolution(),
