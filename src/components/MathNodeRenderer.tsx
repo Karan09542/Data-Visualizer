@@ -1008,11 +1008,79 @@ export const MathNodeRenderer: React.FC<any> = ({
   const resizeKindRef = useRef<"dock" | "phone">("dock");
   // On a phone the panel slides over the graph; its width there, once dragged.
   const [phonePanelWidth, setPhonePanelWidth] = useState<number | null>(null);
+
+  const sidebarWidthRef = useRef(sidebarWidth);
+  sidebarWidthRef.current = sidebarWidth;
+  const sidebarHeightRef = useRef(sidebarHeight);
+  sidebarHeightRef.current = sidebarHeight;
+  const phonePanelWidthRef = useRef(phonePanelWidth);
+  phonePanelWidthRef.current = phonePanelWidth;
+
+  const resizeSessionRef = useRef<{
+    kind: "dock" | "phone";
+    pointerId: number;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    scaleX: number;
+    scaleY: number;
+    parentWidth: number;
+    parentHeight: number;
+    targetEl: HTMLElement | null;
+    currentWidth: number;
+    currentHeight: number;
+    rafId: number | null;
+  } | null>(null);
+
   const startSidebarResize = (kind: "dock" | "phone") => (e: React.PointerEvent) => {
-    if (e.button !== 0) return;
+    if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
     e.preventDefault();
     e.stopPropagation();
+
+    const target = e.currentTarget as HTMLElement;
+    const pointerId = e.pointerId;
+    try {
+      target.setPointerCapture(pointerId);
+    } catch {}
+
+    const el = sidebarRef.current;
+    if (!el) return;
+
     resizeKindRef.current = kind;
+
+    // Snapshot unscaled dimensions and the canvas/parent zoom ratio once at the beginning
+    const rect = el.getBoundingClientRect();
+    const parentRect = el.parentElement?.getBoundingClientRect();
+    const scaleX = (rect.width / (el.offsetWidth || 1)) || 1;
+    const scaleY = (rect.height / (el.offsetHeight || 1)) || 1;
+
+    const currentW =
+      kind === "phone"
+        ? (phonePanelWidthRef.current ?? Math.round(el.offsetWidth))
+        : sidebarWidthRef.current;
+    const currentH = sidebarHeightRef.current;
+
+    const parentW = parentRect ? parentRect.width / scaleX : window.innerWidth;
+    const parentH = parentRect ? parentRect.height / scaleY : window.innerHeight;
+
+    resizeSessionRef.current = {
+      kind,
+      pointerId,
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: currentW,
+      startHeight: currentH,
+      scaleX,
+      scaleY,
+      parentWidth: parentW,
+      parentHeight: parentH,
+      targetEl: target,
+      currentWidth: currentW,
+      currentHeight: currentH,
+      rafId: null,
+    };
+
     setIsResizingSidebar(true);
   };
 
@@ -1020,8 +1088,14 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (!isResizingSidebar) return;
 
     // Prevent selection and selection styling by setting dynamic styles on body
+    const prevUserSelect = document.body.style.userSelect;
+    const prevWebkitUserSelect = document.body.style.webkitUserSelect;
+    const prevCursor = document.body.style.cursor;
+    const prevTouchAction = document.body.style.touchAction;
+
     document.body.style.userSelect = "none";
     document.body.style.webkitUserSelect = "none";
+    document.body.style.touchAction = "none";
     document.body.style.cursor =
       panelPosition === "bottom" ? "row-resize" : "col-resize";
 
@@ -1029,32 +1103,81 @@ export const MathNodeRenderer: React.FC<any> = ({
     window.getSelection()?.removeAllRanges();
 
     const handleMouseMove = (e: PointerEvent) => {
-      const el = sidebarRef.current;
-      if (!el) return;
+      const session = resizeSessionRef.current;
+      if (!session) return;
+      if (session.pointerId !== undefined && e.pointerId !== session.pointerId) return;
       e.preventDefault();
-      const rect = el.getBoundingClientRect();
-      if (resizeKindRef.current === "phone") {
+
+      const dx = (e.clientX - session.startX) / session.scaleX;
+      const dy = (e.clientY - session.startY) / session.scaleY;
+
+      if (session.kind === "phone") {
         // Over the graph: leave a strip of it showing, so it can be tapped to close.
-        const room = (el.parentElement?.getBoundingClientRect().width ?? window.innerWidth) - 40;
-        setPhonePanelWidth(Math.max(240, Math.min(e.clientX - rect.left, room)));
-        return;
-      }
-      // Measure from the edge the splitter sits on, so dragging tracks the
-      // pointer whichever side the panel is docked to.
-      if (panelPosition === "bottom") {
-        setSidebarHeight(
-          Math.max(140, Math.min(rect.bottom - e.clientY, 800)),
-        );
+        const room = Math.max(260, session.parentWidth - 40);
+        session.currentWidth = Math.round(Math.max(220, Math.min(session.startWidth + dx, room)));
+      } else if (panelPosition === "bottom") {
+        const room = Math.max(160, session.parentHeight - 60);
+        session.currentHeight = Math.round(Math.max(140, Math.min(session.startHeight - dy, Math.min(800, room))));
       } else if (panelPosition === "right") {
-        setSidebarWidth(Math.max(250, Math.min(rect.right - e.clientX, 800)));
+        const room = Math.max(260, session.parentWidth - 80);
+        session.currentWidth = Math.round(Math.max(240, Math.min(session.startWidth - dx, Math.min(800, room))));
       } else {
-        setSidebarWidth(Math.max(250, Math.min(e.clientX - rect.left, 800)));
+        const room = Math.max(260, session.parentWidth - 80);
+        session.currentWidth = Math.round(Math.max(240, Math.min(session.startWidth + dx, Math.min(800, room))));
+      }
+
+      // High-performance direct CSS variable update via requestAnimationFrame:
+      // skips heavy React re-renders and Math AST re-evaluations during active touch drag.
+      if (session.rafId === null) {
+        session.rafId = requestAnimationFrame(() => {
+          if (!resizeSessionRef.current) return;
+          resizeSessionRef.current.rafId = null;
+          const el = sidebarRef.current;
+          if (!el) return;
+          if (session.kind === "phone") {
+            el.style.setProperty("--phone-panel-width", `${session.currentWidth}px`);
+          } else if (panelPosition === "bottom") {
+            el.style.setProperty("--sidebar-height", `${session.currentHeight}px`);
+          } else {
+            el.style.setProperty("--sidebar-width", `${session.currentWidth}px`);
+          }
+        });
       }
     };
-    const handleMouseUp = () => {
+
+    const handleMouseUp = (e: PointerEvent) => {
+      const session = resizeSessionRef.current;
+      if (!session) return;
+      if (session.pointerId !== undefined && e.pointerId !== session.pointerId) return;
+
+      if (session.rafId !== null) {
+        cancelAnimationFrame(session.rafId);
+        session.rafId = null;
+      }
+
+      try {
+        if (session.targetEl && session.targetEl.hasPointerCapture(session.pointerId)) {
+          session.targetEl.releasePointerCapture(session.pointerId);
+        }
+      } catch {}
+
+      const finalW = session.currentWidth;
+      const finalH = session.currentHeight;
+      const kind = session.kind;
+      resizeSessionRef.current = null;
+
       setIsResizingSidebar(false);
+
+      // Settle size to state once at end of drag:
+      if (kind === "phone") {
+        setPhonePanelWidth(finalW);
+      } else if (panelPosition === "bottom") {
+        setSidebarHeight(finalH);
+      } else {
+        setSidebarWidth(finalW);
+      }
     };
-    // Pointer events: a mouse, a finger or a pen all drag the edge.
+
     window.addEventListener("pointermove", handleMouseMove, { passive: false });
     window.addEventListener("pointerup", handleMouseUp);
     window.addEventListener("pointercancel", handleMouseUp);
@@ -1062,9 +1185,13 @@ export const MathNodeRenderer: React.FC<any> = ({
       window.removeEventListener("pointermove", handleMouseMove);
       window.removeEventListener("pointerup", handleMouseUp);
       window.removeEventListener("pointercancel", handleMouseUp);
-      document.body.style.userSelect = "";
-      document.body.style.webkitUserSelect = "";
-      document.body.style.cursor = "";
+      if (resizeSessionRef.current?.rafId) {
+        cancelAnimationFrame(resizeSessionRef.current.rafId);
+      }
+      document.body.style.userSelect = prevUserSelect;
+      document.body.style.webkitUserSelect = prevWebkitUserSelect;
+      document.body.style.touchAction = prevTouchAction;
+      document.body.style.cursor = prevCursor;
     };
   }, [isResizingSidebar, panelPosition]);
 
@@ -3286,7 +3413,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           isPanelVisible && (
             <div
               ref={sidebarRef}
-              className={`bg-slate-50 dark:bg-slate-800 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 md:relative md:inset-auto md:translate-x-0 ${isResizingSidebar ? "" : "transition-transform duration-300"} ${phonePanelWidth ? "w-[var(--phone-panel-width)]" : "w-full sm:w-[85vw]"} md:w-[var(--sidebar-width)] md:h-[var(--sidebar-height)] md:max-w-none ${panelPosition === "right"
+              className={`bg-slate-50 dark:bg-slate-800 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 md:relative md:inset-auto md:translate-x-0 ${isResizingSidebar ? "select-none touch-none" : "transition-transform duration-300"} ${phonePanelWidth || (isResizingSidebar && resizeKindRef.current === "phone") ? "w-[var(--phone-panel-width)]" : "w-full sm:w-[85vw]"} md:w-[var(--sidebar-width)] md:h-[var(--sidebar-height)] md:max-w-none ${panelPosition === "right"
                 ? "md:border-l md:border-r-0 md:border-t-0"
                 : panelPosition === "bottom"
                   ? "md:border-t md:border-r-0 md:border-l-0"
@@ -3297,10 +3424,21 @@ export const MathNodeRenderer: React.FC<any> = ({
                   // Docked left/right the panel owns its width and stretches in height;
                   // docked bottom it is the other way round.
                   "--sidebar-width":
-                    panelPosition === "bottom" ? "100%" : `${sidebarWidth}px`,
+                    panelPosition === "bottom"
+                      ? "100%"
+                      : isResizingSidebar && resizeSessionRef.current && resizeSessionRef.current.kind !== "phone"
+                        ? `${resizeSessionRef.current.currentWidth}px`
+                        : `${sidebarWidth}px`,
                   "--sidebar-height":
-                    panelPosition === "bottom" ? `${sidebarHeight}px` : "auto",
-                  "--phone-panel-width": phonePanelWidth ? `${phonePanelWidth}px` : undefined,
+                    panelPosition === "bottom"
+                      ? isResizingSidebar && resizeSessionRef.current && resizeSessionRef.current.kind !== "phone"
+                        ? `${resizeSessionRef.current.currentHeight}px`
+                        : `${sidebarHeight}px`
+                      : "auto",
+                  "--phone-panel-width":
+                    isResizingSidebar && resizeSessionRef.current && resizeSessionRef.current.kind === "phone"
+                      ? `${resizeSessionRef.current.currentWidth}px`
+                      : phonePanelWidth ? `${phonePanelWidth}px` : undefined,
                 } as React.CSSProperties
               }
               onClick={() => setActiveActionMenuId(null)}
@@ -3310,12 +3448,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                 role="separator"
                 aria-orientation="vertical"
                 aria-label="Resize the panel"
-                title="Drag to resize"
+                title="Drag to resize (touch anywhere along this edge)"
                 onPointerDown={startSidebarResize("phone")}
-                className="md:hidden absolute top-1/2 -right-3 -translate-y-1/2 z-[60] w-6 h-16 flex items-center justify-center touch-none cursor-col-resize"
+                className="md:hidden absolute inset-y-0 -right-4 z-[60] w-8 flex items-center justify-center touch-none select-none cursor-col-resize"
               >
                 <span
-                  className={`w-1.5 h-12 rounded-full shadow ring-1 ring-black/10 transition-colors ${isResizingSidebar ? "bg-blue-500" : "bg-slate-400 dark:bg-slate-500"}`}
+                  className={`w-2 h-16 rounded-full shadow-md ring-1 ring-black/10 transition-colors pointer-events-none ${isResizingSidebar ? "bg-blue-500 ring-blue-400" : "bg-slate-400 dark:bg-slate-500"}`}
                 />
               </div>
               <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col gap-4 sm:gap-6 custom-scrollbar">
@@ -7074,21 +7212,86 @@ export const MathNodeRenderer: React.FC<any> = ({
         {/* Splitter */}
         {(isExpanded || isFullscreen) && isPanelVisible && (
           <div
-            className={`hidden md:flex shrink-0 touch-none bg-slate-700/50 hover:bg-blue-500 z-20 justify-center items-center transition-colors relative group ${isResizingSidebar ? "!bg-blue-500" : ""} ${panelPosition === "bottom"
+            role="separator"
+            aria-orientation={panelPosition === "bottom" ? "horizontal" : "vertical"}
+            aria-label="Resize panel"
+            tabIndex={0}
+            className={`hidden md:flex shrink-0 touch-none select-none bg-slate-700/50 hover:bg-blue-500 z-20 justify-center items-center transition-colors relative group ${isResizingSidebar ? "!bg-blue-500" : ""} ${panelPosition === "bottom"
               ? "h-1 w-full cursor-row-resize"
               : "w-1 h-full cursor-col-resize"
               }`}
             onPointerDown={startSidebarResize("dock")}
+            onDoubleClick={() => {
+              if (panelPosition === "bottom") {
+                setSidebarHeight(280);
+                sidebarRef.current?.style.setProperty("--sidebar-height", "280px");
+              } else {
+                setSidebarWidth(320);
+                sidebarRef.current?.style.setProperty("--sidebar-width", "320px");
+              }
+            }}
+            onKeyDown={(e) => {
+              const step = e.shiftKey ? 32 : 12;
+              if (panelPosition === "bottom") {
+                if (e.key === "ArrowUp") {
+                  e.preventDefault();
+                  setSidebarHeight((h) => {
+                    const next = Math.min(800, h + step);
+                    sidebarRef.current?.style.setProperty("--sidebar-height", `${next}px`);
+                    return next;
+                  });
+                } else if (e.key === "ArrowDown") {
+                  e.preventDefault();
+                  setSidebarHeight((h) => {
+                    const next = Math.max(140, h - step);
+                    sidebarRef.current?.style.setProperty("--sidebar-height", `${next}px`);
+                    return next;
+                  });
+                }
+              } else if (panelPosition === "right") {
+                if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  setSidebarWidth((w) => {
+                    const next = Math.min(800, w + step);
+                    sidebarRef.current?.style.setProperty("--sidebar-width", `${next}px`);
+                    return next;
+                  });
+                } else if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  setSidebarWidth((w) => {
+                    const next = Math.max(240, w - step);
+                    sidebarRef.current?.style.setProperty("--sidebar-width", `${next}px`);
+                    return next;
+                  });
+                }
+              } else {
+                if (e.key === "ArrowRight") {
+                  e.preventDefault();
+                  setSidebarWidth((w) => {
+                    const next = Math.min(800, w + step);
+                    sidebarRef.current?.style.setProperty("--sidebar-width", `${next}px`);
+                    return next;
+                  });
+                } else if (e.key === "ArrowLeft") {
+                  e.preventDefault();
+                  setSidebarWidth((w) => {
+                    const next = Math.max(240, w - step);
+                    sidebarRef.current?.style.setProperty("--sidebar-width", `${next}px`);
+                    return next;
+                  });
+                }
+              }
+            }}
           >
-            {/* A wider target than the line itself: easy to catch with a finger. */}
+            {/* A wider hit target so it's effortless to catch with a finger or mouse */}
             <div
-              className={`absolute z-20 touch-none ${panelPosition === "bottom"
-                ? "inset-x-0 -top-2.5 -bottom-2.5 cursor-row-resize"
-                : "inset-y-0 -left-2.5 -right-2.5 cursor-col-resize"
+              className={`absolute z-20 touch-none select-none ${panelPosition === "bottom"
+                ? "inset-x-0 -top-3.5 -bottom-3.5 cursor-row-resize"
+                : "inset-y-0 -left-3.5 -right-3.5 cursor-col-resize"
                 }`}
-            ></div>
+            />
             <div
-              className={`bg-slate-500 rounded-full group-hover:bg-white transition-colors ${panelPosition === "bottom" ? "h-1 w-8" : "w-1 h-8"
+              className={`bg-slate-500 rounded-full group-hover:bg-white transition-colors pointer-events-none ${panelPosition === "bottom" ? "h-1 w-8" : "w-1 h-8"
                 }`}
             />
           </div>
@@ -7109,7 +7312,7 @@ export const MathNodeRenderer: React.FC<any> = ({
         <div
           ref={graphContainerRef}
           data-math-graph
-          className={`flex-1 min-w-0 min-h-0 relative ${appTheme === "dark" ? "bg-slate-950" : "bg-white"} overflow-hidden select-none nodrag cursor-crosshair group/graph`}
+          className={`flex-1 min-w-0 min-h-0 relative ${appTheme === "dark" ? "bg-slate-950" : "bg-white"} overflow-hidden select-none nodrag cursor-crosshair group/graph ${isResizingSidebar ? "pointer-events-none" : ""}`}
           style={
             {
               "--mafs-bg": appTheme === "dark" ? "#020617" : "#ffffff",
@@ -7442,7 +7645,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                 zoom={{ min: Math.min(zoomMin, zoomMax), max: Math.max(zoomMin, zoomMax) }}
                 viewBox={focusView ?? homeView}
                 preserveAspectRatio="contain"
-                pan={drawTool !== "select"}
+                pan={drawTool !== "select" && !isResizingSidebar}
               >
 
                 <AdaptiveGrid
