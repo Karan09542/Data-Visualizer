@@ -216,13 +216,19 @@ function HistoryStatePlugin({ onHistoryChange }: { onHistoryChange?: (state: His
 
 import { ensureFontsLoaded, loadFontsFromContent } from '../../../utils/fontRegistry';
 
-function ExternalContentSyncPlugin({ content }: { content: string }) {
+/**
+ * Content that changed from outside the editor (another tab, a cleared note) is loaded
+ * into it. Content the editor itself just wrote is not: by the time a save comes back
+ * the user may have typed on, and loading it would drop those letters and the caret.
+ */
+function ExternalContentSyncPlugin({ content, isOwn }: { content: string; isOwn: (content: string) => boolean }) {
   const [editor] = useLexicalComposerContext();
   const lastContentRef = React.useRef(content);
 
   React.useEffect(() => {
     if (content === lastContentRef.current) return;
     lastContentRef.current = content;
+    if (isOwn(content)) return;
 
     const currentEditorState = JSON.stringify(editor.getEditorState().toJSON());
     if (content === currentEditorState) return;
@@ -245,7 +251,7 @@ function ExternalContentSyncPlugin({ content }: { content: string }) {
         console.error('Error synchronizing external content in Lexical:', err);
       }
     });
-  }, [content, editor]);
+  }, [content, editor, isOwn]);
 
   return null;
 }
@@ -312,7 +318,34 @@ function FontLoaderPlugin({ content }: { content: string }) {
 }
 
 export default function LexicalEditor({ initialContent, noteId, onSave, onChange, isEditing, isReadOnly = false, style, editorRef, onHistoryChange }: LexicalEditorProps) {
-  
+  // What the editor itself has handed out lately, so it isn't loaded back in as if new.
+  const emittedRef = React.useRef<string[]>([]);
+  const remember = React.useCallback((state: string) => {
+    const list = emittedRef.current;
+    if (list[list.length - 1] === state) return;
+    list.push(state);
+    if (list.length > 40) list.shift();
+  }, []);
+  const isOwn = React.useCallback((state: string) => emittedRef.current.includes(state), []);
+  const onSaveRef = React.useRef(onSave);
+  onSaveRef.current = onSave;
+  const onChangeRef = React.useRef(onChange);
+  onChangeRef.current = onChange;
+  const handleSave = React.useCallback(
+    (state: string) => {
+      remember(state);
+      onSaveRef.current(state);
+    },
+    [remember],
+  );
+  const handleChange = React.useCallback(
+    (state: string) => {
+      remember(state);
+      onChangeRef.current?.(state);
+    },
+    [remember],
+  );
+
   const initialConfig = useMemo(() => {
     let parsedState = null;
     try {
@@ -370,18 +403,18 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
         <div className="flex-1 min-h-0 relative overflow-y-auto custom-scrollbar sticky-note-scrollbar">
           <RichTextPlugin
             contentEditable={
-              <ContentEditable 
-                className={`w-full max-w-4xl mx-auto min-h-full outline-none px-6 py-8 sm:px-10 sm:py-12 ${isEditing ? 'cursor-text' : 'cursor-pointer select-none'}`} 
-                style={{ 
-                  ...style, 
+              <ContentEditable
+                className={`w-full max-w-4xl mx-auto min-h-full outline-none px-6 py-8 sm:px-10 sm:py-12 ${isEditing ? 'cursor-text' : 'cursor-pointer select-none'}`}
+                style={{
+                  ...style,
                   pointerEvents: isEditing ? 'auto' : 'none',
                 }}
               />
             }
             placeholder={
               isEditing && !isReadOnly ? (
-                <div 
-                  className="absolute inset-0 pointer-events-none opacity-30 px-6 py-8 sm:px-10 sm:py-12 w-full max-w-4xl mx-auto overflow-hidden" 
+                <div
+                  className="absolute inset-0 pointer-events-none opacity-30 px-6 py-8 sm:px-10 sm:py-12 w-full max-w-4xl mx-auto overflow-hidden"
                   style={style}
                 >
                   Start typing or press '/' for commands...
@@ -398,15 +431,15 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
           <CheckListPlugin />
           <ListKeyboardPlugin />
           <MarkdownShortcutPlugin transformers={TRANSFORMERS} />
-          
+
           <LinkPlugin />
           <AutoLinkPlugin matchers={AUTO_LINK_MATCHERS} />
           <ClickableLinkPlugin newTab={true} />
           <YouTubePlugin />
 
-          <AutoSavePlugin onSave={onSave} onChange={onChange} debounceMs={500} />
-          <ExternalContentSyncPlugin content={initialContent} />
-          <FontLoaderPlugin content={initialContent} />
+          <AutoSavePlugin onSave={handleSave} onChange={handleChange} debounceMs={500} />
+          <ExternalContentSyncPlugin content={initialContent} isOwn={isOwn} />
+          u          <FontLoaderPlugin content={initialContent} />
           <ImagePlugin />
           <AudioPlugin />
           <MediaModalsPlugin />
@@ -419,7 +452,7 @@ export default function LexicalEditor({ initialContent, noteId, onSave, onChange
           <TodoTablePlugin />
           <CodeActionMenuPlugin />
           <CodeGutterPlugin />
-          
+
           {isEditing && !isReadOnly && (
             <>
               <CodeHighlightPlugin />
