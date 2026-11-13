@@ -1707,6 +1707,98 @@ function dnaHelix(): ExampleScene {
   };
 }
 
+/** A vector field: a swirl round the z-axis, spreading out and lifting. */
+function vectorField3D(): ExampleScene {
+  const r = sceneRows("g3field");
+  return {
+    functions: [
+      { ...r.define("F = field([-y + a*x, x + a*y, c + a*z])"), color: SKY },
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\vec F(x, y, z) = (-y + a x,\ x + a y,\ c + a z)`, SKY],
+        [String.raw`\nabla\cdot\vec F = 3a = {{3*a}} \quad (\text{spreading out})`, AMBER],
+        [String.raw`\nabla\times\vec F = (0, 0, 2) \quad (\text{spinning round } z)`, PINK],
+        [String.raw`\text{arrows: blue weak, red strong; lines follow the flow}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("a", "Spread a", 0, [-0.5, 0.5, 0.05], "Positive: the flow spreads out (a source). Negative: it sinks in.", "field"),
+      sceneSlider("c", "Lift c", 1, [-2, 2, 0.1], "How fast the flow rises along z.", "field"),
+    ],
+    groups: [sceneGroup("field", "Vector field")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+  };
+}
+
+/** y = k·x^p turned round the x-axis: cylinder, cone, paraboloid, and its volume. */
+function solidOfRevolution(): ExampleScene {
+  const r = sceneRows("g3rev");
+  return {
+    functions: [
+      { ...r.define("revolve(k*x^p, 0, b)"), color: BLUE, fillColor: BLUE, fillOpacity: 0.45 },
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`y = k\,x^{p} = {{k}}\,x^{ {{p}} },\quad 0 \le x \le {{b}}`, BLUE],
+        [String.raw`p = 0\text{: cylinder}\quad p = 1\text{: cone}\quad p = \tfrac12\text{: paraboloid}`, TEXT],
+        [String.raw`\text{each white ring is a disc of area } \pi f(x)^2`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("k", "Scale k", 1, [0.2, 2, 0.05], "How tall the curve is.", "curve"),
+      sceneSlider("p", "Power p", 0.5, [0, 2, 0.05], "The shape of the curve y = k·xᵖ.", "curve"),
+      sceneSlider("b", "Length b", 4, [0.5, 5, 0.1], "Where the solid ends.", "curve"),
+    ],
+    groups: [sceneGroup("curve", "The curve")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-5, 5], y: [-5, 5] },
+  };
+}
+
+/** ρ = f(θ, φ) in spherical coordinates: a bumpy sphere. */
+function sphericalSurface(): ExampleScene {
+  const r = sceneRows("g3sphr");
+  return {
+    functions: [
+      { ...r.define("rho = 2 + a*sin(m*theta)*sin(phi)^m"), type: "polar", color: PURPLE, fillColor: PURPLE, fillOpacity: 0.75 },
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\rho = 2 + a\,\sin(m\theta)\,\sin^{m}\varphi`, PURPLE],
+        [String.raw`(x, y, z) = (\rho\sin\varphi\cos\theta,\ \rho\sin\varphi\sin\theta,\ \rho\cos\varphi)`, TEXT],
+        [String.raw`\theta \text{ round the } z\text{-axis},\ \varphi \text{ down from the top}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("a", "Bump a", 0.8, [0, 1.5, 0.05], "How big the bumps are.", "shape"),
+      sceneSlider("m", "Bumps m", 3, [1, 8, 1], "How many bumps round the middle (2m of them).", "shape"),
+    ],
+    groups: [sceneGroup("shape", "Spherical surface")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+    view3d: { autoRotate: true },
+  };
+}
+
+/** r = f(θ, z) in cylindrical coordinates: a fluted vase. */
+function cylindricalSurface(): ExampleScene {
+  const r = sceneRows("g3cyl");
+  return {
+    functions: [
+      { ...r.define("r = 1 + 0.12*z^2 + a*cos(m*theta + w*z)"), type: "polar", color: SKY, fillColor: SKY, fillOpacity: 0.75 },
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`r = 1 + 0.12\,z^2 + a\cos(m\theta + w z)`, SKY],
+        [String.raw`(x, y, z) = (r\cos\theta,\ r\sin\theta,\ z)`, TEXT],
+        [String.raw`w \ne 0 \text{ twists the flutes as they rise}`, AMBER],
+      ]),
+    ],
+    variables: [
+      sceneSlider("a", "Flute depth a", 0.25, [0, 0.6, 0.01], "How deep the flutes are.", "shape"),
+      sceneSlider("m", "Flutes m", 6, [0, 12, 1], "How many flutes round the vase.", "shape"),
+      sceneSlider("w", "Twist w", 0.5, [-1.5, 1.5, 0.05], "How much the flutes turn as they rise.", "shape"),
+    ],
+    groups: [sceneGroup("shape", "Vase")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+  };
+}
+
 /** The 3D Gallery: scenes made for the 3D view, in order. `key` must exist in MATH_EXAMPLES. */
 export const EXAMPLE_GALLERY_3D: {
   key: string;
@@ -1719,6 +1811,10 @@ export const EXAMPLE_GALLERY_3D: {
   { key: "Space_Hyperboloids", category: "Surfaces", label: "Hyperboloids & Cone", hint: "x² + y² − z² = s: one sheet, a double cone, two sheets", accent: "text-violet-600 dark:text-violet-400" },
   { key: "Space_Sombrero", category: "Surfaces", label: "Sinc Ripples", hint: "sin(kr)/(kr): ripples dying away from the middle", accent: "text-sky-600 dark:text-sky-400" },
   { key: "Space_MonkeySaddle", category: "Surfaces", label: "Monkey Saddle", hint: "x³ − 3xy²: a saddle with three dips", accent: "text-amber-600 dark:text-amber-400" },
+  { key: "Space_VectorField", category: "Calculus", label: "Vector Field & Flow", hint: "Arrows of F(x, y, z) and the lines a particle would follow", accent: "text-sky-600 dark:text-sky-400" },
+  { key: "Space_Revolution", category: "Calculus", label: "Solids of Revolution", hint: "Spin y = k·xᵖ round the x-axis: discs and the volume π∫f²", accent: "text-blue-600 dark:text-blue-400" },
+  { key: "Space_Spherical", category: "Coordinates", label: "Spherical ρ(θ, φ)", hint: "ρ = f(θ, φ): a bumpy sphere in spherical coordinates", accent: "text-purple-600 dark:text-purple-400" },
+  { key: "Space_Cylindrical", category: "Coordinates", label: "Cylindrical r(θ, z)", hint: "r = f(θ, z): a twisted, fluted vase", accent: "text-sky-600 dark:text-sky-400" },
   { key: "Space_TangentPlane", category: "Calculus", label: "Tangent Plane & Gradient", hint: "Drag a point over a surface: its tangent plane and the way uphill", accent: "text-red-600 dark:text-red-400" },
   { key: "Space_SpherePlane", category: "Geometry", label: "Sphere Cross-Section", hint: "A plane cuts a sphere in a circle of radius √(R² − c²)", accent: "text-cyan-600 dark:text-cyan-400" },
   { key: "Space_Mobius", category: "Topology", label: "Möbius Strip", hint: "A band with half a twist: one side and one edge", accent: "text-purple-600 dark:text-purple-400" },
@@ -1878,5 +1974,9 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Space_Mobius: mobius(),
   Space_Klein: kleinBottle(),
   Space_TorusKnot: torusKnot(),
+  Space_VectorField: vectorField3D(),
+  Space_Revolution: solidOfRevolution(),
+  Space_Spherical: sphericalSurface(),
+  Space_Cylindrical: cylindricalSurface(),
   Space_DNA: dnaHelix(),
 };

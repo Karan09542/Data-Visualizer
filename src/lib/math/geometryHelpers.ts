@@ -84,6 +84,16 @@ export const GEOMETRY_HELPERS = {
     const [a, b] = pair(A, B);
     return a.map((x, i) => (x + b[i]) / 2);
   },
+  /**
+   * field([P, Q, R]): a vector field, drawn as arrows by the 3D view. Elsewhere it is
+   * just its value at the point.
+   */
+  field: (...parts: any[]) => (parts.length === 1 ? parts[0] : parts),
+  /**
+   * revolve(f(x), a, b[, "y"]): y = f(x) turned round an axis into a solid by the 3D
+   * view. On the flat graph it is the curve y = f(x) itself.
+   */
+  revolve: (fx: any) => fx,
   /** A point in space: [x, y] becomes [x, y, 0]. Shapes drawn in 3D use it to join points of either kind. */
   p3: (A: any): Vec => {
     const a = coords(A);

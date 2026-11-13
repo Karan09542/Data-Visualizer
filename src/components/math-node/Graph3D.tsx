@@ -27,7 +27,7 @@ import katex from "katex";
 import { Home, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
 import type { FillPatternType, MathFunction, MathVariable } from "./mathTypes";
 import type { GraphView } from "./simulations";
-import { computePCA } from "./mathHelpers";
+import { computePCA, parseAndAdjustForCompile } from "./mathHelpers";
 import { pointDraggable, type PointMenuTarget } from "./PointMenu";
 import { DRAW_TOOL_CLICKS, type DrawPick, type DrawSolid, type DrawToolKind, type SolidMode } from "./DrawTool";
 import { dependencyKey } from "./dependencyKeys";
@@ -465,7 +465,7 @@ const HOME_CAMERA = new THREE.Vector3(2.9, -3.7, 2.3).setLength(4.7);
 const TWO_PI = 2 * Math.PI;
 
 // Kinds that cost real time to sample: drawn coarser while things move, finer at rest.
-const HEAVY_KINDS = new Set(["surface", "surface-rhs", "surface-uv", "iso", "curve2d", "region2d"]);
+const HEAVY_KINDS = new Set(["surface", "surface-rhs", "surface-uv", "iso", "curve2d", "region2d", "field", "revolve", "spherical", "cylindrical"]);
 
 // Low to high.
 const HEIGHT_STOPS = ["#3b4cc0", "#22a7d6", "#2fcf8f", "#f4d03f", "#e4572e"];
@@ -867,6 +867,44 @@ const CORNERS: [number, number, number][] = [
   [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0],
   [0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1],
 ];
+
+/** The top-level arguments of `name(…)`, the whole of a row's expression (after any `F = `). */
+function callArgs(expr: string, name: string): string[] | null {
+  const body = expr.replace(/^\s*[A-Za-z_]\w*\s*=(?!=)\s*/, "").trim();
+  if (!body.startsWith(name)) return null;
+  const open = body.indexOf("(", name.length);
+  if (open < 0 || body.slice(name.length, open).trim() !== "" || !body.endsWith(")")) return null;
+  const inner = body.slice(open + 1, -1);
+  const out: string[] = [];
+  let depth = 0;
+  let start = 0;
+  for (let i = 0; i < inner.length; i++) {
+    const ch = inner[i];
+    if (ch === "(" || ch === "[" || ch === "{") depth++;
+    else if (ch === ")" || ch === "]" || ch === "}") depth--;
+    else if (ch === "," && depth === 0) {
+      out.push(inner.slice(start, i).trim());
+      start = i + 1;
+    }
+  }
+  out.push(inner.slice(start).trim());
+  return out.filter((a) => a.length > 0);
+}
+
+const compiledParts = new Map<string, { evaluate: (scope: any) => any } | null>();
+/** A piece of a row's expression, compiled once. */
+function compileCached(expr: string): { evaluate: (scope: any) => any } | null {
+  if (compiledParts.has(expr)) return compiledParts.get(expr)!;
+  let out: { evaluate: (scope: any) => any } | null = null;
+  try {
+    out = parseAndAdjustForCompile(expr).compile();
+  } catch {
+    out = null;
+  }
+  if (compiledParts.size > 400) compiledParts.clear();
+  compiledParts.set(expr, out);
+  return out;
+}
 
 // What a function-type row's value looks like (a number, or three coordinates),
 // remembered per compiled expression.
@@ -2252,7 +2290,16 @@ class Engine {
     if (f.type === "differential") return f.compiledOde ? "ode" : null;
     if (!f.compiled) return null;
     if (f.type === "point" || f.type === "vector" || f.type === "line" || f.type === "polygon") return "geometry";
-    if (f.type === "parametric" || f.type === "polar") return f.type;
+    if (callArgs(f.expr, "field")) return "field";
+    if (callArgs(f.expr, "revolve")) return "revolve";
+    if (f.type === "polar") {
+      const symbols = symbolsOf(f.expr);
+      // ρ = f(θ, φ): spherical. r = f(θ, z): cylindrical. Otherwise a curve on the floor.
+      if (/^\s*(rho|ρ)\s*=(?!=)/.test(f.expr) || ((symbols.has("phi") || symbols.has("φ")) && scope.phi === undefined)) return "spherical";
+      if (symbols.has("z") && scope.z === undefined) return "cylindrical";
+      return "polar";
+    }
+    if (f.type === "parametric") return f.type;
 
     // z is the third axis unless the graph already gives it a value (a slider, z = 2+3i).
     const freeZ = scope.z === undefined && symbolsOf(f.expr).has("z");
@@ -2919,6 +2966,64 @@ class Engine {
           },
           [0, TWO_PI],
           [0, TWO_PI],
+          surfaceCells,
+          f,
+        );
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
+        }
+        break;
+      }
+
+      case "field": {
+        this.addVectorField(entry, f, s, tier);
+        break;
+      }
+
+      case "revolve": {
+        this.addRevolution(entry, f, s, surfaceCells);
+        break;
+      }
+
+      case "spherical":
+      case "cylindrical": {
+        // ρ = f(θ, φ) on spheres round the origin, or r = f(θ, z) round the z-axis.
+        const spherical = kind === "spherical";
+        const out3: Vec3 = [0, 0, 0];
+        const anchor = this.addSurface(
+          group,
+          (a, b, out) => {
+            const angle = a * angleUnit;
+            s.theta = s["θ"] = angle;
+            s.t = angle;
+            s.x = angle;
+            if (spherical) {
+              s.phi = s["φ"] = b * angleUnit;
+            } else {
+              s.z = b;
+            }
+            let rho = NaN;
+            try {
+              rho = toReal(f.compiled.evaluate(s));
+            } catch {}
+            if (!Number.isFinite(rho)) return false;
+            if (spherical) {
+              out3[0] = rho * Math.sin(b) * Math.cos(a);
+              out3[1] = rho * Math.sin(b) * Math.sin(a);
+              out3[2] = rho * Math.cos(b);
+            } else {
+              out3[0] = rho * Math.cos(a);
+              out3[1] = rho * Math.sin(a);
+              out3[2] = b;
+            }
+            out[0] = out3[0];
+            out[1] = out3[1];
+            out[2] = out3[2];
+            return true;
+          },
+          [0, TWO_PI],
+          spherical ? [0, Math.PI] : [cz - half, cz + half],
           surfaceCells,
           f,
         );
@@ -4716,6 +4821,267 @@ class Engine {
     this.drawTip.style.translate = `${at.x.toFixed(1)}px ${(at.y + 14).toFixed(1)}px`;
     const coords = `(${formatCoord(p.x)}, ${formatCoord(p.y)}, ${formatCoord(p.z ?? 0)})`;
     this.drawTip.textContent = solidText ?? (p.name && !p.name.startsWith("#") ? `${p.name} ${coords}` : coords);
+  }
+
+  // ── Vector fields and solids of revolution ──
+
+  /**
+   * field([P, Q, R]) or field(P, Q, R): an arrow at each point of a grid through the
+   * box, coloured and sized by strength, and a few flow lines that follow the field.
+   */
+  private addVectorField(entry: RowEntry, f: MathFunction, s: any, tier: number) {
+    const args = callArgs(f.expr, "field");
+    if (!args?.length) return;
+    const parts = args.map((a) => compileCached(a));
+    if (parts.some((p) => !p)) return;
+    const vec = (x: number, y: number, z: number, out: Vec3): boolean => {
+      s.x = x;
+      s.y = y;
+      s.z = z;
+      try {
+        if (parts.length === 1) {
+          if (!readPosition(parts[0]!.evaluate(s), out)) return false;
+        } else {
+          out[0] = toReal(parts[0]!.evaluate(s));
+          out[1] = toReal(parts[1]!.evaluate(s));
+          out[2] = parts[2] ? toReal(parts[2].evaluate(s)) : 0;
+        }
+      } catch {
+        return false;
+      }
+      return Number.isFinite(out[0] + out[1] + out[2]);
+    };
+
+    const { cx, cy, cz, half } = this.domain;
+    const n = Math.round(clamp(5 * [0.8, 1, 1.2][tier], 4, 6));
+    const spacing = (2 * half) / n;
+    const at = (i: number) => -half + spacing * (i + 0.5);
+    const samples: { p: Vec3; v: Vec3; m: number }[] = [];
+    let maxMag = 0;
+    const v: Vec3 = [0, 0, 0];
+    for (let i = 0; i < n; i++)
+      for (let j = 0; j < n; j++)
+        for (let k = 0; k < n; k++) {
+          const p: Vec3 = [cx + at(i), cy + at(j), cz + at(k)];
+          if (!vec(p[0], p[1], p[2], v)) continue;
+          const m = Math.hypot(v[0], v[1], v[2]);
+          samples.push({ p, v: [v[0], v[1], v[2]], m });
+          if (m > maxMag) maxMag = m;
+        }
+    if (!samples.length || !(maxMag > 0)) return;
+
+    // Arrows: a shaft each, and a cone head drawn as one instanced mesh.
+    const shafts: number[] = [];
+    const colors: number[] = [];
+    const heads = new THREE.InstancedMesh(
+      new THREE.ConeGeometry(0.1 * spacing, 0.28 * spacing, 10),
+      new THREE.MeshBasicMaterial({ clippingPlanes: this.planes }),
+      samples.length,
+    );
+    const c = new THREE.Color();
+    const up = new THREE.Vector3(0, 1, 0);
+    const dir = new THREE.Vector3();
+    const m4 = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const pos = new THREE.Vector3();
+    const scl = new THREE.Vector3();
+    let count = 0;
+    for (const sm of samples) {
+      if (!(sm.m > 1e-12 * maxMag)) continue;
+      const rel = sm.m / maxMag;
+      // Lengths grow with strength, but weak arrows stay visible.
+      const len = spacing * 0.8 * (0.25 + 0.75 * Math.sqrt(rel));
+      dir.set(sm.v[0], sm.v[1], sm.v[2]).divideScalar(sm.m);
+      const tail = [sm.p[0] - (dir.x * len) / 2, sm.p[1] - (dir.y * len) / 2, sm.p[2] - (dir.z * len) / 2];
+      const tip = [sm.p[0] + (dir.x * len) / 2, sm.p[1] + (dir.y * len) / 2, sm.p[2] + (dir.z * len) / 2];
+      heightColor(rel, c);
+      shafts.push(...tail, ...tip);
+      colors.push(c.r, c.g, c.b, c.r, c.g, c.b);
+      q.setFromUnitVectors(up, dir);
+      pos.set(tip[0], tip[1], tip[2]);
+      const k = 0.6 + 0.4 * Math.sqrt(rel);
+      scl.set(k, k, k);
+      m4.compose(pos, q, scl);
+      heads.setMatrixAt(count, m4);
+      heads.setColorAt(count, c);
+      count++;
+    }
+    heads.count = count;
+    if (heads.instanceColor) heads.instanceColor.needsUpdate = true;
+    if (shafts.length) {
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(shafts);
+      geometry.setColors(colors);
+      entry.group.add(new LineSegments2(geometry, new LineMaterial({ vertexColors: true, linewidth: 1.8, clippingPlanes: this.planes })));
+      entry.group.add(heads);
+    }
+
+    // Flow lines: follow the field (its direction, at an even pace) from a few seeds.
+    const h = 0.03 * half;
+    const inside = (p: Vec3) => Math.abs(p[0] - cx) <= half && Math.abs(p[1] - cy) <= half && Math.abs(p[2] - cz) <= half;
+    const flow: number[] = [];
+    const dirAt = (p: Vec3, out: Vec3): boolean => {
+      if (!vec(p[0], p[1], p[2], out)) return false;
+      const m = Math.hypot(out[0], out[1], out[2]);
+      if (!(m > 1e-9 * maxMag)) return false;
+      out[0] /= m;
+      out[1] /= m;
+      out[2] /= m;
+      return true;
+    };
+    const k1: Vec3 = [0, 0, 0], k2: Vec3 = [0, 0, 0], k3: Vec3 = [0, 0, 0], k4: Vec3 = [0, 0, 0];
+    const trace = (seed: Vec3, sign: number) => {
+      let p: Vec3 = [...seed];
+      for (let step = 0; step < 160; step++) {
+        if (!dirAt(p, k1)) return;
+        const p2: Vec3 = [p[0] + (sign * h * k1[0]) / 2, p[1] + (sign * h * k1[1]) / 2, p[2] + (sign * h * k1[2]) / 2];
+        if (!dirAt(p2, k2)) return;
+        const p3: Vec3 = [p[0] + (sign * h * k2[0]) / 2, p[1] + (sign * h * k2[1]) / 2, p[2] + (sign * h * k2[2]) / 2];
+        if (!dirAt(p3, k3)) return;
+        const p4: Vec3 = [p[0] + sign * h * k3[0], p[1] + sign * h * k3[1], p[2] + sign * h * k3[2]];
+        if (!dirAt(p4, k4)) return;
+        const next: Vec3 = [
+          p[0] + (sign * h * (k1[0] + 2 * k2[0] + 2 * k3[0] + k4[0])) / 6,
+          p[1] + (sign * h * (k1[1] + 2 * k2[1] + 2 * k3[1] + k4[1])) / 6,
+          p[2] + (sign * h * (k1[2] + 2 * k2[2] + 2 * k3[2] + k4[2])) / 6,
+        ];
+        if (!inside(next)) return;
+        flow.push(...p, ...next);
+        p = next;
+      }
+    };
+    for (const fx of [-0.45, 0.45])
+      for (const fy of [-0.45, 0.45])
+        for (const fz of [-0.4, 0.4]) {
+          const seed: Vec3 = [cx + fx * half, cy + fy * half, cz + fz * half];
+          trace(seed, 1);
+          trace(seed, -1);
+        }
+    if (flow.length) {
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(flow);
+      entry.group.add(
+        new LineSegments2(
+          geometry,
+          new LineMaterial({ color: toColor(f.color), linewidth: 2, transparent: true, opacity: 0.75, clippingPlanes: this.planes }),
+        ),
+      );
+    }
+    entry.pinned = [
+      ...(entry.pinned ?? []),
+      {
+        pos: [0, 0, 0],
+        text: "",
+        html: texToHtml(String.raw`|\vec F|\ \text{from}\ ${formatCoord(Math.min(...samples.map((x) => x.m)))}\ \text{to}\ ${formatCoord(maxMag)}\ \ (\text{blue weak, red strong})`),
+        color: f.color,
+        scale: 0.85,
+      },
+    ];
+  }
+
+  /**
+   * revolve(f(x), a, b) turns y = f(x), a ≤ x ≤ b, round the x-axis into a solid;
+   * revolve(f(x), a, b, "y") turns it round the y-axis. Shows the curve, a few slices
+   * (discs or shells) and the volume.
+   */
+  private addRevolution(entry: RowEntry, f: MathFunction, s: any, cells: number) {
+    const args = callArgs(f.expr, "revolve");
+    if (!args || args.length < 3) return;
+    const curve = compileCached(args[0]);
+    const lo = compileCached(args[1]);
+    const hi = compileCached(args[2]);
+    if (!curve || !lo || !hi) return;
+    const aroundY = (args[3] ?? "").replace(/["'\s]/g, "").toLowerCase() === "y";
+    let a = NaN;
+    let b = NaN;
+    try {
+      a = toReal(lo.evaluate(Object.create(s)));
+      b = toReal(hi.evaluate(Object.create(s)));
+    } catch {}
+    if (!Number.isFinite(a) || !Number.isFinite(b) || a === b) return;
+    if (a > b) [a, b] = [b, a];
+    const fx = (x: number) => {
+      s.x = x;
+      try {
+        return toReal(curve.evaluate(s));
+      } catch {
+        return NaN;
+      }
+    };
+    // Where (x, f(x)) goes, turned by `ang` round the axis.
+    const place = (x: number, ang: number, out: Vec3): boolean => {
+      const y = fx(x);
+      if (!Number.isFinite(y)) return false;
+      if (aroundY) {
+        out[0] = x * Math.cos(ang);
+        out[1] = y;
+        out[2] = x * Math.sin(ang);
+      } else {
+        out[0] = x;
+        out[1] = y * Math.cos(ang);
+        out[2] = y * Math.sin(ang);
+      }
+      return true;
+    };
+    const anchor = this.addSurface(entry.group, (x, ang, out) => place(x, ang, out), [a, b], [0, TWO_PI], cells, {
+      ...f,
+      fillOpacity: f.fillOpacity ?? 0.45,
+    });
+
+    // The curve it is made from, on the floor, and the axis it turns round.
+    const pts: number[] = [];
+    const n = 200;
+    for (let i = 0; i <= n; i++) {
+      const x = a + ((b - a) * i) / n;
+      pts.push(x, fx(x), 0);
+    }
+    const line = this.line(pts, f.color, { ...f, outlineWidth: 4, lineStyle: "solid" });
+    if (line) entry.group.add(line);
+    const axisPts = aroundY ? [0, Math.min(0, fx(a), fx(b)) - 0.5, 0, 0, Math.max(fx(a), fx(b)) + 0.5, 0] : [a - 0.5, 0, 0, b + 0.5, 0, 0];
+    const axisLine = this.line(axisPts, "#f59e0b", { ...f, outlineWidth: 2.5, lineStyle: "dashed" });
+    if (axisLine) entry.group.add(axisLine);
+
+    // Slices: discs (round the x-axis) or shells (round the y-axis), as rings.
+    const rings: number[] = [];
+    const slices = 8;
+    for (let k = 0; k <= slices; k++) {
+      const x = a + ((b - a) * k) / slices;
+      const p0: Vec3 = [0, 0, 0];
+      const p1: Vec3 = [0, 0, 0];
+      for (let i = 0; i < 48; i++) {
+        if (!place(x, (i / 48) * TWO_PI, p0) || !place(x, ((i + 1) / 48) * TWO_PI, p1)) continue;
+        rings.push(...p0, ...p1);
+      }
+    }
+    if (rings.length) {
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(rings);
+      entry.group.add(new LineSegments2(geometry, new LineMaterial({ color: 0xffffff, linewidth: 1.5, transparent: true, opacity: 0.55, clippingPlanes: this.planes })));
+    }
+
+    // The volume, by Simpson's rule: discs π∫f² dx, or shells 2π∫|x|·|f| dx.
+    const steps = 400;
+    let sum = 0;
+    for (let i = 0; i <= steps; i++) {
+      const x = a + ((b - a) * i) / steps;
+      const y = fx(x);
+      const g = aroundY ? Math.abs(x) * Math.abs(y) : y * y;
+      if (!Number.isFinite(g)) continue;
+      sum += g * (i === 0 || i === steps ? 1 : i % 2 ? 4 : 2);
+    }
+    const volume = ((aroundY ? 2 * Math.PI : Math.PI) * sum * (b - a)) / (3 * steps);
+    const range = String.raw`_{${formatCoord(a)}}^{${formatCoord(b)}}`;
+    const formula = aroundY
+      ? String.raw`V = 2\pi\int${range} x\,f(x)\,dx \ (\text{shells}) = ${formatCoord(volume)}`
+      : String.raw`V = \pi\int${range} f(x)^2\,dx \ (\text{discs}) = ${formatCoord(volume)}`;
+    entry.pinned = [
+      ...(entry.pinned ?? []),
+      { pos: [0, 0, 0], text: "", html: texToHtml(String.raw`\text{round the ${aroundY ? "y" : "x"}-axis: } ${formula}`), color: f.color, scale: 0.9 },
+    ];
+    if (anchor) {
+      this.pushRowLabel(entry, f, s, anchor);
+      this.attachShapeDrag(entry, f, anchor);
+    }
   }
 
   // ── Transform gizmo (rows switched to "Transformable") ──

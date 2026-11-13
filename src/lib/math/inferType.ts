@@ -130,6 +130,8 @@ function classifyValue(src: string, scope?: any): InferredType | null {
     if (fn === "Polygon") return "polygon";
     if (fn === "Line") return "line";
     if (fn === "Point") return "point";
+    // Drawn by the 3D view: a vector field, a solid of revolution.
+    if (fn === "field" || fn === "revolve") return "function";
   }
   if (n.isArrayNode) {
     const items: any[] = n.items;
@@ -199,6 +201,8 @@ export function inferType(raw: string, scope?: any): InferredType | null {
       return "function"; // f(x) = …, a helper
     }
     if (NAME.test(lhs)) {
+      // ρ = f(θ, φ): spherical coordinates, drawn by the 3D view.
+      if ((lhs === "rho" || lhs === "ρ") && !rhsSymbols.has("x") && !rhsSymbols.has("y")) return "polar";
       if (lhs === "y") return rhsSymbols.has("y") ? "implicit" : "function";
       if (lhs === "x") return "implicit"; // x = f(y)
       if (lhs === "r" && !rhsSymbols.has("x") && !rhsSymbols.has("y")) return "polar";

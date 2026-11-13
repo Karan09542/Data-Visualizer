@@ -86,7 +86,8 @@ function sweepSymbols(f: MathFunction): string[] {
     case "parametric":
       return ["t"];
     case "polar":
-      return /\btheta\b|θ/.test(f.expr) ? ["theta", "θ", "x"] : ["t", "theta", "θ", "x"];
+      // Spherical and cylindrical rows (3D view) also sweep φ and z.
+      return /\btheta\b|θ/.test(f.expr) ? ["theta", "θ", "x", "phi", "φ", "z"] : ["t", "theta", "θ", "x", "phi", "φ", "z"];
     default:
       return [];
   }

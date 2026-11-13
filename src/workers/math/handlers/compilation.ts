@@ -14,7 +14,7 @@ const BUILTINS = ["x", "y", "t", "time", "ln", "log10", "Line", "Vector", "Polyg
   "i", "re", "im", "real", "imag", "conj", "arg", "abs", "complex", "cis", "polar"];
 // theta/θ are only implicit (the swept angle) for polar curves; elsewhere a theta is a
 // normal variable the user should be offered as a slider.
-const POLAR_BUILTINS = ["theta", "θ"];
+const POLAR_BUILTINS = ["theta", "θ", "phi", "φ", "rho", "ρ"];
 
 function buildScope(context: any, payload: any) {
   // theta defaults to 0 first so a user variable named theta overrides it.

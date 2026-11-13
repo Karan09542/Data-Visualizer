@@ -61,6 +61,8 @@ export function friendlyMathError(errMessage: string): string {
     errMessage.match(/Undefined symbol\s+([^\s]+)/i) ||
     errMessage.match(/Symbol\s+([^\s]+)\s+is undefined/i);
   if (undefinedSymbol) {
+    // z is only defined in the 3D view (surfaces, fields, cylindrical r(θ, z), …).
+    if (undefinedSymbol[1] === "z") return "This uses z: switch to the 3D view to draw it.";
     return `"${undefinedSymbol[1]}" isn't defined yet — add it as a variable, or check the spelling.`;
   }
 
