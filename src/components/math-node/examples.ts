@@ -1957,6 +1957,161 @@ function levelSurfaces(): ExampleScene {
   };
 }
 
+// ─── 3D drawing tools, as worked examples ─────────────────────────────────────
+// Each scene is what the matching 3D drawing tool makes, with its points already placed:
+// drag them to see the answer change.
+
+const dragPoint = (r: Rows, name: string, at: string, color: string): MathFunction =>
+  r.point(`${name} = ${at}`, color, { isDraggable: true, showLabel: true, label: name, angleUnit: "rad" });
+
+/** The line through two points, as far as the view reaches. */
+const lineThrough = (r: Rows, a: string, b: string, color: string, extra: Partial<MathFunction> = {}): MathFunction =>
+  r.path(`p3(${a}) + t*(p3(${b}) - p3(${a}))/norm(p3(${b}) - p3(${a}))`, color, [-500, 500], extra);
+
+/** A flat triangle marking a plane through three points. */
+const planePatch = (r: Rows, a: string, b: string, c: string, color: string, opacity = 0.14): MathFunction =>
+  r.shape(`[p3(${a}), p3(${b}), p3(${c})]`, color, { fillOpacity: opacity, showAngles: false });
+
+/** Tool "Plane through 3 points": the plane, its equation and its normal. */
+function planeThrough3(): ExampleScene {
+  const r = sceneRows("g3pl3");
+  return {
+    functions: [
+      dragPoint(r, "A", "[2, 0, 0]", BLUE),
+      dragPoint(r, "B", "[0, 3, 0]", BLUE),
+      dragPoint(r, "C", "[0, 0, 2]", BLUE),
+      surface(r, "dot(planeNormal(A, B, C), [x, y, z] - p3(A)) = 0", SKY, { fillColor: SKY, fillOpacity: 0.3 }),
+      planePatch(r, "A", "B", "C", BLUE, 0.25),
+      r.arrow("Vector((p3(A) + p3(B) + p3(C))/3, (p3(A) + p3(B) + p3(C))/3 + 1.5*planeNormal(A, B, C)/norm(planeNormal(A, B, C)))", PINK, { outlineWidth: 4 }),
+      r.readout("p3(C) + [0, 0, 0.7]", "{{planeEquation(A, B, C)}}", SKY),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Plane through } A, B, C`, SKY],
+        [String.raw`\vec n = \vec{AB}\times\vec{AC} \text{ (pink) is square to the plane}`, PINK],
+        [String.raw`\text{every point } X \text{ on it has } \vec n\cdot(X - A) = 0`, TEXT],
+        [String.raw`\text{here: } x/2 + y/3 + z/2 = 1\text{; drag } A, B, C`, TEXT],
+      ]),
+    ],
+    variables: [],
+    groups: [],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.5, 3.5], y: [-3.5, 3.5] },
+  };
+}
+
+/** Tool "Perpendicular foot": the shortest way from a point to a plane. */
+function pointToPlane(): ExampleScene {
+  const r = sceneRows("g3foot");
+  return {
+    functions: [
+      dragPoint(r, "A", "[3, 0, 0]", INK),
+      dragPoint(r, "B", "[0, 3, 0]", INK),
+      dragPoint(r, "C", "[0, 0, 3]", INK),
+      surface(r, "dot(planeNormal(A, B, C), [x, y, z] - p3(A)) = 0", SKY, { fillColor: SKY, fillOpacity: 0.25 }),
+      dragPoint(r, "P", "[2.5, 2.5, 2.5]", RED),
+      r.point("F = footOnPlane(P, A, B, C)", RED, { showLabel: true, label: "F" }),
+      r.path("p3(P) + t*(F - p3(P))", RED, [0, 1], { lineStyle: "dashed", outlineWidth: 3 }),
+      r.readout("(p3(P) + F)/2 + [0.3, 0.3, 0.3]", "PF = {{norm(F - p3(P))}}", RED),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Distance from a point to a plane}`, RED],
+        [String.raw`\text{plane } x + y + z = 3 \text{ through } A, B, C`, SKY],
+        [String.raw`F \text{ is the foot: } PF \text{ meets the plane at a right angle}`, TEXT],
+        [String.raw`PF = \frac{|ax_0 + by_0 + cz_0 - d|}{\sqrt{a^2 + b^2 + c^2}} = \frac{|7.5 - 3|}{\sqrt 3} \approx 2.6`, TEXT],
+      ]),
+    ],
+    variables: [],
+    groups: [],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.5, 3.5], y: [-3.5, 3.5] },
+  };
+}
+
+/** Tool "Angle between planes": a hinged pair of planes, opened by a slider. */
+function anglePlanes(): ExampleScene {
+  const r = sceneRows("g3dih");
+  const args = "A, B, C, D";
+  return {
+    functions: [
+      dragPoint(r, "A", "[-2.5, 0, 0]", INK),
+      dragPoint(r, "B", "[2.5, 0, 0]", INK),
+      dragPoint(r, "C", "[0, 2.5, 0]", BLUE),
+      r.point("D = [0, 2.5*cos(open*pi/180), 2.5*sin(open*pi/180)]", AMBER, { showLabel: true, label: "D", dragVars: ["open"], angleUnit: "rad" }),
+      planePatch(r, "A", "B", "C", BLUE, 0.22),
+      planePatch(r, "A", "B", "D", AMBER, 0.18),
+      r.path(`planeArc(${args}, 0, 1.4*t)`, PINK, [0, 1], { lineStyle: "dashed" }),
+      r.path(`planeArc(${args}, 1, 1.4*t)`, PINK, [0, 1], { lineStyle: "dashed" }),
+      r.path(`planeArc(${args}, t, 0.6)`, PINK, [0, 1], { outlineWidth: 4 }),
+      r.readout(`planeArc(${args}, 0.5, 1.2)`, "{{planeAngle(A, B, C, D):1}}°", PINK),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Angle between two planes (a door on its hinge)}`, PINK],
+        [String.raw`\text{they share the edge } AB\text{; one holds } C\text{, the other } D`, TEXT],
+        [String.raw`\text{measured square to the edge: } \cos\theta = \frac{\vec n_1\cdot\vec n_2}{|\vec n_1||\vec n_2|}`, TEXT],
+        [String.raw`\text{drag } D \text{ or the slider to open it}`, AMBER],
+      ]),
+    ],
+    variables: [sceneSlider("open", "Opening (°)", 60, [5, 175, 1], "How far the second plane is swung up from the first.", "hinge")],
+    groups: [sceneGroup("hinge", "Hinge")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.5, 3.5], y: [-3.5, 3.5] },
+  };
+}
+
+/** Tool "Line meets plane": where a line pierces a plane. */
+function linePlaneMeet(): ExampleScene {
+  const r = sceneRows("g3lp");
+  return {
+    functions: [
+      dragPoint(r, "C", "[-3, -3, 1]", INK),
+      dragPoint(r, "D", "[3, -3, 1]", INK),
+      dragPoint(r, "E", "[0, 3, 1]", INK),
+      surface(r, "dot(planeNormal(C, D, E), [x, y, z] - p3(C)) = 0", SKY, { fillColor: SKY, fillOpacity: 0.25 }),
+      dragPoint(r, "A", "[-2, -1, 3]", PURPLE),
+      dragPoint(r, "B", "[0, 0, 2]", PURPLE),
+      lineThrough(r, "A", "B", PURPLE, { outlineWidth: 3 }),
+      r.point("X = linePlane(A, B, C, D, E)", RED, { showLabel: true, label: "X = {{X}}" }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Where a line meets a plane}`, RED],
+        [String.raw`\text{line: } X = A + t(B - A)`, PURPLE],
+        [String.raw`\text{plane through } C, D, E\text{: } \vec n\cdot(X - C) = 0`, SKY],
+        [String.raw`\text{so } t = \frac{\vec n\cdot(C - A)}{\vec n\cdot(B - A)}\text{; none if the line runs parallel}`, TEXT],
+      ]),
+    ],
+    variables: [],
+    groups: [],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.5, 3.5], y: [-3.5, 3.5] },
+  };
+}
+
+/** Tool "Distance between lines": two skew lines and the common perpendicular. */
+function skewLines(): ExampleScene {
+  const r = sceneRows("g3skew");
+  const args = "A, B, C, D";
+  return {
+    functions: [
+      dragPoint(r, "A", "[-2, -2, 0.5]", BLUE),
+      dragPoint(r, "B", "[2.5, -0.5, 0.5]", BLUE),
+      dragPoint(r, "C", "[0, 2, 3]", GREEN),
+      dragPoint(r, "D", "[1.5, -2.5, 3]", GREEN),
+      lineThrough(r, "A", "B", BLUE, { outlineWidth: 3 }),
+      lineThrough(r, "C", "D", GREEN, { outlineWidth: 3 }),
+      r.point(`M = nearestOnLines(${args}, 0)`, RED, { showLabel: true, label: "M" }),
+      r.point(`N = nearestOnLines(${args}, 1)`, RED, { showLabel: true, label: "N" }),
+      r.path("M + t*(N - M)", RED, [0, 1], { lineStyle: "dashed", outlineWidth: 3 }),
+      r.readout("(M + N)/2 + [0.4, 0.4, 0]", `MN = {{lineDistance(${args})}}`, RED),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Skew lines: not parallel, and they never meet}`, TEXT],
+        [String.raw`MN \text{ is square to both lines: the shortest way between them}`, RED],
+        [String.raw`d = \frac{|(C - A)\cdot(\vec u\times\vec v)|}{|\vec u\times\vec v|},\ \ \vec u = B - A,\ \vec v = D - C`, TEXT],
+        [String.raw`\text{drag a point until the lines cross: } d = 0`, TEXT],
+      ]),
+    ],
+    variables: [],
+    groups: [],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.5, 3.5], y: [-3.5, 3.5] },
+  };
+}
+
 /** The 3D Gallery: scenes made for the 3D view, in order. `key` must exist in MATH_EXAMPLES. */
 export const EXAMPLE_GALLERY_3D: {
   key: string;
@@ -1980,6 +2135,11 @@ export const EXAMPLE_GALLERY_3D: {
   { key: "Space_Regions", category: "Surfaces", label: "Solid Regions", hint: "Inequalities in x, y, z fill space: a ball, the space above a bowl", accent: "text-purple-600 dark:text-purple-400" },
   { key: "Space_LinearMap", category: "Linear algebra", label: "Matrix on a Cube", hint: "A 3×3 matrix turns the unit cube into a box: det M is its volume", accent: "text-blue-600 dark:text-blue-400" },
   { key: "Space_TangentPlane", category: "Calculus", label: "Tangent Plane & Gradient", hint: "Drag a point over a surface: its tangent plane and the way uphill", accent: "text-red-600 dark:text-red-400" },
+  { key: "Space_ToolPlane", category: "Geometry", label: "Plane Through 3 Points", hint: "Drag A, B, C: the plane, its equation and its normal n = AB × AC", accent: "text-sky-600 dark:text-sky-400" },
+  { key: "Space_ToolFoot", category: "Geometry", label: "Point to Plane Distance", hint: "The foot of the perpendicular and the shortest distance |ax₀ + by₀ + cz₀ − d|/|n|", accent: "text-red-600 dark:text-red-400" },
+  { key: "Space_ToolDihedral", category: "Geometry", label: "Angle Between Planes", hint: "Two planes on a hinge: the angle between them, square to the edge", accent: "text-pink-600 dark:text-pink-400" },
+  { key: "Space_ToolLinePlane", category: "Geometry", label: "Line Meets Plane", hint: "Where the line A + t(B − A) pierces a plane", accent: "text-purple-600 dark:text-purple-400" },
+  { key: "Space_ToolSkew", category: "Geometry", label: "Skew Lines Distance", hint: "Two lines that never meet: the common perpendicular MN", accent: "text-emerald-600 dark:text-emerald-400" },
   { key: "Space_SpherePlane", category: "Geometry", label: "Sphere Cross-Section", hint: "A plane cuts a sphere in a circle of radius √(R² − c²)", accent: "text-cyan-600 dark:text-cyan-400" },
   { key: "Space_Mobius", category: "Topology", label: "Möbius Strip", hint: "A band with half a twist: one side and one edge", accent: "text-purple-600 dark:text-purple-400" },
   { key: "Space_Klein", category: "Topology", label: "Klein Bottle", hint: "No inside or outside; it has to pass through itself in 3D", accent: "text-pink-600 dark:text-pink-400" },
@@ -2135,6 +2295,11 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Space_MonkeySaddle: monkeySaddle(),
   Space_TangentPlane: tangentPlane(),
   Space_SpherePlane: spherePlane(),
+  Space_ToolPlane: planeThrough3(),
+  Space_ToolFoot: pointToPlane(),
+  Space_ToolDihedral: anglePlanes(),
+  Space_ToolLinePlane: linePlaneMeet(),
+  Space_ToolSkew: skewLines(),
   Space_Mobius: mobius(),
   Space_Klein: kleinBottle(),
   Space_TorusKnot: torusKnot(),

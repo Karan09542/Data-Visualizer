@@ -66,11 +66,47 @@ export const DRAW_TOOL_HINTS: Record<DrawToolKind, string> = {
   polygon: "Click the corners, then the first corner again to close (or press Enter).",
   distance: "Click two points to measure the distance between them.",
   angle: "Click a point, the corner, then another point to measure the angle.",
-  plane: "Click three points for the plane through them. Two planes show the line where they meet.",
-  foot: "Click a point, then three points of a plane: the foot of the perpendicular and the distance.",
-  dihedral: "Click the two ends of the shared edge, then a point on each plane: the angle between them.",
-  lineplane: "Click two points for a line, then three for a plane: where the line meets the plane.",
-  skew: "Click two points on each of two lines: the shortest distance between them, square to both.",
+  plane: "Click 3 points: draws the flat plane through them and its equation.",
+  foot: "Click the point first, then 3 points on the plane: shows the nearest spot on the plane and the distance.",
+  dihedral: "Click both ends of the fold line, then 1 point on each side: shows the angle between the two planes.",
+  lineplane: "Click 2 points for the line, then 3 for the plane: marks where the line goes through the plane.",
+  skew: "Click 2 points on the first line, then 2 on the second: shows the shortest gap between the lines.",
+};
+
+/**
+ * More for the toolbar's tooltip: what each 3D tool is for, step by step, with an example.
+ * Each has a worked scene in the 3D Gallery (Geometry).
+ */
+export const DRAW_TOOL_TIPS: Partial<Record<DrawToolKind, string>> = {
+  plane: [
+    "What it does: makes the flat plane that passes through 3 points.",
+    "How: 1. click point A  2. click point B  3. click point C",
+    "Example: (2, 0, 0), (0, 3, 0), (0, 0, 2) give 3x + 2y + 3z = 6.",
+    "Tip: draw two planes to see the line where they cross.",
+  ].join("\n"),
+  foot: [
+    "What it does: drops a perpendicular from a point to a plane, like a plumb line to the floor.",
+    "How: 1. click the point P  2-4. click 3 points on the plane",
+    "Shows: the foot F (the nearest spot on the plane) and the distance PF.",
+    "Example: from (2.5, 2.5, 2.5) to x + y + z = 3 the distance is 4.5/√3 ≈ 2.6.",
+  ].join("\n"),
+  dihedral: [
+    "What it does: measures the angle between two planes that share an edge, like a half-open book or a door.",
+    "How: 1-2. click both ends of the shared edge  3. click a point on one plane  4. a point on the other",
+    "Example: the floor and a wall meet at 90°; a roof face and its loft floor at the roof's pitch.",
+  ].join("\n"),
+  lineplane: [
+    "What it does: finds where a line passes through a plane.",
+    "How: 1-2. click 2 points on the line  3-5. click 3 points on the plane",
+    "Shows: the meeting point X and its coordinates (none if the line runs parallel to the plane).",
+    "Example: the line from (−2, −1, 3) through (0, 0, 2) meets the plane z = 1 at (2, 1, 1).",
+  ].join("\n"),
+  skew: [
+    "What it does: finds the shortest distance between two lines, even ones that never meet (skew lines).",
+    "How: 1-2. click 2 points on the first line  3-4. click 2 points on the second",
+    "Shows: the closest points M and N, and MN, which is square to both lines.",
+    "Example: a line along the floor and another crossing above it at height 2.5 are 2.5 apart.",
+  ].join("\n"),
 };
 
 /** The same, short enough for one line on a phone. */
@@ -83,11 +119,11 @@ export const DRAW_TOOL_SHORT_HINTS: Record<DrawToolKind, string> = {
   polygon: "Tap corners; tap the first to close",
   distance: "Tap two points to measure",
   angle: "Tap a point, the corner, a point",
-  plane: "Tap three points",
-  foot: "Tap a point, then 3 on the plane",
-  dihedral: "Tap the edge's ends, then 1 on each plane",
-  lineplane: "Tap 2 for a line, then 3 for a plane",
-  skew: "Tap 2 points on each line",
+  plane: "Tap 3 points for a plane",
+  foot: "Tap the point, then 3 on the plane",
+  dihedral: "Tap 2 on the fold, then 1 on each side",
+  lineplane: "Tap 2 on the line, then 3 on the plane",
+  skew: "Tap 2 on each line",
 };
 
 export const SELECT_TOOL_SHORT_HINT = "Tap a shape or drag a box";
