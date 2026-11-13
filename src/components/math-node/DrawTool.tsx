@@ -6,6 +6,18 @@ import { TraceScopeContext, getTraceShape, hitTestTrace } from "./traceGeometry"
 /** What each drawing tool makes, and how many clicks it takes. */
 export type DrawToolKind = "point" | "segment" | "vector" | "line" | "circle" | "polygon" | "distance" | "angle";
 
+/**
+ * 3D view: what a drawn polygon or circle becomes. Flat; extruded (a prism, or a
+ * cylinder); or drawn up to a point (a pyramid, or a cone).
+ */
+export type SolidMode = "flat" | "extrude" | "apex";
+
+/** A solid's top: the point its base is extruded to, or its apex. */
+export interface DrawSolid {
+  kind: "extrude" | "apex";
+  tip: DrawPick;
+}
+
 /** A tool in hand on the graph: one that draws, or Select. */
 export type GraphTool = DrawToolKind | "select";
 

@@ -8,7 +8,7 @@
  */
 import * as mathjs from "mathjs";
 import type { MathFunction } from "./mathTypes";
-import type { DrawPick, DrawToolKind } from "./DrawTool";
+import type { DrawPick, DrawSolid, DrawToolKind } from "./DrawTool";
 import { pinnedAngleUnit } from "./scope";
 
 const NAME = /^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/;
@@ -59,6 +59,123 @@ const PLANE_AXES: Record<0 | 1 | 2, [number, number]> = { 2: [0, 1], 1: [0, 2], 
 const inPlane = (plane: 0 | 1 | 2, a: string, b: string) =>
   plane === 2 ? `[${a}, ${b}, 0]` : plane === 1 ? `[${a}, 0, ${b}]` : `[0, ${a}, ${b}]`;
 
+const POLYGON_ADJECTIVES: Record<number, string> = {
+  3: "Triangular",
+  4: "Quadrilateral",
+  5: "Pentagonal",
+  6: "Hexagonal",
+  7: "Heptagonal",
+  8: "Octagonal",
+  9: "Nonagonal",
+  10: "Decagonal",
+};
+
+/** The solid's top point: the one clicked on, or a new draggable point there. */
+function solidTip(solid: DrawSolid, opts: BuildOptions): { name: string; rows: MathFunction[] } {
+  if (solid.tip.name && !solid.tip.name.startsWith("#")) return { name: solid.tip.name, rows: [] };
+  const [name] = nextPointNames(opts.taken, 1);
+  return {
+    name,
+    rows: [
+      makeRow(opts, "point", `${name} = ${coordsOf(solid.tip, true)}`, opts.pointColor, {
+        isDraggable: true,
+        showLabel: true,
+        label: name,
+      }),
+    ],
+  };
+}
+
+/**
+ * A prism or pyramid on a polygon of named corners. The top point sets it: a prism's
+ * top is the base moved so its middle lands there (slanted when it isn't straight
+ * above), a pyramid's apex is that point. Drag it, or any corner, to reshape it.
+ */
+function polygonSolidRows(corners: string[], solid: DrawSolid, opts: BuildOptions): MathFunction[] {
+  const n = corners.length;
+  const tip = solidTip(solid, opts);
+  const T = `p3(${tip.name})`;
+  const pc = corners.map((c) => `p3(${c})`);
+  const face = (expr: string, opacity: number) =>
+    makeRow(opts, "polygon", expr, opts.color, {
+      fillColor: opts.color,
+      fillOpacity: opacity,
+      fillPattern: "solid",
+      showAngles: false,
+    });
+  const rows = [...tip.rows];
+  const adjective = POLYGON_ADJECTIVES[n] ?? `${n}-sided`;
+  let label: string;
+  if (solid.kind === "extrude") {
+    const middle = `((${pc.join(" + ")})/${n})`;
+    const d = `(${T} - ${middle})`;
+    rows.push(face(`[${pc.map((c) => `${c} + ${d}`).join(", ")}]`, 0.22));
+    for (let i = 0; i < n; i++) {
+      const a = pc[i];
+      const b = pc[(i + 1) % n];
+      rows.push(face(`[${a}, ${b}, ${b} + ${d}, ${a} + ${d}]`, 0.12));
+    }
+    label = `${adjective} prism · V = ${2 * n}, E = ${3 * n}, F = ${n + 2} · V − E + F = 2`;
+  } else {
+    for (let i = 0; i < n; i++) rows.push(face(`[${pc[i]}, ${pc[(i + 1) % n]}, ${T}]`, 0.14));
+    label = `${adjective} pyramid · V = ${n + 1}, E = ${2 * n}, F = ${n + 1} · V − E + F = 2`;
+  }
+  rows.push(
+    makeRow(opts, "point", `${T} + [0, 0, 0.5]`, opts.color, {
+      showPoint: false,
+      showLabel: true,
+      label,
+      labelPlain: true,
+      labelAlignment: "center",
+    }),
+  );
+  return rows;
+}
+
+/**
+ * A cylinder or cone on a circle round `centre` (an expression for a point in space)
+ * of radius `radius`, in the drawing plane `plane`; its top point sets the top.
+ */
+function circleSolidRows(
+  centre: string,
+  radius: string,
+  plane: 0 | 1 | 2,
+  solid: DrawSolid,
+  opts: BuildOptions,
+): MathFunction[] {
+  const tip = solidTip(solid, opts);
+  const T = `p3(${tip.name})`;
+  const R = `(${radius})`;
+  const round = (a: string, b: string) => inPlane(plane, a, b);
+  const surface = (expr: string, opacity: number) =>
+    // u runs round, v up the side (both 0 to 2π, as the 3D view sweeps them).
+    makeRow(opts, "function", expr, opts.color, { fillColor: opts.color, fillOpacity: opacity });
+  const rows = [...tip.rows];
+  const up = `(v/(2*pi))`;
+  // How far the top is from the base, square to it: the solid's height.
+  const height = `abs((${T} - ${centre})[${plane + 1}])`;
+  rows.push(surface(`${centre} + ${up}*${R}*${round("cos(u)", "sin(u)")}`, 0.3));
+  if (solid.kind === "extrude") {
+    rows.push(surface(`${centre} + ${R}*${round("cos(u)", "sin(u)")} + ${up}*(${T} - ${centre})`, 0.4));
+    rows.push(surface(`${T} + ${up}*${R}*${round("cos(u)", "sin(u)")}`, 0.3));
+    rows.push(makeRow(opts, "parametric", `${T} + ${R}*${round("cos(t rad)", "sin(t rad)")}`, opts.color, { tRange: [0, 2 * Math.PI] }));
+  } else {
+    rows.push(surface(`(1 - ${up})*(${centre} + ${R}*${round("cos(u)", "sin(u)")}) + ${up}*${T}`, 0.4));
+  }
+  const name = solid.kind === "extrude" ? "Cylinder" : "Cone";
+  const volume = solid.kind === "extrude" ? `pi*${R}^2*${height}` : `pi*${R}^2*${height}/3`;
+  rows.push(
+    makeRow(opts, "point", `${T} + [0, 0, 0.5]`, opts.color, {
+      showPoint: false,
+      showLabel: true,
+      label: `${name} · r = {{${radius}}}, h = {{${height}}} · volume {{${volume}}}`,
+      labelPlain: true,
+      labelAlignment: "center",
+    }),
+  );
+  return rows;
+}
+
 /** The plane a shape was drawn on (level when it doesn't say). */
 const planeOf = (picks: DrawPick[]): 0 | 1 | 2 => picks.find((p) => p.plane !== undefined)?.plane ?? 2;
 interface BuildOptions {
@@ -76,6 +193,8 @@ interface BuildOptions {
   vector?: VectorOptions;
   /** Write points with their height even when this shape alone wouldn't need it. */
   spatialHint?: boolean;
+  /** 3D view: make the polygon or circle into a solid up to this top. */
+  solid?: DrawSolid;
 }
 
 /** Live readouts beside a drawn vector; with none, it's a plain arrow. */
@@ -134,7 +253,7 @@ export function buildDrawnShape(tool: DrawToolKind, picks: DrawPick[], opts: Bui
 }
 
 function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): DrawnShape {
-  const spatial = isSpatial(picks);
+  const spatial = isSpatial(picks) || !!opts.solid;
   // In space a name is wrapped in p3(…), so a flat point (no height) and a point in space add up.
   const P = (name: string) => (spatial ? `p3(${name})` : name);
   if (tool === "circle" && picks.length === 2 && !picks[1].name) {
@@ -146,7 +265,7 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
     const rv = [rim.x, rim.y, rim.z ?? 0];
     const radius = Math.hypot(rv[ua] - cv[ua], rv[va] - cv[va]);
     if (radius > 0) {
-      const centreOnly = buildShape("point", [c], { ...opts, spatialHint: spatial });
+      const centreOnly = buildShape("point", [c], { ...opts, spatialHint: spatial, solid: undefined });
       const centre = c.name && !c.name.startsWith("#") ? c.name : centreOnly.rows[0]?.label!;
       const rows = c.name ? [] : centreOnly.rows;
       const [rimName] = nextPointNames(opts.taken, 1);
@@ -182,6 +301,7 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
           dragVars: [sliderName],
         },
       );
+      if (opts.solid) rows.push(...circleSolidRows(P(centre), sliderName, plane, opts.solid, opts));
       const step = radius < 1 ? 0.001 : 0.01;
       return {
         rows,
@@ -215,7 +335,7 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     ...extra,
   });
 
-  const spatial = !!opts.spatialHint || isSpatial(picks);
+  const spatial = !!opts.spatialHint || isSpatial(picks) || !!opts.solid;
   const P = (name: string) => (spatial ? `p3(${name})` : name);
   // Name every click: an existing point keeps its name, "#i" is this shape's i-th click again.
   const fresh = picks.filter((p) => !p.name).length;
@@ -276,6 +396,7 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
           tRange: [0, 2 * Math.PI],
         }),
       );
+      if (opts.solid) rows.push(...circleSolidRows(P(A), `norm(${P(B)} - ${P(A)})`, planeOf(picks), opts.solid, opts));
       break;
     case "polygon":
       rows.push(
@@ -283,8 +404,10 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
           fillColor: opts.color,
           fillOpacity: 0.15,
           fillPattern: "solid",
+          ...(opts.solid ? { showAngles: false } : {}),
         }),
       );
+      if (opts.solid) rows.push(...polygonSolidRows(named, opts.solid, opts));
       break;
     case "distance":
       rows.push(row("parametric", `${P(A)} + t*(${P(B)} - ${P(A)})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));

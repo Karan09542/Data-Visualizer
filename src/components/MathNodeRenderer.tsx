@@ -202,6 +202,8 @@ import {
   nextPointNames,
   type DrawToolKind,
   type DrawPick,
+  type DrawSolid,
+  type SolidMode,
   CalculatorResult,
   SavedScenesLibrary,
   type SceneSnapshot,
@@ -952,6 +954,8 @@ export const MathNodeRenderer: React.FC<any> = ({
   // 3D view: the plane drawing clicks land on (by the axis it is square to: 2 is the
   // level XY plane), and how far along that axis it sits.
   const [drawPlane, setDrawPlane] = useState<0 | 1 | 2>(2);
+  // 3D view: what a drawn polygon or circle becomes (flat, a prism/cylinder, a pyramid/cone).
+  const [drawSolid, setDrawSolid] = useState<SolidMode>("flat");
   const [drawHeight, setDrawHeight] = useState(0);
   // What the Vector tool labels its arrows with (remembered per browser).
   const [vectorOptions, setVectorOptionsState] = useState<VectorOptions>(() => {
@@ -2234,7 +2238,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   };
 
   /** A shape finished with the drawing tools becomes rows: its new points, then the shape. */
-  const handleDrawComplete = (tool: DrawToolKind, picks: DrawPick[]) => {
+  const handleDrawComplete = (tool: DrawToolKind, picks: DrawPick[], solid?: DrawSolid) => {
     const current = functionsRef.current;
     const { rows, sliders, updates, insertBefore } = buildDrawnShape(tool, picks, {
       taken: takenNames(current, variablesRef.current.map((v) => v.name)),
@@ -2245,6 +2249,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       rowById: (id) => current.find((f) => f.id === id),
       sliderNames: new Set(variablesRef.current.map((v) => v.name)),
       vector: vectorOptions,
+      solid,
     });
     addDrawnShape({ rows, sliders, updates, insertBefore });
   };
@@ -7325,6 +7330,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                 drawPoints={drawSnapPoints3}
                 drawColor={COLORS[functions.length % COLORS.length]}
                 onDrawComplete={handleDrawComplete}
+                drawSolid={drawSolid}
                 onDrawExit={() => setDrawTool(null)}
               />
             </React.Suspense>
@@ -9739,6 +9745,8 @@ export const MathNodeRenderer: React.FC<any> = ({
           {!isCompact && (
             <DrawToolbar
               in3d={viewMode === "3d"}
+              solid={drawSolid}
+              onSolidChange={setDrawSolid}
               tool={drawTool}
               onChange={(t) => {
                 setDrawTool(t);

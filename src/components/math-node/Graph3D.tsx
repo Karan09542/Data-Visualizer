@@ -29,7 +29,7 @@ import type { FillPatternType, MathFunction, MathVariable } from "./mathTypes";
 import type { GraphView } from "./simulations";
 import { computePCA } from "./mathHelpers";
 import { pointDraggable, type PointMenuTarget } from "./PointMenu";
-import { DRAW_TOOL_CLICKS, type DrawPick, type DrawToolKind } from "./DrawTool";
+import { DRAW_TOOL_CLICKS, type DrawPick, type DrawSolid, type DrawToolKind, type SolidMode } from "./DrawTool";
 import { dependencyKey } from "./dependencyKeys";
 import { objectId } from "./SmoothCurve";
 import { getFamilyCurveColor } from "./familyPlot";
@@ -91,8 +91,10 @@ export interface Graph3DProps {
   /** Named points to snap to, where they are in space. */
   drawPoints?: { name: string; x: number; y: number; z: number }[];
   drawColor?: string;
-  /** All the clicks for one shape are in (each with its height). */
-  onDrawComplete?: (tool: DrawToolKind, picks: DrawPick[]) => void;
+  /** What a drawn polygon or circle becomes: flat, or a solid. */
+  drawSolid?: SolidMode;
+  /** All the clicks for one shape are in (each with its height), and its solid's top if any. */
+  onDrawComplete?: (tool: DrawToolKind, picks: DrawPick[], solid?: DrawSolid) => void;
   /** Escape with nothing pending: put the tool down. */
   onDrawExit?: () => void;
 }
@@ -122,6 +124,21 @@ interface GizmoFrame {
 
 /** The two axes that run along each drawing plane (by the axis it is square to). */
 const PLANE_AXES: Record<0 | 1 | 2, [number, number]> = { 2: [0, 1], 1: [0, 2], 0: [1, 2] };
+
+/** A finished base, waiting for its solid's top. */
+interface SolidBase {
+  tool: DrawToolKind;
+  picks: DrawPick[];
+  pts: Vec3[];
+  centre: Vec3;
+  /** Unit normal: which way "up" is for this base. */
+  normal: Vec3;
+  /** A circle's radius (across its plane). */
+  radius?: number;
+  plane: 0 | 1 | 2;
+}
+
+const SOLID_NAMES = { polygon: ["Prism", "Pyramid"], circle: ["Cylinder", "Cone"] } as const;
 
 const DRAW_PLANES: { plane: 0 | 1 | 2; label: string; title: string }[] = [
   { plane: 2, label: "XY", title: "Level plane: z stays the same" },
@@ -928,6 +945,11 @@ class Engine {
   private drawHover: DrawPick | null = null;
   private drawHeight = 0;
   private drawPlane: 0 | 1 | 2 = 2;
+  private drawSolid: SolidMode = "flat";
+  private solidBase: SolidBase | null = null;
+  private solidTip: DrawPick | null = null;
+  /** The height (along the base's normal) the top was last set to, for slanting. */
+  private solidH = 0;
   private drawGroup = new THREE.Group();
   private drawTip = document.createElement("div");
   private drawDown: { x: number; y: number } | null = null;
@@ -1598,8 +1620,8 @@ class Engine {
     if (this.axisDrag) return;
     if (this.drawTool) {
       if (e.pointerType === "mouse" && e.buttons === 0) {
-        const pick = this.drawSnap(e.clientX, e.clientY);
-        this.drawHover = pick;
+        if (this.solidBase) this.solidTip = this.solidTipAt(e.clientX, e.clientY, e.shiftKey);
+        else this.drawHover = this.drawSnap(e.clientX, e.clientY);
         this.buildDrawPreview();
         this.requestRender();
       }
@@ -1639,7 +1661,7 @@ class Engine {
       if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) <= 8) {
         // A finger has no hover: show where it landed until the next tap.
         if (e.pointerType !== "mouse") this.drawHover = this.drawSnap(e.clientX, e.clientY);
-        this.drawClick(e.clientX, e.clientY);
+        this.drawClick(e.clientX, e.clientY, e.shiftKey);
       }
       return;
     }
@@ -4047,6 +4069,8 @@ class Engine {
     this.drawTool = tool;
     this.drawPicks = [];
     this.drawHover = null;
+    this.solidBase = null;
+    this.solidTip = null;
     // While drawing, a click on a point's handle picks that point instead of dragging it.
     this.handleHost.classList.toggle("g3d-drawing", !!tool);
     if (tool) this.clearHover();
@@ -4132,7 +4156,21 @@ class Engine {
     return { x: c[0], y: c[1], z: c[2], plane: axis };
   }
 
-  private drawClick(clientX: number, clientY: number) {
+  private drawClick(clientX: number, clientY: number, shift = false) {
+    const base = this.solidBase;
+    if (base) {
+      const tip = this.solidTipAt(clientX, clientY, shift);
+      if (!tip) return;
+      const flat = Math.hypot(tip.x - base.centre[0], tip.y - base.centre[1], (tip.z ?? 0) - base.centre[2]) < 1e-9;
+      if (flat) return; // no height: not a solid yet
+      const kind = this.drawSolid === "apex" ? "apex" : "extrude";
+      this.solidBase = null;
+      this.solidTip = null;
+      this.buildDrawPreview();
+      this.requestRender();
+      this.getProps().onDrawComplete?.(base.tool, base.picks, { kind, tip });
+      return;
+    }
     const tool = this.drawTool;
     const pick = tool ? this.drawSnap(clientX, clientY) : null;
     if (!tool || !pick) return;
@@ -4158,6 +4196,20 @@ class Engine {
 
   private finishDrawing(picks: DrawPick[]) {
     const tool = this.drawTool;
+    // A base for a solid: now its top is set.
+    if (tool && this.drawSolid !== "flat" && (tool === "polygon" || tool === "circle")) {
+      const base = this.solidBaseOf(tool, picks);
+      if (base) {
+        this.solidBase = base;
+        this.solidTip = null;
+        this.solidH = 0;
+        this.drawPicks = [];
+        this.drawHover = null;
+        this.buildDrawPreview();
+        this.requestRender();
+        return;
+      }
+    }
     this.drawPicks = [];
     this.buildDrawPreview();
     this.requestRender();
@@ -4168,6 +4220,11 @@ class Engine {
     if (!this.drawTool) return;
     const target = e.target as HTMLElement | null;
     if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (this.solidBase && (e.key === "Escape" || e.key === "Backspace")) {
+      // Back out of the solid: the base is dropped.
+      this.cancelSolid();
+      return;
+    }
     if (e.key === "Escape") {
       if (this.drawPicks.length) {
         this.drawPicks = [];
@@ -4246,6 +4303,17 @@ class Engine {
     const gridGeometry = new THREE.BufferGeometry();
     gridGeometry.setAttribute("position", new THREE.Float32BufferAttribute(grid, 3));
     add(new THREE.LineSegments(gridGeometry, over(new THREE.LineBasicMaterial({ color, opacity: 0.25 }), false)), 1);
+
+    if (this.solidBase) {
+      this.solidPreview(add, color, half);
+      const t = this.solidTip;
+      if (t) {
+        const geometry = new THREE.BufferGeometry();
+        geometry.setAttribute("position", new THREE.Float32BufferAttribute([t.x, t.y, t.z ?? 0], 3));
+        add(new THREE.Points(geometry, over(new THREE.PointsMaterial({ color, size: 12, sizeAttenuation: false, map: this.disc, alphaTest: 0.3 }))), 8);
+      }
+      return;
+    }
 
     // A corner used again is that corner.
     const placed: Vec3[] = this.drawPicks.map((p) => {
@@ -4328,9 +4396,201 @@ class Engine {
     if (hover) dots([hover], 11, 0.6);
   }
 
+  // ── Solids: a drawn polygon or circle made into a prism, pyramid, cylinder or cone ──
+  //
+  // Once the base is finished, the pointer sets the top: straight up from the base
+  // (along its normal), slanted with Shift, or onto any point already on the graph.
+  // A click builds the solid; its top point stays draggable, so the slant can change.
+
+  setDrawSolid(mode: SolidMode) {
+    if (mode === this.drawSolid) return;
+    this.drawSolid = mode;
+    if (mode === "flat" && this.solidBase) this.cancelSolid();
+  }
+
+  private cancelSolid() {
+    this.solidBase = null;
+    this.solidTip = null;
+    this.buildDrawPreview();
+    this.requestRender();
+  }
+
+  /** Where a click of this shape is, a corner used again being that corner. */
+  private pickPositions(picks: DrawPick[]): Vec3[] {
+    return picks.map((p) => {
+      const i = p.name?.startsWith("#") ? Number(p.name.slice(1)) : -1;
+      const q = i >= 0 ? picks[i] : p;
+      return [q.x, q.y, q.z ?? 0];
+    });
+  }
+
+  /** The base of a solid, from a finished polygon or circle; null when it can't have one. */
+  private solidBaseOf(tool: DrawToolKind, picks: DrawPick[]): SolidBase | null {
+    const pts = this.pickPositions(picks);
+    if (tool === "circle" && pts.length === 2) {
+      const plane = picks[0].plane ?? picks[1].plane ?? this.drawPlane;
+      const [ua, va] = PLANE_AXES[plane];
+      const r = Math.hypot(pts[1][ua] - pts[0][ua], pts[1][va] - pts[0][va]);
+      if (!(r > 0)) return null;
+      const n: Vec3 = [0, 0, 0];
+      n[plane] = 1;
+      return { tool, picks, pts, centre: pts[0], normal: n, radius: r, plane };
+    }
+    if (tool === "polygon" && pts.length >= 3) {
+      // Newell's method: the normal of a (possibly slightly bent) polygon.
+      const n: Vec3 = [0, 0, 0];
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i];
+        const b = pts[(i + 1) % pts.length];
+        n[0] += (a[1] - b[1]) * (a[2] + b[2]);
+        n[1] += (a[2] - b[2]) * (a[0] + b[0]);
+        n[2] += (a[0] - b[0]) * (a[1] + b[1]);
+      }
+      const len = Math.hypot(n[0], n[1], n[2]);
+      if (len < 1e-9) return null;
+      // Pointing up (or towards +y, +x for an upright base), whichever way it was drawn.
+      const k = Math.abs(n[2]) > 1e-6 * len ? 2 : Math.abs(n[1]) > 1e-6 * len ? 1 : 0;
+      const sign = n[k] < 0 ? -1 : 1;
+      const normal: Vec3 = [(sign * n[0]) / len, (sign * n[1]) / len, (sign * n[2]) / len];
+      const centre: Vec3 = [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length) as Vec3;
+      return { tool, picks, pts, centre, normal, plane: picks.find((p) => p.plane !== undefined)?.plane ?? 2 };
+    }
+    return null;
+  }
+
+  /** How far along the line through `origin` in direction `dir` (unit) the pointer is. */
+  private alongLine(clientX: number, clientY: number, origin: Vec3, dir: Vec3): number | null {
+    const [o, d] = this.localRay(clientX, clientY);
+    const u = new THREE.Vector3(dir[0], dir[1], dir[2]);
+    const w = new THREE.Vector3(origin[0], origin[1], origin[2]).sub(o);
+    const b = u.dot(d);
+    const denom = 1 - b * b;
+    if (denom < 1e-4) return null;
+    return (b * d.dot(w) - u.dot(w)) / denom;
+  }
+
+  /** The top of the solid under the pointer: on a point, straight up, or slanted with Shift. */
+  private solidTipAt(clientX: number, clientY: number, slant: boolean): DrawPick | null {
+    const base = this.solidBase;
+    if (!base) return null;
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+    const at = { x: 0, y: 0 };
+    // A point already on the graph: the top goes exactly there.
+    let best: DrawPick | null = null;
+    let bestD = 14;
+    for (const p of this.getProps().drawPoints ?? []) {
+      if (!this.toScreen(p.x, p.y, p.z, at)) continue;
+      const d = Math.hypot(at.x - mx, at.y - my);
+      if (d < bestD) {
+        bestD = d;
+        best = { name: p.name, x: p.x, y: p.y, z: p.z };
+      }
+    }
+    if (best) return best;
+
+    const half = this.domain.half;
+    const step = niceStep(half) / 4;
+    const digits = clamp(2 - Math.floor(Math.log10(half)), 0, 4);
+    const round = (v: number) => Number(v.toFixed(digits));
+    const [c, n] = [base.centre, base.normal];
+    if (!slant) {
+      const s = this.alongLine(clientX, clientY, c, n);
+      if (s === null) return null;
+      this.solidH = clamp(Math.round(s / step) * step, -2 * half, 2 * half);
+      const h = this.solidH;
+      return { x: round(c[0] + n[0] * h), y: round(c[1] + n[1] * h), z: round(c[2] + n[2] * h) };
+    }
+    // Slanted: across the plane parallel to the base, at the height already set.
+    const h = this.solidH;
+    const p0 = new THREE.Vector3(c[0] + n[0] * h, c[1] + n[1] * h, c[2] + n[2] * h);
+    const [o, d] = this.localRay(clientX, clientY);
+    const nn = new THREE.Vector3(n[0], n[1], n[2]);
+    const denom = nn.dot(d);
+    if (Math.abs(denom) < 0.03) return null;
+    const t = nn.dot(p0.clone().sub(o)) / denom;
+    if (t <= 0) return null;
+    const hit = o.addScaledVector(d, t);
+    const snap = (v: number) => Math.round(v / step) * step;
+    // Snap the slant along the plane's own axes when the base lies on a drawing plane.
+    const [ua, va] = PLANE_AXES[base.plane];
+    const k = Math.abs(n[base.plane]) > 0.999 ? base.plane : -1;
+    const out = [hit.x, hit.y, hit.z];
+    if (k >= 0) {
+      out[ua] = snap(out[ua]);
+      out[va] = snap(out[va]);
+      out[k] = p0.getComponent(k);
+    }
+    return { x: round(out[0]), y: round(out[1]), z: round(out[2]) };
+  }
+
+  /** The solid as it would be, in dashed lines. */
+  private solidPreview(add: (o: THREE.Object3D, order?: number) => void, color: THREE.Color, half: number) {
+    const base = this.solidBase;
+    if (!base) return;
+    const tip = this.solidTip;
+    const lines = (positions: number[], opacity: number, dashed: boolean) => {
+      if (positions.length < 6) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const material = dashed
+        ? new THREE.LineDashedMaterial({ color, opacity, dashSize: 0.05 * half, gapSize: 0.035 * half })
+        : new THREE.LineBasicMaterial({ color, opacity });
+      material.transparent = true;
+      material.depthTest = false;
+      const line = new THREE.LineSegments(geometry, material);
+      if (dashed) line.computeLineDistances();
+      add(line);
+    };
+    const T: Vec3 | null = tip ? [tip.x, tip.y, tip.z ?? 0] : null;
+    const extrude = this.drawSolid === "extrude";
+    const d: Vec3 | null = T ? [T[0] - base.centre[0], T[1] - base.centre[1], T[2] - base.centre[2]] : null;
+    const shift = (p: Vec3): Vec3 => (d ? [p[0] + d[0], p[1] + d[1], p[2] + d[2]] : p);
+
+    // The base's outline (a circle sampled round, or the polygon's corners).
+    let ring: Vec3[];
+    if (base.radius !== undefined) {
+      const [ua, va] = PLANE_AXES[base.plane];
+      ring = Array.from({ length: 72 }, (_, i) => {
+        const a = (i / 72) * TWO_PI;
+        const p: Vec3 = [...base.centre];
+        p[ua] += base.radius! * Math.cos(a);
+        p[va] += base.radius! * Math.sin(a);
+        return p;
+      });
+    } else ring = base.pts;
+    const loop = (list: Vec3[]) => list.flatMap((p, i) => [...p, ...list[(i + 1) % list.length]]);
+    lines(loop(ring), 0.95, false);
+    if (!T || !d) return;
+    // Its axis, from the middle of the base to the top.
+    lines([...base.centre, ...T], 0.6, true);
+    const sides = base.radius !== undefined ? ring.filter((_, i) => i % 9 === 0) : ring;
+    if (extrude) {
+      lines(loop(ring.map(shift)), 0.9, true);
+      lines(sides.flatMap((p) => [...p, ...shift(p)]), 0.75, true);
+    } else {
+      lines(sides.flatMap((p) => [...p, ...T]), 0.75, true);
+    }
+  }
+
+  /** Readout for the top while it is being set. */
+  private solidTipText(): string | null {
+    const base = this.solidBase;
+    const t = this.solidTip;
+    if (!base || !t) return null;
+    const n = base.normal;
+    const d = [t.x - base.centre[0], t.y - base.centre[1], (t.z ?? 0) - base.centre[2]];
+    const h = d[0] * n[0] + d[1] * n[1] + d[2] * n[2];
+    const name = SOLID_NAMES[base.tool === "circle" ? "circle" : "polygon"][this.drawSolid === "extrude" ? 0 : 1];
+    const at = t.name ? ` to ${t.name}` : "";
+    return `${name}${at} · height ${formatCoord(h)} · Shift: slant · click to finish`;
+  }
+
   /** The readout by the pointer while drawing. */
   private placeDrawTip() {
-    const p = this.drawTool ? this.drawHover : null;
+    const solidText = this.solidTipText();
+    const p = this.drawTool ? (this.solidBase ? this.solidTip : this.drawHover) : null;
     const at = { x: 0, y: 0 };
     if (!p || !this.toScreen(p.x, p.y, p.z ?? 0, at)) {
       this.drawTip.style.display = "none";
@@ -4340,7 +4600,7 @@ class Engine {
     this.drawTip.style.setProperty("--c", this.getProps().drawColor || "#3b82f6");
     this.drawTip.style.translate = `${at.x.toFixed(1)}px ${(at.y + 14).toFixed(1)}px`;
     const coords = `(${formatCoord(p.x)}, ${formatCoord(p.y)}, ${formatCoord(p.z ?? 0)})`;
-    this.drawTip.textContent = p.name && !p.name.startsWith("#") ? `${p.name} ${coords}` : coords;
+    this.drawTip.textContent = solidText ?? (p.name && !p.name.startsWith("#") ? `${p.name} ${coords}` : coords);
   }
 
   // ── Transform gizmo (rows switched to "Transformable") ──
@@ -4919,6 +5179,10 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
   useEffect(() => {
     engineRef.current?.setDrawPlane(props.drawPlane ?? 2);
   }, [props.drawPlane]);
+
+  useEffect(() => {
+    engineRef.current?.setDrawSolid(props.drawSolid ?? "flat");
+  }, [props.drawSolid]);
 
   useEffect(() => {
     engineRef.current?.setDrawHeight(props.drawHeight ?? 0);

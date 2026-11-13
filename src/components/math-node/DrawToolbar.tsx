@@ -16,7 +16,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { DRAW_TOOL_HINTS, SELECT_TOOL_HINT, type GraphTool } from "./DrawTool";
+import { DRAW_TOOL_HINTS, SELECT_TOOL_HINT, type GraphTool, type SolidMode } from "./DrawTool";
 import type { VectorOptions } from "./drawRows";
 
 const TOOLS: { id: GraphTool | null; label: string; Icon: React.ElementType }[] = [
@@ -51,6 +51,9 @@ interface DrawToolbarProps {
   onDrawVector: (tail: [number, number], tip: [number, number]) => void;
   /** The 3D view: everything but Select, which works on the flat graph. */
   in3d?: boolean;
+  /** 3D view: what a drawn polygon or circle becomes (a flat shape or a solid). */
+  solid?: SolidMode;
+  onSolidChange?: (mode: SolidMode) => void;
 }
 
 const FIELD =
@@ -160,6 +163,8 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
   onToggleVectorResultants,
   onDrawVector,
   in3d = false,
+  solid = "flat",
+  onSolidChange,
 }) => {
   // The vector options fold away to one button: shut at first on a phone, where the
   // graph needs the room; open at first on a wider screen. Remembered once changed.
@@ -283,6 +288,43 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
         <ChevronLeft size={14} />
       </button>
     </div>
+    {in3d && (tool === "polygon" || tool === "circle") && onSolidChange && (
+      <div
+        data-no-trace
+        data-capture-exclude
+        role="radiogroup"
+        aria-label="Make it a solid"
+        // Small and in the corner, clear of where shapes are drawn.
+        className="absolute left-14 top-2 md:top-28 z-40 w-[7.5rem] p-1.5 rounded-xl bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 flex flex-col gap-0.5"
+      >
+        <span className="pl-1 pb-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-400">Make it</span>
+        {(
+          [
+            ["flat", tool === "polygon" ? "Flat polygon" : "Flat circle", "Just the shape"],
+            ["extrude", tool === "polygon" ? "Prism" : "Cylinder", "Pull the base up to a copy of it"],
+            ["apex", tool === "polygon" ? "Pyramid" : "Cone", "Join the base to a point"],
+          ] as const
+        ).map(([mode, label, hint]) => {
+          const on = solid === mode;
+          return (
+            <button
+              key={mode}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              onClick={() => onSolidChange(mode)}
+              title={`${hint}${mode === "flat" ? "" : ". Draw the base, then move up to set the height; Shift slants it, a point snaps the top to it."}`}
+              className={`px-2 py-1 rounded-lg text-left text-[11px] font-semibold transition-colors ${on
+                ? "bg-blue-600 text-white"
+                : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+            >
+              {label}
+            </button>
+          );
+        })}
+      </div>
+    )}
     {tool === "vector" && !optionsOpen && (
       <button
         type="button"
