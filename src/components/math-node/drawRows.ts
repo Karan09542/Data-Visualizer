@@ -46,8 +46,21 @@ const fmt = (v: number) => String(Number(v.toFixed(6)));
 const coordsOf = (p: DrawPick, spatial: boolean) =>
   spatial && (p.z ?? 0) !== 0 ? `[${fmt(p.x)}, ${fmt(p.y)}, ${fmt(p.z!)}]` : `[${fmt(p.x)}, ${fmt(p.y)}]`;
 
-/** Drawn off the floor in the 3D view: the shape's rows are written for space. */
-const isSpatial = (picks: DrawPick[]) => picks.some((p) => (p.z ?? 0) !== 0);
+/**
+ * Drawn off the floor, or on an upright plane, in the 3D view: the shape's rows are
+ * written for space.
+ */
+const isSpatial = (picks: DrawPick[]) => picks.some((p) => (p.z ?? 0) !== 0 || (p.plane !== undefined && p.plane !== 2));
+
+/** The two axes that run along each drawing plane (by the axis it is square to). */
+const PLANE_AXES: Record<0 | 1 | 2, [number, number]> = { 2: [0, 1], 1: [0, 2], 0: [1, 2] };
+
+/** `[a, b]` along a drawing plane, as a vector in space. */
+const inPlane = (plane: 0 | 1 | 2, a: string, b: string) =>
+  plane === 2 ? `[${a}, ${b}, 0]` : plane === 1 ? `[${a}, 0, ${b}]` : `[0, ${a}, ${b}]`;
+
+/** The plane a shape was drawn on (level when it doesn't say). */
+const planeOf = (picks: DrawPick[]): 0 | 1 | 2 => picks.find((p) => p.plane !== undefined)?.plane ?? 2;
 interface BuildOptions {
   taken: Set<string>;
   /** For the shape (and its readouts). */
@@ -126,8 +139,12 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
   const P = (name: string) => (spatial ? `p3(${name})` : name);
   if (tool === "circle" && picks.length === 2 && !picks[1].name) {
     const [c, rim] = picks;
-    // A level circle round the centre, through the rim's position across.
-    const radius = Math.hypot(rim.x - c.x, rim.y - c.y);
+    // A circle round the centre in the plane it was drawn on, through the rim.
+    const plane = planeOf(picks);
+    const [ua, va] = PLANE_AXES[plane];
+    const cv = [c.x, c.y, c.z ?? 0];
+    const rv = [rim.x, rim.y, rim.z ?? 0];
+    const radius = Math.hypot(rv[ua] - cv[ua], rv[va] - cv[va]);
     if (radius > 0) {
       const centreOnly = buildShape("point", [c], { ...opts, spatialHint: spatial });
       const centre = c.name && !c.name.startsWith("#") ? c.name : centreOnly.rows[0]?.label!;
@@ -138,8 +155,8 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
       for (let n = 2; opts.taken.has(sliderName); n++) sliderName = `r_${centre}_${n}`;
       opts.taken.add(sliderName);
       // The direction it was drawn in, kept as plain numbers.
-      const ux = fmt((rim.x - c.x) / radius);
-      const uy = fmt((rim.y - c.y) / radius);
+      const ux = fmt((rv[ua] - cv[ua]) / radius);
+      const uy = fmt((rv[va] - cv[va]) / radius);
       const base = { id: "", visible: true, autoType: false, angleUnit: "rad" } as const;
       rows.push(
         {
@@ -147,7 +164,7 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
           id: opts.newId(),
           type: "parametric",
           expr: spatial
-            ? `${P(centre)} + ${sliderName}*[cos(t rad), sin(t rad), 0]`
+            ? `${P(centre)} + ${sliderName}*${inPlane(plane, "cos(t rad)", "sin(t rad)")}`
             : `${centre} + ${sliderName}*[cos(t rad), sin(t rad)]`,
           color: opts.color,
           tRange: [0, 2 * Math.PI],
@@ -157,7 +174,7 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
           id: opts.newId(),
           type: "point",
           expr: spatial
-            ? `${rimName} = ${P(centre)} + ${sliderName}*[${ux}, ${uy}, 0]`
+            ? `${rimName} = ${P(centre)} + ${sliderName}*${inPlane(plane, ux, uy)}`
             : `${rimName} = ${centre} + ${sliderName}*[${ux}, ${uy}]`,
           color: opts.pointColor,
           showLabel: true,
@@ -253,8 +270,8 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     case "circle":
       rows.push(
         row("parametric", spatial
-          // A level circle round A, as wide as A is from B.
-          ? `${P(A)} + norm(${P(B)} - ${P(A)})*[cos(t rad), sin(t rad), 0]`
+          // A circle round A in the plane it was drawn on, as wide as A is from B.
+          ? `${P(A)} + norm(${P(B)} - ${P(A)})*${inPlane(planeOf(picks), "cos(t rad)", "sin(t rad)")}`
           : `${A} + norm(${B} - ${A})*[cos(t rad), sin(t rad)]`, opts.color, {
           tRange: [0, 2 * Math.PI],
         }),

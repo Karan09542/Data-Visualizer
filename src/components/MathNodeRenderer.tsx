@@ -949,7 +949,9 @@ export const MathNodeRenderer: React.FC<any> = ({
   );
   // The drawing tool in hand; null lets the graph pan as usual.
   const [drawTool, setDrawTool] = useState<GraphTool | null>(null);
-  // 3D view: the height of the level plane drawing clicks land on.
+  // 3D view: the plane drawing clicks land on (by the axis it is square to: 2 is the
+  // level XY plane), and how far along that axis it sits.
+  const [drawPlane, setDrawPlane] = useState<0 | 1 | 2>(2);
   const [drawHeight, setDrawHeight] = useState(0);
   // What the Vector tool labels its arrows with (remembered per browser).
   const [vectorOptions, setVectorOptionsState] = useState<VectorOptions>(() => {
@@ -7314,6 +7316,12 @@ export const MathNodeRenderer: React.FC<any> = ({
                 drawTool={!isCompact && drawTool && drawTool !== "select" ? drawTool : null}
                 drawHeight={drawHeight}
                 onDrawHeight={setDrawHeight}
+                drawPlane={drawPlane}
+                onDrawPlane={(plane) => {
+                  setDrawPlane(plane);
+                  // A new plane starts through the origin.
+                  setDrawHeight(0);
+                }}
                 drawPoints={drawSnapPoints3}
                 drawColor={COLORS[functions.length % COLORS.length]}
                 onDrawComplete={handleDrawComplete}
@@ -9744,14 +9752,19 @@ export const MathNodeRenderer: React.FC<any> = ({
               onToggleVectorResultants={() => setShowResultants((v) => !v)}
               onDrawVector={(tail, tip) => {
                 // An end that lands on a point already there is that point.
-                // In 3D, on the drawing plane.
-                const z = viewMode === "3d" ? drawHeight : 0;
-                const pick = ([x, y]: [number, number]): DrawPick => {
+                // In 3D, the two numbers run along the drawing plane, at its offset.
+                const pick = ([a, b]: [number, number]): DrawPick => {
+                  const plane = viewMode === "3d" ? drawPlane : 2;
+                  const c = [0, 0, 0];
+                  c[plane] = viewMode === "3d" ? drawHeight : 0;
+                  const [ua, va] = plane === 2 ? [0, 1] : plane === 1 ? [0, 2] : [1, 2];
+                  c[ua] = Number(a.toFixed(6));
+                  c[va] = Number(b.toFixed(6));
                   const pool = viewMode === "3d" ? drawSnapPoints3 : drawSnapPoints.map((p) => ({ ...p, z: 0 }));
-                  const at = pool.find((p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6 && Math.abs(p.z - z) < 1e-6);
+                  const at = pool.find((p) => Math.abs(p.x - c[0]) < 1e-6 && Math.abs(p.y - c[1]) < 1e-6 && Math.abs(p.z - c[2]) < 1e-6);
                   return at
                     ? { name: at.name, x: at.x, y: at.y, z: at.z }
-                    : { x: Number(x.toFixed(6)), y: Number(y.toFixed(6)), z };
+                    : { x: c[0], y: c[1], z: c[2], plane: viewMode === "3d" ? plane : undefined };
                 };
                 handleDrawComplete("vector", [pick(tail), pick(tip)]);
               }}
@@ -9794,7 +9807,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                   <span className="hidden md:inline">
                     {drawTool === "select" ? SELECT_TOOL_HINT : DRAW_TOOL_HINTS[drawTool]}{" "}
                     <span className="text-white/50">
-                      {viewMode === "3d" ? "Page Up/Down: drawing height. Drag to turn. Esc to stop." : "Esc to stop."}
+                      {viewMode === "3d" ? "Pick the plane below; Page Up/Down moves it. Drag to turn. Esc to stop." : "Esc to stop."}
                     </span>
                   </span>
                 </span>

@@ -59,6 +59,11 @@ export interface DrawPick {
   /** Height, for a click in the 3D view (0 or missing: on the floor). */
   z?: number;
   /**
+   * 3D view: the drawing plane the click landed on, by the axis it is square to:
+   * 2 the level XY plane (z = c), 1 the upright XZ plane (y = c), 0 the YZ plane (x = c).
+   */
+  plane?: 0 | 1 | 2;
+  /**
    * The shape whose outline was clicked (Point tool only): its row, which
    * segment of its outline, and the curve parameter there when it has one.
    */

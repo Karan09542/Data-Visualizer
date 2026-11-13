@@ -85,6 +85,9 @@ export interface Graph3DProps {
   /** Height of the level plane drawing clicks land on. */
   drawHeight?: number;
   onDrawHeight?: (h: number) => void;
+  /** Which plane clicks land on, by the axis it is square to: 2 XY (level), 1 XZ, 0 YZ. */
+  drawPlane?: 0 | 1 | 2;
+  onDrawPlane?: (plane: 0 | 1 | 2) => void;
   /** Named points to snap to, where they are in space. */
   drawPoints?: { name: string; x: number; y: number; z: number }[];
   drawColor?: string;
@@ -116,6 +119,15 @@ interface GizmoFrame {
   rotatable: boolean;
   resizable: boolean;
 }
+
+/** The two axes that run along each drawing plane (by the axis it is square to). */
+const PLANE_AXES: Record<0 | 1 | 2, [number, number]> = { 2: [0, 1], 1: [0, 2], 0: [1, 2] };
+
+const DRAW_PLANES: { plane: 0 | 1 | 2; label: string; title: string }[] = [
+  { plane: 2, label: "XY", title: "Level plane: z stays the same" },
+  { plane: 1, label: "XZ", title: "Upright plane facing the front: y stays the same" },
+  { plane: 0, label: "YZ", title: "Upright plane facing the side: x stays the same" },
+];
 
 const GIZMO_COLORS: Partial<Record<GizmoKind, string>> = {
   x: "#ef4444",
@@ -915,6 +927,7 @@ class Engine {
   private drawPicks: DrawPick[] = [];
   private drawHover: DrawPick | null = null;
   private drawHeight = 0;
+  private drawPlane: 0 | 1 | 2 = 2;
   private drawGroup = new THREE.Group();
   private drawTip = document.createElement("div");
   private drawDown: { x: number; y: number } | null = null;
@@ -4044,7 +4057,19 @@ class Engine {
   setDrawHeight(h: number) {
     if (h === this.drawHeight) return;
     this.drawHeight = h;
-    if (this.drawHover && !this.drawHover.name) this.drawHover = { ...this.drawHover, z: h };
+    if (this.drawHover && !this.drawHover.name) {
+      const c = [this.drawHover.x, this.drawHover.y, this.drawHover.z ?? 0];
+      c[this.drawPlane] = h;
+      this.drawHover = { ...this.drawHover, x: c[0], y: c[1], z: c[2] };
+    }
+    this.buildDrawPreview();
+    this.requestRender();
+  }
+
+  setDrawPlane(plane: 0 | 1 | 2) {
+    if (plane === this.drawPlane) return;
+    this.drawPlane = plane;
+    this.drawHover = null;
     this.buildDrawPreview();
     this.requestRender();
   }
@@ -4083,18 +4108,28 @@ class Engine {
     }
     if (best) return best;
 
+    const axis = this.drawPlane;
     const h = this.drawHeight;
-    const hit = this.hitHeight(clientX, clientY, h);
+    const hit = this.hitPlane(clientX, clientY, axis, h);
     if (!hit) return null;
+    const [ua, va] = PLANE_AXES[axis];
+    const c = [hit.x, hit.y, hit.z];
+    c[axis] = h;
     const half = this.domain.half;
+    // Only on the plane's square inside the box: past its edge nothing would be drawn.
+    const mid = [this.domain.cx, this.domain.cy, this.domain.cz];
+    if (Math.abs(c[ua] - mid[ua]) > half * 1.0001 || Math.abs(c[va] - mid[va]) > half * 1.0001) return null;
     // Whole numbers on an ordinary view; the grid's own step when zoomed far out.
     const unit = half > 25 ? niceStep(half) : 1;
-    const gx = Math.round(hit.x / unit) * unit;
-    const gy = Math.round(hit.y / unit) * unit;
-    if (near(gx, gy, h) < 10) return { x: gx, y: gy, z: h };
+    const g = [...c];
+    g[ua] = Math.round(c[ua] / unit) * unit;
+    g[va] = Math.round(c[va] / unit) * unit;
+    if (near(g[0], g[1], g[2]) < 10) return { x: g[0], y: g[1], z: g[2], plane: axis };
     const digits = clamp(2 - Math.floor(Math.log10(half)), 0, 4);
     const round = (v: number) => Number(v.toFixed(digits));
-    return { x: round(hit.x), y: round(hit.y), z: h };
+    c[ua] = round(c[ua]);
+    c[va] = round(c[va]);
+    return { x: c[0], y: c[1], z: c[2], plane: axis };
   }
 
   private drawClick(clientX: number, clientY: number) {
@@ -4149,8 +4184,9 @@ class Engine {
       e.preventDefault();
       const step = this.drawHeightStep();
       const next = Number((this.drawHeight + (e.key === "PageUp" ? step : -step)).toFixed(6));
-      const { cz, half } = this.domain;
-      this.getProps().onDrawHeight?.(clamp(next, cz - half, cz + half));
+      const { cx, cy, cz, half } = this.domain;
+      const mid = [cx, cy, cz][this.drawPlane];
+      this.getProps().onDrawHeight?.(clamp(next, mid - half, mid + half));
     }
   };
 
@@ -4161,7 +4197,18 @@ class Engine {
     const tool = this.drawTool;
     if (!tool) return;
     const { cx, cy, cz, half } = this.domain;
-    const h = clamp(this.drawHeight, cz - half, cz + half);
+    const axis = this.drawPlane;
+    const [ua, va] = PLANE_AXES[axis];
+    const mid = [cx, cy, cz];
+    const h = clamp(this.drawHeight, mid[axis] - half, mid[axis] + half);
+    // A point of the drawing plane from its two coordinates along it.
+    const onPlane = (a: number, b: number): number[] => {
+      const p = [0, 0, 0];
+      p[axis] = h;
+      p[ua] = a;
+      p[va] = b;
+      return p;
+    };
     const color = toColor(this.getProps().drawColor || "#3b82f6");
     const over = <M extends THREE.Material>(m: M, front = true): M => {
       m.transparent = true;
@@ -4174,25 +4221,27 @@ class Engine {
       this.drawGroup.add(o);
     };
 
-    // The plane being drawn on: a faint tinted floor with a border, and its grid.
+    // The plane being drawn on: a faint tint with a border, and its grid.
+    const [a0, a1] = [mid[ua] - half, mid[ua] + half];
+    const [b0, b1] = [mid[va] - half, mid[va] + half];
     const corners = [
-      [cx - half, cy - half],
-      [cx + half, cy - half],
-      [cx + half, cy + half],
-      [cx - half, cy + half],
+      [a0, b0],
+      [a1, b0],
+      [a1, b1],
+      [a0, b1],
     ];
     const planeGeometry = new THREE.BufferGeometry();
-    planeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(corners.flatMap(([x, y]) => [x, y, h]), 3));
+    planeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(corners.flatMap(([a, b]) => onPlane(a, b)), 3));
     planeGeometry.setIndex([0, 1, 2, 0, 2, 3]);
     add(new THREE.Mesh(planeGeometry, over(new THREE.MeshBasicMaterial({ color, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }), false)), 1);
     const grid: number[] = [];
     const step = niceStep(half);
-    for (let k = Math.ceil((cx - half) / step); k * step <= cx + half + 1e-9; k++) grid.push(k * step, cy - half, h, k * step, cy + half, h);
-    for (let k = Math.ceil((cy - half) / step); k * step <= cy + half + 1e-9; k++) grid.push(cx - half, k * step, h, cx + half, k * step, h);
+    for (let k = Math.ceil(a0 / step); k * step <= a1 + 1e-9; k++) grid.push(...onPlane(k * step, b0), ...onPlane(k * step, b1));
+    for (let k = Math.ceil(b0 / step); k * step <= b1 + 1e-9; k++) grid.push(...onPlane(a0, k * step), ...onPlane(a1, k * step));
     for (let i = 0; i < 4; i++) {
       const [x0, y0] = corners[i];
       const [x1, y1] = corners[(i + 1) % 4];
-      grid.push(x0, y0, h, x1, y1, h);
+      grid.push(...onPlane(x0, y0), ...onPlane(x1, y1));
     }
     const gridGeometry = new THREE.BufferGeometry();
     gridGeometry.setAttribute("position", new THREE.Float32BufferAttribute(grid, 3));
@@ -4225,14 +4274,17 @@ class Engine {
     };
 
     if (tool === "circle" && placed.length === 1 && hover) {
-      const [ox, oy, oz] = placed[0];
-      const r = Math.hypot(hover[0] - ox, hover[1] - oy, hover[2] - oz);
+      // In the drawing plane, round the centre: as the circle will be drawn.
+      const o = placed[0];
+      const r = Math.hypot(hover[ua] - o[ua], hover[va] - o[va]);
+      const around = (ang: number) => {
+        const p = [o[0], o[1], o[2]];
+        p[ua] += r * Math.cos(ang);
+        p[va] += r * Math.sin(ang);
+        return p;
+      };
       const ring: number[] = [];
-      for (let i = 0; i < 96; i++) {
-        const a0 = (i / 96) * TWO_PI;
-        const a1 = ((i + 1) / 96) * TWO_PI;
-        ring.push(ox + r * Math.cos(a0), oy + r * Math.sin(a0), oz, ox + r * Math.cos(a1), oy + r * Math.sin(a1), oz);
-      }
+      for (let i = 0; i < 96; i++) ring.push(...around((i / 96) * TWO_PI), ...around(((i + 1) / 96) * TWO_PI));
       dashed(ring);
     } else if (tool === "line" && placed.length === 1 && hover) {
       const d = new THREE.Vector3(hover[0] - placed[0][0], hover[1] - placed[0][1], hover[2] - placed[0][2]);
@@ -4536,6 +4588,21 @@ class Engine {
   }
 
   /** Where the pointer meets the horizontal plane at height z; null when the plane is seen edge-on. */
+  /** Where the pointer meets the plane `coordinate[axis] = value`; null when it is seen edge-on. */
+  private hitPlane(clientX: number, clientY: number, axis: 0 | 1 | 2, value: number): THREE.Vector3 | null {
+    const [o, d] = this.localRay(clientX, clientY);
+    const dc = axis === 0 ? d.x : axis === 1 ? d.y : d.z;
+    const oc = axis === 0 ? o.x : axis === 1 ? o.y : o.z;
+    if (Math.abs(dc) < 0.03) return null;
+    const t = (value - oc) / dc;
+    if (t <= 0) return null;
+    const p = o.addScaledVector(d, t);
+    const r = 6 * this.domain.half;
+    const mid = [this.domain.cx, this.domain.cy, this.domain.cz];
+    if (Math.abs(p.x - mid[0]) > r || Math.abs(p.y - mid[1]) > r || Math.abs(p.z - mid[2]) > r) return null;
+    return p;
+  }
+
   private hitHeight(clientX: number, clientY: number, z: number): THREE.Vector3 | null {
     const [o, d] = this.localRay(clientX, clientY);
     if (Math.abs(d.z) < 0.03) return null;
@@ -4850,6 +4917,10 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
   }, [props.drawTool]);
 
   useEffect(() => {
+    engineRef.current?.setDrawPlane(props.drawPlane ?? 2);
+  }, [props.drawPlane]);
+
+  useEffect(() => {
     engineRef.current?.setDrawHeight(props.drawHeight ?? 0);
   }, [props.drawHeight]);
 
@@ -4904,16 +4975,36 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
           data-capture-exclude
           className="absolute bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 h-9 pl-3 pr-1 rounded-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/10 dark:shadow-black/40 cursor-default"
         >
-          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Draw at</span>
-          <span className="font-mono text-[12px] font-semibold tabular-nums text-blue-600 dark:text-blue-400 whitespace-nowrap">
-            z = {formatCoord(props.drawHeight ?? 0)}
+          <div role="radiogroup" aria-label="Drawing plane" className="flex items-center gap-0.5 p-0.5 mr-1 -ml-2 rounded-full bg-slate-100 dark:bg-slate-800">
+            {DRAW_PLANES.map(({ plane, label, title }) => {
+              const on = (props.drawPlane ?? 2) === plane;
+              return (
+                <button
+                  key={label}
+                  type="button"
+                  role="radio"
+                  aria-checked={on}
+                  title={title}
+                  onClick={() => props.onDrawPlane?.(plane)}
+                  className={`h-7 px-2.5 rounded-full text-[11px] font-semibold transition-colors ${on
+                    ? "bg-white dark:bg-slate-700 text-blue-600 dark:text-blue-400 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200"
+                    }`}
+                >
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+          <span className="font-mono text-[12px] font-semibold tabular-nums whitespace-nowrap" style={{ color: AXIS_COLORS[props.drawPlane ?? 2] }}>
+            {AXIS_NAMES[props.drawPlane ?? 2]} = {formatCoord(props.drawHeight ?? 0)}
           </span>
           {(["−", "+"] as const).map((sign) => (
             <button
               key={sign}
               type="button"
-              title={sign === "+" ? "Raise the drawing plane (Page Up)" : "Lower the drawing plane (Page Down)"}
-              aria-label={sign === "+" ? "Raise the drawing plane" : "Lower the drawing plane"}
+              title={`${sign === "+" ? "Move the drawing plane up" : "Move the drawing plane down"} ${AXIS_NAMES[props.drawPlane ?? 2]} (${sign === "+" ? "Page Up" : "Page Down"})`}
+              aria-label={sign === "+" ? "Move the drawing plane forward" : "Move the drawing plane back"}
               onClick={() => {
                 const engine = engineRef.current;
                 if (!engine) return;
@@ -4929,11 +5020,11 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
           {(props.drawHeight ?? 0) !== 0 && (
             <button
               type="button"
-              title="Back to the floor (z = 0)"
+              title={`Back through the origin (${AXIS_NAMES[props.drawPlane ?? 2]} = 0)`}
               onClick={() => props.onDrawHeight?.(0)}
               className="h-7 px-2 rounded-full text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
             >
-              Floor
+              {(props.drawPlane ?? 2) === 2 ? "Floor" : "Origin"}
             </button>
           )}
         </div>
