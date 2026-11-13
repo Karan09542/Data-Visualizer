@@ -149,6 +149,8 @@ export interface MathFunction {
   transformRotate?: number; // radians
   transformScale?: [number, number]; // [sx, sy]
   transformPivot?: [number, number]; // [px, py]
+  /** 3D view only: how far the whole row is lifted up the z-axis. */
+  transformTranslateZ?: number;
 
   // Individual Timeline Support
   hasCustomTimeline?: boolean;

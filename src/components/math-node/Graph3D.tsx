@@ -25,7 +25,7 @@ import { triTable } from "three/examples/jsm/objects/MarchingCubes.js";
 import * as mathjs from "mathjs";
 import katex from "katex";
 import { Home, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
-import type { MathFunction, MathVariable } from "./mathTypes";
+import type { FillPatternType, MathFunction, MathVariable } from "./mathTypes";
 import type { GraphView } from "./simulations";
 import { computePCA } from "./mathHelpers";
 import { pointDraggable, type PointMenuTarget } from "./PointMenu";
@@ -37,6 +37,7 @@ import { evaluateFamilyValues, parseFamilyExpression } from "../../lib/math/fami
 import { splitRelation } from "../../lib/math/splitRelation";
 import { computeOdeExtent, odeAxisColumns, odePlaybackTime, solveCompiledOdeCached } from "../../lib/math/odeCurveData";
 import { sampleOdeAt } from "../../lib/math/odeSolver";
+import { odeSystemToLatex } from "../../lib/math/odeLatex";
 import { hasLiveValues, pointLabelLocals, renderLiveLabel } from "../../lib/math/liveLabel";
 
 export interface Graph3DProps {
@@ -71,7 +72,56 @@ export interface Graph3DProps {
    * the graph works out the slider values that put it there.
    */
   onDragHandle?: (id: string, target: [number, number, number]) => void;
+  /** Patch row settings/transforms directly (used when dragging non-point rows in 3D). */
+  onPatchRow?: (id: string, patch: Partial<MathFunction>) => void;
+  /**
+   * The transform gizmo moved, turned or resized a row. Like onPatchRow, but the graph
+   * may first freeze a shape's coordinates (as the flat graph's handles do).
+   */
+  onTransformRow?: (id: string, patch: Partial<MathFunction>) => void;
 }
+
+type GizmoKind = "center" | "x" | "y" | "z" | "rotate" | "scale";
+
+/** Where a transformable row's gizmo stands, and the transform it shows. */
+interface GizmoFrame {
+  px: number;
+  py: number;
+  /** The shape's own direction (its PCA axis), as on the flat graph. */
+  base: number;
+  /** Size of the gizmo in graph units (before scaling). */
+  radius: number;
+  tx: number;
+  ty: number;
+  tz: number;
+  rot: number;
+  sx: number;
+  sy: number;
+  /** Height the gizmo sits at. */
+  cz: number;
+  pivot: boolean;
+  rotatable: boolean;
+  resizable: boolean;
+}
+
+const GIZMO_COLORS: Partial<Record<GizmoKind, string>> = {
+  x: "#ef4444",
+  y: "#22c55e",
+  z: "#3b82f6",
+  rotate: "#eab308",
+  scale: "#10b981",
+};
+
+const GIZMO_TITLES: Record<GizmoKind | "pivot" | "move", string> = {
+  center: "",
+  move: "Drag to move it across the floor",
+  pivot: "Drag to move the pivot it turns and scales about",
+  x: "Drag along x",
+  y: "Drag along y",
+  z: "Drag up or down (z)",
+  rotate: "Drag round to turn it (Shift: steps of 15°)",
+  scale: "Drag to resize (Shift: keep its shape)",
+};
 
 export interface Graph3DOptions {
   /** Surfaces in their row's colour, or coloured by height. */
@@ -156,6 +206,18 @@ const HANDLE_CSS = `
 .g3d-tip{position:absolute;left:0;top:-24px;transform:translate(-50%,-100%);padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
 .g3d-handle.dragging .g3d-tip{display:block}
 .g3d-handle.solver .g3d-stem,.g3d-handle.solver .g3d-grip{display:none}
+.g3d-gz .g3d-dot{left:-17px;top:-17px;width:34px;height:34px}
+.g3d-gz .g3d-dot::before{inset:5px}
+.g3d-gz .g3d-dot::after{inset:11px;box-shadow:0 0 0 2px rgba(255,255,255,.92),0 1px 4px rgba(0,0,0,.45)}
+.g3d-gz-center{z-index:3}
+.g3d-gz-center .g3d-dot{cursor:move}
+.g3d-gz-x .g3d-dot,.g3d-gz-y .g3d-dot{cursor:grab}
+.g3d-gz-z .g3d-dot{cursor:ns-resize}
+.g3d-gz-x .g3d-dot::after,.g3d-gz-y .g3d-dot::after,.g3d-gz-z .g3d-dot::after{inset:12.5px}
+.g3d-gz-scale .g3d-dot{cursor:nwse-resize}
+.g3d-gz-scale .g3d-dot::after{border-radius:3px}
+.g3d-gz-rotate .g3d-dot{cursor:grab}
+.g3d-gz-tip{position:absolute;left:0;top:0;transform:translate(-50%,0);padding:4px 8px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
 .g3d-ax{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2}
 .g3d-ax-hit{position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;pointer-events:auto;cursor:pointer;touch-action:none;display:flex;align-items:center;justify-content:center;outline:none;-webkit-tap-highlight-color:transparent}
 .g3d-ax-ring{width:20px;height:20px;border-radius:50%;border:1.5px solid color-mix(in srgb,var(--c) 45%,transparent);background:color-mix(in srgb,var(--c) 8%,transparent);transition:transform .15s ease,border-color .15s ease,background .15s ease,box-shadow .15s ease}
@@ -251,6 +313,10 @@ const GRIP_DISTANCE = 40;
 
 type Vec3 = [number, number, number];
 type Transform2 = ((x: number, y: number) => [number, number]) | null;
+type AffineTransform2 = {
+  forward: (x: number, y: number) => [number, number];
+  inverse: (gx: number, gy: number) => [number, number];
+} | null;
 
 interface Domain {
   cx: number;
@@ -274,6 +340,11 @@ interface LabelSpec {
   html?: string;
   /** Size, relative to the usual (the row's label scale). */
   scale?: number;
+  /** Rotation in degrees. */
+  rotation?: number;
+  /** Horizontal / vertical mirror flip. */
+  flipX?: boolean;
+  flipY?: boolean;
   /** Name and coordinates, written by the view: kept up to date as the point is dragged. */
   auto?: boolean;
 }
@@ -314,7 +385,7 @@ interface RowEntry {
   pinned?: LabelSpec[];
   /** A row of points: it has the point menu. */
   isPoint?: boolean;
-  /** A point written as plain numbers can be dragged. */
+  /** A point written as plain numbers can be dragged (or a non-point row translated via Origin shift). */
   drag?: {
     prefix: string;
     name: string;
@@ -322,7 +393,17 @@ interface RowEntry {
     pos: Vec3;
     /** Placed by sliders: dragging it asks the graph to solve for them (see onDragHandle). */
     solver?: boolean;
+    /** Dragging a non-point row adjusts transformTranslate around its current anchor. */
+    translate?: boolean;
+    baseTranslate?: [number, number];
+    anchorStart?: [number, number];
   };
+  /** A transformable row's gizmo (see syncGizmos). */
+  gizmo?: GizmoFrame;
+  /** Where the row's own drag or label handle sits (a representative point of it). */
+  anchor?: Vec3;
+  /** Its frame for the gizmo, noted while it is built (see affineTransformOf). */
+  frame?: { px: number; py: number; base: number; spread: number };
 }
 
 const AXIS_COLORS = ["#ef4444", "#22c55e", "#3b82f6"];
@@ -421,11 +502,40 @@ function toReal(v: any): number {
   return Number(v);
 }
 
-/** A colour three.js accepts: row colours may carry an alpha byte (#rrggbbaa). */
+/** Extract an explicit alpha channel (0..1) from #rrggbbaa, #rgba, or rgba(...), or null if opaque/unspecified. */
+function parseCssAlpha(c: string | undefined): number | null {
+  if (!c) return null;
+  const s = c.trim();
+  if (s.startsWith("#") && s.length === 9) {
+    const a = parseInt(s.slice(7, 9), 16);
+    return Number.isFinite(a) ? a / 255 : null;
+  }
+  if (s.startsWith("#") && s.length === 5) {
+    const h = s.slice(4, 5);
+    const a = parseInt(h + h, 16);
+    return Number.isFinite(a) ? a / 255 : null;
+  }
+  const m = s.match(/^rgba\(\s*([^)]+)\s*\)$/i);
+  if (m) {
+    const parts = m[1].split(/[,\s/]+/).filter(Boolean);
+    const last = parts[3];
+    if (last !== undefined) {
+      const a = last.endsWith("%") ? parseFloat(last) / 100 : parseFloat(last);
+      return Number.isFinite(a) ? clamp(a, 0, 1) : null;
+    }
+  }
+  return null;
+}
+
+/** A colour three.js accepts: strips alpha bytes (#rrggbbaa) and normalises rgba(...) to rgb(...). */
 function toColor(c: string | undefined): THREE.Color {
-  let s = c || "#3b82f6";
+  let s = (c || "#3b82f6").trim();
   if (s.startsWith("#") && s.length === 9) s = s.slice(0, 7);
   else if (s.startsWith("#") && s.length === 5) s = s.slice(0, 4);
+  else {
+    const m = s.match(/^rgba\(\s*([\d.]+)\s*,\s*([\d.]+)\s*,\s*([\d.]+)\s*,/i);
+    if (m) s = `rgb(${Math.round(Number(m[1]))},${Math.round(Number(m[2]))},${Math.round(Number(m[3]))})`;
+  }
   const color = new THREE.Color();
   try {
     color.set(s);
@@ -433,6 +543,13 @@ function toColor(c: string | undefined): THREE.Color {
     color.set("#3b82f6");
   }
   return color;
+}
+
+/** Resolves effective fill opacity from fillOpacity, fallback alpha embedded in fillColor, or defaultAlpha. */
+function resolveFillAlpha(f: MathFunction, defaultAlpha: number): number {
+  if (typeof f.fillOpacity === "number" && Number.isFinite(f.fillOpacity)) return clamp(f.fillOpacity, 0, 1);
+  const embedded = parseCssAlpha(f.fillColor);
+  return embedded !== null ? clamp(embedded, 0, 1) : defaultAlpha;
 }
 
 const symbolCache = new Map<string, Set<string>>();
@@ -530,9 +647,148 @@ function disposeGroup(group: THREE.Object3D) {
   group.traverse((o: any) => {
     o.geometry?.dispose?.();
     const m = o.material;
-    if (Array.isArray(m)) m.forEach((x) => x.dispose?.());
-    else m?.dispose?.();
+    const disposeMat = (mat: any) => {
+      if (!mat) return;
+      if (mat.map?.userData?.owned) mat.map.dispose();
+      mat.dispose?.();
+    };
+    if (Array.isArray(m)) m.forEach(disposeMat);
+    else disposeMat(m);
   });
+}
+
+/**
+ * Generates a white-on-transparent tiled CanvasTexture matching 2D's 8 Region Style patterns,
+ * so materials can tint by fill color and scale alpha cleanly via `opacity`.
+ */
+function makeRegionPatternTexture(
+  pattern: FillPatternType,
+  thickness = 2,
+  angleDeg = 0,
+): THREE.CanvasTexture {
+  const size = 64;
+  const c = document.createElement("canvas");
+  c.width = c.height = size;
+  const g = c.getContext("2d")!;
+  g.clearRect(0, 0, size, size);
+  g.strokeStyle = "#ffffff";
+  g.fillStyle = "#ffffff";
+  g.lineCap = "round";
+  const lw = clamp((Math.max(1, thickness) / 15) * size, 2, 18);
+  g.lineWidth = pattern === "math-region" ? Math.max(1.5, lw * 0.55) : lw;
+
+  const diag = (dir: 1 | -1) => {
+    const offsets = [-size, 0, size];
+    g.beginPath();
+    for (const o of offsets) {
+      if (dir === 1) {
+        g.moveTo(o, size);
+        g.lineTo(o + size, 0);
+      } else {
+        g.moveTo(o, 0);
+        g.lineTo(o + size, size);
+      }
+    }
+    g.stroke();
+  };
+
+  switch (pattern) {
+    case "hatch-diagonal":
+    case "math-region":
+      diag(1);
+      break;
+    case "hatch-reverse":
+      diag(-1);
+      break;
+    case "hatch-cross":
+      diag(1);
+      diag(-1);
+      break;
+    case "dotted": {
+      const r = clamp(lw * 0.85, 2.5, 14);
+      g.beginPath();
+      g.arc(size / 2, size / 2, r, 0, TWO_PI);
+      g.fill();
+      break;
+    }
+    case "grid":
+      g.beginPath();
+      g.moveTo(0, 0.5);
+      g.lineTo(size, 0.5);
+      g.moveTo(0.5, 0);
+      g.lineTo(0.5, size);
+      g.moveTo(0, size - 0.5);
+      g.lineTo(size, size - 0.5);
+      g.moveTo(size - 0.5, 0);
+      g.lineTo(size - 0.5, size);
+      g.stroke();
+      break;
+    case "dashed":
+      g.setLineDash([size * 0.45, size * 0.35]);
+      g.beginPath();
+      g.moveTo(0, size * 0.5);
+      g.lineTo(size, size * 0.5);
+      g.stroke();
+      break;
+  }
+
+  const tex = new THREE.CanvasTexture(c);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  tex.anisotropy = 4;
+  tex.colorSpace = THREE.SRGBColorSpace;
+  if (angleDeg) {
+    tex.center.set(0.5, 0.5);
+    tex.rotation = -(angleDeg * Math.PI) / 180;
+  }
+  tex.userData.owned = true;
+  return tex;
+}
+
+/** Assigns cumulative arc-length distances along connected polyline runs so dashed/dotted LineMaterial styles don't reset per tiny segment. */
+function applyConnectedLineDistances(geometry: LineSegmentsGeometry, segments: number[]) {
+  const count = Math.floor(segments.length / 6);
+  if (count === 0) return;
+  const lineDistances = new Float32Array(count * 2);
+  let dist = 0;
+  for (let i = 0; i < count; i++) {
+    const k = i * 6;
+    const ax = segments[k], ay = segments[k + 1], az = segments[k + 2];
+    const bx = segments[k + 3], by = segments[k + 4], bz = segments[k + 5];
+    const connected =
+      i > 0 &&
+      Math.abs(ax - segments[k - 3]) < 1e-9 &&
+      Math.abs(ay - segments[k - 2]) < 1e-9 &&
+      Math.abs(az - segments[k - 1]) < 1e-9;
+    if (!connected) dist = 0;
+    lineDistances[i * 2] = dist;
+    dist += Math.hypot(bx - ax, by - ay, bz - az);
+    lineDistances[i * 2 + 1] = dist;
+  }
+  const buf = new THREE.InstancedInterleavedBuffer(lineDistances, 2, 1);
+  geometry.setAttribute("instanceDistanceStart", new THREE.InterleavedBufferAttribute(buf, 1, 0));
+  geometry.setAttribute("instanceDistanceEnd", new THREE.InterleavedBufferAttribute(buf, 1, 1));
+}
+
+/** World-space UVs for planar and 3D meshes so Region Style hatching tiles evenly across shapes. */
+function computeRegionUVs(positions: ArrayLike<number>, tileWorld: number, planar = false): Float32Array {
+  const count = Math.floor(positions.length / 3);
+  const uvs = new Float32Array(count * 2);
+  const inv = 1 / Math.max(1e-6, tileWorld);
+  for (let i = 0; i < count; i++) {
+    const x = positions[i * 3];
+    const y = positions[i * 3 + 1];
+    const z = positions[i * 3 + 2];
+    if (planar) {
+      uvs[i * 2] = x * inv;
+      uvs[i * 2 + 1] = y * inv;
+    } else {
+      // Oblique projection with non-degenerate Jacobian on xy, xz, and yz planes.
+      uvs[i * 2] = (x + 0.55 * z) * inv;
+      uvs[i * 2 + 1] = (y - 0.35 * z) * inv;
+    }
+  }
+  return uvs;
 }
 
 function makeDiscTexture(): THREE.Texture {
@@ -640,6 +896,17 @@ class Engine {
   private tangentPlane: THREE.Mesh;
   private tangentArrow: THREE.ArrowHelper;
   private drag: DragState | null = null;
+  // Transform gizmos
+  private gizmoGroup = new THREE.Group();
+  private gizmoEls = new Map<string, HTMLDivElement>();
+  private gizmoTip = document.createElement("div");
+  private gz: {
+    id: string;
+    kind: GizmoKind;
+    start: GizmoFrame;
+    hit0: THREE.Vector3 | null;
+    along0: number | null;
+  } | null = null;
   private handles = new Map<string, Handle>();
   /** The point a handle is pointed at or focused on: its guide lines are drawn. */
   private activeId: string | null = null;
@@ -712,7 +979,7 @@ class Engine {
     light.position.set(0.6, 0.8, 1);
     this.camera.add(light);
     this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 2), this.content);
-    this.content.add(this.decor, this.rowsGroup, this.sliceGroup, this.guideGroup);
+    this.content.add(this.decor, this.rowsGroup, this.sliceGroup, this.guideGroup, this.gizmoGroup);
 
     // Tangent plane and normal, placed where the pointer touches a surface.
     const planeGeometry = new THREE.PlaneGeometry(0.5, 0.5);
@@ -737,6 +1004,9 @@ class Engine {
     // Notes pinned to the corner: under the graph's toolbar, clear of the height legend.
     this.pinnedEl.style.cssText =
       "position:absolute;top:58px;right:34px;max-width:min(62%,26rem);display:none;flex-direction:column;align-items:flex-end;gap:7px;text-align:right;line-height:1.25";
+    this.gizmoTip.className = "g3d-gz-tip";
+    this.gizmoTip.dataset.captureExclude = "";
+    this.handleHost.appendChild(this.gizmoTip);
     // The pointer's readout isn't part of the graph: left out of screenshots.
     this.hoverDot.dataset.captureExclude = "";
     this.hoverTip.dataset.captureExclude = "";
@@ -912,9 +1182,12 @@ class Engine {
     try {
       this.renderer.setPixelRatio(s);
       this.renderer.setSize(w, h, false);
+      // The gizmo is a tool, not part of the graph.
+      this.gizmoGroup.visible = false;
       this.renderer.render(this.scene, this.camera);
       ctx.drawImage(this.renderer.domElement, 0, 0, out.width, out.height);
     } finally {
+      this.gizmoGroup.visible = true;
       this.renderer.setPixelRatio(ratio);
       this.renderer.setSize(w, h, false);
       this.requestRender();
@@ -1462,7 +1735,7 @@ class Engine {
         }
         placed.push(spec.besideRow ? px + w / 2 : px, py, w);
       }
-      el.style.transform = `translate(${spec.besideRow ? "0" : "-50%"},-50%) translate(${px.toFixed(1)}px,${py.toFixed(1)}px)`;
+      el.style.transform = `translate(${px.toFixed(1)}px,${py.toFixed(1)}px) translate(${spec.besideRow ? "0" : "-50%"},-50%)${spec.rotation ? ` rotate(${spec.rotation}deg)` : ""}${spec.flipX || spec.flipY ? ` scale(${spec.flipX ? -1 : 1},${spec.flipY ? -1 : 1})` : ""}`;
     }
 
     if (this.hover && this.toScreen(this.hover.local[0], this.hover.local[1], this.hover.local[2], at)) {
@@ -1630,26 +1903,43 @@ class Engine {
         f.color,
         f.fillColor,
         f.fillOpacity,
+        f.fillPattern,
+        f.patternSpacing,
+        f.patternThickness,
+        f.patternAngle,
         f.lineStyle,
         f.outlineWidth,
         f.showLabel,
         // Live values in a label ("θ = {{phi}}") change without the row's own shape changing.
         f.showLabel && f.label ? (hasLiveValues(f.label) ? renderLiveLabel(f.label, scope) : f.label) : "",
         f.labelLatex,
+        f.labelPlain,
         f.labelScale,
         f.labelPinned,
+        f.labelPosition?.join(","),
+        f.labelAlignment,
+        f.labelRotation,
+        f.labelFlipX,
+        f.labelFlipY,
+        f.showLabelPoint,
         f.showPoint,
         f.isDraggable,
         f.operator,
         f.tRange?.join(","),
         f.odeAxes?.join(","),
         f.odeSteps,
+        f.odeAnimate,
         kind === "ode" && f.odeAnimate !== false ? fTime : "",
         f.transformTranslate?.join(","),
         f.transformRotate,
         f.transformScale?.join(","),
         f.isTransformable,
+        f.isRotatable,
+        f.isResizable,
+        f.isPivotEnabled,
         f.isPivotEnabled && f.transformPivot?.join(","),
+        f.transformTranslateZ,
+        f.handlesOnSelect,
         inDegrees,
         p.quality,
         heavy ? `${this.opts.colorMode},${this.opts.contours}` : "",
@@ -1683,6 +1973,8 @@ class Engine {
         // A row that fails to evaluate draws nothing, as in 2D.
       }
       this.building = null;
+      this.applyRowHeight(entry, f);
+      this.makeGizmoFrame(entry, f);
       entry.group.traverse((o) => {
         o.frustumCulled = false;
       });
@@ -1706,8 +1998,51 @@ class Engine {
       } else if (row?.drag) this.placeDrag(row, this.drag.pos);
     }
     this.syncHandles();
+    this.syncGizmos();
     this.buildGuides();
     if (this.hover && !this.rows.has(this.hover.rowId)) this.clearHover();
+  }
+
+  /** The 3D-only height shift: the whole row lifted up the z-axis, labels and handles too. */
+  private applyRowHeight(entry: RowEntry, f: MathFunction) {
+    const tz = f.transformTranslateZ || 0;
+    if (!tz || !Number.isFinite(tz)) return;
+    entry.group.position.z = tz;
+    for (const l of entry.labels) l.pos = [l.pos[0], l.pos[1], l.pos[2] + tz];
+    if (entry.anchor) entry.anchor = [entry.anchor[0], entry.anchor[1], entry.anchor[2] + tz];
+    if (entry.drag) entry.drag.pos = [entry.drag.pos[0], entry.drag.pos[1], entry.drag.pos[2] + tz];
+  }
+
+  /** A transformable row's gizmo: where it stands and the transform it shows. */
+  private makeGizmoFrame(entry: RowEntry, f: MathFunction) {
+    if (!f.isTransformable || f.handlesOnSelect) return;
+    const { cx, cy, cz, half } = this.domain;
+    const fr = entry.frame ?? { px: 0, py: 0, base: 0, spread: 0 };
+    const tz = f.transformTranslateZ || 0;
+    // At the height of what's drawn: its anchor, or the middle of its bounding box.
+    let z = entry.anchor?.[2];
+    if (z === undefined || !Number.isFinite(z)) {
+      const box = new THREE.Box3().setFromObject(entry.group);
+      z = box.isEmpty() ? tz : (box.min.z + box.max.z) / 2;
+    }
+    void cx;
+    void cy;
+    entry.gizmo = {
+      px: fr.px,
+      py: fr.py,
+      base: fr.base,
+      radius: clamp(fr.spread + 0.08 * half, 0.28 * half, 0.75 * half),
+      tx: f.transformTranslate?.[0] || 0,
+      ty: f.transformTranslate?.[1] || 0,
+      tz,
+      rot: f.transformRotate || 0,
+      sx: f.transformScale?.[0] || 1,
+      sy: f.transformScale?.[1] || 1,
+      cz: clamp(z, cz - half, cz + half),
+      pivot: !!f.isPivotEnabled,
+      rotatable: !!f.isRotatable,
+      resizable: !!f.isResizable,
+    };
   }
 
   private scheduleFine() {
@@ -1783,8 +2118,8 @@ class Engine {
     return result;
   }
 
-  /** The row's translate / rotate / scale (in the plane), or null when it has none. */
-  private transformOf(f: MathFunction, pivotPoints: () => [number, number][]): Transform2 {
+  /** Forward & inverse 2D affine transform for Origin shift, Rotate, Scale, and Pivot. */
+  private affineTransformOf(f: MathFunction, pivotPoints: () => [number, number][]): AffineTransform2 {
     const tx = f.transformTranslate?.[0] || 0;
     const ty = f.transformTranslate?.[1] || 0;
     const rot = f.transformRotate || 0;
@@ -1794,21 +2129,179 @@ class Engine {
     let py = 0;
     let base = 0;
     if (f.isTransformable) {
-      const pca = computePCA(pivotPoints());
+      const pts = pivotPoints();
+      const pca = computePCA(pts);
       base = Math.atan2(pca.u[1], pca.u[0]);
       [px, py] = f.isPivotEnabled && f.transformPivot ? f.transformPivot : pca.center;
+      // The gizmo stands on this frame, transformed or not.
+      if (this.building) {
+        let spread = 0;
+        for (const [x, y] of pts) {
+          if (Number.isFinite(x + y)) spread = Math.max(spread, Math.hypot(x - px, y - py));
+        }
+        this.building.frame = { px, py, base, spread };
+      }
     }
     if (tx === 0 && ty === 0 && rot === 0 && sx === 1 && sy === 1) return null;
     const cosA = Math.cos(-base);
     const sinA = Math.sin(-base);
     const cosR = Math.cos(rot + base);
     const sinR = Math.sin(rot + base);
-    return (x, y) => {
-      const lx = x - px;
-      const ly = y - py;
-      const x1 = (lx * cosA - ly * sinA) * sx;
-      const y1 = (lx * sinA + ly * cosA) * sy;
-      return [x1 * cosR - y1 * sinR + px + tx, x1 * sinR + y1 * cosR + py + ty];
+    const safeSx = Math.abs(sx) < 1e-6 ? (sx < 0 ? -1e-6 : 1e-6) : sx;
+    const safeSy = Math.abs(sy) < 1e-6 ? (sy < 0 ? -1e-6 : 1e-6) : sy;
+    return {
+      forward: (x, y) => {
+        const lx = x - px;
+        const ly = y - py;
+        const x1 = (lx * cosA - ly * sinA) * sx;
+        const y1 = (lx * sinA + ly * cosA) * sy;
+        return [x1 * cosR - y1 * sinR + px + tx, x1 * sinR + y1 * cosR + py + ty];
+      },
+      inverse: (gx, gy) => {
+        const ux = gx - px - tx;
+        const uy = gy - py - ty;
+        const x1 = (ux * cosR + uy * sinR) / safeSx;
+        const y1 = (-ux * sinR + uy * cosR) / safeSy;
+        return [x1 * cosA + y1 * sinA + px, -x1 * sinA + y1 * cosA + py];
+      },
+    };
+  }
+
+  /** Forward-only shorthand used by curves and point sets. */
+  private transformOf(f: MathFunction, pivotPoints: () => [number, number][]): Transform2 {
+    return this.affineTransformOf(f, pivotPoints)?.forward ?? null;
+  }
+
+  /** Creates a fill material supporting Fill Color, Fill Alpha, and all 8 Region Styles. */
+  private createFillMaterial(
+    f: MathFunction,
+    defaultAlpha: number,
+    defaultPattern: FillPatternType,
+    opts: { phong?: boolean; vertexColors?: boolean; forceSolid?: boolean } = {},
+  ): THREE.MeshBasicMaterial | THREE.MeshPhongMaterial {
+    const pattern: FillPatternType = opts.forceSolid ? "solid" : f.fillPattern || defaultPattern;
+    let opacity = resolveFillAlpha(f, defaultAlpha);
+    if (pattern === "math-region") opacity = clamp(opacity * 1.5, 0, 1);
+    const map =
+      pattern === "solid"
+        ? null
+        : makeRegionPatternTexture(pattern, f.patternThickness || 2, f.patternAngle || 0);
+    const transparent = opacity < 0.99 || pattern !== "solid";
+    const depthWrite = !transparent;
+    const common: THREE.MeshBasicMaterialParameters & THREE.MeshPhongMaterialParameters = {
+      color: opts.vertexColors ? 0xffffff : toColor(f.fillColor || f.color),
+      vertexColors: !!opts.vertexColors,
+      map,
+      transparent,
+      opacity,
+      alphaTest: map ? 0.01 : 0,
+      side: THREE.DoubleSide,
+      depthWrite,
+      clippingPlanes: this.planes,
+    };
+    if (opts.phong) {
+      return new THREE.MeshPhongMaterial({
+        ...common,
+        shininess: 24,
+        polygonOffset: true,
+        polygonOffsetFactor: 1,
+        polygonOffsetUnits: 1,
+      });
+    }
+    return new THREE.MeshBasicMaterial(common);
+  }
+
+  /** Builds a planar/3D filled region mesh with world-scaled UVs for pattern tiling. */
+  private buildRegionMesh(
+    positions: Float32Array,
+    index: number[],
+    f: MathFunction,
+    defaultAlpha: number,
+    defaultPattern: FillPatternType,
+    planar: boolean,
+  ): THREE.Mesh {
+    const tileWorld = (clamp(f.patternSpacing || 15, 4, 40) / 15) * Math.max(0.25, this.domain.half / 4.5);
+    const geometry = new THREE.BufferGeometry();
+    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    geometry.setAttribute("uv", new THREE.BufferAttribute(computeRegionUVs(positions, tileWorld, planar), 2));
+    geometry.setIndex(index);
+    return new THREE.Mesh(geometry, this.createFillMaterial(f, defaultAlpha, defaultPattern));
+  }
+
+  /** Registers a row label with Alignment, Position offset, Anchor dot, Rotation, Flip, Scale, Plain/LaTeX, and Pinning. */
+  private pushRowLabel(
+    entry: RowEntry,
+    f: MathFunction,
+    scope: any,
+    anchor: Vec3,
+    opts: {
+      defaultText?: string;
+      locals?: Record<string, unknown>;
+      lift?: number;
+      nudge?: boolean;
+      besideRow?: string;
+      isPoint?: boolean;
+    } = {},
+  ) {
+    if (!f.showLabel) return;
+    if (!Number.isFinite(anchor[0] + anchor[1] + anchor[2])) return;
+    const { half } = this.domain;
+    const alignOffset = 0.09 * half;
+    let dx = f.labelPosition?.[0] ?? (opts.isPoint ? 0 : 0.04 * half);
+    let dy = f.labelPosition?.[1] ?? (opts.isPoint ? 0 : 0.04 * half);
+    if (f.labelAlignment && f.labelAlignment !== "custom") {
+      if (f.labelAlignment === "center") { dx = 0; dy = 0; }
+      else if (f.labelAlignment === "above") { dx = 0; dy = alignOffset; }
+      else if (f.labelAlignment === "below") { dx = 0; dy = -alignOffset; }
+      else if (f.labelAlignment === "left") { dx = -alignOffset; dy = 0; }
+      else if (f.labelAlignment === "right") { dx = alignOffset; dy = 0; }
+    }
+    const pos: Vec3 = [anchor[0] + dx, anchor[1] + dy, anchor[2] + (opts.lift ?? 0)];
+    if (f.showLabelPoint) {
+      const dot = this.points([pos], f.color);
+      if (dot) entry.group.add(dot);
+    }
+
+    const auto = !f.label;
+    const raw = f.label || "";
+    const odeTex = !auto && f.type === "differential" && !f.labelPlain ? odeSystemToLatex(raw) : null;
+    const text = auto
+      ? (opts.defaultText ?? f.expr)
+      : hasLiveValues(raw)
+        ? renderLiveLabel(raw, scope, opts.locals)
+        : raw;
+    const isMathExpr = !auto && !f.labelPlain && !hasLiveValues(raw) && /[=^_\\()]/.test(text);
+    const html = odeTex ? texToHtml(odeTex) : !auto && !f.labelPlain && (f.labelLatex || isMathExpr) ? texToHtml(text) : undefined;
+    const spec: LabelSpec = {
+      pos,
+      text,
+      html,
+      scale: f.labelScale,
+      rotation: f.labelRotation,
+      flipX: f.labelFlipX,
+      flipY: f.labelFlipY,
+      auto,
+      color: f.color,
+      nudge: opts.nudge ?? true,
+      besideRow: opts.besideRow,
+    };
+    const pinned = !auto && !!f.labelPinned;
+    (pinned ? (entry.pinned ??= []) : entry.labels).push(spec);
+  }
+
+  /** Attaches a flat XY translation drag handle for non-point rows when `f.isDraggable` is active. */
+  private attachShapeDrag(entry: RowEntry, f: MathFunction, anchor: Vec3) {
+    if (Number.isFinite(anchor[0] + anchor[1] + anchor[2])) entry.anchor = [anchor[0], anchor[1], anchor[2]];
+    if (entry.isPoint || entry.drag || !f.isDraggable || f.isTransformable) return;
+    if (!Number.isFinite(anchor[0] + anchor[1] + anchor[2])) return;
+    entry.drag = {
+      prefix: "",
+      name: f.name || "",
+      three: false,
+      pos: [anchor[0], anchor[1], anchor[2]],
+      translate: true,
+      baseTranslate: [f.transformTranslate?.[0] || 0, f.transformTranslate?.[1] || 0],
+      anchorStart: [anchor[0], anchor[1]],
     };
   }
 
@@ -1865,9 +2358,12 @@ class Engine {
         const x0 = cx - half * reach - (xf ? Math.abs(f.transformTranslate?.[0] || 0) : 0);
         const x1 = cx + half * reach + (xf ? Math.abs(f.transformTranslate?.[0] || 0) : 0);
         const n = curveSamples * (xf ? 2 : 1);
+        let anchor: Vec3 | null = null;
         for (const member of members) {
           member.bind();
           const pts = new Array<number>((n + 1) * 3);
+          const rawX = new Float64Array(n + 1);
+          const rawY = new Float64Array(n + 1);
           for (let i = 0; i <= n; i++) {
             const x = x0 + ((x1 - x0) * i) / n;
             let y = NaN;
@@ -1875,13 +2371,50 @@ class Engine {
               s.x = x;
               y = toReal(f.compiled.evaluate(s));
             } catch {}
+            rawX[i] = x;
+            rawY[i] = y;
             const [gx, gy] = xf ? xf(x, y) : [x, y];
             pts[i * 3] = gx;
             pts[i * 3 + 1] = gy;
             pts[i * 3 + 2] = 0;
+            if (!anchor && Number.isFinite(gx + gy) && Math.abs(gx - cx) <= half && Math.abs(gy - cy) <= half) {
+              anchor = [gx, gy, 0];
+            }
+          }
+          if (f.fillColor !== undefined) {
+            const fillPos: number[] = [];
+            const fillIdx: number[] = [];
+            const maxJump = xf ? Infinity : 4 * half;
+            for (let i = 0; i < n; i++) {
+              const y0 = rawY[i], y1 = rawY[i + 1];
+              const g0x = pts[i * 3], g0y = pts[i * 3 + 1];
+              const g1x = pts[(i + 1) * 3], g1y = pts[(i + 1) * 3 + 1];
+              if (!Number.isFinite(y0 + y1 + g0x + g0y + g1x + g1y)) continue;
+              if (Math.abs(g1y - g0y) > maxJump) continue;
+              const [b0x, b0y] = xf ? xf(rawX[i], 0) : [rawX[i], 0];
+              const [b1x, b1y] = xf ? xf(rawX[i + 1], 0) : [rawX[i + 1], 0];
+              const baseIdx = fillPos.length / 3;
+              fillPos.push(b0x, b0y, 0, b1x, b1y, 0, g1x, g1y, 0, g0x, g0y, 0);
+              fillIdx.push(baseIdx, baseIdx + 1, baseIdx + 2, baseIdx, baseIdx + 2, baseIdx + 3);
+            }
+            if (fillIdx.length > 0) {
+              add(this.buildRegionMesh(new Float32Array(fillPos), fillIdx, f, 0.3, "hatch-diagonal", true));
+            }
           }
           // A jump taller than the box between two samples is an asymptote, not a line.
           add(this.line(pts, member.color, f, { maxJump: xf ? undefined : 4 * half }));
+        }
+        try {
+          s.x = cx;
+          const midY = toReal(f.compiled.evaluate(s));
+          if (Number.isFinite(midY)) {
+            const [gx, gy] = xf ? xf(cx, midY) : [cx, midY];
+            anchor = [gx, gy, 0];
+          }
+        } catch {}
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
         }
         break;
       }
@@ -1904,9 +2437,32 @@ class Engine {
           for (const t of [0, Math.PI / 4, Math.PI / 2, Math.PI]) if (at(t)) return [[out[0], out[1]]];
           return [[0, 0]];
         });
+        let anchor: Vec3 | null = null;
         for (const member of members) {
           member.bind();
-          add(this.line(this.sweep(at, out, t0, t1, curveSamples, xf), member.color, f));
+          const swept = this.sweep(at, out, t0, t1, curveSamples, xf);
+          if (f.fillColor !== undefined) {
+            const ring: Vec3[] = [];
+            for (let i = 0; i < swept.length; i += 3) {
+              if (Number.isFinite(swept[i] + swept[i + 1] + swept[i + 2])) {
+                ring.push([swept[i], swept[i + 1], swept[i + 2]]);
+              }
+            }
+            if (ring.length > 2) add(this.polygonFill(ring, f, 0.3));
+          }
+          add(this.line(swept, member.color, f));
+          if (!anchor) {
+            for (let i = Math.floor(swept.length / 6) * 3; i < swept.length; i += 3) {
+              if (Number.isFinite(swept[i] + swept[i + 1] + swept[i + 2])) {
+                anchor = [swept[i], swept[i + 1], swept[i + 2]];
+                break;
+              }
+            }
+          }
+        }
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
         }
         break;
       }
@@ -1942,15 +2498,46 @@ class Engine {
           }
           return [[0, 0]];
         });
+        const pole = xf ? xf(0, 0) : ([0, 0] as [number, number]);
+        let anchor: Vec3 | null = null;
         for (const member of members) {
           member.bind();
-          add(this.line(this.sweep(at, out, t0, t1, Math.max(curveSamples, 1200), xf), member.color, f));
+          const swept = this.sweep(at, out, t0, t1, Math.max(curveSamples, 1200), xf);
+          if (f.fillColor !== undefined) {
+            const fillPos: number[] = [pole[0], pole[1], 0];
+            const fillIdx: number[] = [];
+            for (let i = 0; i < swept.length - 3; i += 3) {
+              const x0 = swept[i], y0 = swept[i + 1], z0 = swept[i + 2];
+              const x1 = swept[i + 3], y1 = swept[i + 4], z1 = swept[i + 5];
+              if (!Number.isFinite(x0 + y0 + z0 + x1 + y1 + z1)) continue;
+              const vIdx = fillPos.length / 3;
+              fillPos.push(x0, y0, z0, x1, y1, z1);
+              fillIdx.push(0, vIdx, vIdx + 1);
+            }
+            if (fillIdx.length > 0) {
+              add(this.buildRegionMesh(new Float32Array(fillPos), fillIdx, f, 0.3, "hatch-diagonal", true));
+            }
+          }
+          add(this.line(swept, member.color, f));
+          if (!anchor) anchor = [pole[0], pole[1], 0];
+        }
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
         }
         break;
       }
 
       case "point3": {
-        const pts = extractPoints(f.compiled.evaluate(s));
+        let pts = extractPoints(f.compiled.evaluate(s)).filter((pt) => Number.isFinite(pt[0] + pt[1] + pt[2]));
+        if (pts.length === 0) break;
+        const xf = this.transformOf(f, () => pts.map((pt) => [pt[0], pt[1]] as [number, number]));
+        if (xf) {
+          pts = pts.map((pt) => {
+            const [x, y] = xf(pt[0], pt[1]);
+            return [x, y, pt[2]];
+          });
+        }
         this.addPoints(entry, f, pts, scope);
         break;
       }
@@ -1981,11 +2568,30 @@ class Engine {
           if (f.dragVars?.length && arrows.length > 0) {
             entry.drag = { prefix: "", name: "", three: true, pos: [...arrows[arrows.length - 1][1]], solver: true };
           }
+          if (arrows.length > 0) {
+            const [tail, tip] = arrows[0];
+            const mid: Vec3 = [(tail[0] + tip[0]) / 2, (tail[1] + tip[1]) / 2, (tail[2] + tip[2]) / 2];
+            this.pushRowLabel(entry, f, scope, mid);
+            this.attachShapeDrag(entry, f, mid);
+          }
         } else if (f.type === "line") {
-          if (pts.length >= 2) add(this.line([...pts[0], ...pts[1]], f.color, f));
+          if (pts.length >= 2) {
+            add(this.line([...pts[0], ...pts[1]], f.color, f));
+            const mid: Vec3 = [(pts[0][0] + pts[1][0]) / 2, (pts[0][1] + pts[1][1]) / 2, (pts[0][2] + pts[1][2]) / 2];
+            this.pushRowLabel(entry, f, scope, mid);
+            this.attachShapeDrag(entry, f, mid);
+          }
         } else if (pts.length > 2) {
           add(this.line(pts.flat(), f.color, f, { closed: true }));
           add(this.polygonFill(pts, f));
+          const c: Vec3 = [0, 0, 0];
+          for (const pt of pts) {
+            c[0] += pt[0] / pts.length;
+            c[1] += pt[1] / pts.length;
+            c[2] += pt[2] / pts.length;
+          }
+          this.pushRowLabel(entry, f, scope, c);
+          this.attachShapeDrag(entry, f, c);
         }
         break;
       }
@@ -2029,13 +2635,16 @@ class Engine {
         });
         const { data, cols, rows } = solution;
         const pts = new Array<number>(rows * 3);
+        let anchor: Vec3 | null = null;
         for (let i = 0; i < rows; i++) {
           const x = data[i * cols + colX.value];
           const y = data[i * cols + colY.value];
           const [gx, gy] = xf ? xf(x, y) : [x, y];
+          const gz = colZ >= 0 ? data[i * cols + colZ] : 0;
           pts[i * 3] = gx;
           pts[i * 3 + 1] = gy;
-          pts[i * 3 + 2] = colZ >= 0 ? data[i * cols + colZ] : 0;
+          pts[i * 3 + 2] = gz;
+          if (!anchor && i >= Math.floor(rows / 2) && Number.isFinite(gx + gy + gz)) anchor = [gx, gy, gz];
         }
         add(this.line(pts, f.color, f));
 
@@ -2055,6 +2664,10 @@ class Engine {
             if (Number.isFinite(gx + gy + mz)) add(this.points([[gx, gy, mz]], f.color));
           }
         }
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
+        }
         break;
       }
 
@@ -2062,17 +2675,19 @@ class Engine {
       case "surface-rhs": {
         const compiled = kind === "surface" ? f.compiled : f.compiled2;
         const limit = 1e3 * half;
-        this.addSurface(
+        const axf = this.affineTransformOf(f, () => [[0, 0]]);
+        const anchor = this.addSurface(
           group,
-          (x, y, out) => {
-            s.x = x;
-            s.y = y;
+          (gx, gy, out) => {
+            const [lx, ly] = axf ? axf.inverse(gx, gy) : [gx, gy];
+            s.x = lx;
+            s.y = ly;
             let z = NaN;
             try {
               z = toReal(compiled.evaluate(s));
             } catch {}
-            out[0] = x;
-            out[1] = y;
+            out[0] = gx;
+            out[1] = gy;
             // Far outside the box is as good as at its edge; the clip planes cut it.
             out[2] = clamp(z, cz - limit, cz + limit);
             return Number.isFinite(z);
@@ -2083,23 +2698,39 @@ class Engine {
           f,
           4 * half,
         );
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
+        }
         break;
       }
 
       case "surface-uv": {
         const out3: Vec3 = [0, 0, 0];
-        this.addSurface(
+        const evalUV = (u: number, v: number) => {
+          s.u = u;
+          s.v = v;
+          return readPosition(f.compiled.evaluate(s), out3) && Number.isFinite(out3[0] + out3[1] + out3[2]);
+        };
+        const xf = this.transformOf(f, () => {
+          for (const [u, v] of [[0, 0], [Math.PI / 2, Math.PI / 2], [Math.PI, Math.PI]]) {
+            try {
+              if (evalUV(u, v)) return [[out3[0], out3[1]]];
+            } catch {}
+          }
+          return [[0, 0]];
+        });
+        const anchor = this.addSurface(
           group,
           (u, v, out) => {
-            s.u = u;
-            s.v = v;
             try {
-              if (!readPosition(f.compiled.evaluate(s), out3)) return false;
+              if (!evalUV(u, v)) return false;
             } catch {
               return false;
             }
-            out[0] = out3[0];
-            out[1] = out3[1];
+            const [gx, gy] = xf ? xf(out3[0], out3[1]) : [out3[0], out3[1]];
+            out[0] = gx;
+            out[1] = gy;
             out[2] = out3[2];
             return Number.isFinite(out[0] + out[1] + out[2]);
           },
@@ -2108,17 +2739,29 @@ class Engine {
           surfaceCells,
           f,
         );
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
+        }
         break;
       }
 
       case "iso": {
-        this.addIsoSurface(group, f, s, isoCells);
+        const anchor = this.addIsoSurface(group, f, s, isoCells);
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
+        }
         break;
       }
 
       case "curve2d":
       case "region2d": {
-        this.addPlaneRelation(group, f, s, planeCells, kind === "region2d");
+        const anchor = this.addPlaneRelation(group, f, s, planeCells, kind === "region2d");
+        if (anchor) {
+          this.pushRowLabel(entry, f, scope, anchor);
+          this.attachShapeDrag(entry, f, anchor);
+        }
         break;
       }
     }
@@ -2180,11 +2823,11 @@ class Engine {
       linewidth: f.outlineWidth !== undefined ? f.outlineWidth : 3,
       clippingPlanes: this.planes,
       dashed,
-      dashSize: (f.lineStyle === "dotted" ? 0.012 : 0.06) * half,
-      gapSize: (f.lineStyle === "dotted" ? 0.03 : 0.045) * half,
+      dashSize: (f.lineStyle === "dotted" ? 0.012 : f.lineStyle === "dashdot" ? 0.085 : 0.06) * half,
+      gapSize: (f.lineStyle === "dotted" ? 0.03 : f.lineStyle === "dashdot" ? 0.025 : 0.045) * half,
     });
     const line = new LineSegments2(geometry, material);
-    if (dashed) line.computeLineDistances();
+    if (dashed) applyConnectedLineDistances(geometry, segments);
     return line;
   }
 
@@ -2211,7 +2854,12 @@ class Engine {
     const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1] ?? "";
     // A single point written as plain numbers, not moved by a transform, can be
     // dragged. Flat points follow the row's own "draggable" switch, as in 2D.
-    const moved = !!f.isTransformable || !!f.transformRotate || !!f.transformTranslate?.some(Boolean);
+    const moved =
+      !!f.isTransformable ||
+      !!f.transformRotate ||
+      !!f.transformTranslate?.some(Boolean) ||
+      !!f.transformTranslateZ ||
+      (!!f.transformScale && (f.transformScale[0] !== 1 || f.transformScale[1] !== 1));
     entry.isPoint = true;
     if (literal && !moved && f.showPoint !== false && pointDraggable(f)) {
       // Read straight from the expression: a dropped point is where it was dropped,
@@ -2238,25 +2886,16 @@ class Engine {
     for (const pt of pts) {
       // Text standing on its own (no dot) sits exactly where it was put.
       const lift = entry.drag || f.showPoint === false ? 0 : 0.07 * this.domain.half;
-      const auto = !f.label;
-      // The row's own label, with its live values, as on the flat graph; or name and coordinates.
-      const text = auto
-        ? `${name ? `${name} ` : ""}(${pt.map(formatCoord).join(", ")})`
-        : hasLiveValues(f.label)
-          ? // x, y and xy mean the point's own position in a point's label; text standing
-            // on its own (a readout) has no point, so there they keep the graph's meaning.
-            renderLiveLabel(f.label!, scope, f.showPoint === false ? undefined : pointLabelLocals(pt[0], pt[1]))
-          : f.label!;
-      const pinned = !auto && !!f.labelPinned && f.showPoint === false;
-      (pinned ? (entry.pinned ??= []) : entry.labels).push({
-        pos: [pt[0], pt[1], pt[2] + lift],
-        text,
-        html: !auto && f.labelLatex ? texToHtml(text) : undefined,
-        scale: f.labelScale,
-        auto,
-        color: f.color,
+      const defaultText = `${name ? `${name} ` : ""}(${pt.map(formatCoord).join(", ")})`;
+      this.pushRowLabel(entry, f, scope, pt, {
+        defaultText,
+        // x, y and xy mean the point's own position in a point's label; text standing
+        // on its own (a readout) has no point, so there they keep the graph's meaning.
+        locals: f.showPoint === false ? undefined : pointLabelLocals(pt[0], pt[1]),
+        lift,
         nudge: f.showPoint !== false,
         besideRow: entry.drag ? f.id : undefined,
+        isPoint: true,
       });
     }
   }
@@ -2282,7 +2921,7 @@ class Engine {
     group.add(cone);
   }
 
-  private polygonFill(pts: Vec3[], f: MathFunction): THREE.Mesh | null {
+  private polygonFill(pts: Vec3[], f: MathFunction, defaultAlpha = 0.2): THREE.Mesh | null {
     const flat = pts.every((pt) => Math.abs(pt[2] - pts[0][2]) < 1e-9);
     let index: number[] = [];
     if (flat) {
@@ -2290,20 +2929,7 @@ class Engine {
       index = THREE.ShapeUtils.triangulateShape(pts.map((pt) => new THREE.Vector2(pt[0], pt[1])), []).flat();
     }
     if (index.length === 0) for (let i = 1; i < pts.length - 1; i++) index.push(0, i, i + 1);
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.Float32BufferAttribute(pts.flat(), 3));
-    geometry.setIndex(index);
-    return new THREE.Mesh(
-      geometry,
-      new THREE.MeshBasicMaterial({
-        color: toColor(f.fillColor || f.color),
-        transparent: true,
-        opacity: f.fillOpacity !== undefined ? f.fillOpacity : 0.2,
-        side: THREE.DoubleSide,
-        depthWrite: false,
-        clippingPlanes: this.planes,
-      }),
-    );
+    return this.buildRegionMesh(new Float32Array(pts.flat()), index, f, defaultAlpha, "hatch-diagonal", flat);
   }
 
   /** A lit, see-through surface, lighter towards the top of the box. */
@@ -2313,6 +2939,8 @@ class Engine {
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
     geometry.setIndex(index);
     geometry.computeVertexNormals();
+    const tileWorld = (clamp(f.patternSpacing || 15, 4, 40) / 15) * Math.max(0.25, half / 4.5);
+    geometry.setAttribute("uv", new THREE.BufferAttribute(computeRegionUVs(positions, tileWorld, false), 2));
 
     const base = toColor(f.fillColor || f.color);
     const white = new THREE.Color(1, 1, 1);
@@ -2331,27 +2959,15 @@ class Engine {
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     this.building?.surfaces.push({ positions, index });
-    const opacity = f.fillOpacity !== undefined ? clamp(f.fillOpacity, 0.05, 1) : 0.86;
     const mesh = new THREE.Mesh(
       geometry,
-      new THREE.MeshPhongMaterial({
-        vertexColors: true,
-        side: THREE.DoubleSide,
-        transparent: opacity < 1,
-        opacity,
-        shininess: 24,
-        clippingPlanes: this.planes,
-        // Lets the mesh lines and curves lying on the surface show cleanly.
-        polygonOffset: true,
-        polygonOffsetFactor: 1,
-        polygonOffsetUnits: 1,
-      }),
+      this.createFillMaterial(f, 0.86, "solid", { phong: true, vertexColors: true }),
     );
     mesh.userData.surface = true;
     return mesh;
   }
 
-  /** A surface from a function of two parameters, with a light mesh drawn over it. */
+  /** A surface from a function of two parameters, with a mesh drawn in the row's outline style over it. */
   private addSurface(
     group: THREE.Group,
     fn: (a: number, b: number, out: Vec3) => boolean,
@@ -2361,11 +2977,15 @@ class Engine {
     f: MathFunction,
     /** Cells that climb more than this are a break in the surface, not part of it. */
     maxRise?: number,
-  ) {
+  ): Vec3 | null {
     const cols = n + 1;
     const positions = new Float32Array(cols * cols * 3);
     const ok = new Uint8Array(cols * cols);
     const out: Vec3 = [0, 0, 0];
+    let sumX = 0, sumY = 0, sumZ = 0, validCount = 0;
+    let centerAnchor: Vec3 | null = null;
+    const midI = Math.floor(n / 2);
+    const midJ = Math.floor(n / 2);
     for (let j = 0; j <= n; j++) {
       const b = b0 + ((b1 - b0) * j) / n;
       for (let i = 0; i <= n; i++) {
@@ -2375,6 +2995,11 @@ class Engine {
           positions[k * 3] = out[0];
           positions[k * 3 + 1] = out[1];
           positions[k * 3 + 2] = out[2];
+          sumX += out[0];
+          sumY += out[1];
+          sumZ += out[2];
+          validCount++;
+          if (i === midI && j === midJ) centerAnchor = [out[0], out[1], out[2]];
         }
       }
     }
@@ -2394,36 +3019,50 @@ class Engine {
         }
       }
     }
-    if (index.length === 0) return;
+    if (index.length === 0) return null;
     group.add(this.surfaceMesh(positions, index, f));
 
     // Mesh lines: every few samples, both ways. Contours take their place when they are on.
-    if (this.opts.contours) return;
-    const stride = Math.max(1, Math.round(n / 14));
-    const wire: number[] = [];
-    const seg = (k0: number, k1: number) => {
-      if (!joined(k0, k1)) return;
-      wire.push(
-        positions[k0 * 3], positions[k0 * 3 + 1], positions[k0 * 3 + 2],
-        positions[k1 * 3], positions[k1 * 3 + 1], positions[k1 * 3 + 2],
-      );
-    };
-    for (let j = 0; j <= n; j += stride) for (let i = 0; i < n; i++) seg(j * cols + i, j * cols + i + 1);
-    for (let i = 0; i <= n; i += stride) for (let j = 0; j < n; j++) seg(j * cols + i, (j + 1) * cols + i);
-    if (wire.length === 0) return;
-    const wireGeometry = new THREE.BufferGeometry();
-    wireGeometry.setAttribute("position", new THREE.Float32BufferAttribute(wire, 3));
-    group.add(
-      new THREE.LineSegments(
-        wireGeometry,
-        new THREE.LineBasicMaterial({
-          color: this.dark ? 0xffffff : 0x0f172a,
+    if (!this.opts.contours) {
+      const stride = Math.max(1, Math.round(n / 14));
+      const wire: number[] = [];
+      const seg = (k0: number, k1: number) => {
+        if (!joined(k0, k1)) return;
+        wire.push(
+          positions[k0 * 3], positions[k0 * 3 + 1], positions[k0 * 3 + 2],
+          positions[k1 * 3], positions[k1 * 3 + 1], positions[k1 * 3 + 2],
+        );
+      };
+      for (let j = 0; j <= n; j += stride) for (let i = 0; i < n; i++) seg(j * cols + i, j * cols + i + 1);
+      for (let i = 0; i <= n; i += stride) for (let j = 0; j < n; j++) seg(j * cols + i, (j + 1) * cols + i);
+      if (wire.length > 0) {
+        const half = this.domain.half;
+        const outlineColor = toColor(f.color);
+        const fillDiffers = f.fillColor !== undefined && toColor(f.fillColor).getHex() !== outlineColor.getHex();
+        // Tint close-to-same outline slightly for contrast unless the user picked a distinct outline colour.
+        const lineColor = fillDiffers
+          ? outlineColor
+          : outlineColor.clone().lerp(new THREE.Color(this.dark ? 0xffffff : 0x0f172a), 0.35);
+        const dashed = !!f.lineStyle && f.lineStyle !== "solid";
+        const wireGeo = new LineSegmentsGeometry();
+        wireGeo.setPositions(wire);
+        const wireMat = new LineMaterial({
+          color: lineColor,
+          linewidth: Math.max(0.8, (f.outlineWidth !== undefined ? f.outlineWidth : 2) * 0.55),
           transparent: true,
-          opacity: this.dark ? 0.28 : 0.22,
+          opacity: fillDiffers ? 0.85 : 0.42,
           clippingPlanes: this.planes,
-        }),
-      ),
-    );
+          dashed,
+          dashSize: (f.lineStyle === "dotted" ? 0.012 : f.lineStyle === "dashdot" ? 0.085 : 0.06) * half,
+          gapSize: (f.lineStyle === "dotted" ? 0.03 : f.lineStyle === "dashdot" ? 0.025 : 0.045) * half,
+        });
+        const wireLines = new LineSegments2(wireGeo, wireMat);
+        if (dashed) applyConnectedLineDistances(wireGeo, wire);
+        group.add(wireLines);
+      }
+    }
+    if (centerAnchor) return centerAnchor;
+    return validCount > 0 ? [sumX / validCount, sumY / validCount, sumZ / validCount] : null;
   }
 
   /** lhs − rhs at a point of space, for relations. */
@@ -2440,8 +3079,9 @@ class Engine {
   }
 
   /** The surface where a relation in x, y and z holds (marching cubes). */
-  private addIsoSurface(group: THREE.Group, f: MathFunction, s: any, n: number) {
+  private addIsoSurface(group: THREE.Group, f: MathFunction, s: any, n: number): Vec3 | null {
     const { cx, cy, cz, half } = this.domain;
+    const axf = this.affineTransformOf(f, () => [[0, 0]]);
     const size = n + 1;
     const stepSize = (2 * half) / n;
     const x0 = cx - half;
@@ -2453,9 +3093,17 @@ class Engine {
     for (let k = 0; k < size; k++) {
       s.z = z0 + k * stepSize;
       for (let j = 0; j < size; j++) {
-        s.y = y0 + j * stepSize;
+        const gy = y0 + j * stepSize;
         for (let i = 0; i < size; i++) {
-          s.x = x0 + i * stepSize;
+          const gx = x0 + i * stepSize;
+          if (axf) {
+            const [lx, ly] = axf.inverse(gx, gy);
+            s.x = lx;
+            s.y = ly;
+          } else {
+            s.x = gx;
+            s.y = gy;
+          }
           values[p++] = value();
         }
       }
@@ -2513,14 +3161,22 @@ class Engine {
         }
       }
     }
-    if (index.length === 0) return;
+    if (index.length === 0) return null;
     group.add(this.surfaceMesh(new Float32Array(positions), index, f));
+    const vCount = positions.length / 3;
+    let sx = 0, sy = 0, sz = 0;
+    for (let i = 0; i < positions.length; i += 3) {
+      sx += positions[i];
+      sy += positions[i + 1];
+      sz += positions[i + 2];
+    }
+    return [sx / vCount, sy / vCount, sz / vCount];
   }
 
-  /** A relation in x and y only, on the z = 0 plane: its curve, and its region if it is an inequality. */
-  private addPlaneRelation(group: THREE.Group, f: MathFunction, s: any, n: number, region: boolean) {
+  /** A relation in x and y only, on the z = 0 plane: its curve, and its region if it is an inequality (or filled curve). */
+  private addPlaneRelation(group: THREE.Group, f: MathFunction, s: any, n: number, region: boolean): Vec3 | null {
     const { cx, cy, half } = this.domain;
-    const xf = this.transformOf(f, () => {
+    const axf = this.affineTransformOf(f, () => {
       // Where the 2D graph pivots a relation: the first grid point on (or in) it.
       const probe = this.relation(f, s);
       for (let i = -3; i <= 3; i += 0.5) {
@@ -2533,28 +3189,33 @@ class Engine {
       }
       return [[0, 0]];
     });
-    // A moved or turned relation is sampled over a wider square.
-    const reach = half * (xf ? 3 : 1);
     const size = n + 1;
-    const stepSize = (2 * reach) / n;
-    const x0 = cx - reach;
-    const y0 = cy - reach;
+    const stepSize = (2 * half) / n;
+    const x0 = cx - half;
+    const y0 = cy - half;
     const value = this.relation(f, s);
     const values = new Float32Array(size * size);
     for (let j = 0; j < size; j++) {
-      s.y = y0 + j * stepSize;
+      const gy = y0 + j * stepSize;
       for (let i = 0; i < size; i++) {
-        s.x = x0 + i * stepSize;
+        const gx = x0 + i * stepSize;
+        if (axf) {
+          const [lx, ly] = axf.inverse(gx, gy);
+          s.x = lx;
+          s.y = ly;
+        } else {
+          s.x = gx;
+          s.y = gy;
+        }
         values[j * size + i] = value();
       }
     }
-    const place = (x: number, y: number): [number, number] => (xf ? xf(x, y) : [x, y]);
 
-    // Marching squares for the boundary.
+    // Marching squares directly in transformed world space (gx, gy).
     const segments: number[] = [];
     const cross = (xa: number, ya: number, va: number, xb: number, yb: number, vb: number): [number, number] => {
       const w = va === vb ? 0.5 : clamp(va / (va - vb), 0, 1);
-      return place(xa + (xb - xa) * w, ya + (yb - ya) * w);
+      return [xa + (xb - xa) * w, ya + (yb - ya) * w];
     };
     const link = (a: [number, number], b: [number, number]) => segments.push(a[0], a[1], 0, b[0], b[1], 0);
     for (let j = 0; j < n; j++) {
@@ -2590,6 +3251,7 @@ class Engine {
         }
       }
     }
+    let anchor: Vec3 | null = null;
     if (segments.length > 0) {
       const geometry = new LineSegmentsGeometry();
       geometry.setPositions(segments);
@@ -2601,51 +3263,46 @@ class Engine {
           linewidth: f.outlineWidth !== undefined ? f.outlineWidth : 3,
           clippingPlanes: this.planes,
           dashed,
-          dashSize: (f.lineStyle === "dotted" ? 0.012 : 0.06) * half,
-          gapSize: (f.lineStyle === "dotted" ? 0.03 : 0.045) * half,
+          dashSize: (f.lineStyle === "dotted" ? 0.012 : f.lineStyle === "dashdot" ? 0.085 : 0.06) * half,
+          gapSize: (f.lineStyle === "dotted" ? 0.03 : f.lineStyle === "dashdot" ? 0.025 : 0.045) * half,
         }),
       );
-      if (dashed) line.computeLineDistances();
+      if (dashed) applyConnectedLineDistances(geometry, segments);
       group.add(line);
+      anchor = [segments[0], segments[1], 0];
     }
 
-    if (!region) return;
+    const shouldFill = region || f.fillColor !== undefined;
+    if (!shouldFill) return anchor;
     const op = f.operator || f.expr2 || "<";
-    const holds = (d: number) => (op === "<" ? d < 0 : op === "<=" ? d <= 0 : op === ">" ? d > 0 : d >= 0);
+    const holds = region
+      ? (d: number) => (op === "<" ? d < 0 : op === "<=" ? d <= 0 : op === ">" ? d > 0 : d >= 0)
+      : (d: number) => d <= 0;
     const positions = new Float32Array(size * size * 3);
     for (let j = 0; j < size; j++) {
       for (let i = 0; i < size; i++) {
-        const [x, y] = place(x0 + i * stepSize, y0 + j * stepSize);
-        positions[(j * size + i) * 3] = x;
-        positions[(j * size + i) * 3 + 1] = y;
+        positions[(j * size + i) * 3] = x0 + i * stepSize;
+        positions[(j * size + i) * 3 + 1] = y0 + j * stepSize;
       }
     }
     const index: number[] = [];
+    let sx = 0, sy = 0, cells = 0;
     for (let j = 0; j < n; j++) {
       for (let i = 0; i < n; i++) {
         const k = j * size + i;
         if (holds(values[k]) && holds(values[k + 1]) && holds(values[k + size]) && holds(values[k + size + 1])) {
           index.push(k, k + 1, k + size + 1, k, k + size + 1, k + size);
+          sx += x0 + (i + 0.5) * stepSize;
+          sy += y0 + (j + 0.5) * stepSize;
+          cells++;
         }
       }
     }
-    if (index.length === 0) return;
-    const geometry = new THREE.BufferGeometry();
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geometry.setIndex(index);
-    group.add(
-      new THREE.Mesh(
-        geometry,
-        new THREE.MeshBasicMaterial({
-          color: toColor(f.fillColor || f.color),
-          transparent: true,
-          opacity: f.fillOpacity !== undefined ? f.fillOpacity : 0.3,
-          side: THREE.DoubleSide,
-          depthWrite: false,
-          clippingPlanes: this.planes,
-        }),
-      ),
-    );
+    if (index.length > 0) {
+      group.add(this.buildRegionMesh(positions, index, f, 0.3, "hatch-diagonal", true));
+      if (!anchor && cells > 0) anchor = [sx / cells, sy / cells, 0];
+    }
+    return anchor;
   }
 
   // ── Contours and slices ──
@@ -2657,7 +3314,8 @@ class Engine {
     const step = niceStep(half) / 2;
     const lo = cz - half;
     const hi = cz + half;
-    const floorZ = lo + 0.004 * half;
+    // Drawn inside the row, which may be lifted (its height shift): undo that for the floor.
+    const floorZ = lo + 0.004 * half - entry.group.position.z;
     const onSurface: number[] = [];
     const onFloor: number[] = [];
     const floorColors: number[] = [];
@@ -2763,10 +3421,13 @@ class Engine {
     const contrast = new THREE.Color(this.dark ? 0xffffff : 0x000000);
     for (const row of this.rows.values()) {
       const segments: number[] = [];
+      // A lifted row's surfaces are stored as built: cut them where they are drawn.
+      const lift = row.group.position.z;
+      const level = axis === 2 ? value - lift : value;
       for (const { positions, index } of row.surfaces) {
         for (let t = 0; t < index.length; t += 3) {
-          cutTriangle(positions, index[t], index[t + 1], index[t + 2], axis, value, (s) => {
-            segments.push(s[0], s[1], s[2], s[3], s[4], s[5]);
+          cutTriangle(positions, index[t], index[t + 1], index[t + 2], axis, level, (s) => {
+            segments.push(s[0], s[1], s[2] + lift, s[3], s[4], s[5] + lift);
           });
         }
       }
@@ -2876,11 +3537,13 @@ class Engine {
         this.handles.set(row.id, h);
       }
       h.wrap.style.setProperty("--c", `#${toColor(row.color).getHexString()}`);
-      h.wrap.classList.toggle("solver", !!row.drag.solver);
-      const name = row.drag.name ? `Point ${row.drag.name}` : "Point";
+      h.wrap.classList.toggle("solver", !!(row.drag.solver || row.drag.translate));
+      const name = row.drag.name ? `Point ${row.drag.name}` : row.drag.translate ? "Shape" : "Point";
       h.dot.setAttribute(
         "aria-label",
-        `${name} at (${row.drag.pos.map(formatCoord).join(", ")}). Arrow keys move it; Page Up and Page Down change its height.`,
+        row.drag.translate
+          ? `${name} handle at (${row.drag.pos.map(formatCoord).join(", ")}). Drag or use arrow keys to shift.`
+          : `${name} at (${row.drag.pos.map(formatCoord).join(", ")}). Arrow keys move it; Page Up and Page Down change its height.`,
       );
       // Drawn faintly with the rest of its row while another row is pointed at in the list.
       h.wrap.dataset.faded = this.highlightId && this.highlightId !== row.id ? "1" : "";
@@ -2972,6 +3635,7 @@ class Engine {
   /** Puts each handle over its point, and its height grip along the z-axis as seen on screen. */
   private placeHandles() {
     this.placeAxisTipHandles();
+    this.placeGizmos();
     if (this.handles.size === 0) return;
     const at = { x: 0, y: 0 };
     const up = { x: 0, y: 0 };
@@ -3059,7 +3723,8 @@ class Engine {
    * it moves in the upright plane facing the camera and so follows the pointer anyway.
    */
   private wantedMode(shift: boolean): DragState["mode"] {
-    if (this.drag?.grip || shift) return "z";
+    const row = this.drag ? this.rows.get(this.drag.id) : undefined;
+    if (!row?.drag?.translate && (this.drag?.grip || shift)) return "z";
     const viewDir = this.camera.getWorldDirection(new THREE.Vector3());
     return Math.abs(viewDir.z) < 0.3 ? "screen" : "floor";
   }
@@ -3101,7 +3766,7 @@ class Engine {
       const hit = this.raycaster.ray.intersectPlane(plane, new THREE.Vector3());
       if (!hit) return;
       const local = this.content.worldToLocal(hit);
-      this.getProps().onDragHandle?.(row.id, [local.x, local.y, local.z]);
+      this.getProps().onDragHandle?.(row.id, [local.x, local.y, local.z - (this.rows.get(row.id)?.group.position.z ?? 0)]);
       this.requestRender();
       return;
     }
@@ -3183,14 +3848,20 @@ class Engine {
     if (row?.isPoint && row.drag) this.openMenu(id, row.drag.pos, 0, clientX, clientY);
   }
 
-  /** Moves a point and writes its new position back to its row. */
+  /** Moves a point or shape handle and writes its new position / Origin shift back to its row. */
   private commitPoint(row: RowEntry, next: Vec3) {
     const d = row.drag!;
     if (next[0] === d.pos[0] && next[1] === d.pos[1] && next[2] === d.pos[2]) return;
     if (this.drag?.id === row.id) this.drag.pos = next;
     this.placeDrag(row, next);
-    const three = d.three || next[2] !== 0;
-    this.getProps().onMovePoint?.(row.id, `${d.prefix}[${next[0]}, ${next[1]}${three ? `, ${next[2]}` : ""}]`);
+    if (d.translate && d.baseTranslate && d.anchorStart) {
+      const tx = Number((d.baseTranslate[0] + (next[0] - d.anchorStart[0])).toFixed(3));
+      const ty = Number((d.baseTranslate[1] + (next[1] - d.anchorStart[1])).toFixed(3));
+      this.getProps().onPatchRow?.(row.id, { transformTranslate: [tx, ty] });
+    } else {
+      const three = d.three || next[2] !== 0;
+      this.getProps().onMovePoint?.(row.id, `${d.prefix}[${next[0]}, ${next[1]}${three ? `, ${next[2]}` : ""}]`);
+    }
     this.updateTip();
     this.buildGuides();
     this.requestRender();
@@ -3201,6 +3872,12 @@ class Engine {
     const row = d ? this.rows.get(d.id) : undefined;
     const h = d ? this.handles.get(d.id) : undefined;
     if (!row?.drag || !h) return;
+    if (row.drag.translate && row.drag.baseTranslate && row.drag.anchorStart) {
+      const tx = row.drag.baseTranslate[0] + (row.drag.pos[0] - row.drag.anchorStart[0]);
+      const ty = row.drag.baseTranslate[1] + (row.drag.pos[1] - row.drag.anchorStart[1]);
+      h.tip.textContent = `Shift [${formatCoord(tx)}, ${formatCoord(ty)}]`;
+      return;
+    }
     const name = row.drag.name ? `${row.drag.name} ` : "";
     h.tip.textContent = `${name}(${row.drag.pos.map(formatCoord).join(", ")})`;
   }
@@ -3285,6 +3962,378 @@ class Engine {
     });
   }
 
+  // ── Transform gizmo (rows switched to "Transformable") ──
+  //
+  // The same transform as the flat graph (translate, rotate and scale about a pivot, in
+  // the plane), with handles to match: a yellow ring to turn, a green square to resize,
+  // a blue pivot. In space it also gets red, green and blue arrows that move the shape
+  // along x, y and z: the last is a height shift only the 3D view uses.
+
+  /** Handles for every transformable row; made and removed as rows change. */
+  private syncGizmos() {
+    disposeGroup(this.gizmoGroup);
+    this.gizmoGroup.clear();
+    const live = new Set<string>();
+    for (const row of this.rows.values()) {
+      const g = row.gizmo;
+      if (!g) continue;
+      const kinds: GizmoKind[] = ["center", "x", "y", "z"];
+      if (g.rotatable) kinds.push("rotate");
+      if (g.resizable) kinds.push("scale");
+      for (const kind of kinds) {
+        const key = `${row.id}:${kind}`;
+        live.add(key);
+        let el = this.gizmoEls.get(key);
+        if (!el) {
+          el = this.makeGizmoHandle(row.id, kind);
+          this.gizmoEls.set(key, el);
+        }
+        const color = GIZMO_COLORS[kind] ?? (g.pivot ? "#3b82f6" : `#${toColor(row.color).getHexString()}`);
+        el.style.setProperty("--c", color);
+        const dot = el.firstElementChild as HTMLElement;
+        dot.title = GIZMO_TITLES[kind === "center" ? (g.pivot ? "pivot" : "move") : kind];
+      }
+      this.buildGizmoScene(row, g);
+    }
+    for (const [key, el] of this.gizmoEls) {
+      if (live.has(key)) continue;
+      el.remove();
+      this.gizmoEls.delete(key);
+    }
+    if (this.gz && !this.rows.get(this.gz.id)?.gizmo) this.endGizmoDrag();
+  }
+
+  /** Where a gizmo's handles are, in graph units. */
+  private gizmoSpots(g: GizmoFrame): Record<GizmoKind, Vec3> {
+    const c: Vec3 = [g.px + g.tx, g.py + g.ty, g.cz];
+    const L = g.radius * 0.85;
+    const turn = g.rot + g.base;
+    const cosT = Math.cos(turn);
+    const sinT = Math.sin(turn);
+    // A point of the shape's own (PCA) frame, as the transform places it. The resize
+    // handle keeps some distance from the middle, so a tiny shape can still be grabbed
+    // (its maths reads the real scale, so it only stops moving inwards).
+    const MIN = 0.25;
+    const place = (u: number, v: number): Vec3 => {
+      const x = u * Math.max(Math.abs(g.sx), MIN);
+      const y = v * Math.max(Math.abs(g.sy), MIN);
+      return [c[0] + x * cosT - y * sinT, c[1] + x * sinT + y * cosT, c[2]];
+    };
+    const a = (g.radius * 1.2) / Math.SQRT2;
+    return {
+      center: c,
+      x: [c[0] + L, c[1], c[2]],
+      y: [c[0], c[1] + L, c[2]],
+      z: [c[0], c[1], c[2] + L],
+      // Turning only reads the angle: the ring keeps its size whatever the scale.
+      rotate: [c[0] + g.radius * cosT, c[1] + g.radius * sinT, c[2]],
+      scale: place(a, -a),
+    };
+  }
+
+  /** The ring, the arrows and the line to the resize handle. */
+  private buildGizmoScene(row: RowEntry, g: GizmoFrame) {
+    const spots = this.gizmoSpots(g);
+    const [cx, cy, cz] = spots.center;
+    const over = (m: THREE.Material) => {
+      m.depthTest = false;
+      m.transparent = true;
+      return m;
+    };
+    const lines = (pts: number[], color: string, opacity: number, dashed = false) => {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(pts, 3));
+      const material = dashed
+        ? new THREE.LineDashedMaterial({ color, opacity, dashSize: 0.03 * this.domain.half, gapSize: 0.025 * this.domain.half })
+        : new THREE.LineBasicMaterial({ color, opacity });
+      const obj = new THREE.LineSegments(geometry, over(material));
+      if (dashed) obj.computeLineDistances();
+      obj.renderOrder = 6;
+      this.gizmoGroup.add(obj);
+    };
+    const active = this.gz?.id === row.id ? this.gz.kind : null;
+
+    if (g.rotatable) {
+      // The ring the turn handle runs round, through the handle itself.
+      const r = Math.hypot(spots.rotate[0] - cx, spots.rotate[1] - cy);
+      const ring: number[] = [];
+      const n = 96;
+      for (let i = 0; i < n; i++) {
+        const a0 = (i / n) * TWO_PI;
+        const a1 = ((i + 1) / n) * TWO_PI;
+        ring.push(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cz, cx + r * Math.cos(a1), cy + r * Math.sin(a1), cz);
+      }
+      lines(ring, GIZMO_COLORS.rotate!, active === "rotate" ? 0.95 : 0.55);
+      if (active === "rotate") {
+        // The angle turned so far, from where the shape started.
+        const start = this.gz!.start.rot + g.base;
+        const end = g.rot + g.base;
+        const fan: number[] = [];
+        const steps = Math.max(2, Math.ceil(Math.abs(end - start) / 0.05));
+        for (let i = 0; i < steps; i++) {
+          const a0 = start + ((end - start) * i) / steps;
+          const a1 = start + ((end - start) * (i + 1)) / steps;
+          fan.push(cx, cy, cz, cx + r * Math.cos(a0), cy + r * Math.sin(a0), cz);
+          fan.push(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cz, cx + r * Math.cos(a1), cy + r * Math.sin(a1), cz);
+        }
+        lines(fan, GIZMO_COLORS.rotate!, 0.35);
+      }
+    }
+    if (g.resizable) lines([cx, cy, cz, ...spots.scale], GIZMO_COLORS.scale!, 0.6, true);
+
+    // Arrows along the axes, with heads.
+    (["x", "y", "z"] as const).forEach((kind, axis) => {
+      const tip = spots[kind];
+      const color = AXIS_COLORS[axis];
+      lines([cx, cy, cz, ...tip], color, active === kind ? 1 : 0.75);
+      const dir = new THREE.Vector3(axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0);
+      const head = new THREE.Mesh(
+        new THREE.ConeGeometry(0.025 * this.domain.half, 0.07 * this.domain.half, 12),
+        over(new THREE.MeshBasicMaterial({ color, opacity: 0.9 })),
+      );
+      head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
+      head.position.set(tip[0], tip[1], tip[2]).addScaledVector(dir, 0.035 * this.domain.half);
+      head.renderOrder = 6;
+      this.gizmoGroup.add(head);
+    });
+    this.gizmoGroup.traverse((o) => {
+      o.frustumCulled = false;
+    });
+  }
+
+  private makeGizmoHandle(id: string, kind: GizmoKind): HTMLDivElement {
+    const wrap = document.createElement("div");
+    wrap.className = `g3d-handle g3d-gz g3d-gz-${kind}`;
+    wrap.dataset.captureExclude = "";
+    const dot = document.createElement("div");
+    dot.className = "g3d-dot";
+    dot.tabIndex = -1;
+    wrap.appendChild(dot);
+    this.handleHost.appendChild(wrap);
+    dot.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      dot.setPointerCapture(e.pointerId);
+      this.beginGizmoDrag(id, kind, e);
+    });
+    dot.addEventListener("pointermove", (e) => {
+      if (this.gz?.id !== id || this.gz.kind !== kind) return;
+      e.preventDefault();
+      e.stopPropagation();
+      this.stepGizmoDrag(e.clientX, e.clientY, e.shiftKey, e.altKey);
+    });
+    const end = (e: PointerEvent) => {
+      if (this.gz?.id !== id || this.gz.kind !== kind) return;
+      e.stopPropagation();
+      try {
+        dot.releasePointerCapture(e.pointerId);
+      } catch {}
+      this.endGizmoDrag();
+    };
+    dot.addEventListener("pointerup", end);
+    dot.addEventListener("pointercancel", end);
+    dot.addEventListener("wheel", (e) => this.renderer.domElement.dispatchEvent(new WheelEvent(e.type, e)), { passive: true });
+    return wrap;
+  }
+
+  /** Each frame: every gizmo handle over its spot, and the readout by the one being dragged. */
+  private placeGizmos() {
+    if (this.gizmoEls.size === 0) {
+      this.gizmoTip.style.display = "none";
+      return;
+    }
+    const at = { x: 0, y: 0 };
+    const spots = new Map<string, Record<GizmoKind, Vec3>>();
+    for (const [key, el] of this.gizmoEls) {
+      const i = key.lastIndexOf(":");
+      const id = key.slice(0, i);
+      const kind = key.slice(i + 1) as GizmoKind;
+      const g = this.rows.get(id)?.gizmo;
+      if (!g) {
+        el.style.display = "none";
+        continue;
+      }
+      let s = spots.get(id);
+      if (!s) spots.set(id, (s = this.gizmoSpots(g)));
+      const p = s[kind];
+      if (!this.toScreen(p[0], p[1], p[2], at)) {
+        el.style.display = "none";
+        continue;
+      }
+      el.style.display = "";
+      el.style.translate = `${at.x.toFixed(1)}px ${at.y.toFixed(1)}px`;
+      el.classList.toggle("dragging", this.gz?.id === id && this.gz.kind === kind);
+      // While one handle is held, the others step back.
+      el.style.opacity = this.gz && !(this.gz.id === id && this.gz.kind === kind) ? "0.35" : "";
+    }
+    const gz = this.gz;
+    const g = gz ? this.rows.get(gz.id)?.gizmo : undefined;
+    if (gz && g) {
+      const c = this.gizmoSpots(g).center;
+      if (this.toScreen(c[0], c[1], c[2], at)) {
+        this.gizmoTip.style.display = "block";
+        this.gizmoTip.style.translate = `${at.x.toFixed(1)}px ${(at.y + 34).toFixed(1)}px`;
+        this.gizmoTip.style.setProperty("--c", GIZMO_COLORS[gz.kind] ?? "#3b82f6");
+        this.gizmoTip.textContent = this.gizmoReadout(gz.kind, g);
+        return;
+      }
+    }
+    this.gizmoTip.style.display = "none";
+  }
+
+  private gizmoReadout(kind: GizmoKind, g: GizmoFrame): string {
+    const f = (v: number) => formatCoord(v);
+    if (kind === "rotate") {
+      let deg = (g.rot * 180) / Math.PI;
+      deg = ((((deg + 180) % 360) + 360) % 360) - 180;
+      return `Turn ${Math.round(deg)}°`;
+    }
+    if (kind === "scale") {
+      return Math.abs(g.sx - g.sy) < 1e-3 ? `Scale ${g.sx.toFixed(2)}×` : `Scale ${g.sx.toFixed(2)} × ${g.sy.toFixed(2)}  (Shift: keep shape)`;
+    }
+    if (kind === "center" && g.pivot) return `Pivot (${f(g.px + g.tx)}, ${f(g.py + g.ty)})`;
+    return `Shift (${f(g.tx)}, ${f(g.ty)}, ${f(g.tz)})`;
+  }
+
+  /** The pointer's ray in graph units: [origin, unit direction]. */
+  private localRay(clientX: number, clientY: number): [THREE.Vector3, THREE.Vector3] {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    this.pointer.set(((clientX - rect.left) / rect.width) * 2 - 1, -((clientY - rect.top) / rect.height) * 2 + 1);
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+    const o = this.content.worldToLocal(this.raycaster.ray.origin.clone());
+    const d = this.content.worldToLocal(this.raycaster.ray.origin.clone().add(this.raycaster.ray.direction)).sub(o).normalize();
+    return [o, d];
+  }
+
+  /** Where the pointer meets the horizontal plane at height z; null when the plane is seen edge-on. */
+  private hitHeight(clientX: number, clientY: number, z: number): THREE.Vector3 | null {
+    const [o, d] = this.localRay(clientX, clientY);
+    if (Math.abs(d.z) < 0.03) return null;
+    const t = (z - o.z) / d.z;
+    if (t <= 0) return null;
+    const p = o.addScaledVector(d, t);
+    // Far off in a near-flat view: no sensible answer.
+    const r = 6 * this.domain.half;
+    if (Math.abs(p.x - this.domain.cx) > r || Math.abs(p.y - this.domain.cy) > r) return null;
+    return p;
+  }
+
+  /** How far along the line through `origin` in direction `axis` the pointer is; null if looking along it. */
+  private alongAxis(clientX: number, clientY: number, origin: Vec3, axis: 0 | 1 | 2): number | null {
+    const [o, d] = this.localRay(clientX, clientY);
+    const u = new THREE.Vector3(axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0);
+    const w = new THREE.Vector3(origin[0], origin[1], origin[2]).sub(o);
+    const b = u.dot(d);
+    const denom = 1 - b * b;
+    if (denom < 1e-4) return null;
+    return (b * d.dot(w) - u.dot(w)) / denom;
+  }
+
+  private beginGizmoDrag(id: string, kind: GizmoKind, e: PointerEvent) {
+    const g = this.rows.get(id)?.gizmo;
+    if (!g) return;
+    this.tween = null;
+    this.clearHover();
+    const center = this.gizmoSpots(g).center;
+    this.gz = {
+      id,
+      kind,
+      start: { ...g },
+      hit0: this.hitHeight(e.clientX, e.clientY, g.cz),
+      along0: kind === "x" || kind === "y" || kind === "z" ? this.alongAxis(e.clientX, e.clientY, center, kind === "x" ? 0 : kind === "y" ? 1 : 2) : null,
+    };
+    // Heavy rows are redrawn coarsely while they move, then refined.
+    this.coarse = true;
+    window.clearTimeout(this.coarseTimer);
+    this.controls.autoRotate = false;
+    this.syncGizmos();
+    this.requestRender();
+  }
+
+  private stepGizmoDrag(clientX: number, clientY: number, shift: boolean, alt: boolean) {
+    const gz = this.gz;
+    if (!gz) return;
+    const s = gz.start;
+    const half = this.domain.half;
+    const snapStep = (niceStep(half) / 10) * (alt ? 0.1 : 1);
+    const snap = (v: number) => Number((Math.round(v / snapStep) * snapStep).toFixed(6));
+    const round = (v: number, places = 4) => Number(v.toFixed(places));
+    let patch: Partial<MathFunction> | null = null;
+
+    if (gz.kind === "x" || gz.kind === "y" || gz.kind === "z") {
+      const axis = gz.kind === "x" ? 0 : gz.kind === "y" ? 1 : 2;
+      const startCenter: Vec3 = [s.px + s.tx, s.py + s.ty, s.cz];
+      const now = this.alongAxis(clientX, clientY, startCenter, axis);
+      if (now === null || gz.along0 === null) return;
+      const delta = now - gz.along0;
+      if (axis === 2) patch = { transformTranslateZ: snap(s.tz + delta) };
+      else patch = { transformTranslate: axis === 0 ? [snap(s.tx + delta), s.ty] : [s.tx, snap(s.ty + delta)] };
+    } else {
+      const hit = this.hitHeight(clientX, clientY, s.cz);
+      if (!hit) return;
+      const cx = s.px + s.tx;
+      const cy = s.py + s.ty;
+      if (gz.kind === "center" && !s.pivot) {
+        if (!gz.hit0) return;
+        patch = { transformTranslate: [snap(s.tx + hit.x - gz.hit0.x), snap(s.ty + hit.y - gz.hit0.y)] };
+      } else if (gz.kind === "center") {
+        // Move the pivot, keeping the shape where it is (as on the flat graph).
+        const px = snap(hit.x);
+        const py = snap(hit.y);
+        const dx = px - cx;
+        const dy = py - cy;
+        const inv = -(s.rot + s.base);
+        let vx = dx * Math.cos(inv) - dy * Math.sin(inv);
+        let vy = dx * Math.sin(inv) + dy * Math.cos(inv);
+        vx /= s.sx || 1;
+        vy /= s.sy || 1;
+        const lx = vx * Math.cos(s.base) - vy * Math.sin(s.base);
+        const ly = vx * Math.sin(s.base) + vy * Math.cos(s.base);
+        const pNew: [number, number] = [round(s.px + lx), round(s.py + ly)];
+        patch = { transformPivot: pNew, transformTranslate: [round(px - pNew[0]), round(py - pNew[1])] };
+      } else if (gz.kind === "rotate") {
+        let rot = Math.atan2(hit.y - cy, hit.x - cx) - s.base;
+        const unit = ((shift ? 15 : 1) * Math.PI) / 180;
+        rot = Math.round(rot / unit) * unit;
+        patch = { transformRotate: round(rot, 6) };
+      } else if (gz.kind === "scale") {
+        const a = (s.radius * 1.2) / Math.SQRT2;
+        const dx = hit.x - cx;
+        const dy = hit.y - cy;
+        let sx: number;
+        let sy: number;
+        if (shift) {
+          const k = Math.max(0.05, Math.hypot(dx, dy) / Math.hypot(a * s.sx, a * s.sy) );
+          sx = s.sx * k;
+          sy = s.sy * k;
+        } else {
+          // Into the shape's own frame: the handle sits at (a, -a) there, times the scale.
+          const t = -(s.rot + s.base);
+          const u = dx * Math.cos(t) - dy * Math.sin(t);
+          const v = dx * Math.sin(t) + dy * Math.cos(t);
+          sx = Math.max(0.05, u / a);
+          sy = Math.max(0.05, -v / a);
+        }
+        patch = { transformScale: [round(sx, 3), round(sy, 3)] };
+      }
+    }
+    if (!patch) return;
+    const p = this.getProps();
+    (p.onTransformRow ?? p.onPatchRow)?.(gz.id, patch);
+    this.requestRender();
+  }
+
+  private endGizmoDrag() {
+    if (!this.gz) return;
+    this.gz = null;
+    this.controls.autoRotate = this.opts.autoRotate;
+    // Now at rest: draw everything at full quality again.
+    this.coarse = false;
+    this.syncGizmos();
+    this.sync();
+  }
+
   /** Marks the labels a surface hides, so they are drawn faintly. */
   private computeOcclusion = () => {
     if (this.disposed || this.labelsDirty || this.labelEls.length !== this.labelSpecs.length) return;
@@ -3355,6 +4404,9 @@ class Engine {
     this.labelEls.forEach((el) => el.remove());
     this.handles.forEach((h) => h.wrap.remove());
     this.handles.clear();
+    this.gizmoEls.forEach((el) => el.remove());
+    this.gizmoEls.clear();
+    this.gizmoTip.remove();
     this.axisHandles.forEach((h) => h.wrap.remove());
     this.axisHandles = [];
   }

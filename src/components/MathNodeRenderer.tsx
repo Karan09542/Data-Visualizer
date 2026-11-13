@@ -4729,7 +4729,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 px-3 py-2">
                                   <span className="min-w-0">
                                     <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">Origin</span>
-                                    <span className="block text-[10px] text-slate-400 dark:text-slate-500">Shift by [h, k]</span>
+                                    <span className="block text-[10px] text-slate-400 dark:text-slate-500">{viewMode === "3d" ? "Shift by [h, k, z]" : "Shift by [h, k]"}</span>
                                   </span>
                                   <div className="flex gap-1.5 flex-1 max-w-[140px]">
                                     <input
@@ -4786,6 +4786,23 @@ export const MathNodeRenderer: React.FC<any> = ({
                                       className={`${FIELD_CLASS} text-center px-1`}
                                       placeholder="k"
                                     />
+                                    {viewMode === "3d" && (
+                                      <input
+                                        title="Height shift (z), drawn in the 3D view only"
+                                        type="number"
+                                        step="0.5"
+                                        value={f.transformTranslateZ || 0}
+                                        onChange={(e) =>
+                                          setFunctions((prev) =>
+                                            prev.map((fn) =>
+                                              fn.id === f.id ? { ...fn, transformTranslateZ: parseFloat(e.target.value) || 0 } : fn,
+                                            ),
+                                          )
+                                        }
+                                        className={`${FIELD_CLASS} text-center px-1`}
+                                        placeholder="z"
+                                      />
+                                    )}
                                   </div>
                                 </div>
 
@@ -4806,6 +4823,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                                   transformScale: [1, 1],
                                                   transformRotate: 0,
                                                   transformTranslate: [0, 0],
+                                                  transformTranslateZ: 0,
                                                 }
                                                 : fn,
                                             ),
@@ -7262,6 +7280,18 @@ export const MathNodeRenderer: React.FC<any> = ({
                 onOptionsChange={setView3dOptions}
                 onAddExample={handleExampleRow}
                 onMovePoint={(id, expr) => patchRow(id, { expr })}
+                onPatchRow={patchRow}
+                onTransformRow={(id, patch) =>
+                  setFunctions((prev) =>
+                    prev.map((fn) => {
+                      if (fn.id !== id) return fn;
+                      // Turning or resizing a shape built from names freezes its coordinates
+                      // first, exactly as the flat graph's handles do.
+                      const reshapes = patch.transformRotate !== undefined || !!patch.transformScale;
+                      return { ...fn, ...(reshapes ? { expr: decoupleGeometry(fn, baseScope).newExpr } : {}), ...patch };
+                    }),
+                  )
+                }
                 onPointMenu={openPointMenu}
                 onDragHandle={handleHandleDrag}
               />
