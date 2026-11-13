@@ -42,6 +42,12 @@ export function nextPointNames(taken: Set<string>, count: number): string[] {
 
 const fmt = (v: number) => String(Number(v.toFixed(6)));
 
+/** A point's coordinates, with its height only when it has one (so flat points still show in 2D). */
+const coordsOf = (p: DrawPick, spatial: boolean) =>
+  spatial && (p.z ?? 0) !== 0 ? `[${fmt(p.x)}, ${fmt(p.y)}, ${fmt(p.z!)}]` : `[${fmt(p.x)}, ${fmt(p.y)}]`;
+
+/** Drawn off the floor in the 3D view: the shape's rows are written for space. */
+const isSpatial = (picks: DrawPick[]) => picks.some((p) => (p.z ?? 0) !== 0);
 interface BuildOptions {
   taken: Set<string>;
   /** For the shape (and its readouts). */
@@ -55,6 +61,8 @@ interface BuildOptions {
   sliderNames?: Set<string>;
   /** What a drawn vector is labelled with. */
   vector?: VectorOptions;
+  /** Write points with their height even when this shape alone wouldn't need it. */
+  spatialHint?: boolean;
 }
 
 /** Live readouts beside a drawn vector; with none, it's a plain arrow. */
@@ -113,11 +121,15 @@ export function buildDrawnShape(tool: DrawToolKind, picks: DrawPick[], opts: Bui
 }
 
 function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): DrawnShape {
+  const spatial = isSpatial(picks);
+  // In space a name is wrapped in p3(…), so a flat point (no height) and a point in space add up.
+  const P = (name: string) => (spatial ? `p3(${name})` : name);
   if (tool === "circle" && picks.length === 2 && !picks[1].name) {
     const [c, rim] = picks;
+    // A level circle round the centre, through the rim's position across.
     const radius = Math.hypot(rim.x - c.x, rim.y - c.y);
     if (radius > 0) {
-      const centreOnly = buildShape("point", [c], opts);
+      const centreOnly = buildShape("point", [c], { ...opts, spatialHint: spatial });
       const centre = c.name && !c.name.startsWith("#") ? c.name : centreOnly.rows[0]?.label!;
       const rows = c.name ? [] : centreOnly.rows;
       const [rimName] = nextPointNames(opts.taken, 1);
@@ -134,7 +146,9 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
           ...base,
           id: opts.newId(),
           type: "parametric",
-          expr: `${centre} + ${sliderName}*[cos(t rad), sin(t rad)]`,
+          expr: spatial
+            ? `${P(centre)} + ${sliderName}*[cos(t rad), sin(t rad), 0]`
+            : `${centre} + ${sliderName}*[cos(t rad), sin(t rad)]`,
           color: opts.color,
           tRange: [0, 2 * Math.PI],
         },
@@ -142,7 +156,9 @@ function buildShape(tool: DrawToolKind, picks: DrawPick[], opts: BuildOptions): 
           ...base,
           id: opts.newId(),
           type: "point",
-          expr: `${rimName} = ${centre} + ${sliderName}*[${ux}, ${uy}]`,
+          expr: spatial
+            ? `${rimName} = ${P(centre)} + ${sliderName}*[${ux}, ${uy}, 0]`
+            : `${rimName} = ${centre} + ${sliderName}*[${ux}, ${uy}]`,
           color: opts.pointColor,
           showLabel: true,
           label: rimName,
@@ -182,6 +198,8 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     ...extra,
   });
 
+  const spatial = !!opts.spatialHint || isSpatial(picks);
+  const P = (name: string) => (spatial ? `p3(${name})` : name);
   // Name every click: an existing point keeps its name, "#i" is this shape's i-th click again.
   const fresh = picks.filter((p) => !p.name).length;
   const names = nextPointNames(opts.taken, fresh);
@@ -199,7 +217,7 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     const name = names[k++];
     named.push(name);
     rows.push(
-      row("point", `${name} = [${fmt(p.x)}, ${fmt(p.y)}]`, opts.pointColor, {
+      row("point", `${name} = ${coordsOf(p, spatial)}`, opts.pointColor, {
         isDraggable: true,
         showLabel: true,
         label: name,
@@ -222,25 +240,29 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     case "point":
       break;
     case "segment":
-      rows.push(row("line", `[${A}, ${B}]`, opts.color));
+      // In space every corner as [x, y, z]: a list can't mix flat points and points in space.
+      rows.push(row("line", `[${P(A)}, ${P(B)}]`, opts.color));
       break;
     case "vector":
       // From A (its tail) to B (its tip): drag either to change it.
-      rows.push(...vectorRows(A, B, opts.color, opts));
+      rows.push(...vectorRows(A, B, opts.color, { ...opts, spatial }));
       break;
     case "line":
-      rows.push(row("parametric", `${A} + t*(${B} - ${A})/norm(${B} - ${A})`, opts.color, { tRange: [-500, 500] }));
+      rows.push(row("parametric", `${P(A)} + t*(${P(B)} - ${P(A)})/norm(${P(B)} - ${P(A)})`, opts.color, { tRange: [-500, 500] }));
       break;
     case "circle":
       rows.push(
-        row("parametric", `${A} + norm(${B} - ${A})*[cos(t rad), sin(t rad)]`, opts.color, {
+        row("parametric", spatial
+          // A level circle round A, as wide as A is from B.
+          ? `${P(A)} + norm(${P(B)} - ${P(A)})*[cos(t rad), sin(t rad), 0]`
+          : `${A} + norm(${B} - ${A})*[cos(t rad), sin(t rad)]`, opts.color, {
           tRange: [0, 2 * Math.PI],
         }),
       );
       break;
     case "polygon":
       rows.push(
-        row("polygon", `[${named.join(", ")}]`, opts.color, {
+        row("polygon", `[${named.map(P).join(", ")}]`, opts.color, {
           fillColor: opts.color,
           fillOpacity: 0.15,
           fillPattern: "solid",
@@ -248,20 +270,22 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
       );
       break;
     case "distance":
-      rows.push(row("parametric", `${A} + t*(${B} - ${A})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
+      rows.push(row("parametric", `${P(A)} + t*(${P(B)} - ${P(A)})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
       rows.push(
         readout(
-          `(${A} + ${B})/2 + 0.35*[-(${B} - ${A})[2], (${B} - ${A})[1]]/norm(${B} - ${A})`,
-          `${A}${B} = {{norm(${B} - ${A})}}`,
+          spatial
+            ? `(${P(A)} + ${P(B)})/2 + [0, 0, 0.35]`
+            : `(${A} + ${B})/2 + 0.35*[-(${B} - ${A})[2], (${B} - ${A})[1]]/norm(${B} - ${A})`,
+          `${A}${B} = {{norm(${P(B)} - ${P(A)})}}`,
         ),
       );
       break;
     case "angle":
       // A, then the corner B, then C: the angle ∠ABC.
-      rows.push(row("parametric", `${B} + t*(${A} - ${B})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
-      rows.push(row("parametric", `${B} + t*(${C} - ${B})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
-      rows.push(row("parametric", `arcAt(${B}, ${A}, ${C}, t, 0.6)`, opts.color, { tRange: [0, 1] }));
-      rows.push(readout(`arcAt(${B}, ${A}, ${C}, 0.5, 1.15)`, `∠${A}${B}${C} = {{angleAt(${B}, ${A}, ${C}):1}}°`));
+      rows.push(row("parametric", `${P(B)} + t*(${P(A)} - ${P(B)})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
+      rows.push(row("parametric", `${P(B)} + t*(${P(C)} - ${P(B)})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
+      rows.push(row("parametric", `arcAt(${P(B)}, ${P(A)}, ${P(C)}, t, 0.6)`, opts.color, { tRange: [0, 1] }));
+      rows.push(readout(`arcAt(${P(B)}, ${P(A)}, ${P(C)}, 0.5, 1.15)`, `∠${A}${B}${C} = {{angleAt(${B}, ${A}, ${C}):1}}°`));
       break;
   }
   return rows;
@@ -459,9 +483,12 @@ export function vectorRows(
   A: string,
   B: string,
   color: string,
-  opts: Pick<BuildOptions, "newId" | "vector">,
+  opts: Pick<BuildOptions, "newId" | "vector"> & { spatial?: boolean },
 ): MathFunction[] {
-  const { magnitude, components, direction } = opts.vector ?? {};
+  const { magnitude, components } = opts.vector ?? {};
+  // A direction from the +x axis means little for an arrow in space.
+  const direction = opts.vector?.direction && !opts.spatial;
+  const S = (name: string) => (opts.spatial ? `p3(${name})` : name);
   const base = { visible: true, autoType: false, angleUnit: "rad" as const };
   const rows: MathFunction[] = [
     {
@@ -471,18 +498,20 @@ export function vectorRows(
       expr: `Vector(${A}, ${B})`,
       color,
       // Drawn on the graph as well as written in the label.
-      vectorComponents: !!components,
+      vectorComponents: !!components && !opts.spatial,
       vectorDirection: !!direction,
     },
   ];
 
-  const v = `(${B} - ${A})`;
+  const v = `(${S(B)} - ${S(A)})`;
   // LaTeX, written raw (String.raw), so each backslash here is one in the label.
   const name = String.raw`\overrightarrow{${A}${B}}`;
   const parts: string[] = [];
   if (magnitude) parts.push(`|${name}| = {{norm(${v})}}`);
   if (components) {
-    const pair = String.raw`\langle {{${v}[1]}},\, {{${v}[2]}} \rangle`;
+    const pair = opts.spatial
+      ? String.raw`\langle {{${v}[1]}},\, {{${v}[2]}},\, {{${v}[3]}} \rangle`
+      : String.raw`\langle {{${v}[1]}},\, {{${v}[2]}} \rangle`;
     parts.push(magnitude ? pair : `${name} = ${pair}`);
   }
   // Radians here whatever the graph's switch says (drawn rows are pinned), so ×180/π is right.
@@ -497,7 +526,7 @@ export function vectorRows(
       id: opts.newId(),
       type: "point",
       // Beside the arrow's middle, clear of the line.
-      expr: `(${A} + ${B})/2 + 0.4*[-${v}[2], ${v}[1]]/norm(${v})`,
+      expr: opts.spatial ? `(${S(A)} + ${S(B)})/2 + [0, 0, 0.4]` : `(${A} + ${B})/2 + 0.4*[-${v}[2], ${v}[1]]/norm(${v})`,
       color,
       showPoint: false,
       showLabel: true,

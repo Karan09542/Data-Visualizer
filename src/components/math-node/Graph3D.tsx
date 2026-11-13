@@ -29,6 +29,7 @@ import type { FillPatternType, MathFunction, MathVariable } from "./mathTypes";
 import type { GraphView } from "./simulations";
 import { computePCA } from "./mathHelpers";
 import { pointDraggable, type PointMenuTarget } from "./PointMenu";
+import { DRAW_TOOL_CLICKS, type DrawPick, type DrawToolKind } from "./DrawTool";
 import { dependencyKey } from "./dependencyKeys";
 import { objectId } from "./SmoothCurve";
 import { getFamilyCurveColor } from "./familyPlot";
@@ -79,6 +80,18 @@ export interface Graph3DProps {
    * may first freeze a shape's coordinates (as the flat graph's handles do).
    */
   onTransformRow?: (id: string, patch: Partial<MathFunction>) => void;
+  /** The drawing tool in hand (as on the flat graph), or none. */
+  drawTool?: DrawToolKind | null;
+  /** Height of the level plane drawing clicks land on. */
+  drawHeight?: number;
+  onDrawHeight?: (h: number) => void;
+  /** Named points to snap to, where they are in space. */
+  drawPoints?: { name: string; x: number; y: number; z: number }[];
+  drawColor?: string;
+  /** All the clicks for one shape are in (each with its height). */
+  onDrawComplete?: (tool: DrawToolKind, picks: DrawPick[]) => void;
+  /** Escape with nothing pending: put the tool down. */
+  onDrawExit?: () => void;
 }
 
 type GizmoKind = "center" | "x" | "y" | "z" | "rotate" | "scale";
@@ -210,6 +223,7 @@ const HANDLE_CSS = `
 .g3d-gz .g3d-dot::before{inset:5px}
 .g3d-gz .g3d-dot::after{inset:11px;box-shadow:0 0 0 2px rgba(255,255,255,.92),0 1px 4px rgba(0,0,0,.45)}
 .g3d-gz-center{z-index:3}
+.g3d-drawing .g3d-dot,.g3d-drawing .g3d-grip,.g3d-drawing .g3d-stem{pointer-events:none}
 .g3d-gz-center .g3d-dot{cursor:move}
 .g3d-gz-x .g3d-dot,.g3d-gz-y .g3d-dot{cursor:grab}
 .g3d-gz-z .g3d-dot{cursor:ns-resize}
@@ -896,6 +910,14 @@ class Engine {
   private tangentPlane: THREE.Mesh;
   private tangentArrow: THREE.ArrowHelper;
   private drag: DragState | null = null;
+  // Drawing tools
+  private drawTool: DrawToolKind | null = null;
+  private drawPicks: DrawPick[] = [];
+  private drawHover: DrawPick | null = null;
+  private drawHeight = 0;
+  private drawGroup = new THREE.Group();
+  private drawTip = document.createElement("div");
+  private drawDown: { x: number; y: number } | null = null;
   // Transform gizmos
   private gizmoGroup = new THREE.Group();
   private gizmoEls = new Map<string, HTMLDivElement>();
@@ -979,7 +1001,7 @@ class Engine {
     light.position.set(0.6, 0.8, 1);
     this.camera.add(light);
     this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 2), this.content);
-    this.content.add(this.decor, this.rowsGroup, this.sliceGroup, this.guideGroup, this.gizmoGroup);
+    this.content.add(this.decor, this.rowsGroup, this.sliceGroup, this.guideGroup, this.gizmoGroup, this.drawGroup);
 
     // Tangent plane and normal, placed where the pointer touches a surface.
     const planeGeometry = new THREE.PlaneGeometry(0.5, 0.5);
@@ -1007,6 +1029,10 @@ class Engine {
     this.gizmoTip.className = "g3d-gz-tip";
     this.gizmoTip.dataset.captureExclude = "";
     this.handleHost.appendChild(this.gizmoTip);
+    this.drawTip.className = "g3d-gz-tip";
+    this.drawTip.dataset.captureExclude = "";
+    this.handleHost.appendChild(this.drawTip);
+    window.addEventListener("keydown", this.onDrawKey);
     // The pointer's readout isn't part of the graph: left out of screenshots.
     this.hoverDot.dataset.captureExclude = "";
     this.hoverTip.dataset.captureExclude = "";
@@ -1044,6 +1070,7 @@ class Engine {
     this.sliceDirty = true;
     this.clearHover();
     this.buildGuides();
+    this.buildDrawPreview();
     this.onDomain?.({ ...this.domain });
     this.sync();
   }
@@ -1184,10 +1211,12 @@ class Engine {
       this.renderer.setSize(w, h, false);
       // The gizmo is a tool, not part of the graph.
       this.gizmoGroup.visible = false;
+      this.drawGroup.visible = false;
       this.renderer.render(this.scene, this.camera);
       ctx.drawImage(this.renderer.domElement, 0, 0, out.width, out.height);
     } finally {
       this.gizmoGroup.visible = true;
+      this.drawGroup.visible = true;
       this.renderer.setPixelRatio(ratio);
       this.renderer.setSize(w, h, false);
       this.requestRender();
@@ -1534,6 +1563,11 @@ class Engine {
   private onPointerDown = (e: PointerEvent) => {
     this.tween = null; // taking hold of the view stops a glide
     this.setPointer(e);
+    // With a drawing tool, a click (not a drag, which still turns the view) places a point.
+    if (this.drawTool) {
+      this.drawDown = e.button === 0 ? { x: e.clientX, y: e.clientY } : null;
+      return;
+    }
     if (e.pointerType !== "mouse" && e.isPrimary) this.tapDown = { x: e.clientX, y: e.clientY };
     // Touching the graph lets go of a point that was tapped.
     const focused = document.activeElement;
@@ -1549,6 +1583,15 @@ class Engine {
   private onPointerMove = (e: PointerEvent) => {
     this.setPointer(e);
     if (this.axisDrag) return;
+    if (this.drawTool) {
+      if (e.pointerType === "mouse" && e.buttons === 0) {
+        const pick = this.drawSnap(e.clientX, e.clientY);
+        this.drawHover = pick;
+        this.buildDrawPreview();
+        this.requestRender();
+      }
+      return;
+    }
     if (e.pointerType !== "mouse") return;
     if (e.buttons === 0) {
       this.hoverDirty = true;
@@ -1558,6 +1601,11 @@ class Engine {
 
   private onPointerLeave = (e: PointerEvent) => {
     if (e.pointerType === "mouse") this.clearHover();
+    if (this.drawHover) {
+      this.drawHover = null;
+      this.buildDrawPreview();
+      this.requestRender();
+    }
   };
 
   // ── Point menu: right-click a point, or double-tap it, as on the 2D graph ──
@@ -1567,10 +1615,21 @@ class Engine {
 
   private onContextMenu = (e: MouseEvent) => {
     e.preventDefault();
+    if (this.drawTool) return;
     this.openMenuFromCanvas(e.clientX, e.clientY);
   };
 
   private onPointerUp = (e: PointerEvent) => {
+    if (this.drawTool) {
+      const from = this.drawDown;
+      this.drawDown = null;
+      if (from && Math.hypot(e.clientX - from.x, e.clientY - from.y) <= 8) {
+        // A finger has no hover: show where it landed until the next tap.
+        if (e.pointerType !== "mouse") this.drawHover = this.drawSnap(e.clientX, e.clientY);
+        this.drawClick(e.clientX, e.clientY);
+      }
+      return;
+    }
     if (e.pointerType === "mouse" || !e.isPrimary || !this.tapDown) return;
     const moved = Math.hypot(e.clientX - this.tapDown.x, e.clientY - this.tapDown.y) > 10;
     this.tapDown = null;
@@ -1644,7 +1703,7 @@ class Engine {
     }
     if (this.hoverDirty) {
       this.hoverDirty = false;
-      this.pick();
+      if (!this.drawTool) this.pick();
     }
     this.renderer.render(this.scene, this.camera);
     this.updateLabels();
@@ -3636,6 +3695,7 @@ class Engine {
   private placeHandles() {
     this.placeAxisTipHandles();
     this.placeGizmos();
+    this.placeDrawTip();
     if (this.handles.size === 0) return;
     const at = { x: 0, y: 0 };
     const up = { x: 0, y: 0 };
@@ -3960,6 +4020,275 @@ class Engine {
     this.guideGroup.traverse((o) => {
       o.frustumCulled = false;
     });
+  }
+
+  // ── Drawing tools ──
+  //
+  // The same tools as on the flat graph. A click lands on the drawing plane, a level
+  // floor at the drawing height (Page Up / Page Down move it), or on a point already
+  // in space, so shapes can join points at different heights.
+
+  /** Picks up a drawing tool (or puts it down). */
+  setDrawTool(tool: DrawToolKind | null) {
+    if (tool === this.drawTool) return;
+    this.drawTool = tool;
+    this.drawPicks = [];
+    this.drawHover = null;
+    // While drawing, a click on a point's handle picks that point instead of dragging it.
+    this.handleHost.classList.toggle("g3d-drawing", !!tool);
+    if (tool) this.clearHover();
+    this.buildDrawPreview();
+    this.requestRender();
+  }
+
+  setDrawHeight(h: number) {
+    if (h === this.drawHeight) return;
+    this.drawHeight = h;
+    if (this.drawHover && !this.drawHover.name) this.drawHover = { ...this.drawHover, z: h };
+    this.buildDrawPreview();
+    this.requestRender();
+  }
+
+  /** The step Page Up / Page Down move the drawing plane by. */
+  drawHeightStep(): number {
+    return niceStep(this.domain.half) / 2;
+  }
+
+  /**
+   * Where a click lands: a corner of this shape again, a point already on the graph,
+   * a whole-number spot of the drawing plane, or just there (rounded to what a pixel is worth).
+   */
+  private drawSnap(clientX: number, clientY: number): DrawPick | null {
+    const rect = this.renderer.domElement.getBoundingClientRect();
+    const mx = clientX - rect.left;
+    const my = clientY - rect.top;
+    const at = { x: 0, y: 0 };
+    const near = (x: number, y: number, z: number) => (this.toScreen(x, y, z, at) ? Math.hypot(at.x - mx, at.y - my) : Infinity);
+
+    let best: DrawPick | null = null;
+    let bestD = 14;
+    this.drawPicks.forEach((p, i) => {
+      const d = near(p.x, p.y, p.z ?? 0);
+      if (d < bestD) {
+        bestD = d;
+        best = { name: p.name && !p.name.startsWith("#") ? p.name : `#${i}`, x: p.x, y: p.y, z: p.z };
+      }
+    });
+    for (const p of this.getProps().drawPoints ?? []) {
+      const d = near(p.x, p.y, p.z);
+      if (d < bestD) {
+        bestD = d;
+        best = { name: p.name, x: p.x, y: p.y, z: p.z };
+      }
+    }
+    if (best) return best;
+
+    const h = this.drawHeight;
+    const hit = this.hitHeight(clientX, clientY, h);
+    if (!hit) return null;
+    const half = this.domain.half;
+    // Whole numbers on an ordinary view; the grid's own step when zoomed far out.
+    const unit = half > 25 ? niceStep(half) : 1;
+    const gx = Math.round(hit.x / unit) * unit;
+    const gy = Math.round(hit.y / unit) * unit;
+    if (near(gx, gy, h) < 10) return { x: gx, y: gy, z: h };
+    const digits = clamp(2 - Math.floor(Math.log10(half)), 0, 4);
+    const round = (v: number) => Number(v.toFixed(digits));
+    return { x: round(hit.x), y: round(hit.y), z: h };
+  }
+
+  private drawClick(clientX: number, clientY: number) {
+    const tool = this.drawTool;
+    const pick = tool ? this.drawSnap(clientX, clientY) : null;
+    if (!tool || !pick) return;
+    const prev = this.drawPicks;
+    if (tool === "polygon") {
+      // Back on the first corner: closed.
+      const isFirst = pick.name === "#0" || (!!prev[0]?.name && pick.name === prev[0].name);
+      if (prev.length >= 3 && isFirst) return this.finishDrawing(prev);
+      // Another corner already in this shape: ignore.
+      if (pick.name?.startsWith("#") || (pick.name && prev.some((p) => p.name === pick.name))) return;
+      this.drawPicks = [...prev, pick];
+    } else {
+      // The same point twice makes nothing.
+      const last = prev[prev.length - 1];
+      if (last && Math.abs(last.x - pick.x) < 1e-9 && Math.abs(last.y - pick.y) < 1e-9 && Math.abs((last.z ?? 0) - (pick.z ?? 0)) < 1e-9) return;
+      const next = [...prev, pick];
+      if (next.length >= DRAW_TOOL_CLICKS[tool]) return this.finishDrawing(next);
+      this.drawPicks = next;
+    }
+    this.buildDrawPreview();
+    this.requestRender();
+  }
+
+  private finishDrawing(picks: DrawPick[]) {
+    const tool = this.drawTool;
+    this.drawPicks = [];
+    this.buildDrawPreview();
+    this.requestRender();
+    if (tool) this.getProps().onDrawComplete?.(tool, picks);
+  }
+
+  private onDrawKey = (e: KeyboardEvent) => {
+    if (!this.drawTool) return;
+    const target = e.target as HTMLElement | null;
+    if (target && (target.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(target.tagName))) return;
+    if (e.key === "Escape") {
+      if (this.drawPicks.length) {
+        this.drawPicks = [];
+        this.buildDrawPreview();
+        this.requestRender();
+      } else this.getProps().onDrawExit?.();
+    } else if (e.key === "Enter" && this.drawTool === "polygon" && this.drawPicks.length >= 3) {
+      this.finishDrawing(this.drawPicks);
+    } else if (e.key === "Backspace" && this.drawPicks.length) {
+      this.drawPicks = this.drawPicks.slice(0, -1);
+      this.buildDrawPreview();
+      this.requestRender();
+    } else if (e.key === "PageUp" || e.key === "PageDown") {
+      e.preventDefault();
+      const step = this.drawHeightStep();
+      const next = Number((this.drawHeight + (e.key === "PageUp" ? step : -step)).toFixed(6));
+      const { cz, half } = this.domain;
+      this.getProps().onDrawHeight?.(clamp(next, cz - half, cz + half));
+    }
+  };
+
+  /** The drawing plane, the clicks so far and the shape as it would be. */
+  private buildDrawPreview() {
+    disposeGroup(this.drawGroup);
+    this.drawGroup.clear();
+    const tool = this.drawTool;
+    if (!tool) return;
+    const { cx, cy, cz, half } = this.domain;
+    const h = clamp(this.drawHeight, cz - half, cz + half);
+    const color = toColor(this.getProps().drawColor || "#3b82f6");
+    const over = <M extends THREE.Material>(m: M, front = true): M => {
+      m.transparent = true;
+      if (front) m.depthTest = false;
+      return m;
+    };
+    const add = (o: THREE.Object3D, order = 7) => {
+      o.renderOrder = order;
+      o.frustumCulled = false;
+      this.drawGroup.add(o);
+    };
+
+    // The plane being drawn on: a faint tinted floor with a border, and its grid.
+    const corners = [
+      [cx - half, cy - half],
+      [cx + half, cy - half],
+      [cx + half, cy + half],
+      [cx - half, cy + half],
+    ];
+    const planeGeometry = new THREE.BufferGeometry();
+    planeGeometry.setAttribute("position", new THREE.Float32BufferAttribute(corners.flatMap(([x, y]) => [x, y, h]), 3));
+    planeGeometry.setIndex([0, 1, 2, 0, 2, 3]);
+    add(new THREE.Mesh(planeGeometry, over(new THREE.MeshBasicMaterial({ color, opacity: 0.07, side: THREE.DoubleSide, depthWrite: false }), false)), 1);
+    const grid: number[] = [];
+    const step = niceStep(half);
+    for (let k = Math.ceil((cx - half) / step); k * step <= cx + half + 1e-9; k++) grid.push(k * step, cy - half, h, k * step, cy + half, h);
+    for (let k = Math.ceil((cy - half) / step); k * step <= cy + half + 1e-9; k++) grid.push(cx - half, k * step, h, cx + half, k * step, h);
+    for (let i = 0; i < 4; i++) {
+      const [x0, y0] = corners[i];
+      const [x1, y1] = corners[(i + 1) % 4];
+      grid.push(x0, y0, h, x1, y1, h);
+    }
+    const gridGeometry = new THREE.BufferGeometry();
+    gridGeometry.setAttribute("position", new THREE.Float32BufferAttribute(grid, 3));
+    add(new THREE.LineSegments(gridGeometry, over(new THREE.LineBasicMaterial({ color, opacity: 0.25 }), false)), 1);
+
+    // A corner used again is that corner.
+    const placed: Vec3[] = this.drawPicks.map((p) => {
+      const i = p.name?.startsWith("#") ? Number(p.name.slice(1)) : -1;
+      const q = i >= 0 ? this.drawPicks[i] : p;
+      return [q.x, q.y, q.z ?? 0];
+    });
+    const hover: Vec3 | null = this.drawHover ? [this.drawHover.x, this.drawHover.y, this.drawHover.z ?? 0] : null;
+    const pts = hover ? [...placed, hover] : placed;
+
+    const dashed = (positions: number[], opacity = 0.85) => {
+      if (positions.length < 6) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(positions, 3));
+      const line = new THREE.LineSegments(
+        geometry,
+        over(new THREE.LineDashedMaterial({ color, opacity, dashSize: 0.05 * half, gapSize: 0.035 * half })),
+      );
+      line.computeLineDistances();
+      add(line);
+    };
+    const chain = (list: Vec3[]) => {
+      const out: number[] = [];
+      for (let i = 0; i + 1 < list.length; i++) out.push(...list[i], ...list[i + 1]);
+      return out;
+    };
+
+    if (tool === "circle" && placed.length === 1 && hover) {
+      const [ox, oy, oz] = placed[0];
+      const r = Math.hypot(hover[0] - ox, hover[1] - oy, hover[2] - oz);
+      const ring: number[] = [];
+      for (let i = 0; i < 96; i++) {
+        const a0 = (i / 96) * TWO_PI;
+        const a1 = ((i + 1) / 96) * TWO_PI;
+        ring.push(ox + r * Math.cos(a0), oy + r * Math.sin(a0), oz, ox + r * Math.cos(a1), oy + r * Math.sin(a1), oz);
+      }
+      dashed(ring);
+    } else if (tool === "line" && placed.length === 1 && hover) {
+      const d = new THREE.Vector3(hover[0] - placed[0][0], hover[1] - placed[0][1], hover[2] - placed[0][2]);
+      if (d.lengthSq() > 0) {
+        d.setLength(4 * half);
+        dashed([placed[0][0] - d.x, placed[0][1] - d.y, placed[0][2] - d.z, placed[0][0] + d.x, placed[0][1] + d.y, placed[0][2] + d.z], 0.7);
+      }
+    } else if (tool !== "point" && pts.length >= 2) {
+      dashed(chain(pts));
+      if (tool === "polygon" && placed.length >= 2 && hover) dashed([...hover, ...placed[0]], 0.35);
+    }
+
+    // Where each point stands over the floor, so its height reads at a glance.
+    const floor = clamp(0, cz - half, cz + half);
+    const drops: number[] = [];
+    for (const p of pts) if (Math.abs(p[2] - floor) > 1e-9) drops.push(p[0], p[1], p[2], p[0], p[1], floor);
+    if (drops.length) {
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(drops, 3));
+      const line = new THREE.LineSegments(
+        geometry,
+        over(new THREE.LineDashedMaterial({ color, opacity: 0.5, dashSize: 0.03 * half, gapSize: 0.03 * half })),
+      );
+      line.computeLineDistances();
+      add(line);
+    }
+
+    const dots = (list: Vec3[], size: number, opacity: number) => {
+      if (!list.length) return;
+      const geometry = new THREE.BufferGeometry();
+      geometry.setAttribute("position", new THREE.Float32BufferAttribute(list.flat(), 3));
+      add(
+        new THREE.Points(
+          geometry,
+          over(new THREE.PointsMaterial({ color, size, sizeAttenuation: false, map: this.disc, alphaTest: 0.3, opacity })),
+        ),
+        8,
+      );
+    };
+    dots(placed, 11, 1);
+    if (hover) dots([hover], 11, 0.6);
+  }
+
+  /** The readout by the pointer while drawing. */
+  private placeDrawTip() {
+    const p = this.drawTool ? this.drawHover : null;
+    const at = { x: 0, y: 0 };
+    if (!p || !this.toScreen(p.x, p.y, p.z ?? 0, at)) {
+      this.drawTip.style.display = "none";
+      return;
+    }
+    this.drawTip.style.display = "block";
+    this.drawTip.style.setProperty("--c", this.getProps().drawColor || "#3b82f6");
+    this.drawTip.style.translate = `${at.x.toFixed(1)}px ${(at.y + 14).toFixed(1)}px`;
+    const coords = `(${formatCoord(p.x)}, ${formatCoord(p.y)}, ${formatCoord(p.z ?? 0)})`;
+    this.drawTip.textContent = p.name && !p.name.startsWith("#") ? `${p.name} ${coords}` : coords;
   }
 
   // ── Transform gizmo (rows switched to "Transformable") ──
@@ -4407,6 +4736,8 @@ class Engine {
     this.gizmoEls.forEach((el) => el.remove());
     this.gizmoEls.clear();
     this.gizmoTip.remove();
+    this.drawTip.remove();
+    window.removeEventListener("keydown", this.onDrawKey);
     this.axisHandles.forEach((h) => h.wrap.remove());
     this.axisHandles = [];
   }
@@ -4514,6 +4845,14 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
     engineRef.current?.setOptions(options);
   }, [options]);
 
+  useEffect(() => {
+    engineRef.current?.setDrawTool(props.drawTool ?? null);
+  }, [props.drawTool]);
+
+  useEffect(() => {
+    engineRef.current?.setDrawHeight(props.drawHeight ?? 0);
+  }, [props.drawHeight]);
+
   // Every render may carry new rows, slider values or time. The engine compares each
   // row's key and rebuilds only what changed, once per frame.
   useEffect(() => {
@@ -4559,11 +4898,51 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
         </div>
       )}
 
+      {!props.compact && !failed && props.drawTool && (
+        // The drawing plane's height: where the next click lands.
+        <div
+          data-capture-exclude
+          className="absolute bottom-3 left-1/2 -translate-x-1/2 z-40 flex items-center gap-1 h-9 pl-3 pr-1 rounded-full bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/10 dark:shadow-black/40 cursor-default"
+        >
+          <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 whitespace-nowrap">Draw at</span>
+          <span className="font-mono text-[12px] font-semibold tabular-nums text-blue-600 dark:text-blue-400 whitespace-nowrap">
+            z = {formatCoord(props.drawHeight ?? 0)}
+          </span>
+          {(["−", "+"] as const).map((sign) => (
+            <button
+              key={sign}
+              type="button"
+              title={sign === "+" ? "Raise the drawing plane (Page Up)" : "Lower the drawing plane (Page Down)"}
+              aria-label={sign === "+" ? "Raise the drawing plane" : "Lower the drawing plane"}
+              onClick={() => {
+                const engine = engineRef.current;
+                if (!engine) return;
+                const step = engine.drawHeightStep();
+                const h = props.drawHeight ?? 0;
+                props.onDrawHeight?.(Number((h + (sign === "+" ? step : -step)).toFixed(6)));
+              }}
+              className="size-7 inline-flex items-center justify-center rounded-full text-[15px] font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              {sign}
+            </button>
+          ))}
+          {(props.drawHeight ?? 0) !== 0 && (
+            <button
+              type="button"
+              title="Back to the floor (z = 0)"
+              onClick={() => props.onDrawHeight?.(0)}
+              className="h-7 px-2 rounded-full text-[11px] font-medium text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              Floor
+            </button>
+          )}
+        </div>
+      )}
       {!props.compact && !failed && (
         <>
           <div
             data-capture-exclude
-            className="hidden md:block absolute bottom-3 left-3 z-30 pointer-events-none px-2 py-1 rounded-md bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400"
+            className={`${props.drawTool ? "hidden" : "hidden md:block"} absolute bottom-3 left-3 z-30 pointer-events-none px-2 py-1 rounded-md bg-white/80 dark:bg-slate-900/80 border border-slate-200/80 dark:border-slate-700/60 text-[10px] text-slate-500 dark:text-slate-400`}
           >
             Drag to turn · scroll to zoom · right-drag to move · drag a point, or its ↕ grip for height
           </div>

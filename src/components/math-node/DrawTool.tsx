@@ -56,6 +56,8 @@ export interface DrawPick {
   name?: string;
   x: number;
   y: number;
+  /** Height, for a click in the 3D view (0 or missing: on the floor). */
+  z?: number;
   /**
    * The shape whose outline was clicked (Point tool only): its row, which
    * segment of its outline, and the curve parameter there when it has one.

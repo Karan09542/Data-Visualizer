@@ -949,6 +949,8 @@ export const MathNodeRenderer: React.FC<any> = ({
   );
   // The drawing tool in hand; null lets the graph pan as usual.
   const [drawTool, setDrawTool] = useState<GraphTool | null>(null);
+  // 3D view: the height of the level plane drawing clicks land on.
+  const [drawHeight, setDrawHeight] = useState(0);
   // What the Vector tool labels its arrows with (remembered per browser).
   const [vectorOptions, setVectorOptionsState] = useState<VectorOptions>(() => {
     try {
@@ -2586,6 +2588,21 @@ export const MathNodeRenderer: React.FC<any> = ({
     })
     : [];
 
+  // The same for the 3D view: every named point, where it is in space.
+  const drawSnapPoints3 =
+    viewMode === "3d" && drawTool && drawTool !== "select"
+      ? functions.flatMap((f) => {
+        if (f.visible === false) return [];
+        const name = f.expr.match(/^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=(?!=)/)?.[1];
+        if (!name) return [];
+        let v = baseScope[name];
+        if (v && typeof v.toArray === "function") v = v.toArray();
+        const flat = Array.isArray(v) ? v.map((c: any) => (Array.isArray(c) && c.length === 1 ? c[0] : c)) : null;
+        if (!flat || (flat.length !== 2 && flat.length !== 3) || !flat.every((c: any) => typeof c === "number" && Number.isFinite(c))) return [];
+        return [{ name, x: flat[0], y: flat[1], z: flat[2] ?? 0 }];
+      })
+      : [];
+
   const handleInsertFunctionFromHelp = (formula: {
     type:
     | "function"
@@ -2992,8 +3009,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     setPointMenu(null);
     highlightRow(null);
     if (mode === "3d") {
-      // The drawing, measuring and point tools work on the flat graph.
-      setDrawTool(null);
+      // The drawing tools work in 3D too; Select and the area tool are for the flat graph.
+      if (drawTool === "select") setDrawTool(null);
       setAreaToolActive(false);
       setShowAdvancedAxisControls(false);
       // Remember exactly where the flat graph was panned and zoomed to:
@@ -7294,6 +7311,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                 }
                 onPointMenu={openPointMenu}
                 onDragHandle={handleHandleDrag}
+                drawTool={!isCompact && drawTool && drawTool !== "select" ? drawTool : null}
+                drawHeight={drawHeight}
+                onDrawHeight={setDrawHeight}
+                drawPoints={drawSnapPoints3}
+                drawColor={COLORS[functions.length % COLORS.length]}
+                onDrawComplete={handleDrawComplete}
+                onDrawExit={() => setDrawTool(null)}
               />
             </React.Suspense>
           ) : (
@@ -9704,8 +9728,9 @@ export const MathNodeRenderer: React.FC<any> = ({
             </TraceScopeContext.Provider>
           )}
 
-          {!isCompact && viewMode === "2d" && (
+          {!isCompact && (
             <DrawToolbar
+              in3d={viewMode === "3d"}
               tool={drawTool}
               onChange={(t) => {
                 setDrawTool(t);
@@ -9719,9 +9744,14 @@ export const MathNodeRenderer: React.FC<any> = ({
               onToggleVectorResultants={() => setShowResultants((v) => !v)}
               onDrawVector={(tail, tip) => {
                 // An end that lands on a point already there is that point.
+                // In 3D, on the drawing plane.
+                const z = viewMode === "3d" ? drawHeight : 0;
                 const pick = ([x, y]: [number, number]): DrawPick => {
-                  const at = drawSnapPoints.find((p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6);
-                  return at ? { name: at.name, x: at.x, y: at.y } : { x: Number(x.toFixed(6)), y: Number(y.toFixed(6)) };
+                  const pool = viewMode === "3d" ? drawSnapPoints3 : drawSnapPoints.map((p) => ({ ...p, z: 0 }));
+                  const at = pool.find((p) => Math.abs(p.x - x) < 1e-6 && Math.abs(p.y - y) < 1e-6 && Math.abs(p.z - z) < 1e-6);
+                  return at
+                    ? { name: at.name, x: at.x, y: at.y, z: at.z }
+                    : { x: Number(x.toFixed(6)), y: Number(y.toFixed(6)), z };
                 };
                 handleDrawComplete("vector", [pick(tail), pick(tip)]);
               }}
@@ -9749,7 +9779,7 @@ export const MathNodeRenderer: React.FC<any> = ({
               onClose={closePointMenu}
             />
           )}
-          {!isCompact && viewMode === "2d" && drawTool && (
+          {!isCompact && drawTool && (viewMode === "2d" || drawTool !== "select") && (
             // One line, whatever the screen: a short hint on phones, the full one from md up.
             // Centred, and narrow enough to stay clear of the drawing tools on the left.
             <div
@@ -9763,7 +9793,9 @@ export const MathNodeRenderer: React.FC<any> = ({
                   <span className="md:hidden">{drawTool === "select" ? SELECT_TOOL_SHORT_HINT : DRAW_TOOL_SHORT_HINTS[drawTool]}</span>
                   <span className="hidden md:inline">
                     {drawTool === "select" ? SELECT_TOOL_HINT : DRAW_TOOL_HINTS[drawTool]}{" "}
-                    <span className="text-white/50">Esc to stop.</span>
+                    <span className="text-white/50">
+                      {viewMode === "3d" ? "Page Up/Down: drawing height. Drag to turn. Esc to stop." : "Esc to stop."}
+                    </span>
                   </span>
                 </span>
               ) : (

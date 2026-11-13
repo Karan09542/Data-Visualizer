@@ -49,6 +49,8 @@ interface DrawToolbarProps {
   onToggleVectorResultants: () => void;
   /** Draw a vector between two positions typed in (rather than clicked). */
   onDrawVector: (tail: [number, number], tip: [number, number]) => void;
+  /** The 3D view: everything but Select, which works on the flat graph. */
+  in3d?: boolean;
 }
 
 const FIELD =
@@ -157,6 +159,7 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
   vectorResultants,
   onToggleVectorResultants,
   onDrawVector,
+  in3d = false,
 }) => {
   // The vector options fold away to one button: shut at first on a phone, where the
   // graph needs the room; open at first on a wider screen. Remembered once changed.
@@ -248,16 +251,16 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
       // On a short graph the tools scroll rather than run off its top and bottom.
       className={`${SHELL} flex flex-col gap-0.5 p-1 max-h-[calc(100%-1rem)] overflow-y-auto no-scrollbar`}
     >
-      {TOOLS.map(({ id, label, Icon }, i) => {
+      {TOOLS.filter(({ id }) => !(in3d && id === "select")).map(({ id, label, Icon }, i) => {
         const active = tool === id;
         return (
           <React.Fragment key={label}>
-            {(i === 2 || id === "distance") && <div className="h-px mx-1 my-0.5 bg-slate-200 dark:bg-slate-700" />}
+            {(id === "point" || id === "distance") && i > 0 && <div className="h-px mx-1 my-0.5 bg-slate-200 dark:bg-slate-700" />}
             <button
               type="button"
               onClick={() => onChange(active && id ? null : id)}
               aria-pressed={active}
-              title={`${label}\n${id === "select" ? SELECT_TOOL_HINT : id ? DRAW_TOOL_HINTS[id] : "Drag to pan, scroll to zoom"}`}
+              title={`${label}\n${id === "select" ? SELECT_TOOL_HINT : id ? DRAW_TOOL_HINTS[id] : in3d ? "Drag to turn, scroll to zoom" : "Drag to pan, scroll to zoom"}`}
               className={`size-8 inline-flex items-center justify-center rounded-lg transition-colors ${
                 active
                   ? "bg-blue-600 text-white shadow-sm"
