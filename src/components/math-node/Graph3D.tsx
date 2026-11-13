@@ -181,6 +181,8 @@ export interface Graph3DOptions {
   showGrid: boolean;
   /** The outline of the box. */
   showBox: boolean;
+  /** The curves where surfaces meet (and the line where two planes meet). */
+  intersections: boolean;
 }
 
 function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
@@ -198,6 +200,7 @@ function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
     showAxes: o?.showAxes !== false,
     showGrid: o?.showGrid !== false,
     showBox: o?.showBox !== false,
+    intersections: o?.intersections !== false,
   };
 }
 
@@ -434,6 +437,13 @@ interface RowEntry {
   labels: LabelSpec[];
   /** The row's surfaces as triangles, for contours and slices. */
   surfaces: SurfaceData[];
+  /**
+   * Which side of the row's surface a point is on (0 on it), when the row can say:
+   * z = f(x, y) and F(x, y, z) = 0. Used to find where surfaces meet.
+   */
+  implicit?: (x: number, y: number, z: number) => number;
+  /** Drawn as one flat plane: another surface's finer mesh finds where they meet. */
+  flat?: boolean;
   /** Notes pinned to the corner of the view (see MathFunction.labelPinned). */
   pinned?: LabelSpec[];
   /** A row of points: it has the point menu. */
@@ -696,6 +706,9 @@ function formatTick(v: number, step: number): string {
 
 const formatCoord = (v: number) => String(Number(v.toFixed(2))).replace("-", "−");
 
+/** The curves where surfaces meet: bright, to stand out on any surface colour. */
+const CROSS_COLOR = "#facc15";
+
 function disposeGroup(group: THREE.Object3D) {
   group.traverse((o: any) => {
     o.geometry?.dispose?.();
@@ -921,6 +934,9 @@ class Engine {
   private content = new THREE.Group();
   private decor = new THREE.Group();
   private rowsGroup = new THREE.Group();
+  /** Where surfaces meet (see buildIntersections). */
+  private crossGroup = new THREE.Group();
+  private crossDirty = false;
   private rows = new Map<string, RowEntry>();
   private decorLabels: LabelSpec[] = [];
   private labelSpecs: LabelSpec[] = [];
@@ -1086,7 +1102,7 @@ class Engine {
     light.position.set(0.6, 0.8, 1);
     this.camera.add(light);
     this.scene.add(this.camera, new THREE.AmbientLight(0xffffff, 2), this.content);
-    this.content.add(this.decor, this.rowsGroup, this.sliceGroup, this.guideGroup, this.gizmoGroup, this.drawGroup);
+    this.content.add(this.decor, this.rowsGroup, this.crossGroup, this.sliceGroup, this.guideGroup, this.gizmoGroup, this.drawGroup);
 
     // Tangent plane and normal, placed where the pointer touches a surface.
     const planeGeometry = new THREE.PlaneGeometry(0.5, 0.5);
@@ -1168,6 +1184,7 @@ class Engine {
   setOptions(options: Graph3DOptions) {
     const decorChanged =
       options.showAxes !== this.opts.showAxes || options.showGrid !== this.opts.showGrid || options.showBox !== this.opts.showBox;
+    if (options.intersections !== this.opts.intersections) this.crossDirty = true;
     this.opts = options;
     if (decorChanged) this.buildDecor();
     this.controls.autoRotate = options.autoRotate;
@@ -2204,6 +2221,7 @@ class Engine {
       this.rows.set(f.id, entry);
       this.labelsDirty = true;
       this.sliceDirty = true;
+      this.crossDirty = true;
       if (heavy && tier === 1) this.scheduleFine();
     }
 
@@ -2218,6 +2236,7 @@ class Engine {
         this.updateTip();
       } else if (row?.drag) this.placeDrag(row, this.drag.pos);
     }
+    if (this.crossDirty) this.buildIntersections();
     this.syncHandles();
     this.syncGizmos();
     this.buildGuides();
@@ -2283,6 +2302,7 @@ class Engine {
     this.rows.delete(id);
     this.labelsDirty = true;
     this.sliceDirty = true;
+    this.crossDirty = true;
   }
 
   /** How a row is drawn in space; null if it isn't drawn at all. */
@@ -2928,6 +2948,18 @@ class Engine {
           f,
           4 * half,
         );
+        if (!axf) {
+          const own = Object.create(s);
+          entry.implicit = (x, y, z) => {
+            own.x = x;
+            own.y = y;
+            try {
+              return z - toReal(compiled.evaluate(own));
+            } catch {
+              return NaN;
+            }
+          };
+        }
         if (anchor) {
           this.pushRowLabel(entry, f, scope, anchor);
           this.attachShapeDrag(entry, f, anchor);
@@ -3035,7 +3067,31 @@ class Engine {
       }
 
       case "iso": {
-        const anchor = this.addIsoSurface(group, f, s, isoCells);
+        const region = f.type === "inequality" ? f.operator || f.expr2 || "<" : undefined;
+        const untransformed = !this.affineTransformOf(f, () => [[0, 0]]);
+        let implicit: ((x: number, y: number, z: number) => number) | undefined;
+        if (untransformed) {
+          const own = Object.create(s);
+          const value = this.relation(f, own);
+          implicit = (x, y, z) => {
+            own.x = x;
+            own.y = y;
+            own.z = z;
+            return value();
+          };
+        }
+        // A plane (a·x + b·y + c·z = d, or one drawn through three points): exact and flat.
+        const flat = !region && implicit ? this.affineOf(implicit) : null;
+        let anchor: Vec3 | null;
+        if (flat) {
+          const { n, d } = flat;
+          anchor = this.addFlatPlane(group, f, n, d);
+          entry.implicit = (x, y, z) => n[0] * x + n[1] * y + n[2] * z + d;
+          entry.flat = true;
+        } else {
+          anchor = this.addIsoSurface(group, f, s, isoCells, region);
+          entry.implicit = implicit;
+        }
         if (anchor) {
           this.pushRowLabel(entry, f, scope, anchor);
           this.attachShapeDrag(entry, f, anchor);
@@ -3366,8 +3422,95 @@ class Engine {
     };
   }
 
+  /**
+   * g(x, y, z) as a·x + b·y + c·z + d, when it is one (to rounding) across the box:
+   * a plane. Checked at the box's middle, along each axis, and at a few more places.
+   */
+  private affineOf(g: (x: number, y: number, z: number) => number): { n: Vec3; d: number } | null {
+    const { cx, cy, cz, half } = this.domain;
+    const g0 = g(cx, cy, cz);
+    const gx = g(cx + half, cy, cz) - g0;
+    const gy = g(cx, cy + half, cz) - g0;
+    const gz = g(cx, cy, cz + half) - g0;
+    if (!Number.isFinite(g0 + gx + gy + gz)) return null;
+    const scale = Math.abs(gx) + Math.abs(gy) + Math.abs(gz);
+    if (!(scale > 0)) return null;
+    for (const [a, b, c] of [[0.7, -0.4, 0.3], [-0.9, 0.8, -0.6], [0.2, 0.9, 0.95], [-0.5, -0.75, -0.85]]) {
+      const want = g0 + gx * a + gy * b + gz * c;
+      const got = g(cx + a * half, cy + b * half, cz + c * half);
+      if (!(Math.abs(got - want) <= 1e-7 * (scale + Math.abs(g0)))) return null;
+    }
+    const n: Vec3 = [gx / half, gy / half, gz / half];
+    return { n, d: g0 - n[0] * cx - n[1] * cy - n[2] * cz };
+  }
+
+  /** The plane n·p + d = 0 where it crosses the box: one flat polygon, edged in the row's colour. */
+  private addFlatPlane(group: THREE.Group, f: MathFunction, n: Vec3, d: number): Vec3 | null {
+    const { cx, cy, cz, half } = this.domain;
+    const lo = [cx - half, cy - half, cz - half];
+    const hi = [cx + half, cy + half, cz + half];
+    const pts: Vec3[] = [];
+    const val = (p: number[]) => n[0] * p[0] + n[1] * p[1] + n[2] * p[2] + d;
+    // Where it crosses each of the box's 12 edges.
+    for (let axis = 0; axis < 3; axis++) {
+      const [ua, va] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
+      for (const bu of [lo[ua], hi[ua]]) {
+        for (const bv of [lo[va], hi[va]]) {
+          const p0 = [0, 0, 0];
+          const p1 = [0, 0, 0];
+          p0[axis] = lo[axis];
+          p1[axis] = hi[axis];
+          p0[ua] = p1[ua] = bu;
+          p0[va] = p1[va] = bv;
+          const v0 = val(p0);
+          const v1 = val(p1);
+          if ((v0 < 0) === (v1 < 0) && v0 !== 0) continue;
+          const t = v0 === v1 ? 0 : v0 / (v0 - v1);
+          if (t < 0 || t > 1) continue;
+          pts.push([p0[0] + (p1[0] - p0[0]) * t, p0[1] + (p1[1] - p0[1]) * t, p0[2] + (p1[2] - p0[2]) * t]);
+        }
+      }
+    }
+    if (pts.length < 3) return null;
+    const mid: Vec3 = [0, 1, 2].map((i) => pts.reduce((s, p) => s + p[i], 0) / pts.length) as Vec3;
+    // Round the middle, in order: by angle in the plane.
+    const nv = new THREE.Vector3(...n).normalize();
+    const e1 = new THREE.Vector3(1, 0, 0);
+    if (Math.abs(nv.x) > 0.9) e1.set(0, 1, 0);
+    e1.sub(nv.clone().multiplyScalar(e1.dot(nv))).normalize();
+    const e2 = nv.clone().cross(e1);
+    const angle = (p: Vec3) => {
+      const q = new THREE.Vector3(p[0] - mid[0], p[1] - mid[1], p[2] - mid[2]);
+      return Math.atan2(q.dot(e2), q.dot(e1));
+    };
+    pts.sort((a, b) => angle(a) - angle(b));
+    // A fan of triangles, split finely enough for smooth shading and clean cuts.
+    const rings = 8;
+    const positions: number[] = [];
+    const index: number[] = [];
+    positions.push(...mid);
+    for (let k = 1; k <= rings; k++) {
+      for (const p of pts) {
+        const s = k / rings;
+        positions.push(mid[0] + (p[0] - mid[0]) * s, mid[1] + (p[1] - mid[1]) * s, mid[2] + (p[2] - mid[2]) * s);
+      }
+    }
+    const m = pts.length;
+    const at = (k: number, i: number) => (k === 0 ? 0 : 1 + (k - 1) * m + (i % m));
+    for (let k = 0; k < rings; k++) {
+      for (let i = 0; i < m; i++) {
+        if (k === 0) index.push(at(0, 0), at(1, i), at(1, i + 1));
+        else index.push(at(k, i), at(k + 1, i), at(k + 1, i + 1), at(k, i), at(k + 1, i + 1), at(k, i + 1));
+      }
+    }
+    group.add(this.surfaceMesh(new Float32Array(positions), index, f));
+    const edge = this.line([...pts.flat(), ...pts[0]], f.color, { ...f, outlineWidth: f.outlineWidth ?? 2.5 });
+    if (edge) group.add(edge);
+    return mid;
+  }
+
   /** The surface where a relation in x, y and z holds (marching cubes). */
-  private addIsoSurface(group: THREE.Group, f: MathFunction, s: any, n: number): Vec3 | null {
+  private addIsoSurface(group: THREE.Group, f: MathFunction, s: any, n: number, region?: string): Vec3 | null {
     const { cx, cy, cz, half } = this.domain;
     const axf = this.affineTransformOf(f, () => [[0, 0]]);
     const size = n + 1;
@@ -3449,9 +3592,77 @@ class Engine {
         }
       }
     }
-    if (index.length === 0) return null;
-    group.add(this.surfaceMesh(new Float32Array(positions), index, f));
+    if (index.length === 0 && !region) return null;
+    if (index.length > 0) group.add(this.surfaceMesh(new Float32Array(positions), index, f));
+
+    // An inequality fills the part of space where it holds: its boundary (above), and
+    // where that part meets the walls of the box, shaded, so it reads as a solid.
+    let capCount = 0;
+    let capSum: Vec3 = [0, 0, 0];
+    if (region) {
+      const flip = region === ">" || region === ">=" ? -1 : 1;
+      const caps: number[] = [];
+      const inset = 2e-3 * half;
+      const base = [x0, y0, z0];
+      const g = [0, 0, 0];
+      const corner: Vec3[] = [[0, 0, 0], [0, 0, 0], [0, 0, 0], [0, 0, 0]];
+      const h = [0, 0, 0, 0];
+      const poly: number[][] = [];
+      for (let axis = 0; axis < 3; axis++) {
+        const [ua, va] = axis === 0 ? [1, 2] : axis === 1 ? [0, 2] : [0, 1];
+        for (const side of [0, n]) {
+          const wall = base[axis] + side * stepSize + (side === 0 ? inset : -inset);
+          for (let w = 0; w < n; w++) {
+            for (let u = 0; u < n; u++) {
+              let defined = true;
+              for (let c = 0; c < 4; c++) {
+                const cu = u + (c === 1 || c === 2 ? 1 : 0);
+                const cw = w + (c >= 2 ? 1 : 0);
+                g[axis] = side;
+                g[ua] = cu;
+                g[va] = cw;
+                const v = values[at(g[0], g[1], g[2])];
+                if (v !== v) defined = false;
+                h[c] = flip * v;
+                const p = corner[c];
+                p[axis] = wall;
+                p[ua] = base[ua] + cu * stepSize;
+                p[va] = base[va] + cw * stepSize;
+              }
+              if (!defined) continue;
+              // The part of this square where it holds (h ≤ 0), cut along h = 0.
+              poly.length = 0;
+              for (let c = 0; c < 4; c++) {
+                const d = (c + 1) % 4;
+                const inC = h[c] <= 0;
+                if (inC) poly.push([corner[c][0], corner[c][1], corner[c][2]]);
+                if (inC !== h[d] <= 0) {
+                  const t = h[c] / (h[c] - h[d]);
+                  poly.push([
+                    corner[c][0] + (corner[d][0] - corner[c][0]) * t,
+                    corner[c][1] + (corner[d][1] - corner[c][1]) * t,
+                    corner[c][2] + (corner[d][2] - corner[c][2]) * t,
+                  ]);
+                }
+              }
+              for (let k = 1; k + 1 < poly.length; k++) caps.push(...poly[0], ...poly[k], ...poly[k + 1]);
+              if (poly.length >= 3) {
+                capCount++;
+                capSum = [capSum[0] + poly[0][0], capSum[1] + poly[0][1], capSum[2] + poly[0][2]];
+              }
+            }
+          }
+        }
+      }
+      if (caps.length) {
+        const capIndex = Array.from({ length: caps.length / 3 }, (_, i) => i);
+        group.add(this.buildRegionMesh(new Float32Array(caps), capIndex, f, 0.3, "solid", false));
+      }
+      if (index.length === 0 && capCount === 0) return null;
+      if (index.length === 0) return [capSum[0] / capCount, capSum[1] / capCount, capSum[2] / capCount];
+    }
     const vCount = positions.length / 3;
+
     let sx = 0, sy = 0, sz = 0;
     for (let i = 0; i < positions.length; i += 3) {
       sx += positions[i];
@@ -5084,6 +5295,105 @@ class Engine {
     }
   }
 
+  // ── Where surfaces meet ──
+  //
+  // Every surface row that can say which side of it a point is on (z = f(x, y), or
+  // F(x, y, z) = 0) is an implicit g(x, y, z). Where another row's surface crosses
+  // g = 0 is found on that row's own triangles: a segment across each triangle whose
+  // corners g puts on both sides. Planes drawn in space meet in their line this way.
+
+  private buildIntersections() {
+    const list = [...this.rows.values()];
+    // Wait while anything taking part is being redrawn coarsely (a drag, or playing).
+    if (list.some((r) => r.tier === 0 && (r.implicit || r.surfaces.length))) {
+      this.crossGroup.visible = false;
+      return;
+    }
+    this.crossDirty = false;
+    this.crossGroup.visible = true;
+    disposeGroup(this.crossGroup);
+    this.crossGroup.clear();
+    if (!this.opts.intersections) return;
+
+    const segs: number[] = [];
+    let budget = 400_000; // implicit evaluations, all pairs together
+    const a: Vec3 = [0, 0, 0];
+    const b: Vec3 = [0, 0, 0];
+    for (let i = 0; i < list.length; i++) {
+      for (let j = i + 1; j < list.length; j++) {
+        const A = list[i];
+        const B = list[j];
+        let mesh: RowEntry;
+        let g: (x: number, y: number, z: number) => number;
+        // Cut along the finer mesh: a plane's few triangles would make a curve look jagged.
+        const preferB = !!B.flat && !A.flat;
+        if (B.implicit && A.surfaces.length && !(preferB && A.implicit && B.surfaces.length)) {
+          mesh = A;
+          g = B.implicit;
+        } else if (A.implicit && B.surfaces.length) {
+          mesh = B;
+          g = A.implicit;
+        } else continue;
+        const lift = mesh.group.position.z;
+        for (const surf of mesh.surfaces) {
+          const pos = surf.positions;
+          const count = pos.length / 3;
+          if (count > budget) continue;
+          budget -= count;
+          const vals = new Float32Array(count);
+          for (let v = 0; v < count; v++) vals[v] = g(pos[v * 3], pos[v * 3 + 1], pos[v * 3 + 2] + lift);
+          const idx = surf.index;
+          const cut = (p: number, q: number, out: Vec3) => {
+            const vp = vals[p];
+            const vq = vals[q];
+            const w = vp === vq ? 0.5 : vp / (vp - vq);
+            out[0] = pos[p * 3] + (pos[q * 3] - pos[p * 3]) * w;
+            out[1] = pos[p * 3 + 1] + (pos[q * 3 + 1] - pos[p * 3 + 1]) * w;
+            out[2] = pos[p * 3 + 2] + (pos[q * 3 + 2] - pos[p * 3 + 2]) * w + lift;
+          };
+          for (let t = 0; t + 2 < idx.length; t += 3) {
+            const p0 = idx[t], p1 = idx[t + 1], p2 = idx[t + 2];
+            const v0 = vals[p0], v1 = vals[p1], v2 = vals[p2];
+            if (v0 !== v0 || v1 !== v1 || v2 !== v2) continue;
+            const s0 = v0 >= 0, s1 = v1 >= 0, s2 = v2 >= 0;
+            if (s0 === s1 && s1 === s2) continue;
+            // The corner on its own side, and the two edges from it that cross.
+            if (s0 !== s1 && s0 !== s2) {
+              cut(p0, p1, a);
+              cut(p0, p2, b);
+            } else if (s1 !== s0 && s1 !== s2) {
+              cut(p1, p0, a);
+              cut(p1, p2, b);
+            } else {
+              cut(p2, p0, a);
+              cut(p2, p1, b);
+            }
+            segs.push(a[0], a[1], a[2], b[0], b[1], b[2]);
+          }
+        }
+      }
+    }
+    if (!segs.length) return;
+    const make = (opts: { linewidth: number; opacity: number; xray: boolean }) => {
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(segs);
+      const material = new LineMaterial({
+        color: toColor(CROSS_COLOR),
+        linewidth: opts.linewidth,
+        transparent: opts.opacity < 1,
+        opacity: opts.opacity,
+        depthTest: !opts.xray,
+        clippingPlanes: this.planes,
+      });
+      const line = new LineSegments2(geometry, material);
+      line.renderOrder = opts.xray ? 5 : 6;
+      line.frustumCulled = false;
+      return line;
+    };
+    // Faintly through whatever is in front, and boldly where it shows.
+    this.crossGroup.add(make({ linewidth: 2, opacity: 0.35, xray: true }), make({ linewidth: 4, opacity: 1, xray: false }));
+  }
+
   // ── Transform gizmo (rows switched to "Transformable") ──
   //
   // The same transform as the flat graph (translate, rotate and scale about a pivot, in
@@ -5849,6 +6159,12 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
                   title="Draw level curves on surfaces, and their shadows on the floor of the box"
                   on={options.contours}
                   onChange={(on) => setOptions({ contours: on })}
+                />
+                <Switch
+                  label="Intersections"
+                  title="Draw the curves where surfaces meet, such as the line where two planes cross"
+                  on={options.intersections}
+                  onChange={(on) => setOptions({ intersections: on })}
                 />
                 <Switch
                   label="Tangent plane"

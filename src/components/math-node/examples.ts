@@ -1799,6 +1799,100 @@ function cylindricalSurface(): ExampleScene {
   };
 }
 
+/** A 3×3 matrix acting on the unit cube: its columns, the box they span, det = volume. */
+function linearMap3D(): ExampleScene {
+  const r = sceneRows("g3lin");
+  // The corners of the unit cube, and where M sends them.
+  const cube = (i: number, j: number, k: number) => `[${i}, ${j}, ${k}]`;
+  const image = (i: number, j: number, k: number) => `M*[${i}, ${j}, ${k}]`;
+  const faces: [number, number, number][][] = [
+    [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]],
+    [[0, 0, 1], [1, 0, 1], [1, 1, 1], [0, 1, 1]],
+    [[0, 0, 0], [1, 0, 0], [1, 0, 1], [0, 0, 1]],
+    [[0, 1, 0], [1, 1, 0], [1, 1, 1], [0, 1, 1]],
+    [[0, 0, 0], [0, 1, 0], [0, 1, 1], [0, 0, 1]],
+    [[1, 0, 0], [1, 1, 0], [1, 1, 1], [1, 0, 1]],
+  ];
+  const face = (corner: (i: number, j: number, k: number) => string, f: [number, number, number][]) =>
+    `[${f.map(([i, j, k]) => corner(i, j, k)).join(", ")}]`;
+  return {
+    functions: [
+      r.define("M = [[cos(th), -sin(th), 0], [sin(th), cos(th), 0], [0, 0, 1]] * [[a, s, 0], [0, 1, 0], [0, 0, k]]"),
+      ...faces.map((f) => r.shape(face(cube, f), INK, { fillOpacity: 0.03, lineStyle: "dashed", outlineWidth: 1.5, showAngles: false })),
+      ...faces.map((f) => r.shape(face(image, f), BLUE, { fillOpacity: 0.16, outlineWidth: 2, showAngles: false })),
+      r.arrow("Vector([0, 0, 0], M*[1, 0, 0])", RED, { outlineWidth: 4 }),
+      r.arrow("Vector([0, 0, 0], M*[0, 1, 0])", GREEN, { outlineWidth: 4 }),
+      r.arrow("Vector([0, 0, 0], M*[0, 0, 1])", SKY, { outlineWidth: 4 }),
+      r.arrow("Vector([0, 0, 0], cross(M*[1, 0, 0], M*[0, 1, 0]))", PINK, { outlineWidth: 3, lineStyle: "dashed" }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`M = R_z(\theta)\begin{bmatrix} a & s & 0 \\ 0 & 1 & 0 \\ 0 & 0 & k \end{bmatrix}`, BLUE],
+        [String.raw`\text{columns: } M\hat\imath,\ M\hat\jmath,\ M\hat k \ (\text{red, green, sky})`, TEXT],
+        [String.raw`\det M = {{det(M)}} = \text{volume of the blue box}`, BLUE],
+        [String.raw`|M\hat\imath \times M\hat\jmath| = {{norm(cross(M*[1, 0, 0], M*[0, 1, 0]))}} = \text{area of its base (pink)}`, PINK],
+        [String.raw`k < 0\text{: the box turns inside out, } \det M < 0`, AMBER],
+      ]),
+    ],
+    variables: [
+      sceneSlider("a", "Stretch x (a)", 1.5, [-2, 2.5, 0.05], "How far î is stretched along x.", "matrix"),
+      sceneSlider("s", "Shear s", 0.8, [-2, 2, 0.05], "Slides ĵ over along x: the box leans, its volume stays.", "matrix"),
+      sceneSlider("k", "Stretch z (k)", 1.2, [-2, 2.5, 0.05], "Stretches k̂. Below 0 the box turns inside out.", "matrix"),
+      sceneSlider("th", "Turn θ", 0.5, [0, 6.28, 0.01], "Turns everything round the z-axis: no change to the volume.", "matrix"),
+    ],
+    groups: [sceneGroup("matrix", "Matrix M")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3, 3], y: [-3, 3] },
+  };
+}
+
+/** A sphere, a tilted plane and a bowl: the curves where each pair meets. */
+function surfaceIntersections(): ExampleScene {
+  const r = sceneRows("g3meet");
+  return {
+    functions: [
+      surface(r, "x^2 + y^2 + z^2 = R^2", SKY, { fillOpacity: 0.35 }),
+      { ...r.define("z = m*x + c"), color: AMBER, fillColor: AMBER, fillOpacity: 0.3 },
+      { ...r.define("z = (x^2 + y^2)/3 - 2.5"), color: PURPLE, fillColor: PURPLE, fillOpacity: 0.3 },
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`x^2 + y^2 + z^2 = R^2`, SKY],
+        [String.raw`z = m x + c`, AMBER],
+        [String.raw`z = \tfrac13(x^2 + y^2) - 2.5`, PURPLE],
+        [String.raw`\text{yellow: where two surfaces meet (a plane cuts a sphere in a circle)}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("R", "Sphere radius R", 3, [1, 4.5, 0.05], "Size of the sphere.", "shapes"),
+      sceneSlider("m", "Plane tilt m", 0.4, [-2, 2, 0.05], "How steeply the plane rises along x.", "shapes"),
+      sceneSlider("c", "Plane height c", 0.8, [-4, 4, 0.05], "Where the plane crosses the z-axis.", "shapes"),
+    ],
+    groups: [sceneGroup("shapes", "Surfaces")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4.5, 4.5], y: [-4.5, 4.5] },
+  };
+}
+
+/** Inequalities in x, y and z fill solid regions: a ball cut by the box, and the space above a bowl. */
+function solidRegions(): ExampleScene {
+  const r = sceneRows("g3solid");
+  return {
+    functions: [
+      { ...r.region("x^2 + y^2 + z^2 <= R^2", PURPLE), fillColor: PURPLE, fillOpacity: 0.45 },
+      { ...r.region("z >= (x^2 + y^2)/2 + h", AMBER), fillColor: AMBER, fillOpacity: 0.35 },
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`x^2 + y^2 + z^2 \le R^2 \ (\text{a solid ball})`, PURPLE],
+        [String.raw`z \ge \tfrac12(x^2 + y^2) + h \ (\text{everything above a bowl})`, AMBER],
+        [String.raw`\text{where a region meets the box's walls, the cut is shaded}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("R", "Ball radius R", 4.5, [1, 6, 0.05], "Bigger than the box and the walls cut it flat.", "regions"),
+      sceneSlider("h", "Bowl height h", 1, [-4, 4, 0.05], "Moves the bowl up and down.", "regions"),
+    ],
+    groups: [sceneGroup("regions", "Regions")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+  };
+}
+
 /** The 3D Gallery: scenes made for the 3D view, in order. `key` must exist in MATH_EXAMPLES. */
 export const EXAMPLE_GALLERY_3D: {
   key: string;
@@ -1815,6 +1909,9 @@ export const EXAMPLE_GALLERY_3D: {
   { key: "Space_Revolution", category: "Calculus", label: "Solids of Revolution", hint: "Spin y = k·xᵖ round the x-axis: discs and the volume π∫f²", accent: "text-blue-600 dark:text-blue-400" },
   { key: "Space_Spherical", category: "Coordinates", label: "Spherical ρ(θ, φ)", hint: "ρ = f(θ, φ): a bumpy sphere in spherical coordinates", accent: "text-purple-600 dark:text-purple-400" },
   { key: "Space_Cylindrical", category: "Coordinates", label: "Cylindrical r(θ, z)", hint: "r = f(θ, z): a twisted, fluted vase", accent: "text-sky-600 dark:text-sky-400" },
+  { key: "Space_Intersections", category: "Surfaces", label: "Where Surfaces Meet", hint: "A sphere, a plane and a bowl: the curves where each pair crosses", accent: "text-yellow-600 dark:text-yellow-400" },
+  { key: "Space_Regions", category: "Surfaces", label: "Solid Regions", hint: "Inequalities in x, y, z fill space: a ball, the space above a bowl", accent: "text-purple-600 dark:text-purple-400" },
+  { key: "Space_LinearMap", category: "Linear algebra", label: "Matrix on a Cube", hint: "A 3×3 matrix turns the unit cube into a box: det M is its volume", accent: "text-blue-600 dark:text-blue-400" },
   { key: "Space_TangentPlane", category: "Calculus", label: "Tangent Plane & Gradient", hint: "Drag a point over a surface: its tangent plane and the way uphill", accent: "text-red-600 dark:text-red-400" },
   { key: "Space_SpherePlane", category: "Geometry", label: "Sphere Cross-Section", hint: "A plane cuts a sphere in a circle of radius √(R² − c²)", accent: "text-cyan-600 dark:text-cyan-400" },
   { key: "Space_Mobius", category: "Topology", label: "Möbius Strip", hint: "A band with half a twist: one side and one edge", accent: "text-purple-600 dark:text-purple-400" },
@@ -1975,6 +2072,9 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Space_Klein: kleinBottle(),
   Space_TorusKnot: torusKnot(),
   Space_VectorField: vectorField3D(),
+  Space_LinearMap: linearMap3D(),
+  Space_Intersections: surfaceIntersections(),
+  Space_Regions: solidRegions(),
   Space_Revolution: solidOfRevolution(),
   Space_Spherical: sphericalSurface(),
   Space_Cylindrical: cylindricalSurface(),

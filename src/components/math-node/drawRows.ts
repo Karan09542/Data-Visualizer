@@ -352,7 +352,7 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
     ...extra,
   });
 
-  const spatial = !!opts.spatialHint || isSpatial(picks) || !!opts.solid;
+  const spatial = !!opts.spatialHint || isSpatial(picks) || !!opts.solid || tool === "plane" || tool === "foot" || tool === "dihedral";
   const P = (name: string) => (spatial ? `p3(${name})` : name);
   // Name every click: an existing point keeps its name, "#i" is this shape's i-th click again.
   const fresh = picks.filter((p) => !p.name).length;
@@ -444,6 +444,41 @@ function buildShapeRows(tool: DrawToolKind, picks: DrawPick[], opts: BuildOption
       rows.push(row("parametric", `arcAt(${P(B)}, ${P(A)}, ${P(C)}, t, 0.6)`, opts.color, { tRange: [0, 1] }));
       rows.push(readout(`arcAt(${P(B)}, ${P(A)}, ${P(C)}, 0.5, 1.15)`, `∠${A}${B}${C} = {{angleAt(${B}, ${A}, ${C}):1}}°`));
       break;
+    case "plane": {
+      // Through A, B and C: every point X with (X − A)·n = 0, n = AB × AC.
+      rows.push(
+        row("implicit", `dot(planeNormal(${A}, ${B}, ${C}), [x, y, z] - p3(${A})) = 0`, opts.color, {
+          fillColor: opts.color,
+          fillOpacity: 0.3,
+        }),
+      );
+      rows.push(readout(`(${P(A)} + ${P(B)} + ${P(C)})/3 + [0, 0, 0.45]`, `Plane ${A}${B}${C}: {{planeEquation(${A}, ${B}, ${C})}}`));
+      break;
+    }
+    case "foot": {
+      // P, then the plane through A, B, C: the foot F of the perpendicular from P.
+      const [Pn, Q, R, S] = named;
+      const [F] = nextPointNames(opts.taken, 1);
+      rows.push(row("polygon", `[${P(Q)}, ${P(R)}, ${P(S)}]`, opts.color, { fillColor: opts.color, fillOpacity: 0.14, fillPattern: "solid", showAngles: false }));
+      rows.push(row("point", `${F} = footOnPlane(${Pn}, ${Q}, ${R}, ${S})`, opts.color, { showLabel: true, label: F }));
+      rows.push(row("parametric", `${P(Pn)} + t*(${F} - ${P(Pn)})`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
+      rows.push(readout(`(${P(Pn)} + ${F})/2 + [0, 0, 0.35]`, `${Pn}${F} = {{norm(${F} - ${P(Pn)})}} (shortest distance to the plane)`));
+      break;
+    }
+    case "dihedral": {
+      // Two planes that share the edge AB, one through C and one through D.
+      const [, , Cn, D] = named;
+      const face = (X: string, opacity: number) =>
+        row("polygon", `[${P(A)}, ${P(B)}, ${P(X)}]`, opts.color, { fillColor: opts.color, fillOpacity: opacity, fillPattern: "solid", showAngles: false });
+      const args = `${A}, ${B}, ${Cn}, ${D}`;
+      rows.push(face(Cn, 0.18), face(D, 0.1));
+      // The angle's two arms, square to the edge at its middle, and the arc between them.
+      rows.push(row("parametric", `planeArc(${args}, 0, 1.4*t)`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
+      rows.push(row("parametric", `planeArc(${args}, 1, 1.4*t)`, opts.color, { tRange: [0, 1], lineStyle: "dashed" }));
+      rows.push(row("parametric", `planeArc(${args}, t, 0.6)`, opts.color, { tRange: [0, 1] }));
+      rows.push(readout(`planeArc(${args}, 0.5, 1.15)`, `angle between the planes = {{planeAngle(${args}):1}}°`));
+      break;
+    }
   }
   return rows;
 }

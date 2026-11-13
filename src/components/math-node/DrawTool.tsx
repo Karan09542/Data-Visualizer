@@ -4,7 +4,22 @@ import type { Vec2 } from "./areaMath";
 import { TraceScopeContext, getTraceShape, hitTestTrace } from "./traceGeometry";
 
 /** What each drawing tool makes, and how many clicks it takes. */
-export type DrawToolKind = "point" | "segment" | "vector" | "line" | "circle" | "polygon" | "distance" | "angle";
+export type DrawToolKind =
+  | "point"
+  | "segment"
+  | "vector"
+  | "line"
+  | "circle"
+  | "polygon"
+  | "distance"
+  | "angle"
+  // 3D view only:
+  | "plane"
+  | "foot"
+  | "dihedral";
+
+/** The tools that only make sense in space (the 3D view). */
+export const SPACE_TOOLS = new Set<DrawToolKind>(["plane", "foot", "dihedral"]);
 
 /**
  * 3D view: what a drawn polygon or circle becomes. Flat; extruded (a prism, or a
@@ -33,6 +48,9 @@ export const DRAW_TOOL_CLICKS: Record<DrawToolKind, number> = {
   polygon: Infinity, // until the first corner is clicked again
   distance: 2,
   angle: 3,
+  plane: 3,
+  foot: 4,
+  dihedral: 4,
 };
 
 export const DRAW_TOOL_HINTS: Record<DrawToolKind, string> = {
@@ -44,6 +62,9 @@ export const DRAW_TOOL_HINTS: Record<DrawToolKind, string> = {
   polygon: "Click the corners, then the first corner again to close (or press Enter).",
   distance: "Click two points to measure the distance between them.",
   angle: "Click a point, the corner, then another point to measure the angle.",
+  plane: "Click three points for the plane through them. Two planes show the line where they meet.",
+  foot: "Click a point, then three points of a plane: the foot of the perpendicular and the distance.",
+  dihedral: "Click the two ends of the shared edge, then a point on each plane: the angle between them.",
 };
 
 /** The same, short enough for one line on a phone. */
@@ -56,6 +77,9 @@ export const DRAW_TOOL_SHORT_HINTS: Record<DrawToolKind, string> = {
   polygon: "Tap corners; tap the first to close",
   distance: "Tap two points to measure",
   angle: "Tap a point, the corner, a point",
+  plane: "Tap three points",
+  foot: "Tap a point, then 3 on the plane",
+  dihedral: "Tap the edge's ends, then 1 on each plane",
 };
 
 export const SELECT_TOOL_SHORT_HINT = "Tap a shape or drag a box";

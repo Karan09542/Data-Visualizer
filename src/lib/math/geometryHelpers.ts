@@ -4,6 +4,8 @@
  *
  *   angleAt(V, P, Q)          the angle at V between VP and VQ, in degrees (0–180)
  *   arcAt(V, P, Q, s, radius) the point a fraction s of the way round that angle's arc
+ *   planeNormal(A, B, C), footOnPlane(P, A, B, C), planeAngle(A, B, C, D),
+ *   planeArc(A, B, C, D, s, radius), planeEquation(A, B, C)   planes in space
  *
  * Shared by the graph's scope and the worker that checks rows for errors, so a
  * row using them is never reported as calling an unknown function.
@@ -39,6 +41,28 @@ const pair = (P: any, Q: any): [Vec, Vec] => {
 const sub = (a: Vec, b: Vec) => a.map((v, i) => v - b[i]);
 const dot = (a: Vec, b: Vec) => a.reduce((s, v, i) => s + v * b[i], 0);
 const len = (a: Vec) => Math.sqrt(dot(a, a));
+const cross = (a: Vec, b: Vec): Vec => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]];
+/** A point in space ([x, y] is on the floor). */
+const v3 = (A: any): Vec => {
+  const a = coords(A);
+  return [a[0], a[1], a[2] ?? 0];
+};
+/**
+ * For two planes sharing the edge AB (one through C, one through D): the parts of AC
+ * and AD square to the edge, and the edge's middle. The angle between them is the
+ * angle between the planes.
+ */
+const acrossEdge = (A: any, B: any, C: any, D: any): [Vec, Vec, Vec] => {
+  const [a, b] = [v3(A), v3(B)];
+  const e = sub(b, a);
+  const ee = dot(e, e) || 1;
+  const off = (X: any) => {
+    const x = sub(v3(X), a);
+    const k = dot(x, e) / ee;
+    return x.map((v, i) => v - k * e[i]);
+  };
+  return [off(C), off(D), a.map((v, i) => (v + b[i]) / 2)];
+};
 
 export const GEOMETRY_HELPERS = {
   /** The angle at V between VP and VQ, in degrees (0–180); in the plane or in space. */
@@ -94,6 +118,65 @@ export const GEOMETRY_HELPERS = {
    * view. On the flat graph it is the curve y = f(x) itself.
    */
   revolve: (fx: any) => fx,
+  /** The normal of the plane through A, B and C: AB × AC. */
+  planeNormal: (A: any, B: any, C: any): Vec => {
+    const [a, b, c] = [v3(A), v3(B), v3(C)];
+    return cross(sub(b, a), sub(c, a));
+  },
+  /** The foot of the perpendicular from P to the plane through A, B and C. */
+  footOnPlane: (P: any, A: any, B: any, C: any): Vec => {
+    const [p, a, b, c] = [v3(P), v3(A), v3(B), v3(C)];
+    const n = cross(sub(b, a), sub(c, a));
+    const k = dot(sub(p, a), n) / dot(n, n);
+    return p.map((v, i) => v - k * n[i]);
+  },
+  /**
+   * The angle between two planes that share the edge AB, one through C and one
+   * through D, in degrees (0–180).
+   */
+  planeAngle: (A: any, B: any, C: any, D: any): number => {
+    const [u, w] = acrossEdge(A, B, C, D);
+    const cosine = dot(u, w) / (len(u) * len(w));
+    return Math.acos(Math.max(-1, Math.min(1, cosine))) / DEG;
+  },
+  /** A point a fraction s of the way round that angle, drawn at the middle of AB, `radius` out. */
+  planeArc: (A: any, B: any, C: any, D: any, s: number, radius: number): Vec => {
+    const [u, w, m] = acrossEdge(A, B, C, D);
+    return GEOMETRY_HELPERS.arcAt(m, m.map((v, i) => v + u[i]), m.map((v, i) => v + w[i]), s, radius);
+  },
+  /** The plane through A, B and C as an equation: "4x − 5y + 16z = 18". */
+  planeEquation: (A: any, B: any, C: any, decimals = 2): string => {
+    const [a, b, c] = [v3(A), v3(B), v3(C)];
+    let n = cross(sub(b, a), sub(c, a));
+    let d0 = dot(n, a);
+    // In its simplest form: leading term positive, then whole numbers over their
+    // common factor (4x − 6y = 2 → 2x − 3y = 1), or else the smallest term made 1.
+    const lead = n.find((v) => Math.abs(v) > 1e-9) ?? 1;
+    const whole = (v: number) => Math.abs(v - Math.round(v)) < 1e-9;
+    const gcd = (p: number, q: number): number => (q ? gcd(q, p % q) : p);
+    let k = Math.sign(lead);
+    if ([...n, d0].every(whole)) {
+      k /= [...n, d0].map((v) => Math.abs(Math.round(v))).reduce(gcd, 0) || 1;
+    } else {
+      k /= Math.min(...n.filter((v) => Math.abs(v) > 1e-9).map(Math.abs));
+    }
+    n = n.map((v) => v * k);
+    d0 *= k;
+    const num = (v: number) => {
+      const t = Number(v.toFixed(decimals));
+      return Object.is(t, -0) ? 0 : t;
+    };
+    let out = "";
+    n.forEach((v, i) => {
+      const k = num(v);
+      if (k === 0) return;
+      const mag = Math.abs(k) === 1 ? "" : String(Math.abs(k));
+      out += out ? (k < 0 ? " − " : " + ") : k < 0 ? "−" : "";
+      out += mag + "xyz"[i];
+    });
+    const d = num(d0);
+    return out ? `${out} = ${d < 0 ? "−" : ""}${Math.abs(d)}` : "—";
+  },
   /** A point in space: [x, y] becomes [x, y, 0]. Shapes drawn in 3D use it to join points of either kind. */
   p3: (A: any): Vec => {
     const a = coords(A);

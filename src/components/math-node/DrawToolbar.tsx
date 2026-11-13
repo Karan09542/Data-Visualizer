@@ -1,6 +1,9 @@
 import React, { useState } from "react";
 import {
+  ArrowDownToLine,
   ArrowUpRight,
+  BookOpen,
+  Layers,
   Check,
   ChevronLeft,
   Circle,
@@ -16,7 +19,7 @@ import {
   SlidersHorizontal,
   X,
 } from "lucide-react";
-import { DRAW_TOOL_HINTS, SELECT_TOOL_HINT, type GraphTool, type SolidMode } from "./DrawTool";
+import { DRAW_TOOL_HINTS, SELECT_TOOL_HINT, SPACE_TOOLS, type DrawToolKind, type GraphTool, type SolidMode } from "./DrawTool";
 import type { VectorOptions } from "./drawRows";
 
 const TOOLS: { id: GraphTool | null; label: string; Icon: React.ElementType }[] = [
@@ -30,6 +33,9 @@ const TOOLS: { id: GraphTool | null; label: string; Icon: React.ElementType }[] 
   { id: "polygon", label: "Polygon", Icon: Pentagon },
   { id: "distance", label: "Measure distance", Icon: RulerDimensionLine },
   { id: "angle", label: "Measure angle", Icon: Triangle },
+  { id: "plane", label: "Plane through 3 points", Icon: Layers },
+  { id: "foot", label: "Perpendicular foot", Icon: ArrowDownToLine },
+  { id: "dihedral", label: "Angle between planes", Icon: BookOpen },
 ];
 
 const HIDDEN_KEY = "mathNode.drawToolsHidden";
@@ -256,11 +262,11 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
       // On a short graph the tools scroll rather than run off its top and bottom.
       className={`${SHELL} flex flex-col gap-0.5 p-1 max-h-[calc(100%-1rem)] overflow-y-auto no-scrollbar`}
     >
-      {TOOLS.filter(({ id }) => !(in3d && id === "select")).map(({ id, label, Icon }, i) => {
+      {TOOLS.filter(({ id }) => !(in3d && id === "select") && !(!in3d && SPACE_TOOLS.has(id as DrawToolKind))).map(({ id, label, Icon }, i) => {
         const active = tool === id;
         return (
           <React.Fragment key={label}>
-            {(id === "point" || id === "distance") && i > 0 && <div className="h-px mx-1 my-0.5 bg-slate-200 dark:bg-slate-700" />}
+            {(id === "point" || id === "distance" || id === "plane") && i > 0 && <div className="h-px mx-1 my-0.5 bg-slate-200 dark:bg-slate-700" />}
             <button
               type="button"
               onClick={() => onChange(active && id ? null : id)}

@@ -203,6 +203,7 @@ import {
   takenNames,
   nextPointNames,
   type DrawToolKind,
+  SPACE_TOOLS,
   type DrawPick,
   type DrawSolid,
   type SolidMode,
@@ -3028,6 +3029,8 @@ export const MathNodeRenderer: React.FC<any> = ({
     // A point's menu belongs to the view it was opened in.
     setPointMenu(null);
     highlightRow(null);
+    // Plane, perpendicular foot and the angle between planes only work in space.
+    if (mode === "2d" && drawTool && SPACE_TOOLS.has(drawTool as DrawToolKind)) setDrawTool(null);
     if (mode === "3d") {
       // The drawing tools work in 3D too; Select and the area tool are for the flat graph.
       if (drawTool === "select") setDrawTool(null);
