@@ -222,6 +222,14 @@ export interface SharedFileRecord {
   timestamp: number;
 }
 
+/** Marks drawn over an image in the media preview, by image (its asset id or address). */
+export interface ImageMarkupRecord {
+  key: string;
+  /** The marks, in the picture's own pixels (see components/imageMarkup/markupModel). */
+  shapes: unknown[];
+  updatedAt: number;
+}
+
 const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   documents: EntityTable<SavedDocument, 'id'>;
   nodePositions: EntityTable<NodePosition, 'id'>;
@@ -247,6 +255,7 @@ const db = new Dexie('JSONGraphViewerDB') as Dexie & {
   audioFiles: Table<StoredFileRecord, string>;
   /** Media bytes, on devices where OPFS cannot be written */
   assetFiles: Table<StoredFileRecord, string>;
+  imageMarkups: Table<ImageMarkupRecord, string>;
 };
 
 db.version(8).stores({
@@ -306,6 +315,10 @@ db.version(18).stores({
 
 db.version(19).stores({
   assetFiles: 'url, cachedAt'
+});
+
+db.version(20).stores({
+  imageMarkups: 'key, updatedAt'
 });
 
 export { db };

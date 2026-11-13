@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
-import { Check, Crosshair, Maximize, Trash2, ZoomIn, ZoomOut } from "lucide-react";
+import { Check, Crosshair, Maximize, PenLine, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 import {
   containerToImage,
   contentFit,
@@ -8,6 +8,10 @@ import {
   panForZoomAt,
   type ImageLayout,
 } from "./imageViewMath";
+import { MarkupSvg, useMarkupGestures } from "./imageMarkup/ImageMarkupLayer";
+import { ImageMarkupToolbar, TOOL_KEYS } from "./imageMarkup/ImageMarkupToolbar";
+import { ptUnit } from "./imageMarkup/markupModel";
+import type { ImageMarkupState } from "./imageMarkup/useImageMarkup";
 
 interface InteractiveZoomImageProps {
   src: string;
@@ -25,7 +29,29 @@ interface InteractiveZoomImageProps {
   onSwipeLeft?: () => void;
   /** Swipe right gesture callback (e.g., previous image). */
   onSwipeRight?: () => void;
+  /** Marks drawn over the picture (shown whenever there are some). */
+  markup?: ImageMarkupState;
+  /** Draw mode: one finger or the mouse draws; two fingers still pan and pinch. */
+  drawMode?: boolean;
+  onDrawModeChange?: (on: boolean) => void;
+  /** The picture's name, for saving it with its marks. */
+  markupFileName?: string;
+  onMarkupMessage?: (message: string, type: "success" | "error") => void;
 }
+
+/** Used when there is no markup, so the hook can still be called. */
+const NO_MARKUP = {
+  shapes: [],
+  style: { tool: "pen", color: "#000000", size: 1, stamp: 1, fill: false },
+  setSelectedId: () => {},
+  preview: () => {},
+  finish: () => {},
+  add: () => {},
+  nextBadge: () => 1,
+} as unknown as ImageMarkupState;
+
+/** How near (in screen pixels) counts as on a mark: more for a finger. */
+const HIT_PX = { mouse: 8, touch: 18 } as const;
 
 /** Zoom limits, relative to the picture fitted into the view. */
 const MIN_SCALE = 0.1;
@@ -52,6 +78,11 @@ export function InteractiveZoomImage({
   onNaturalSize,
   onSwipeLeft,
   onSwipeRight,
+  markup,
+  drawMode = false,
+  onDrawModeChange,
+  markupFileName = "image",
+  onMarkupMessage,
 }: InteractiveZoomImageProps) {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -85,6 +116,57 @@ export function InteractiveZoomImage({
   live.current = { scale, position, layout };
 
   const transform = { x: position.x, y: position.y, scale, rotation };
+
+  // ─── Marks ───────────────────────────────────────────────────────────────────
+  const drawing = !!markup && drawMode;
+  const unit = layout ? ptUnit(layout.naturalWidth, layout.naturalHeight) : 1;
+  const gestures = useMarkupGestures(
+    // Always called (hooks), with an inert stand-in when there's no markup.
+    markup ?? NO_MARKUP,
+    unit,
+  );
+  /** The pointer that is drawing, if one is. */
+  const drawPointer = useRef<number | null>(null);
+  const toPicture = (p: { x: number; y: number }) =>
+    layout ? containerToImage(p.x, p.y, layout, transform) : null;
+  const slopFor = (pointerType: string) =>
+    (pointerType === "touch" ? HIT_PX.touch : HIT_PX.mouse) / (layout ? displayRatio(layout, transform) : 1);
+
+  // Draw mode turns the point tool off; the two would fight over a click.
+  useEffect(() => {
+    if (drawing) {
+      setCoordsOn(false);
+      setHover(null);
+    }
+  }, [drawing]);
+
+  // Keys while drawing: undo, redo, delete, a tool by its letter, Esc to stop.
+  useEffect(() => {
+    if (!drawing || !markup) return;
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement | null;
+      if (t && (t.isContentEditable || /^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName))) return;
+      const mod = e.ctrlKey || e.metaKey;
+      const k = e.key.toLowerCase();
+      let handled = true;
+      if (mod && k === "z") (e.shiftKey ? markup.redo : markup.undo)();
+      else if (mod && k === "y") markup.redo();
+      else if ((e.key === "Delete" || e.key === "Backspace") && markup.selectedId) markup.remove([markup.selectedId]);
+      else if (e.key === "Escape") {
+        if (markup.selectedId) markup.setSelectedId(null);
+        else onDrawModeChange?.(false);
+      } else if (!mod && !e.altKey && TOOL_KEYS.has(k)) {
+        markup.setStyle({ tool: TOOL_KEYS.get(k)! });
+        if (k !== "v") markup.setSelectedId(null);
+      } else handled = false;
+      if (handled) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    };
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [drawing, markup, onDrawModeChange]);
 
   // Reset when the picture changes.
   useEffect(() => {
@@ -196,9 +278,27 @@ export function InteractiveZoomImage({
 
   const onPointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
     if ((e.target as HTMLElement).closest("[data-zoom-ui]")) return;
+    if (e.pointerType === "mouse" && e.button !== 0) return;
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const p = toContainer(e.clientX, e.clientY);
     pointers.current.set(e.pointerId, p);
+
+    if (drawing) {
+      if (pointers.current.size === 1) {
+        // One pointer draws.
+        const at = toPicture(p);
+        if (at) {
+          drawPointer.current = e.pointerId;
+          gestures.begin(at, slopFor(e.pointerType));
+        }
+        return;
+      }
+      // A second finger: it was a pinch after all. Forget the mark and zoom instead.
+      if (drawPointer.current !== null) {
+        gestures.cancel();
+        drawPointer.current = null;
+      }
+    }
 
     if (pointers.current.size === 2) {
       const [a, b] = [...pointers.current.values()];
@@ -236,6 +336,13 @@ export function InteractiveZoomImage({
       setHover(px ? { cx: p.x, cy: p.y, x: px.x, y: px.y } : null);
     }
 
+    if (drawing && drawPointer.current === e.pointerId) {
+      pointers.current.set(e.pointerId, p);
+      const at = toPicture(p);
+      if (at) gestures.move(at, slopFor(e.pointerType));
+      return;
+    }
+
     if (!pointers.current.has(e.pointerId) || !gesture.current) return;
     pointers.current.set(e.pointerId, p);
     const g = gesture.current;
@@ -266,6 +373,12 @@ export function InteractiveZoomImage({
   const endPointer = (e: React.PointerEvent<HTMLDivElement>) => {
     const had = pointers.current.delete(e.pointerId);
     if (!had) return;
+    if (drawPointer.current === e.pointerId) {
+      drawPointer.current = null;
+      if (e.type === "pointercancel") gestures.cancel();
+      else gestures.end(slopFor(e.pointerType));
+      return;
+    }
     const g = gesture.current;
     if (pointers.current.size > 0) return; // still pinching or panning with another finger
     gesture.current = null;
@@ -273,7 +386,7 @@ export function InteractiveZoomImage({
 
     // Horizontal swipe gesture only when at normal fit zoom (disabled when zoomed in or zoomed out)
     const isAtNormalZoom = Math.abs(live.current.scale - 1) <= 0.02;
-    if (g && g.moved && (onSwipeLeft || onSwipeRight) && isAtNormalZoom) {
+    if (g && g.moved && (onSwipeLeft || onSwipeRight) && isAtNormalZoom && !drawing) {
       const p = toContainer(e.clientX, e.clientY);
       const dx = p.x - g.startX;
       const dy = p.y - g.startY;
@@ -303,6 +416,7 @@ export function InteractiveZoomImage({
       }
       return;
     }
+    if (drawing) return;
     // Double tap / double click: fit ↔ zoomed in at that point.
     const now = Date.now();
     const last = lastTap.current;
@@ -366,7 +480,15 @@ export function InteractiveZoomImage({
       ref={containerRef}
       tabIndex={0}
       className={`relative w-full h-full overflow-hidden select-none flex items-center justify-center outline-none touch-none focus-visible:ring-2 focus-visible:ring-blue-500/40 ${containerClassName} ${
-        coordsOn ? "cursor-crosshair" : isGesturing ? "cursor-grabbing" : "cursor-grab"
+        drawing
+          ? markup?.style.tool === "select"
+            ? "cursor-default"
+            : "cursor-crosshair"
+          : coordsOn
+            ? "cursor-crosshair"
+            : isGesturing
+              ? "cursor-grabbing"
+              : "cursor-grab"
       }`}
       style={containerStyle}
       onPointerDown={onPointerDown}
@@ -398,6 +520,50 @@ export function InteractiveZoomImage({
           imageRendering: ratio >= 4 ? "pixelated" : undefined,
         }}
       />
+
+      {/* Marks: over the picture, moved and turned with it */}
+      {markup && layout && (markup.shapes.length > 0 || gestures.draft || drawing) && (() => {
+        const { offsetX, offsetY, fit } = contentFit(layout);
+        return (
+          <div
+            className="absolute pointer-events-none"
+            style={{
+              left: layout.boxLeft,
+              top: layout.boxTop,
+              width: layout.boxWidth,
+              height: layout.boxHeight,
+              transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
+              transformOrigin: "center center",
+              transition: isGesturing ? "none" : "transform 90ms ease-out",
+            }}
+          >
+            <div
+              className="absolute"
+              style={{ left: offsetX, top: offsetY, width: layout.naturalWidth * fit, height: layout.naturalHeight * fit }}
+            >
+              <MarkupSvg
+                shapes={markup.shapes}
+                draft={gestures.draft}
+                width={layout.naturalWidth}
+                height={layout.naturalHeight}
+                unit={unit}
+                selectedId={drawing ? markup.selectedId : null}
+                screenPx={1 / Math.max(ratio, 1e-6)}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
+      {drawing && markup && (
+        <ImageMarkupToolbar
+          markup={markup}
+          src={src}
+          fileName={markupFileName}
+          onDone={() => onDrawModeChange?.(false)}
+          onMessage={onMarkupMessage}
+        />
+      )}
 
       {/* Pinned points */}
       {coordsOn &&
@@ -502,7 +668,8 @@ export function InteractiveZoomImage({
       {/* Zoom and tools */}
       <div
         data-zoom-ui
-        className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 p-1 rounded-full bg-black/65 backdrop-blur-md border border-white/10 text-white shadow-lg"
+        // While drawing on a phone the draw bar takes the bottom; fingers pinch to zoom.
+        className={`absolute bottom-3 right-3 z-30 ${drawing ? "hidden sm:flex" : "flex"} items-center gap-0.5 p-1 rounded-full bg-black/65 backdrop-blur-md border border-white/10 text-white shadow-lg`}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={() => zoomTo(scale / STEP)} disabled={scale <= MIN_SCALE + 1e-6} className={barButton} title="Zoom out (−)">
@@ -523,7 +690,18 @@ export function InteractiveZoomImage({
         <button type="button" onClick={fitView} className={barButton} title="Fit to view (0)">
           <Maximize size={13} />
         </button>
-        {enableCoordinates && (
+        {markup && onDrawModeChange && (
+          <button
+            type="button"
+            onClick={() => onDrawModeChange(!drawMode)}
+            aria-pressed={drawMode}
+            className={`${barButton} ${drawMode ? "bg-blue-500 text-white hover:bg-blue-500" : ""}`}
+            title={drawMode ? "Leave draw mode (Esc)" : "Draw on the image: marks, shapes, highlights"}
+          >
+            <PenLine size={14} />
+          </button>
+        )}
+        {enableCoordinates && !drawing && (
           <button
             type="button"
             onClick={() => {

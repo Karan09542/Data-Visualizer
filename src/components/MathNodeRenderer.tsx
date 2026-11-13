@@ -1033,54 +1033,33 @@ export const MathNodeRenderer: React.FC<any> = ({
     rafId: number | null;
   } | null>(null);
 
+  // The drag in hand: which pointer, how far from the edge it took hold, and the size
+  // it has reached. The size is written straight to the panel while dragging (once a
+  // frame) and saved when the drag ends, so the whole graph isn't re-rendered per move.
+  const sidebarDragRef = useRef<{ pointerId: number; grab: number; size: number | null } | null>(null);
   const startSidebarResize = (kind: "dock" | "phone") => (e: React.PointerEvent) => {
-    if (e.button !== undefined && e.button !== 0 && e.pointerType === "mouse") return;
-    e.preventDefault();
-    e.stopPropagation();
-
-    const target = e.currentTarget as HTMLElement;
-    const pointerId = e.pointerId;
-    try {
-      target.setPointerCapture(pointerId);
-    } catch {}
-
+    if (e.button !== 0) return;
     const el = sidebarRef.current;
     if (!el) return;
-
-    resizeKindRef.current = kind;
-
-    // Snapshot unscaled dimensions and the canvas/parent zoom ratio once at the beginning
+    e.preventDefault();
+    e.stopPropagation();
+    // Every move comes here, even when the finger slides off the thin edge.
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch { }
     const rect = el.getBoundingClientRect();
-    const parentRect = el.parentElement?.getBoundingClientRect();
-    const scaleX = (rect.width / (el.offsetWidth || 1)) || 1;
-    const scaleY = (rect.height / (el.offsetHeight || 1)) || 1;
-
-    const currentW =
-      kind === "phone"
-        ? (phonePanelWidthRef.current ?? Math.round(el.offsetWidth))
-        : sidebarWidthRef.current;
-    const currentH = sidebarHeightRef.current;
-
-    const parentW = parentRect ? parentRect.width / scaleX : window.innerWidth;
-    const parentH = parentRect ? parentRect.height / scaleY : window.innerHeight;
-
-    resizeSessionRef.current = {
-      kind,
-      pointerId,
-      startX: e.clientX,
-      startY: e.clientY,
-      startWidth: currentW,
-      startHeight: currentH,
-      scaleX,
-      scaleY,
-      parentWidth: parentW,
-      parentHeight: parentH,
-      targetEl: target,
-      currentWidth: currentW,
-      currentHeight: currentH,
-      rafId: null,
-    };
-
+    // How far from the panel's edge the press landed: the edge keeps that distance,
+    // so it doesn't jump when the drag starts.
+    const grab =
+      kind === "dock" && panelPosition === "bottom"
+        ? e.clientY - rect.top
+        : kind === "dock" && panelPosition === "right"
+          ? e.clientX - rect.left
+          : e.clientX - rect.right;
+    sidebarDragRef.current = { pointerId: e.pointerId, grab, size: null };
+    resizeKindRef.current = kind;
+    // The phone panel takes its width from a variable only once it has one.
+    if (kind === "phone" && !phonePanelWidth) setPhonePanelWidth(Math.round(el.offsetWidth));
     setIsResizingSidebar(true);
   };
 
@@ -1088,111 +1067,85 @@ export const MathNodeRenderer: React.FC<any> = ({
     if (!isResizingSidebar) return;
 
     // Prevent selection and selection styling by setting dynamic styles on body
-    const prevUserSelect = document.body.style.userSelect;
-    const prevWebkitUserSelect = document.body.style.webkitUserSelect;
-    const prevCursor = document.body.style.cursor;
-    const prevTouchAction = document.body.style.touchAction;
-
     document.body.style.userSelect = "none";
     document.body.style.webkitUserSelect = "none";
-    document.body.style.touchAction = "none";
     document.body.style.cursor =
       panelPosition === "bottom" ? "row-resize" : "col-resize";
 
     // Clear any active selection immediately
     window.getSelection()?.removeAllRanges();
 
-    const handleMouseMove = (e: PointerEvent) => {
-      const session = resizeSessionRef.current;
-      if (!session) return;
-      if (session.pointerId !== undefined && e.pointerId !== session.pointerId) return;
-      e.preventDefault();
+    const kind = resizeKindRef.current;
+    let frame = 0;
+    let latest: { x: number; y: number } | null = null;
 
-      const dx = (e.clientX - session.startX) / session.scaleX;
-      const dy = (e.clientY - session.startY) / session.scaleY;
-
-      if (session.kind === "phone") {
-        // Over the graph: leave a strip of it showing, so it can be tapped to close.
-        const room = Math.max(260, session.parentWidth - 40);
-        session.currentWidth = Math.round(Math.max(220, Math.min(session.startWidth + dx, room)));
-      } else if (panelPosition === "bottom") {
-        const room = Math.max(160, session.parentHeight - 60);
-        session.currentHeight = Math.round(Math.max(140, Math.min(session.startHeight - dy, Math.min(800, room))));
-      } else if (panelPosition === "right") {
-        const room = Math.max(260, session.parentWidth - 80);
-        session.currentWidth = Math.round(Math.max(240, Math.min(session.startWidth - dx, Math.min(800, room))));
-      } else {
-        const room = Math.max(260, session.parentWidth - 80);
-        session.currentWidth = Math.round(Math.max(240, Math.min(session.startWidth + dx, Math.min(800, room))));
-      }
-
-      // High-performance direct CSS variable update via requestAnimationFrame:
-      // skips heavy React re-renders and Math AST re-evaluations during active touch drag.
-      if (session.rafId === null) {
-        session.rafId = requestAnimationFrame(() => {
-          if (!resizeSessionRef.current) return;
-          resizeSessionRef.current.rafId = null;
-          const el = sidebarRef.current;
-          if (!el) return;
-          if (session.kind === "phone") {
-            el.style.setProperty("--phone-panel-width", `${session.currentWidth}px`);
-          } else if (panelPosition === "bottom") {
-            el.style.setProperty("--sidebar-height", `${session.currentHeight}px`);
-          } else {
-            el.style.setProperty("--sidebar-width", `${session.currentWidth}px`);
-          }
-        });
-      }
-    };
-
-    const handleMouseUp = (e: PointerEvent) => {
-      const session = resizeSessionRef.current;
-      if (!session) return;
-      if (session.pointerId !== undefined && e.pointerId !== session.pointerId) return;
-
-      if (session.rafId !== null) {
-        cancelAnimationFrame(session.rafId);
-        session.rafId = null;
-      }
-
-      try {
-        if (session.targetEl && session.targetEl.hasPointerCapture(session.pointerId)) {
-          session.targetEl.releasePointerCapture(session.pointerId);
-        }
-      } catch {}
-
-      const finalW = session.currentWidth;
-      const finalH = session.currentHeight;
-      const kind = session.kind;
-      resizeSessionRef.current = null;
-
-      setIsResizingSidebar(false);
-
-      // Settle size to state once at end of drag:
+    const apply = () => {
+      frame = 0;
+      const el = sidebarRef.current;
+      const drag = sidebarDragRef.current;
+      if (!el || !drag || !latest) return;
+      const rect = el.getBoundingClientRect();
+      // On a zoomed canvas a screen pixel isn't a pixel of the panel.
+      const zoom = el.offsetWidth > 0 && rect.width > 0 ? rect.width / el.offsetWidth : 1;
+      let size: number;
       if (kind === "phone") {
-        setPhonePanelWidth(finalW);
+        // Over the graph: leave a strip of it showing, so it can be tapped to close.
+        const room = (el.parentElement?.getBoundingClientRect().width ?? window.innerWidth) / zoom - 40;
+        size = Math.max(240, Math.min((latest.x - drag.grab - rect.left) / zoom, room));
+        el.style.setProperty("--phone-panel-width", `${Math.round(size)}px`);
       } else if (panelPosition === "bottom") {
-        setSidebarHeight(finalH);
+        // Measured from the edge the splitter sits on, so the edge follows the
+        // pointer whichever side the panel is docked to.
+        size = Math.max(140, Math.min((rect.bottom - (latest.y - drag.grab)) / zoom, 800));
+        el.style.setProperty("--sidebar-height", `${Math.round(size)}px`);
       } else {
-        setSidebarWidth(finalW);
+        size =
+          panelPosition === "right"
+            ? (rect.right - (latest.x - drag.grab)) / zoom
+            : (latest.x - drag.grab - rect.left) / zoom;
+        size = Math.max(250, Math.min(size, 800));
+        el.style.setProperty("--sidebar-width", `${Math.round(size)}px`);
       }
+      drag.size = Math.round(size);
     };
 
-    window.addEventListener("pointermove", handleMouseMove, { passive: false });
-    window.addEventListener("pointerup", handleMouseUp);
-    window.addEventListener("pointercancel", handleMouseUp);
-    return () => {
-      window.removeEventListener("pointermove", handleMouseMove);
-      window.removeEventListener("pointerup", handleMouseUp);
-      window.removeEventListener("pointercancel", handleMouseUp);
-      if (resizeSessionRef.current?.rafId) {
-        cancelAnimationFrame(resizeSessionRef.current.rafId);
-      }
-      document.body.style.userSelect = prevUserSelect;
-      document.body.style.webkitUserSelect = prevWebkitUserSelect;
-      document.body.style.touchAction = prevTouchAction;
-      document.body.style.cursor = prevCursor;
+    const handleMove = (e: PointerEvent) => {
+      const drag = sidebarDragRef.current;
+      if (!drag || e.pointerId !== drag.pointerId) return;
+      e.preventDefault();
+      latest = { x: e.clientX, y: e.clientY };
+      if (!frame) frame = requestAnimationFrame(apply);
     };
+    const handleEnd = (e: PointerEvent) => {
+      const drag = sidebarDragRef.current;
+      if (drag && e.pointerId !== drag.pointerId) return;
+      if (frame) {
+        cancelAnimationFrame(frame);
+        apply();
+      }
+      // Saved now: the size the panel already shows.
+      if (drag?.size != null) {
+        if (kind === "phone") setPhonePanelWidth(drag.size);
+        else if (panelPosition === "bottom") setSidebarHeight(drag.size);
+        else setSidebarWidth(drag.size);
+      }
+      sidebarDragRef.current = null;
+      setIsResizingSidebar(false);
+    };
+    // Pointer events: a mouse, a finger or a pen all drag the edge.
+    window.addEventListener("pointermove", handleMove, { passive: false });
+    window.addEventListener("pointerup", handleEnd);
+    window.addEventListener("pointercancel", handleEnd);
+    return () => {
+      if (frame) cancelAnimationFrame(frame);
+      window.removeEventListener("pointermove", handleMove);
+      window.removeEventListener("pointerup", handleEnd);
+      window.removeEventListener("pointercancel", handleEnd);
+      document.body.style.userSelect = "";
+      document.body.style.webkitUserSelect = "";
+      document.body.style.cursor = "";
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isResizingSidebar, panelPosition]);
 
   const graphContainerRef = useRef<HTMLDivElement>(null);

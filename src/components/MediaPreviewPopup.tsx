@@ -20,6 +20,7 @@ import {
   ChevronLeft,
   ChevronRight,
   Film,
+  PenLine,
 } from 'lucide-react';
 import { useStore, useEffectiveTheme } from '../store/useStore';
 import { motion, AnimatePresence } from 'motion/react';
@@ -32,6 +33,25 @@ import { getAssetBlob, getOriginalAsset, resolveAssetUrl, resolveOriginalAssetId
 import { downloadBlob, downloadImage, withImageExtension } from '../utils/downloadUtils';
 import { MediaStore } from './notes/storage/MediaStore';
 import { db } from '../lib/db';
+import { useImageMarkup } from './imageMarkup/useImageMarkup';
+
+/**
+ * What an image's marks are saved under: its stored asset (the original, not a
+ * thumbnail) or its web address. A blob: address lasts only this visit, so marks
+ * on one can't be kept.
+ */
+const markupKeyFor = (url: string | undefined | null): string | null => {
+  if (!url) return null;
+  const u = url.trim();
+  if (!u || u.startsWith('blob:')) return null;
+  if (u.startsWith('data:')) {
+    // Long: kept by a hash of it.
+    let h = 5381;
+    for (let i = 0; i < u.length; i++) h = ((h << 5) + h + u.charCodeAt(i)) | 0;
+    return `data:${u.length}:${(h >>> 0).toString(36)}`;
+  }
+  return toOriginalAssetId(u.split('#')[0]);
+};
 
 const getFileName = (url: string) => {
   const cleanUrl = url.split('?')[0].split('#')[0];
@@ -328,6 +348,13 @@ const MediaPreviewPopup: React.FC = () => {
   const [isUIHidden, setIsUIHidden] = React.useState(false);
   const [showThumbnails, setShowThumbnails] = React.useState(true);
   const [dbAssetImages, setDbAssetImages] = React.useState<string[]>([]);
+  const [drawMode, setDrawMode] = React.useState(false);
+  const markup = useImageMarkup(activePreviewMedia?.type === 'image' ? markupKeyFor(activePreviewMedia.url) : null);
+
+  // Closing the preview leaves draw mode; it stays on from one image to the next.
+  React.useEffect(() => {
+    if (activePreviewMedia?.type !== 'image') setDrawMode(false);
+  }, [activePreviewMedia?.type]);
 
   // Asynchronously query all stored image assets in Dexie IndexedDB
   React.useEffect(() => {
@@ -793,6 +820,11 @@ const MediaPreviewPopup: React.FC = () => {
             enableCoordinates
             onSwipeLeft={canGoNext ? goToNext : undefined}
             onSwipeRight={canGoPrev ? goToPrev : undefined}
+            markup={markup}
+            drawMode={drawMode}
+            onDrawModeChange={setDrawMode}
+            markupFileName={fileName}
+            onMarkupMessage={(message, type) => setNotification({ message, type })}
             className="w-full h-full max-w-full max-h-full object-contain rounded-md shadow-xl"
           />
         </div>
@@ -1057,6 +1089,22 @@ const MediaPreviewPopup: React.FC = () => {
                     {isImage && (
                       <>
                         <button
+                          onClick={() => setDrawMode((on) => !on)}
+                          disabled={isResolvingAsset}
+                          aria-pressed={drawMode}
+                          className={`${HEADER_BUTTON} ${drawMode ? 'text-white bg-blue-600 hover:bg-blue-600 hover:text-white dark:bg-blue-600 dark:hover:bg-blue-600' : ''}`}
+                          title={drawMode ? 'Leave draw mode (Esc)' : 'Draw: mark up the image with a pen, shapes, ticks and more'}
+                          aria-label={drawMode ? 'Leave draw mode' : 'Draw on the image'}
+                        >
+                          <PenLine size={15} />
+                          <span className="hidden md:inline">{drawMode ? 'Drawing' : 'Draw'}</span>
+                          {!drawMode && markup.shapes.length > 0 && (
+                            <span className="min-w-4 h-4 px-1 rounded-full bg-blue-500/15 text-blue-600 dark:text-sky-300 text-[10px] font-semibold tabular-nums inline-flex items-center justify-center">
+                              {markup.shapes.length}
+                            </span>
+                          )}
+                        </button>
+                        <button
                           onClick={() => setRotation((prev) => (prev + 90) % 360)}
                           disabled={isResolvingAsset}
                           className={HEADER_BUTTON}
@@ -1205,7 +1253,7 @@ const MediaPreviewPopup: React.FC = () => {
           </motion.div>
 
           {/* Mobile Floating Navigation Pill (Bottom Left side - matches right panel UI exactly) */}
-          {isImage && hasMultipleImages && isUIHidden && (
+          {isImage && hasMultipleImages && isUIHidden && !drawMode && (
             <div
               data-zoom-ui
               className="fixed bottom-3 left-3 z-30 sm:hidden flex items-center gap-0.5 p-1 rounded-full bg-black/65 backdrop-blur-md border border-white/10 text-white shadow-lg"
