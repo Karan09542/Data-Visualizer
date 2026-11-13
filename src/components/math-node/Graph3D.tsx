@@ -934,6 +934,8 @@ class Engine {
   private hover: { local: Vec3; color: string; rowId: string } | null = null;
   private hoverDot = document.createElement("div");
   private pinnedEl = document.createElement("div");
+  /** Whether the pinned notes are open; null until toggled: open on a wide graph, folded on a narrow one. */
+  private notesOpen: boolean | null = null;
   private hoverTip = document.createElement("div");
   private tangentGroup = new THREE.Group();
   private tangentPlane: THREE.Mesh;
@@ -1059,8 +1061,9 @@ class Engine {
     this.hoverTip.style.cssText =
       "position:absolute;left:0;top:0;padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;border:1.5px solid;box-shadow:0 4px 12px rgba(0,0,0,.25);display:none";
     // Notes pinned to the corner: under the graph's toolbar, clear of the height legend.
+    // A card, so they read over whatever is behind them; it takes the pointer (to fold).
     this.pinnedEl.style.cssText =
-      "position:absolute;top:58px;right:34px;max-width:min(62%,26rem);display:none;flex-direction:column;align-items:flex-end;gap:7px;text-align:right;line-height:1.25";
+      "position:absolute;top:58px;right:34px;display:none;flex-direction:column;align-items:flex-end;text-align:right;line-height:1.25;pointer-events:auto;border-radius:12px;backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);cursor:default";
     this.gizmoTip.className = "g3d-gz-tip";
     this.gizmoTip.dataset.captureExclude = "";
     this.handleHost.appendChild(this.gizmoTip);
@@ -1120,6 +1123,75 @@ class Engine {
     this.sliceDirty = true;
     if (!options.tangent) this.tangentGroup.visible = false;
     this.sync();
+  }
+
+  /**
+   * The notes pinned to the corner, as a card. On a narrow graph (a phone) it starts
+   * folded to its first line, so it doesn't cover the picture; a tap opens the rest.
+   */
+  private buildPinnedNotes(pinned: LabelSpec[]) {
+    const card = this.pinnedEl;
+    if (!pinned.length) {
+      card.style.display = "none";
+      card.replaceChildren();
+      return;
+    }
+    const narrow = this.width < 640;
+    const open = this.notesOpen ?? !narrow;
+    const size = narrow ? 0.8 : 1;
+    card.style.display = "flex";
+    card.style.top = narrow ? "52px" : "58px";
+    card.style.right = narrow ? "8px" : "34px";
+    card.style.maxWidth = narrow ? "calc(100% - 72px)" : "min(62%, 27rem)";
+    card.style.gap = narrow ? "4px" : "6px";
+    card.style.padding = narrow ? "6px 9px" : "8px 12px";
+    card.style.background = this.dark ? "rgba(2, 6, 23, 0.72)" : "rgba(255, 255, 255, 0.82)";
+    card.style.border = `1px solid ${this.dark ? "rgba(51, 65, 85, 0.7)" : "rgba(203, 213, 225, 0.9)"}`;
+    card.style.boxShadow = "0 4px 14px rgba(0, 0, 0, 0.18)";
+
+    const line = (spec: LabelSpec) => {
+      const el = document.createElement("div");
+      if (spec.html) el.innerHTML = spec.html;
+      else el.textContent = spec.text;
+      el.style.color = spec.color || "";
+      el.style.fontSize = `${Math.round(14 * size * (spec.scale ?? 1))}px`;
+      return el;
+    };
+    const head = document.createElement("div");
+    head.style.cssText = "display:flex;align-items:center;justify-content:flex-end;gap:8px;max-width:100%";
+    const title = line(pinned[0]);
+    title.style.minWidth = "0";
+    head.append(title);
+    if (pinned.length > 1) {
+      const toggle = document.createElement("button");
+      toggle.type = "button";
+      toggle.dataset.captureExclude = "";
+      toggle.textContent = open ? "Hide" : `+${pinned.length - 1} more`;
+      toggle.title = open ? "Fold the notes away" : "Show all the notes";
+      toggle.style.cssText = `flex-shrink:0;font:600 ${narrow ? 10 : 11}px system-ui,sans-serif;padding:2px 7px;border-radius:999px;border:1px solid currentColor;opacity:.75;cursor:pointer;background:transparent;color:${this.dark ? "#cbd5e1" : "#475569"};text-shadow:none`;
+      toggle.addEventListener("pointerdown", (e) => e.stopPropagation());
+      toggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        this.notesOpen = !open;
+        this.labelsDirty = true;
+        this.requestRender();
+      });
+      // The fold button sits first, at the far side from the text's right edge.
+      head.prepend(toggle);
+    }
+    const rest = open ? pinned.slice(1).map(line) : [];
+    card.replaceChildren(head, ...rest);
+    // Typeset maths can't wrap: a line too long for the card is drawn just small enough to fit.
+    const room = (narrow ? this.width - 72 : Math.min(this.width * 0.62, 432)) - (narrow ? 18 : 24);
+    const fit = (el: HTMLElement, avail: number) => {
+      const w = el.scrollWidth;
+      if (w <= avail || w === 0) return;
+      const px = parseFloat(el.style.fontSize) || 14;
+      el.style.fontSize = `${Math.max(8, Math.floor(px * (avail / w) * 10) / 10)}px`;
+    };
+    const toggleWidth = head.firstElementChild !== title ? (head.firstElementChild as HTMLElement).offsetWidth + 8 : 0;
+    fit(title, room - toggleWidth);
+    for (const el of rest) fit(el, room);
   }
 
   /** Fades every row but this one (null: none). */
@@ -1329,6 +1401,7 @@ class Engine {
   }
 
   resize(width: number, height: number) {
+    if ((width < 640) !== (this.width < 640)) this.labelsDirty = true;
     this.width = Math.max(1, Math.floor(width));
     this.height = Math.max(1, Math.floor(height));
     this.renderer.setSize(this.width, this.height);
@@ -1347,7 +1420,8 @@ class Engine {
     this.dark = dark;
     this.applyTheme();
     this.buildDecor();
-    // Surface mesh lines are tinted for the theme.
+    // Surface mesh lines are tinted for the theme; the notes card too.
+    this.labelsDirty = true;
     for (const row of this.rows.values()) row.baseKey = "";
     this.sliceDirty = true;
     this.clearHover();
@@ -1772,17 +1846,7 @@ class Engine {
       while (this.labelEls.length > this.labelSpecs.length) this.labelEls.pop()!.remove();
       // Pinned notes: one list in the corner, in row order.
       const pinned = this.getProps().functions.flatMap((f) => this.rows.get(f.id)?.pinned ?? []);
-      this.pinnedEl.style.display = pinned.length ? "flex" : "none";
-      this.pinnedEl.replaceChildren(
-        ...pinned.map((spec) => {
-          const line = document.createElement("div");
-          if (spec.html) line.innerHTML = spec.html;
-          else line.textContent = spec.text;
-          line.style.color = spec.color || "";
-          line.style.fontSize = `${Math.round(14 * (spec.scale ?? 1))}px`;
-          return line;
-        }),
-      );
+      this.buildPinnedNotes(pinned);
       this.labelSpecs.forEach((spec, i) => {
         const el = this.labelEls[i];
         if (spec.html) el.innerHTML = spec.html;
