@@ -10,11 +10,12 @@ export type DrawToolKind = "point" | "segment" | "vector" | "line" | "circle" | 
  * 3D view: what a drawn polygon or circle becomes. Flat; extruded (a prism, or a
  * cylinder); or drawn up to a point (a pyramid, or a cone).
  */
-export type SolidMode = "flat" | "extrude" | "apex";
+export type SolidMode = "flat" | "extrude" | "apex" | "sphere";
 
 /** A solid's top: the point its base is extruded to, or its apex. */
 export interface DrawSolid {
-  kind: "extrude" | "apex";
+  /** sphere: a ball on a circle, centred where it is, as wide as it is (no top to set). */
+  kind: "extrude" | "apex" | "sphere";
   tip: DrawPick;
 }
 

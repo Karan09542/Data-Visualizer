@@ -4286,7 +4286,16 @@ class Engine {
   private finishDrawing(picks: DrawPick[]) {
     const tool = this.drawTool;
     // A base for a solid: now its top is set.
-    if (tool && this.drawSolid !== "flat" && (tool === "polygon" || tool === "circle")) {
+    // A sphere needs no top: done as soon as the circle is.
+    if (tool === "circle" && this.drawSolid === "sphere" && picks.length === 2) {
+      this.drawPicks = [];
+      this.buildDrawPreview();
+      this.requestRender();
+      this.getProps().onDrawComplete?.(tool, picks, { kind: "sphere", tip: picks[0] });
+      return;
+    }
+    // (A sphere is for circles: a polygon then stays flat.)
+    if (tool && this.drawSolid !== "flat" && this.drawSolid !== "sphere" && (tool === "polygon" || tool === "circle")) {
       const base = this.solidBaseOf(tool, picks);
       if (base) {
         this.solidBase = base;
@@ -4443,6 +4452,23 @@ class Engine {
       const ring: number[] = [];
       for (let i = 0; i < 96; i++) ring.push(...around((i / 96) * TWO_PI), ...around(((i + 1) / 96) * TWO_PI));
       dashed(ring);
+      if (this.drawSolid === "sphere") {
+        // The sphere it will make: two more great circles, upright to the first.
+        const normalAxis = axis;
+        const great = (a: number, b: number) => {
+          const out: number[] = [];
+          const at = (ang: number) => {
+            const p = [o[0], o[1], o[2]];
+            p[a] += r * Math.cos(ang);
+            p[b] += r * Math.sin(ang);
+            return p;
+          };
+          for (let i = 0; i < 96; i++) out.push(...at((i / 96) * TWO_PI), ...at(((i + 1) / 96) * TWO_PI));
+          return out;
+        };
+        dashed(great(ua, normalAxis), 0.55);
+        dashed(great(va, normalAxis), 0.55);
+      }
     } else if (tool === "line" && placed.length === 1 && hover) {
       const d = new THREE.Vector3(hover[0] - placed[0][0], hover[1] - placed[0][1], hover[2] - placed[0][2]);
       if (d.lengthSq() > 0) {

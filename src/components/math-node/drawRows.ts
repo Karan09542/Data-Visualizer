@@ -143,9 +143,26 @@ function circleSolidRows(
   solid: DrawSolid,
   opts: BuildOptions,
 ): MathFunction[] {
+  const R = `(${radius})`;
+  if (solid.kind === "sphere") {
+    // Centred on the circle, which is its equator; v runs pole to pole, u round.
+    const a = (n: 0 | 1 | 2) => (n === plane ? "cos(v/2)" : n === PLANE_AXES[plane][0] ? "cos(u)*sin(v/2)" : "sin(u)*sin(v/2)");
+    return [
+      makeRow(opts, "function", `${centre} + ${R}*[${a(0)}, ${a(1)}, ${a(2)}]`, opts.color, {
+        fillColor: opts.color,
+        fillOpacity: 0.35,
+      }),
+      makeRow(opts, "point", `${centre} + [0, 0, ${R} + 0.5]`, opts.color, {
+        showPoint: false,
+        showLabel: true,
+        label: `Sphere · r = {{${radius}}} · volume {{4/3*pi*${R}^3}} · surface {{4*pi*${R}^2}}`,
+        labelPlain: true,
+        labelAlignment: "center",
+      }),
+    ];
+  }
   const tip = solidTip(solid, opts);
   const T = `p3(${tip.name})`;
-  const R = `(${radius})`;
   const round = (a: string, b: string) => inPlane(plane, a, b);
   const surface = (expr: string, opacity: number) =>
     // u runs round, v up the side (both 0 to 2π, as the 3D view sweeps them).

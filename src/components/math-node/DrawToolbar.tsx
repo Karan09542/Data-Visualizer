@@ -303,6 +303,7 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
             ["flat", tool === "polygon" ? "Flat polygon" : "Flat circle", "Just the shape"],
             ["extrude", tool === "polygon" ? "Prism" : "Cylinder", "Pull the base up to a copy of it"],
             ["apex", tool === "polygon" ? "Pyramid" : "Cone", "Join the base to a point"],
+            ...(tool === "circle" ? ([["sphere", "Sphere", "A ball round the centre, as wide as the circle"]] as const) : []),
           ] as const
         ).map(([mode, label, hint]) => {
           const on = solid === mode;
@@ -313,7 +314,7 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
               role="radio"
               aria-checked={on}
               onClick={() => onSolidChange(mode)}
-              title={`${hint}${mode === "flat" ? "" : ". Draw the base, then move up to set the height; Shift slants it, a point snaps the top to it."}`}
+              title={`${hint}${mode === "flat" || mode === "sphere" ? "" : ". Draw the base, then move up to set the height; Shift slants it, a point snaps the top to it."}`}
               className={`px-2 py-1 rounded-lg text-left text-[11px] font-semibold transition-colors ${on
                 ? "bg-blue-600 text-white"
                 : "text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800"
