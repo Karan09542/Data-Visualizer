@@ -175,6 +175,12 @@ export interface Graph3DOptions {
   /** Show the tangent plane and normal where the pointer touches a surface. */
   tangent: boolean;
   autoRotate: boolean;
+  /** The x, y and z axes, with their numbers, names and spin handles. */
+  showAxes: boolean;
+  /** The grid on the floor of the box. */
+  showGrid: boolean;
+  /** The outline of the box. */
+  showBox: boolean;
 }
 
 function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
@@ -188,6 +194,10 @@ function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
         : null,
     tangent: !!o?.tangent,
     autoRotate: !!o?.autoRotate,
+    // Shown unless switched off (older saves have none of these).
+    showAxes: o?.showAxes !== false,
+    showGrid: o?.showGrid !== false,
+    showBox: o?.showBox !== false,
   };
 }
 
@@ -1118,7 +1128,10 @@ class Engine {
   }
 
   setOptions(options: Graph3DOptions) {
+    const decorChanged =
+      options.showAxes !== this.opts.showAxes || options.showGrid !== this.opts.showGrid || options.showBox !== this.opts.showBox;
     this.opts = options;
+    if (decorChanged) this.buildDecor();
     this.controls.autoRotate = options.autoRotate;
     this.sliceDirty = true;
     if (!options.tangent) this.tangentGroup.visible = false;
@@ -1923,7 +1936,10 @@ class Engine {
     const step = niceStep(half);
     const gridColor = new THREE.Color(this.dark ? "#334155" : "#cbd5e1");
 
+    const { showAxes, showGrid, showBox } = this.opts;
+
     // Grid on the horizontal plane the axes lie in.
+    if (showGrid) {
     const grid: number[] = [];
     for (let k = Math.ceil(lo[0] / step); k * step <= hi[0] + 1e-9 * half; k++) {
       grid.push(k * step, lo[1], at[2], k * step, hi[1], at[2]);
@@ -1939,8 +1955,10 @@ class Engine {
         new THREE.LineBasicMaterial({ color: gridColor, transparent: true, opacity: this.dark ? 0.7 : 0.9 }),
       ),
     );
+    }
 
     // The box.
+    if (showBox) {
     const box: number[] = [];
     for (let axis = 0; axis < 3; axis++) {
       const b = (axis + 1) % 3;
@@ -1965,8 +1983,15 @@ class Engine {
         new THREE.LineBasicMaterial({ color: gridColor, transparent: true, opacity: 0.55 }),
       ),
     );
+    }
 
     // Axes, arrowheads, names and tick numbers.
+    if (!showAxes) {
+      this.decorLabels = labels;
+      this.labelsDirty = true;
+      this.requestRender();
+      return;
+    }
     const axisPositions: number[] = [];
     const axisColors: number[] = [];
     for (let axis = 0; axis < 3; axis++) {
@@ -5438,6 +5463,25 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
                   title="Show the tangent plane and normal where the pointer touches a surface"
                   on={options.tangent}
                   onChange={(on) => setOptions({ tangent: on })}
+                />
+                <div className={HEADING}>Display</div>
+                <Switch
+                  label="Axes"
+                  title="The x, y and z axes, with their numbers"
+                  on={options.showAxes}
+                  onChange={(on) => setOptions({ showAxes: on })}
+                />
+                <Switch
+                  label="Grid"
+                  title="The grid on the floor"
+                  on={options.showGrid}
+                  onChange={(on) => setOptions({ showGrid: on })}
+                />
+                <Switch
+                  label="Box"
+                  title="The outline of the box the graph is drawn in"
+                  on={options.showBox}
+                  onChange={(on) => setOptions({ showBox: on })}
                 />
                 <Switch
                   label="Auto-rotate"
