@@ -18,6 +18,8 @@ export const EXAMPLE_ROWS_3D = [
   { label: "x² + y² + z² = 9", expr: "x^2 + y^2 + z^2 = 9" },
   { label: "[3cos t, 3sin t, t/2]", expr: "[3cos(t), 3sin(t), t/2]" },
   { label: "torus (u, v)", expr: "[(3 + cos(v))*cos(u), (3 + cos(v))*sin(u), sin(v)]" },
+  { label: "x² + y² − z² = 2", expr: "x^2 + y^2 - z^2 = 2" },
+  { label: "trefoil knot", expr: "[(2.5 + cos(3t))*cos(2t), (2.5 + cos(3t))*sin(2t), sin(3t)]" },
   { label: "A = [1, 2, 3]", expr: "A = [1, 2, 3]" },
 ];
 

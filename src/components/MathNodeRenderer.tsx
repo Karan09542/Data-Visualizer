@@ -130,6 +130,8 @@ import {
   MATH_EXAMPLES,
   exampleScene,
   hasExample3D,
+  EXAMPLE_GALLERY_3D,
+  isExample3DOnly,
   EXAMPLE_GALLERY,
   TraceOverlay,
   TraceShapeRegistrar,
@@ -2796,6 +2798,12 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
     setActiveExample(exampleName);
 
+    // A 3D Gallery scene opens the 3D view.
+    if (isExample3DOnly(exampleName) && viewMode !== "3d") {
+      switchViewMode("3d", { keepScene: true });
+      loadExampleScene(exampleName, "3d");
+      return;
+    }
     loadExampleScene(exampleName, viewMode);
   };
 
@@ -3010,7 +3018,7 @@ export const MathNodeRenderer: React.FC<any> = ({
   const isCompact = !isExpanded && !isFullscreen;
 
   /** Between the flat graph and the 3D view: from the toolbar, or the empty graph's card. */
-  const switchViewMode = (mode: "2d" | "3d") => {
+  const switchViewMode = (mode: "2d" | "3d", { keepScene = false }: { keepScene?: boolean } = {}) => {
     if (mode === viewMode) return;
     // A point's menu belongs to the view it was opened in.
     setPointMenu(null);
@@ -3035,6 +3043,7 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
     setViewMode(mode);
     // An example with a version made for the other view changes to it.
+    if (keepScene) return;
     if (activeExample && hasExample3D(activeExample)) loadExampleScene(activeExample, mode);
     else if (activeExample && SIMULATIONS.some((sim) => sim.key === activeExample && sim.build3d)) {
       handleLoadSimulation(activeExample, mode);
@@ -6905,6 +6914,35 @@ export const MathNodeRenderer: React.FC<any> = ({
                             <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">
                               {ex.label}
                             </span>
+                          </button>
+                        ))}
+                      </div>
+                    </details>
+
+                    <details open className="group/g3d flex flex-col pt-1 border-t border-slate-200 dark:border-slate-700/50">
+                      <summary className="cursor-pointer list-none flex items-center justify-between text-[10px] text-slate-500 uppercase font-semibold tracking-wider hover:text-slate-700 dark:hover:text-slate-300 transition-colors">
+                        <span className="flex items-center gap-1.5">
+                          3D Gallery
+                          <span className="px-1 rounded text-[8px] font-bold tracking-wide bg-violet-500 text-white">3D</span>
+                        </span>
+                        <ChevronDown size={12} className="transition-transform -rotate-90 group-open/g3d:rotate-0" />
+                      </summary>
+                      {viewMode !== "3d" && (
+                        <p className="pt-1.5 text-[10px] leading-snug text-slate-400">Surfaces, solids and knots. Picking one opens the 3D view.</p>
+                      )}
+                      <div className="grid grid-cols-2 gap-2 pt-2">
+                        {EXAMPLE_GALLERY_3D.map((ex) => (
+                          <button
+                            key={ex.key}
+                            onClick={() => handleLoadExample(ex.key)}
+                            title={ex.hint}
+                            className={`text-left p-2 rounded transition-all group shadow-sm flex flex-col gap-0.5 border ${activeExample === ex.key
+                              ? "bg-violet-500/10 border-violet-400 dark:border-violet-500 ring-1 ring-violet-400/50"
+                              : "bg-white dark:bg-slate-800/50 hover:bg-slate-50 dark:hover:bg-slate-700/80 border-slate-200 dark:border-slate-700"
+                              }`}
+                          >
+                            <span className={`text-[10px] font-semibold ${ex.accent}`}>{ex.category}</span>
+                            <span className="text-[9px] text-slate-500 dark:text-slate-400 font-mono">{ex.label}</span>
                           </button>
                         ))}
                       </div>

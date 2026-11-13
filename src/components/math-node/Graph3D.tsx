@@ -5087,6 +5087,10 @@ const EXAMPLES: { name: string; expr: string; patch?: Partial<MathFunction> }[] 
   { name: "Sphere", expr: "x^2 + y^2 + z^2 = 16" },
   { name: "Torus", expr: "[(3 + cos(v))*cos(u), (3 + cos(v))*sin(u), sin(v)]" },
   { name: "Helix", expr: "[3cos(t), 3sin(t), t/2 - 3]", patch: { tRange: [0, 4 * Math.PI] } },
+  { name: "Monkey saddle", expr: "z = (x^3 - 3*x*y^2)/4" },
+  { name: "Hyperboloid", expr: "x^2 + y^2 - z^2 = 2" },
+  { name: "Möbius strip", expr: "[(2.5 + (v/pi - 1)*cos(u/2))*cos(u), (2.5 + (v/pi - 1)*cos(u/2))*sin(u), (v/pi - 1)*sin(u/2)]" },
+  { name: "Trefoil knot", expr: "[(2.5 + cos(3t))*cos(2t), (2.5 + cos(3t))*sin(2t), sin(3t)]" },
 ];
 
 const VIEWS: { id: ViewName; label: string; title: string }[] = [

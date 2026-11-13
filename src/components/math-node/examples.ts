@@ -1314,6 +1314,287 @@ function normalDistribution3D(): ExampleScene {
   };
 }
 
+// ─── 3D Gallery: scenes made for the 3D view ──────────────────────────────────
+//
+// Each is a well-known surface, solid or curve with sliders to explore it and notes
+// pinned in the corner. They load straight into the 3D view.
+
+/** A parametric surface: u and v each run from 0 to 2π. */
+const uvSurface = (r: Rows, expr: string, color: string, opacity = 0.75, extra: Partial<MathFunction> = {}): MathFunction => ({
+  ...r.define(expr),
+  color,
+  fillColor: color,
+  fillOpacity: opacity,
+  ...extra,
+});
+
+/** z = a·x² + b·y²: bowl, saddle or trough, by the signs of a and b. */
+function quadricSurfaces(): ExampleScene {
+  const r = sceneRows("g3quad");
+  return {
+    functions: [
+      surface(r, "z = a*x^2 + b*y^2", BLUE),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`z = a\,x^2 + b\,y^2`, BLUE],
+        [String.raw`a = {{a}}, \quad b = {{b}}`, TEXT],
+        [String.raw`a, b \text{ same sign: a bowl (elliptic paraboloid)}`, GREEN],
+        [String.raw`a, b \text{ opposite signs: a saddle (hyperbolic paraboloid)}`, AMBER],
+        [String.raw`\text{one of them } 0\text{: a trough (parabolic cylinder)}`, PURPLE],
+      ]),
+    ],
+    variables: [
+      sceneSlider("a", "a (along x)", 0.3, [-1, 1, 0.05], "How it curves along x.", "shape"),
+      sceneSlider("b", "b (along y)", -0.3, [-1, 1, 0.05], "How it curves along y.", "shape"),
+    ],
+    groups: [sceneGroup("shape", "Quadric surface")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+    view3d: { colorMode: "height", contours: true },
+  };
+}
+
+/** x² + y² − z² = s: one sheet, a double cone, or two sheets. */
+function hyperboloids(): ExampleScene {
+  const r = sceneRows("g3hyp");
+  return {
+    functions: [
+      surface(r, "x^2 + y^2 - z^2 = s", PURPLE, { fillOpacity: 0.8 }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`x^2 + y^2 - z^2 = s`, PURPLE],
+        [String.raw`s = {{s}}`, TEXT],
+        [String.raw`s > 0\text{: hyperboloid of one sheet}`, GREEN],
+        [String.raw`s = 0\text{: a double cone}`, AMBER],
+        [String.raw`s < 0\text{: hyperboloid of two sheets}`, PINK],
+      ]),
+    ],
+    variables: [sceneSlider("s", "s", 2, [-4, 4, 0.1], "Slide through 0 to watch one sheet pinch into a cone, then split in two.", "shape")],
+    groups: [sceneGroup("shape", "Hyperboloid")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+    view3d: { colorMode: "height" },
+  };
+}
+
+/** sin(kr)/(kr): ripples that die away from the middle. */
+function sombrero(): ExampleScene {
+  const r = sceneRows("g3sinc");
+  return {
+    functions: [
+      surface(r, "z = 6*sin(k*sqrt(x^2 + y^2) + 0.000001)/(k*sqrt(x^2 + y^2) + 0.000001) - 1.5", SKY),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`z = \dfrac{\sin(k r)}{k r}, \quad r = \sqrt{x^2 + y^2}`, SKY],
+        [String.raw`\text{a ripple from a stone dropped at the origin}`, TEXT],
+        [String.raw`\text{rings every } \pi/k = {{pi/k}}`, AMBER],
+      ]),
+    ],
+    variables: [sceneSlider("k", "Ripple number k", 1.8, [0.5, 4, 0.05], "Bigger k packs the rings closer.", "shape")],
+    groups: [sceneGroup("shape", "Sinc ripples")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-6, 6], y: [-6, 6] },
+    view3d: { colorMode: "height", contours: true },
+  };
+}
+
+/** z = (x³ − 3xy²)/c: a saddle with three dips. */
+function monkeySaddle(): ExampleScene {
+  const r = sceneRows("g3monkey");
+  return {
+    functions: [
+      surface(r, "z = (x^3 - 3*x*y^2)/c", AMBER),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`z = \dfrac{x^3 - 3xy^2}{c} = \dfrac{\mathrm{Re}\,(x + iy)^3}{c}`, AMBER],
+        [String.raw`\text{three dips: two for the legs, one for the tail}`, TEXT],
+        [String.raw`\text{flat at the origin, yet neither a top nor a bottom}`, PURPLE],
+      ]),
+    ],
+    variables: [sceneSlider("c", "Flatten by c", 4, [1, 10, 0.1], "Bigger c flattens it.", "shape")],
+    groups: [sceneGroup("shape", "Monkey saddle")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3, 3], y: [-3, 3] },
+    view3d: { colorMode: "height", contours: true },
+  };
+}
+
+/** A point on a surface with its tangent plane and its gradient, the way uphill. */
+function tangentPlane(): ExampleScene {
+  const r = sceneRows("g3tan");
+  const f = (x: string, y: string) => `A*sin(${x})*cos(${y})`;
+  // In brackets: they are squared and multiplied below.
+  const fx = "(A*cos(a)*cos(b))";
+  const fy = "(-A*sin(a)*sin(b))";
+  // A patch of the plane round P, 1.4 each way.
+  const s = "(u/pi - 1)*1.4";
+  const w = "(v/pi - 1)*1.4";
+  // The plane's unit normal, pointing up.
+  const lift = `[-(${fx}), -(${fy}), 1]/sqrt((${fx})^2 + (${fy})^2 + 1)`;
+  return {
+    functions: [
+      surface(r, `z = ${f("x", "y")}`, BLUE, { fillOpacity: 0.75 }),
+      uvSurface(r, `[a + ${s}, b + ${w}, ${f("a", "b")} + ${fx}*${s} + ${fy}*${w}]`, AMBER, 0.3),
+      // Uphill along the plane, lifted a hair off it (along its normal) so it shows on top.
+      r.arrow(
+        `Vector([a, b, ${f("a", "b")}] + 0.12*${lift}, [a + 0.8*${fx}, b + 0.8*${fy}, ${f("a", "b")} + 0.8*(${fx}^2 + ${fy}^2)] + 0.12*${lift})`,
+        PINK,
+        { outlineWidth: 5 },
+      ),
+      spacePoint(r, `[a, b, ${f("a", "b")}]`, RED, { dragVars: ["a", "b"] }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`f(x, y) = A \sin x \cos y`, BLUE],
+        [String.raw`\nabla f = \left(f_x, f_y\right) = ({{${fx}}},\ {{${fy}}})`, PINK],
+        [String.raw`z = f(a, b) + f_x\,(x - a) + f_y\,(y - b)`, AMBER],
+        [String.raw`\text{Drag the point; the pink arrow points uphill}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("a", "Point a (x)", 1.2, [-3, 3, 0.05], "Where P is along x. Drag P.", "point"),
+      sceneSlider("b", "Point b (y)", -1.2, [-3, 3, 0.05], "Where P is along y. Drag P.", "point"),
+      sceneSlider("A", "Height A", 2, [0.5, 3, 0.1], "How tall the hills are.", "surface"),
+    ],
+    groups: [sceneGroup("point", "Point P"), sceneGroup("surface", "Surface")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.5, 3.5], y: [-3.5, 3.5] },
+  };
+}
+
+/** A sphere cut by a level plane: the cut is a circle. */
+function spherePlane(): ExampleScene {
+  const r = sceneRows("g3sph");
+  return {
+    functions: [
+      surface(r, "x^2 + y^2 + z^2 = R^2", SKY, { fillOpacity: 0.4 }),
+      uvSurface(r, "[(u/pi - 1)*4.2, (v/pi - 1)*4.2, c]", AMBER, 0.18),
+      r.path("[sqrt(max(R^2 - c^2, 0))*cos(t), sqrt(max(R^2 - c^2, 0))*sin(t), c]", RED, [0, TAU], { outlineWidth: 4 }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`x^2 + y^2 + z^2 = R^2`, SKY],
+        [String.raw`\text{cut by the plane } z = c = {{c}}`, AMBER],
+        [String.raw`\text{the cut: a circle of radius } \sqrt{R^2 - c^2} = {{sqrt(max(R^2 - c^2, 0))}}`, RED],
+      ]),
+    ],
+    variables: [
+      sceneSlider("R", "Sphere radius R", 3, [1, 4, 0.1], "Size of the sphere.", "shape"),
+      sceneSlider("c", "Plane height c", 1.5, [-4, 4, 0.05], "Move the cut up and down: the circle shrinks to a point at the poles.", "shape"),
+    ],
+    groups: [sceneGroup("shape", "Sphere and plane")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4.5, 4.5], y: [-4.5, 4.5] },
+  };
+}
+
+/** The Möbius strip: one side, one edge. */
+function mobius(): ExampleScene {
+  const r = sceneRows("g3mob");
+  const s = "((v/pi - 1)*w)";
+  return {
+    functions: [
+      uvSurface(r, `[(2.5 + ${s}*cos(u/2))*cos(u), (2.5 + ${s}*cos(u/2))*sin(u), ${s}*sin(u/2)]`, PURPLE, 0.8),
+      r.path("[(2.5 + w*cos(t/2))*cos(t), (2.5 + w*cos(t/2))*sin(t), w*sin(t/2)]", AMBER, [0, 2 * TAU], { outlineWidth: 4 }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Möbius strip: a band with half a twist}`, PURPLE],
+        [String.raw`\text{one side and one edge}`, TEXT],
+        [String.raw`\text{the amber edge goes round twice before it closes}`, AMBER],
+      ]),
+    ],
+    variables: [sceneSlider("w", "Half-width w", 1, [0.2, 1.6, 0.05], "How wide the band is.", "shape")],
+    groups: [sceneGroup("shape", "Möbius strip")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+    view3d: { autoRotate: true },
+  };
+}
+
+/** The Klein bottle (figure-8 form): no inside and no outside. */
+function kleinBottle(): ExampleScene {
+  const r = sceneRows("g3klein");
+  const ring = "(R + cos(u/2)*sin(v) - sin(u/2)*sin(2*v))";
+  return {
+    functions: [
+      uvSurface(r, `[${ring}*cos(u), ${ring}*sin(u), sin(u/2)*sin(v) + cos(u/2)*sin(2*v)]`, PINK, 0.6),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{Klein bottle (figure-8 form)}`, PINK],
+        [String.raw`\text{no inside and no outside: one closed side}`, TEXT],
+        [String.raw`\text{in 3D it must pass through itself}`, PURPLE],
+      ]),
+    ],
+    variables: [sceneSlider("R", "Ring radius R", 2.2, [1.6, 3, 0.05], "Size of the ring the tube runs round.", "shape")],
+    groups: [sceneGroup("shape", "Klein bottle")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+    view3d: { autoRotate: true },
+  };
+}
+
+/** A (p, q) torus knot, wound round a faint torus. */
+function torusKnot(): ExampleScene {
+  const r = sceneRows("g3knot");
+  return {
+    functions: [
+      uvSurface(r, "[(2.5 + cos(v))*cos(u), (2.5 + cos(v))*sin(u), sin(v)]", INK, 0.12),
+      r.path("[(2.5 + cos(q*t))*cos(p*t), (2.5 + cos(q*t))*sin(p*t), sin(q*t)]", AMBER, [0, TAU], { outlineWidth: 4 }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`(p, q) = ({{p:0}}, {{q:0}}) \text{ torus knot}`, AMBER],
+        [String.raw`\text{round the hole } p \text{ times, through it } q \text{ times}`, TEXT],
+        [String.raw`(2, 3)\text{: the trefoil} \qquad (2, 5)\text{: the cinquefoil}`, PURPLE],
+        [String.raw`p, q \text{ with no common factor: one closed knot}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("p", "Turns round p", 2, [1, 7, 1], "Times round the hole.", "knot"),
+      sceneSlider("q", "Turns through q", 3, [1, 9, 1], "Times through the hole.", "knot"),
+    ],
+    groups: [sceneGroup("knot", "Torus knot")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+    view3d: { autoRotate: true },
+  };
+}
+
+/** Two helices half a turn apart, joined by rungs: DNA's shape. */
+function dnaHelix(): ExampleScene {
+  const r = sceneRows("g3dna");
+  const z = (a: string) => `(${a})*7/(4*pi) - 3.5`;
+  return {
+    functions: [
+      r.define("spin = 0.5*time"),
+      r.path(`[R*cos(t + spin), R*sin(t + spin), ${z("t")}]`, BLUE, [0, 2 * TAU], { outlineWidth: 4 }),
+      r.path(`[R*cos(t + pi + spin), R*sin(t + pi + spin), ${z("t")}]`, RED, [0, 2 * TAU], { outlineWidth: 4 }),
+      // The rungs: one every 1/8 of a turn, across from strand to strand.
+      r.path(`family(0:15, [R*(2*t - 1)*cos(i*pi/4 + spin), R*(2*t - 1)*sin(i*pi/4 + spin), ${z("i*pi/4")}])`, AMBER, [0, 1], { outlineWidth: 2.5 }),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\text{a double helix: two strands half a turn apart}`, BLUE],
+        [String.raw`\text{strand: } (R\cos t,\ R\sin t,\ h\,t)`, TEXT],
+        [String.raw`\text{rungs join the strands across the middle}`, AMBER],
+      ]),
+    ],
+    variables: [sceneSlider("R", "Radius R", 1.5, [0.6, 2.5, 0.05], "How wide the helix is.", "shape")],
+    groups: [sceneGroup("shape", "Double helix")],
+    timeline: { mode: "continuous", min: 0, max: 10, autoplay: true },
+    view: { x: [-4, 4], y: [-4, 4] },
+  };
+}
+
+/** The 3D Gallery: scenes made for the 3D view, in order. `key` must exist in MATH_EXAMPLES. */
+export const EXAMPLE_GALLERY_3D: {
+  key: string;
+  category: string;
+  label: string;
+  hint: string;
+  accent: string;
+}[] = [
+  { key: "Space_Quadrics", category: "Surfaces", label: "Quadric Surfaces", hint: "z = ax² + by²: bowl, saddle or trough by the signs of a and b", accent: "text-blue-600 dark:text-blue-400" },
+  { key: "Space_Hyperboloids", category: "Surfaces", label: "Hyperboloids & Cone", hint: "x² + y² − z² = s: one sheet, a double cone, two sheets", accent: "text-violet-600 dark:text-violet-400" },
+  { key: "Space_Sombrero", category: "Surfaces", label: "Sinc Ripples", hint: "sin(kr)/(kr): ripples dying away from the middle", accent: "text-sky-600 dark:text-sky-400" },
+  { key: "Space_MonkeySaddle", category: "Surfaces", label: "Monkey Saddle", hint: "x³ − 3xy²: a saddle with three dips", accent: "text-amber-600 dark:text-amber-400" },
+  { key: "Space_TangentPlane", category: "Calculus", label: "Tangent Plane & Gradient", hint: "Drag a point over a surface: its tangent plane and the way uphill", accent: "text-red-600 dark:text-red-400" },
+  { key: "Space_SpherePlane", category: "Geometry", label: "Sphere Cross-Section", hint: "A plane cuts a sphere in a circle of radius √(R² − c²)", accent: "text-cyan-600 dark:text-cyan-400" },
+  { key: "Space_Mobius", category: "Topology", label: "Möbius Strip", hint: "A band with half a twist: one side and one edge", accent: "text-purple-600 dark:text-purple-400" },
+  { key: "Space_Klein", category: "Topology", label: "Klein Bottle", hint: "No inside or outside; it has to pass through itself in 3D", accent: "text-pink-600 dark:text-pink-400" },
+  { key: "Space_TorusKnot", category: "Knots", label: "Torus Knots", hint: "(p, q) knots on a torus: the trefoil, the cinquefoil…", accent: "text-orange-600 dark:text-orange-400" },
+  { key: "Space_DNA", category: "Curves", label: "Double Helix", hint: "Two helices half a turn apart, joined by rungs", accent: "text-emerald-600 dark:text-emerald-400" },
+];
+
+/** Whether a gallery entry only makes sense in the 3D view. */
+export const isExample3DOnly = (key: string) => key.startsWith("Space_");
+
 export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Lissajous: {
     functions: [
@@ -1450,4 +1731,15 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Lissajous3D: lissajous3D(),
   Wave3D: wave3D(),
   Statistics3D: normalDistribution3D(),
+  // The 3D Gallery
+  Space_Quadrics: quadricSurfaces(),
+  Space_Hyperboloids: hyperboloids(),
+  Space_Sombrero: sombrero(),
+  Space_MonkeySaddle: monkeySaddle(),
+  Space_TangentPlane: tangentPlane(),
+  Space_SpherePlane: spherePlane(),
+  Space_Mobius: mobius(),
+  Space_Klein: kleinBottle(),
+  Space_TorusKnot: torusKnot(),
+  Space_DNA: dnaHelix(),
 };
