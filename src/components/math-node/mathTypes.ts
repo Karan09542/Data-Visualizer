@@ -392,10 +392,26 @@ export const MATH_COMPLETIONS = [
   { name: "cis", desc: "cis(θ) = cos(θ) + i*sin(θ) = e^(i*θ)", insert: "cis(" },
   { name: "polar", desc: "Complex number from polar: polar(r, θ)", insert: "polar(" },
 
+  // 3D & geometry
+  { name: "field", desc: "3D vector field: field([P, Q, R]) draws arrows and flow lines, e.g. field([-y, x, z/3])", insert: "field([" },
+  { name: "revolve", desc: "Solid of revolution: revolve(f, a, b) spins y = f(x) round the x-axis (add \"y\" for the y-axis)", insert: "revolve(" },
+  { name: "p3", desc: "A point in space: p3([x, y]) is [x, y, 0]", insert: "p3(" },
+  { name: "distance", desc: "Distance between two points: distance(A, B)", insert: "distance(" },
+  { name: "dist", desc: "Distance between two points: dist(A, B)", insert: "dist(" },
+  { name: "midpoint", desc: "Midpoint of two points: midpoint(A, B)", insert: "midpoint(" },
+  { name: "angleAt", desc: "Angle at V between VP and VQ, in degrees: angleAt(V, P, Q)", insert: "angleAt(" },
+  { name: "arcAt", desc: "Point on the arc of that angle: arcAt(V, P, Q, s, radius)", insert: "arcAt(" },
+  { name: "planeNormal", desc: "Normal of the plane through A, B, C (AB × AC): planeNormal(A, B, C)", insert: "planeNormal(" },
+  { name: "footOnPlane", desc: "Foot of the perpendicular from P to plane ABC: footOnPlane(P, A, B, C)", insert: "footOnPlane(" },
+  { name: "planeAngle", desc: "Angle in degrees between planes ABC and ABD: planeAngle(A, B, C, D)", insert: "planeAngle(" },
+  { name: "planeArc", desc: "Point on the arc between planes ABC and ABD: planeArc(A, B, C, D, s, radius)", insert: "planeArc(" },
+  { name: "planeEquation", desc: "Plane through A, B, C as text, for labels: planeEquation(A, B, C)", insert: "planeEquation(" },
+  { name: "rho", desc: "3D spherical rows: rho = f(theta, phi)", insert: "rho = " },
+
   // Constants
   { name: "pi", desc: "Constant π (3.14159...)", insert: "pi" },
   { name: "e", desc: "Constant e (2.71828...)", insert: "e" },
-  { name: "phi", desc: "Golden ratio (1.61803...)", insert: "phi" },
+  { name: "phi", desc: "Golden ratio (1.61803...); in 3D spherical rows, the angle down from the top", insert: "phi" },
   { name: "i", desc: "Imaginary unit constant", insert: "i" },
   { name: "LN2", desc: "Natural log of 2", insert: "LN2" },
   { name: "LN10", desc: "Natural log of 10", insert: "LN10" },
