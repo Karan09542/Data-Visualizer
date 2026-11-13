@@ -131,7 +131,7 @@ function classifyValue(src: string, scope?: any): InferredType | null {
     if (fn === "Line") return "line";
     if (fn === "Point") return "point";
     // Drawn by the 3D view: a vector field, a solid of revolution.
-    if (fn === "field" || fn === "revolve") return "function";
+    if (fn === "field" || fn === "revolve" || fn === "volumeUnder") return "function";
   }
   if (n.isArrayNode) {
     const items: any[] = n.items;

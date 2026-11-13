@@ -6,6 +6,7 @@
  *   arcAt(V, P, Q, s, radius) the point a fraction s of the way round that angle's arc
  *   planeNormal(A, B, C), footOnPlane(P, A, B, C), planeAngle(A, B, C, D),
  *   planeArc(A, B, C, D, s, radius), planeEquation(A, B, C)   planes in space
+ *   divergence(F, P), curl(F, P)   of a field F(x, y, z) = [P, Q, R], at the point P
  *
  * Shared by the graph's scope and the worker that checks rows for errors, so a
  * row using them is never reported as calling an unknown function.
@@ -46,6 +47,11 @@ const cross = (a: Vec, b: Vec): Vec => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] -
 const v3 = (A: any): Vec => {
   const a = coords(A);
   return [a[0], a[1], a[2] ?? 0];
+};
+/** A vector field given as a function F(x, y, z) → [P, Q, R], as plain numbers. */
+const fieldFn = (F: any) => (x: number, y: number, z: number): Vec => {
+  if (typeof F !== "function") throw new Error("Give the field as a function: F(x, y, z) = [P, Q, R]");
+  return v3(F(x, y, z));
 };
 /**
  * For two planes sharing the edge AB (one through C, one through D): the parts of AC
@@ -118,6 +124,39 @@ export const GEOMETRY_HELPERS = {
    * view. On the flat graph it is the curve y = f(x) itself.
    */
   revolve: (fx: any) => fx,
+  /**
+   * volumeUnder(f(x, y), a, b, c, d[, n]): the volume under a surface over a rectangle,
+   * drawn with n × n boxes by the 3D view. Elsewhere it is f itself.
+   */
+  volumeUnder: (fxy: any) => fxy,
+  /**
+   * divergence(F, P): ∇·F at the point P, for a field written as a function,
+   * F(x, y, z) = [P, Q, R]. Positive where the flow spreads out, negative where it gathers.
+   */
+  divergence: (F: any, P: any): number => {
+    const [x, y, z] = v3(P);
+    const f = fieldFn(F);
+    const h = 1e-4;
+    return (
+      (f(x + h, y, z)[0] - f(x - h, y, z)[0]) / (2 * h) +
+      (f(x, y + h, z)[1] - f(x, y - h, z)[1]) / (2 * h) +
+      (f(x, y, z + h)[2] - f(x, y, z - h)[2]) / (2 * h)
+    );
+  },
+  /** curl(F, P): ∇×F at the point P, the axis (and twice the rate) the flow spins round there. */
+  curl: (F: any, P: any): Vec => {
+    const [x, y, z] = v3(P);
+    const f = fieldFn(F);
+    const h = 1e-4;
+    const d = (axis: number, comp: number) => {
+      const a = [x, y, z];
+      const b = [x, y, z];
+      a[axis] += h;
+      b[axis] -= h;
+      return (f(a[0], a[1], a[2])[comp] - f(b[0], b[1], b[2])[comp]) / (2 * h);
+    };
+    return [d(1, 2) - d(2, 1), d(2, 0) - d(0, 2), d(0, 1) - d(1, 0)];
+  },
   /** The normal of the plane through A, B and C: AB × AC. */
   planeNormal: (A: any, B: any, C: any): Vec => {
     const [a, b, c] = [v3(A), v3(B), v3(C)];

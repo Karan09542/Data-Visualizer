@@ -293,6 +293,18 @@ function getFunctionTypeMeta(
   allFunctions: MathFunction[],
 ): { shortLabel: string; title: string } {
   const meta = FUNCTION_TYPE_META[fn.type];
+  // Rows the 3D view draws in its own way.
+  const call = fn.expr?.replace(/^\s*[A-Za-z_]\w*\s*=(?!=)\s*/, "").trim() ?? "";
+  if (fn.type === "function") {
+    if (call.startsWith("field(")) return { shortLabel: "F =", title: "Vector field (drawn in 3D)" };
+    if (call.startsWith("revolve(")) return { shortLabel: "Solid", title: "Solid of revolution (drawn in 3D)" };
+    if (call.startsWith("volumeUnder(")) return { shortLabel: "∬", title: "Volume under a surface (drawn in 3D)" };
+  }
+  if (fn.type === "polar") {
+    if (/^\s*(rho|ρ)\s*=(?!=)/.test(fn.expr) || /\b(phi)\b|φ/.test(fn.expr))
+      return { shortLabel: "ρ =", title: "Spherical surface ρ = f(θ, φ) (in 3D)" };
+    if (/\bz\b/.test(fn.expr)) return { shortLabel: "r =", title: "Cylindrical surface r = f(θ, z) (in 3D)" };
+  }
   if (fn.type === "function" && definitionName(fn, allFunctions)) {
     return { shortLabel: "def", title: meta.title };
   }

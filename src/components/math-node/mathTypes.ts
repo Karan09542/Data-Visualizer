@@ -395,6 +395,9 @@ export const MATH_COMPLETIONS = [
   // 3D & geometry
   { name: "field", desc: "3D vector field: field([P, Q, R]) draws arrows and flow lines, e.g. field([-y, x, z/3])", insert: "field([" },
   { name: "revolve", desc: "Solid of revolution: revolve(f, a, b) spins y = f(x) round the x-axis (add \"y\" for the y-axis)", insert: "revolve(" },
+  { name: "volumeUnder", desc: "Volume under z = f(x, y) over a rectangle, with Riemann boxes: volumeUnder(f, a, b, c, d, n)", insert: "volumeUnder(" },
+  { name: "divergence", desc: "Divergence of a field F(x, y, z) = [P, Q, R] at a point: divergence(F, P)", insert: "divergence(" },
+  { name: "curl", desc: "Curl of a field F(x, y, z) = [P, Q, R] at a point: curl(F, P)", insert: "curl(" },
   { name: "p3", desc: "A point in space: p3([x, y]) is [x, y, 0]", insert: "p3(" },
   { name: "distance", desc: "Distance between two points: distance(A, B)", insert: "distance(" },
   { name: "dist", desc: "Distance between two points: dist(A, B)", insert: "dist(" },

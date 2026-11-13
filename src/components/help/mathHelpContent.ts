@@ -403,6 +403,8 @@ export const mathHelp: HelpContent = {
             { code: 'field([P, Q, R])', label: 'A vector field: arrows coloured blue (weak) to red (strong), and lines that follow the flow. `field(P, Q, R)` works too.' },
             { code: 'revolve(f, a, b)', label: 'Spins y = f(x), from x = a to b, round the x-axis into a solid, and shows its volume π∫f² dx' },
             { code: 'revolve(f, a, b, "y")', label: 'Round the y-axis instead: the volume by shells, 2π∫x·f dx' },
+            { code: 'volumeUnder(f, a, b, c, d, n)', label: 'The volume under z = f(x, y) over a ≤ x ≤ b, c ≤ y ≤ d: n × n boxes (a Riemann sum) and the double integral ∬f dA' },
+            { code: 'divergence(F, P)  ·  curl(F, P)', label: 'For a field written as a function, F(x, y, z) = [P, Q, R]: how much it spreads out, and how it spins, at the point P' },
           ],
         },
         {
@@ -413,6 +415,12 @@ export const mathHelp: HelpContent = {
               text: 'Spins round the z-axis and rises. Name it (`F = field(…)`) to use it in other rows.',
               code: 'F = field([-y, x, z/3])',
               payload: insert('function', 'F = field([-y, x, z/3])'),
+            },
+            {
+              title: 'Riemann boxes under a surface',
+              text: 'Try more boxes (the last number): the sum closes in on the double integral.',
+              code: 'volumeUnder(3 - (x^2 + y^2)/4, -2, 2, -1.5, 1.5, 6)',
+              payload: insert('function', 'volumeUnder(3 - (x^2 + y^2)/4, -2, 2, -1.5, 1.5, 6)'),
             },
             {
               title: 'Paraboloid by discs',

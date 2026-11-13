@@ -1893,6 +1893,51 @@ function solidRegions(): ExampleScene {
   };
 }
 
+/** The volume under z = f(x, y) over a rectangle: Riemann boxes closing in on the double integral. */
+function volumeUnderSurface(): ExampleScene {
+  const r = sceneRows("g3vol");
+  return {
+    functions: [
+      { ...r.define("volumeUnder(3 + sin(x)*cos(y) - (x^2 + y^2)/4, -2, 2, -1.5, 1.5, n)"), color: BLUE, fillColor: BLUE, fillOpacity: 0.5 },
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`f(x, y) = 3 + \sin x \cos y - \tfrac14(x^2 + y^2)`, BLUE],
+        [String.raw`\text{more boxes: the sum closes in on } \iint_R f\,dA`, TEXT],
+      ]),
+    ],
+    variables: [sceneSlider("n", "Boxes per side n", 4, [1, 24, 1], "How many boxes along each side of the rectangle.", "boxes")],
+    groups: [sceneGroup("boxes", "Riemann sum")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-3.5, 3.5], y: [-3.5, 3.5] },
+  };
+}
+
+/** Divergence and curl at a point you drag through a vector field. */
+function divergenceCurl(): ExampleScene {
+  const r = sceneRows("g3curl");
+  return {
+    functions: [
+      r.define("F(x, y, z) = [-w*y + a*x, w*x + a*y, a*z]"),
+      { ...r.define("field(F(x, y, z))"), color: SKY },
+      r.point("P = [1.5, 1, 0.5]", RED, { isDraggable: true, showLabel: true, label: "P" }),
+      r.arrow("Vector(P, P + curl(F, P)/2)", PINK, { outlineWidth: 5 }),
+      r.readout("P + [0, 0, 0.6]", "div F = {{divergence(F, P)}}   curl F = {{curl(F, P)}}", RED),
+      ...notes3(r, [0, 0], 0, 0, [
+        [String.raw`\vec F = (-w y + a x,\ w x + a y,\ a z)`, SKY],
+        [String.raw`\nabla\cdot\vec F = 3a\ \ (\text{spreading out}),\quad \nabla\times\vec F = (0, 0, 2w)`, TEXT],
+        [String.raw`\text{pink: the curl at } P\text{, the axis the flow spins round}`, PINK],
+        [String.raw`\text{drag } P\text{: here both are the same everywhere}`, TEXT],
+      ]),
+    ],
+    variables: [
+      sceneSlider("a", "Spread a", 0.2, [-0.5, 0.5, 0.05], "Positive: a source (divergence above 0). Negative: a sink.", "field"),
+      sceneSlider("w", "Spin w", 1, [-2, 2, 0.05], "How fast the flow turns round the z-axis: the curl is 2w.", "field"),
+    ],
+    groups: [sceneGroup("field", "Vector field")],
+    timeline: { mode: "once", min: 0, max: 10 },
+    view: { x: [-4, 4], y: [-4, 4] },
+  };
+}
+
 /** The 3D Gallery: scenes made for the 3D view, in order. `key` must exist in MATH_EXAMPLES. */
 export const EXAMPLE_GALLERY_3D: {
   key: string;
@@ -1906,6 +1951,8 @@ export const EXAMPLE_GALLERY_3D: {
   { key: "Space_Sombrero", category: "Surfaces", label: "Sinc Ripples", hint: "sin(kr)/(kr): ripples dying away from the middle", accent: "text-sky-600 dark:text-sky-400" },
   { key: "Space_MonkeySaddle", category: "Surfaces", label: "Monkey Saddle", hint: "x³ − 3xy²: a saddle with three dips", accent: "text-amber-600 dark:text-amber-400" },
   { key: "Space_VectorField", category: "Calculus", label: "Vector Field & Flow", hint: "Arrows of F(x, y, z) and the lines a particle would follow", accent: "text-sky-600 dark:text-sky-400" },
+  { key: "Space_VolumeUnder", category: "Calculus", label: "Volume Under a Surface", hint: "Riemann boxes under z = f(x, y) close in on the double integral", accent: "text-blue-600 dark:text-blue-400" },
+  { key: "Space_DivCurl", category: "Calculus", label: "Divergence & Curl", hint: "Drag a point through a field: how much it spreads out and spins there", accent: "text-pink-600 dark:text-pink-400" },
   { key: "Space_Revolution", category: "Calculus", label: "Solids of Revolution", hint: "Spin y = k·xᵖ round the x-axis: discs and the volume π∫f²", accent: "text-blue-600 dark:text-blue-400" },
   { key: "Space_Spherical", category: "Coordinates", label: "Spherical ρ(θ, φ)", hint: "ρ = f(θ, φ): a bumpy sphere in spherical coordinates", accent: "text-purple-600 dark:text-purple-400" },
   { key: "Space_Cylindrical", category: "Coordinates", label: "Cylindrical r(θ, z)", hint: "r = f(θ, z): a twisted, fluted vase", accent: "text-sky-600 dark:text-sky-400" },
@@ -2072,6 +2119,8 @@ export const MATH_EXAMPLES: Record<string, ExampleScene> = {
   Space_Klein: kleinBottle(),
   Space_TorusKnot: torusKnot(),
   Space_VectorField: vectorField3D(),
+  Space_VolumeUnder: volumeUnderSurface(),
+  Space_DivCurl: divergenceCurl(),
   Space_LinearMap: linearMap3D(),
   Space_Intersections: surfaceIntersections(),
   Space_Regions: solidRegions(),

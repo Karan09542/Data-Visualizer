@@ -36,6 +36,7 @@ import { getFamilyCurveColor } from "./familyPlot";
 import { DEGREE_TRIG, isDefinitionRow, isTailTipVector, odeRange, odeSolveKey, rowInDegrees } from "./scope";
 import { evaluateFamilyValues, parseFamilyExpression } from "../../lib/math/familyPlot";
 import { splitRelation } from "../../lib/math/splitRelation";
+import { clipSegmentToBox, clipToBox } from "../../lib/math/clip3d";
 import { computeOdeExtent, odeAxisColumns, odePlaybackTime, solveCompiledOdeCached } from "../../lib/math/odeCurveData";
 import { sampleOdeAt } from "../../lib/math/odeSolver";
 import { odeSystemToLatex } from "../../lib/math/odeLatex";
@@ -478,7 +479,7 @@ const HOME_CAMERA = new THREE.Vector3(2.9, -3.7, 2.3).setLength(4.7);
 const TWO_PI = 2 * Math.PI;
 
 // Kinds that cost real time to sample: drawn coarser while things move, finer at rest.
-const HEAVY_KINDS = new Set(["surface", "surface-rhs", "surface-uv", "iso", "curve2d", "region2d", "field", "revolve", "spherical", "cylindrical"]);
+const HEAVY_KINDS = new Set(["surface", "surface-rhs", "surface-uv", "iso", "curve2d", "region2d", "field", "revolve", "volume", "spherical", "cylindrical"]);
 
 // Low to high.
 const HEIGHT_STOPS = ["#3b4cc0", "#22a7d6", "#2fcf8f", "#f4d03f", "#e4572e"];
@@ -713,57 +714,6 @@ const formatCoord = (v: number) => String(Number(v.toFixed(2))).replace("-", "�
 function isoCellsFor(tier: number, quality: number | undefined): number {
   const q = clamp(quality || 14, 1, 30);
   return Math.min(64, Math.round(clamp(q * 2.6, 14, 52) * [0.6, 1, 1.3][tier]));
-}
-
-/**
- * A polygon (corners as [x, y, z, …extra], extra such as a colour carried along)
- * cut to the box lo–hi, plane by plane.
- */
-function clipToBox(poly: number[][], lo: number[], hi: number[]): number[][] {
-  let out = poly;
-  for (let axis = 0; axis < 3 && out.length; axis++) {
-    for (const side of [0, 1]) {
-      const inside = (p: number[]) => (side ? hi[axis] - p[axis] : p[axis] - lo[axis]);
-      const next: number[][] = [];
-      for (let i = 0; i < out.length; i++) {
-        const a = out[i];
-        const b = out[(i + 1) % out.length];
-        const da = inside(a);
-        const db = inside(b);
-        if (da >= 0) next.push(a);
-        if (da >= 0 !== db >= 0) {
-          const t = da / (da - db);
-          next.push(a.map((v, k) => v + (b[k] - v) * t));
-        }
-      }
-      out = next;
-      if (!out.length) break;
-    }
-  }
-  return out;
-}
-
-/** A segment cut to the box, or null if none of it is inside. */
-function clipSegmentToBox(a: number[], b: number[], lo: number[], hi: number[]): [number[], number[]] | null {
-  let t0 = 0;
-  let t1 = 1;
-  for (let k = 0; k < 3; k++) {
-    const d = b[k] - a[k];
-    for (const [edge, sign] of [[lo[k], 1], [hi[k], -1]] as const) {
-      const num = sign * (a[k] - edge);
-      const den = sign * d;
-      if (den === 0) {
-        if (num < 0) return null;
-      } else {
-        const t = -num / den;
-        if (den > 0) t0 = Math.max(t0, t);
-        else t1 = Math.min(t1, t);
-      }
-    }
-  }
-  if (t0 > t1) return null;
-  const at = (t: number) => a.map((v, k) => v + (b[k] - v) * t);
-  return [at(t0), at(t1)];
 }
 
 /** Saves a file the graph made (a model, a video) to the user's downloads. */
@@ -2424,6 +2374,7 @@ class Engine {
     if (f.type === "point" || f.type === "vector" || f.type === "line" || f.type === "polygon") return "geometry";
     if (callArgs(f.expr, "field")) return "field";
     if (callArgs(f.expr, "revolve")) return "revolve";
+    if (callArgs(f.expr, "volumeUnder")) return "volume";
     if (f.type === "polar") {
       const symbols = symbolsOf(f.expr);
       // ρ = f(θ, φ): spherical. r = f(θ, z): cylindrical. Otherwise a curve on the floor.
@@ -3127,6 +3078,11 @@ class Engine {
 
       case "revolve": {
         this.addRevolution(entry, f, s, surfaceCells);
+        break;
+      }
+
+      case "volume": {
+        this.addVolumeUnder(entry, f, s, surfaceCells);
         break;
       }
 
@@ -5294,6 +5250,150 @@ class Engine {
   }
 
   /**
+   * volumeUnder(f(x, y), a, b, c, d[, n]): the volume between z = f(x, y) and the floor
+   * over the rectangle a ≤ x ≤ b, c ≤ y ≤ d. Shows the surface there, n × n boxes as tall
+   * as f at each one's middle (a Riemann sum), and both the sum and the true value.
+   */
+  private addVolumeUnder(entry: RowEntry, f: MathFunction, s: any, cells: number) {
+    const args = callArgs(f.expr, "volumeUnder");
+    if (!args || args.length < 5) return;
+    const surfaceFn = compileCached(args[0]);
+    const bounds = args.slice(1, 5).map((a) => compileCached(a));
+    if (!surfaceFn || bounds.some((b) => !b)) return;
+    const num = (c: { evaluate: (scope: any) => any } | null) => {
+      try {
+        return toReal(c!.evaluate(Object.create(s)));
+      } catch {
+        return NaN;
+      }
+    };
+    let [a, b, c, d] = bounds.map(num);
+    if (![a, b, c, d].every(Number.isFinite) || a === b || c === d) return;
+    if (a > b) [a, b] = [b, a];
+    if (c > d) [c, d] = [d, c];
+    const nArg = args[5] ? compileCached(args[5]) : null;
+    const n = Math.round(clamp(nArg ? num(nArg) : 8, 1, 40)) || 8;
+    const g = (x: number, y: number) => {
+      s.x = x;
+      s.y = y;
+      try {
+        return toReal(surfaceFn.evaluate(s));
+      } catch {
+        return NaN;
+      }
+    };
+
+    // The surface over the rectangle.
+    const anchor = this.addSurface(
+      entry.group,
+      (x, y, out) => {
+        const z = g(x, y);
+        out[0] = x;
+        out[1] = y;
+        out[2] = z;
+        return Number.isFinite(z);
+      },
+      [a, b],
+      [c, d],
+      cells,
+      { ...f, fillOpacity: f.fillOpacity ?? 0.5 },
+    );
+
+    // The boxes: one instanced mesh, edged so each box reads on its own.
+    const dx = (b - a) / n;
+    const dy = (d - c) / n;
+    const boxes = new THREE.InstancedMesh(
+      new THREE.BoxGeometry(1, 1, 1),
+      new THREE.MeshPhongMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.55,
+        depthWrite: false,
+        clippingPlanes: this.planes,
+      }),
+      n * n,
+    );
+    const base = toColor(f.color);
+    const below = new THREE.Color("#ef4444");
+    const m4 = new THREE.Matrix4();
+    const edges: number[] = [];
+    let sum = 0;
+    let count = 0;
+    for (let i = 0; i < n; i++) {
+      for (let j = 0; j < n; j++) {
+        const x0 = a + i * dx;
+        const y0 = c + j * dy;
+        const h = g(x0 + dx / 2, y0 + dy / 2);
+        if (!Number.isFinite(h) || h === 0) continue;
+        sum += h * dx * dy;
+        m4.compose(
+          new THREE.Vector3(x0 + dx / 2, y0 + dy / 2, h / 2),
+          new THREE.Quaternion(),
+          new THREE.Vector3(dx, dy, Math.abs(h)),
+        );
+        boxes.setMatrixAt(count, m4);
+        // Above the floor in the row's colour, below it in red: that part counts negative.
+        boxes.setColorAt(count, h > 0 ? base : below);
+        count++;
+        const x1 = x0 + dx;
+        const y1 = y0 + dy;
+        for (const z of [0, h]) edges.push(x0, y0, z, x1, y0, z, x1, y0, z, x1, y1, z, x1, y1, z, x0, y1, z, x0, y1, z, x0, y0, z);
+        for (const [x, y] of [[x0, y0], [x1, y0], [x1, y1], [x0, y1]]) edges.push(x, y, 0, x, y, h);
+      }
+    }
+    boxes.count = count;
+    if (boxes.instanceColor) boxes.instanceColor.needsUpdate = true;
+    if (count) {
+      entry.group.add(boxes);
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(edges);
+      entry.group.add(
+        new LineSegments2(
+          geometry,
+          new LineMaterial({ color: toColor(f.color), linewidth: 1.2, transparent: true, opacity: 0.8, clippingPlanes: this.planes }),
+        ),
+      );
+    }
+
+    // The true value: Simpson's rule both ways on a fine grid.
+    const m = 64;
+    const hx = (b - a) / m;
+    const hy = (d - c) / m;
+    const w = (k: number) => (k === 0 || k === m ? 1 : k % 2 ? 4 : 2);
+    let exact = 0;
+    for (let i = 0; i <= m; i++) {
+      for (let j = 0; j <= m; j++) {
+        const z = g(a + i * hx, c + j * hy);
+        if (Number.isFinite(z)) exact += w(i) * w(j) * z;
+      }
+    }
+    exact *= (hx * hy) / 9;
+
+    const R = String.raw`[${formatCoord(a)}, ${formatCoord(b)}]\times[${formatCoord(c)}, ${formatCoord(d)}]`;
+    entry.pinned = [
+      ...(entry.pinned ?? []),
+      {
+        pos: [0, 0, 0],
+        text: "",
+        html: texToHtml(String.raw`\iint_R f\,dA = ${formatCoord(exact)} \quad R = ${R}`),
+        color: f.color,
+        scale: 0.9,
+      },
+      {
+        pos: [0, 0, 0],
+        text: "",
+        html: texToHtml(String.raw`${n}\times${n}\text{ boxes: } \sum f(x_i^*, y_j^*)\,\Delta A = ${formatCoord(sum)}`),
+        color: f.color,
+        scale: 0.85,
+      },
+    ];
+    if (anchor) {
+      this.pushRowLabel(entry, f, s, anchor);
+      this.attachShapeDrag(entry, f, anchor);
+    }
+  }
+
+  /**
    * revolve(f(x), a, b) turns y = f(x), a ≤ x ≤ b, round the x-axis into a solid;
    * revolve(f(x), a, b, "y") turns it round the y-axis. Shows the curve, a few slices
    * (discs or shells) and the volume.
@@ -6596,6 +6696,61 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
                   ))}
                 </div>
 
+                <div className={HEADING}>Export</div>
+                <div className="flex gap-1">
+                  {(["stl", "glb"] as const).map((format) => (
+                    <button
+                      key={format}
+                      type="button"
+                      disabled={!!busy}
+                      title={format === "stl" ? "The surfaces as an STL file, for 3D printing" : "Surfaces and curves, in colour, as a GLB file for 3D apps"}
+                      className={CHIP}
+                      onClick={async () => {
+                        const engine = engineRef.current;
+                        if (!engine) return;
+                        setBusy(format);
+                        try {
+                          const blob = await engine.exportModel(format);
+                          if (blob) saveBlob(blob, `graph-3d.${format}`);
+                          else setNotice("Nothing to export: add a surface first.");
+                        } catch (err) {
+                          console.warn("3D export failed", err);
+                          setNotice("Export failed.");
+                        } finally {
+                          setBusy(null);
+                        }
+                      }}
+                    >
+                      {busy === format ? "…" : format.toUpperCase()}
+                    </button>
+                  ))}
+                  <button
+                    type="button"
+                    disabled={!!busy}
+                    title="Record one slow turn round the graph as a video"
+                    className={busy === "video" ? CHIP_ON : CHIP}
+                    onClick={async () => {
+                      const engine = engineRef.current;
+                      if (!engine) return;
+                      setBusy("video");
+                      setSpinProgress(0);
+                      try {
+                        const result = await engine.recordSpin(8, setSpinProgress);
+                        if (result) saveBlob(result.blob, `graph-3d-spin.${result.ext}`);
+                        else setNotice("This browser can't record video.");
+                      } catch (err) {
+                        console.warn("3D video failed", err);
+                        setNotice("Recording failed.");
+                      } finally {
+                        setBusy(null);
+                      }
+                    }}
+                  >
+                    {busy === "video" ? `Recording ${Math.round(spinProgress * 100)}%` : "Spin video"}
+                  </button>
+                </div>
+                {notice && <div className="px-1 pt-1 text-[10px] text-amber-600 dark:text-amber-400">{notice}</div>}
+
                 <div className={HEADING}>Surfaces</div>
                 <Switch
                   label="Colour by height"
@@ -6652,61 +6807,6 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
                   on={options.autoRotate}
                   onChange={(on) => setOptions({ autoRotate: on })}
                 />
-
-                <div className={HEADING}>Export</div>
-                <div className="flex gap-1">
-                  {(["stl", "glb"] as const).map((format) => (
-                    <button
-                      key={format}
-                      type="button"
-                      disabled={!!busy}
-                      title={format === "stl" ? "The surfaces as an STL file, for 3D printing" : "Surfaces and curves, in colour, as a GLB file for 3D apps"}
-                      className={CHIP}
-                      onClick={async () => {
-                        const engine = engineRef.current;
-                        if (!engine) return;
-                        setBusy(format);
-                        try {
-                          const blob = await engine.exportModel(format);
-                          if (blob) saveBlob(blob, `graph-3d.${format}`);
-                          else setNotice("Nothing to export: add a surface first.");
-                        } catch (err) {
-                          console.warn("3D export failed", err);
-                          setNotice("Export failed.");
-                        } finally {
-                          setBusy(null);
-                        }
-                      }}
-                    >
-                      {busy === format ? "…" : format.toUpperCase()}
-                    </button>
-                  ))}
-                  <button
-                    type="button"
-                    disabled={!!busy}
-                    title="Record one slow turn round the graph as a video"
-                    className={busy === "video" ? CHIP_ON : CHIP}
-                    onClick={async () => {
-                      const engine = engineRef.current;
-                      if (!engine) return;
-                      setBusy("video");
-                      setSpinProgress(0);
-                      try {
-                        const result = await engine.recordSpin(8, setSpinProgress);
-                        if (result) saveBlob(result.blob, `graph-3d-spin.${result.ext}`);
-                        else setNotice("This browser can't record video.");
-                      } catch (err) {
-                        console.warn("3D video failed", err);
-                        setNotice("Recording failed.");
-                      } finally {
-                        setBusy(null);
-                      }
-                    }}
-                  >
-                    {busy === "video" ? `Recording ${Math.round(spinProgress * 100)}%` : "Spin video"}
-                  </button>
-                </div>
-                {notice && <div className="px-1 pt-1 text-[10px] text-amber-600 dark:text-amber-400">{notice}</div>}
 
                 <div className={HEADING}>Slice</div>
                 <div className="flex gap-1" role="radiogroup" aria-label="Slice plane">
