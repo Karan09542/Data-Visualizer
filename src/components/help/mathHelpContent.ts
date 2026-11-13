@@ -22,6 +22,13 @@ import {
   Save,
   Settings2,
   Box,
+  Download,
+  Eye,
+  Orbit,
+  Ruler,
+  ScanLine,
+  Video,
+  Wind,
 } from 'lucide-react';
 import type { HelpContent } from './HelpDialog';
 
@@ -350,6 +357,133 @@ export const mathHelp: HelpContent = {
               code: '[cos(t), sin(t), t/4]',
               payload: insert('parametric', '[cos(t), sin(t), t/4]'),
             },
+            {
+              title: 'Plane · ax + by + cz = d',
+              text: 'A flat equation in `x`, `y` and `z` is drawn as an exact plane, cut to the box.',
+              code: 'x + 2*y - z = 1',
+              payload: insert('implicit', 'x + 2*y - z = 1'),
+            },
+            {
+              title: 'Solid region · inequality in x, y, z',
+              text: 'Fills the part of space where it holds: its boundary, plus shaded caps where it meets the walls of the box.',
+              code: 'x^2 + y^2 + z^2 <= 9',
+              payload: insert('inequality', 'x^2 + y^2 + z^2 <= 9'),
+            },
+            {
+              title: 'Spherical · ρ = f(θ, φ)',
+              text: 'Use `phi` (or `φ`) with `theta` in a polar row, or start it with `rho =`: `θ` goes round the z-axis, `φ` down from the top.',
+              code: '2 + 0.5*sin(3*theta)*sin(phi)^2',
+              payload: insert('polar', '2 + 0.5*sin(3*theta)*sin(phi)^2'),
+            },
+            {
+              title: 'Cylindrical · r = f(θ, z)',
+              text: 'A polar row that uses `z` wraps round the z-axis into a surface.',
+              code: '1 + 0.3*cos(4*theta) + 0.1*z^2',
+              payload: insert('polar', '1 + 0.3*cos(4*theta) + 0.1*z^2'),
+            },
+          ],
+        },
+        {
+          type: 'callout',
+          title: 'Where surfaces meet',
+          text: 'When two surfaces cross, the curve where they meet is drawn in yellow, e.g. a plane cutting a sphere in a circle, or two planes meeting in a line. Turn it off with Intersections in the 3D options (the sliders button, bottom right).',
+        },
+      ],
+    },
+    {
+      id: '3d-calculus',
+      title: '3D fields and solids',
+      icon: Wind,
+      tone: 'emerald',
+      description: 'Vector fields and solids of revolution, drawn in the 3D view.',
+      blocks: [
+        {
+          type: 'syntax',
+          items: [
+            { code: 'field([P, Q, R])', label: 'A vector field: arrows coloured blue (weak) to red (strong), and lines that follow the flow. `field(P, Q, R)` works too.' },
+            { code: 'revolve(f, a, b)', label: 'Spins y = f(x), from x = a to b, round the x-axis into a solid, and shows its volume π∫f² dx' },
+            { code: 'revolve(f, a, b, "y")', label: 'Round the y-axis instead: the volume by shells, 2π∫x·f dx' },
+          ],
+        },
+        {
+          type: 'examples',
+          items: [
+            {
+              title: 'Swirling field',
+              text: 'Spins round the z-axis and rises. Name it (`F = field(…)`) to use it in other rows.',
+              code: 'F = field([-y, x, z/3])',
+              payload: insert('function', 'F = field([-y, x, z/3])'),
+            },
+            {
+              title: 'Paraboloid by discs',
+              text: 'y = √x spun round the x-axis, from 0 to 4: volume 8π.',
+              code: 'revolve(sqrt(x), 0, 4)',
+              payload: insert('function', 'revolve(sqrt(x), 0, 4)'),
+            },
+          ],
+        },
+        {
+          type: 'callout',
+          title: 'In the 2D view',
+          text: '`revolve(…)` shows just its curve y = f(x). Rows that use `z`, such as fields and cylindrical surfaces, ask you to switch to 3D.',
+        },
+      ],
+    },
+    {
+      id: '3d-tools',
+      title: '3D tools, views and export',
+      icon: Orbit,
+      tone: 'blue',
+      description: 'Drawing in space, a flat view for technical drawings, and taking your graph elsewhere.',
+      blocks: [
+        {
+          type: 'cards',
+          items: [
+            {
+              icon: Layers,
+              title: 'Plane through 3 points',
+              text: 'In the drawing tools (3D only): click three points for the plane through them, with its equation, e.g. 4x − 5y + 16z = 18. Two planes show the line where they meet.',
+            },
+            {
+              icon: Ruler,
+              title: 'Perpendicular foot',
+              text: 'Click a point, then three points of a plane: marks the foot of the perpendicular and the shortest distance from the point to the plane.',
+            },
+            {
+              icon: BookOpen,
+              title: 'Angle between planes',
+              text: 'Click the two ends of the edge two planes share, then one point on each plane: shows both faces and the angle between them.',
+            },
+            {
+              icon: Eye,
+              title: 'Orthographic view',
+              text: 'In the 3D options, under Display: no perspective, so parallel lines stay parallel and far things don’t shrink, as in a technical drawing.',
+            },
+            {
+              icon: Download,
+              title: 'Export STL or GLB',
+              text: 'In the 3D options, under Export. STL saves the surfaces for 3D printing; GLB saves surfaces and curves in colour for 3D apps like Blender. Both are cut to the box.',
+            },
+            {
+              icon: Video,
+              title: 'Spin video',
+              text: 'Records one slow turn round the graph, with its labels and notes, as an MP4 (or WebM) video. The camera goes back where it was afterwards.',
+            },
+            {
+              icon: ScanLine,
+              title: 'Detailed surfaces stay smooth to use',
+              text: 'A complicated implicit surface such as a gyroid shows a coarse version at once and sharpens a moment later, without freezing the page.',
+            },
+          ],
+        },
+        {
+          type: 'syntax',
+          items: [
+            { code: 'planeNormal(A, B, C)', label: 'The normal of the plane through A, B and C: AB × AC' },
+            { code: 'footOnPlane(P, A, B, C)', label: 'The foot of the perpendicular from P to the plane ABC' },
+            { code: 'planeAngle(A, B, C, D)', label: 'The angle in degrees between planes ABC and ABD, which share the edge AB' },
+            { code: 'planeArc(A, B, C, D, s, r)', label: 'The point a fraction s of the way round that angle, r out from the middle of AB' },
+            { code: 'planeEquation(A, B, C)', label: 'The plane as text in its simplest form, for labels: {{planeEquation(A, B, C)}}' },
           ],
         },
       ],
