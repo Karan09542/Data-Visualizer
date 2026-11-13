@@ -263,8 +263,9 @@ export const DrawToolbar: React.FC<DrawToolbarProps> = ({
       data-graph-inset="left"
       role="toolbar"
       aria-label="Drawing tools"
-      // On a short graph the tools scroll rather than run off its top and bottom.
-      className={`${SHELL} flex flex-col gap-0.5 p-1 max-h-[calc(100%-1rem)] overflow-y-auto no-scrollbar`}
+      // On a short graph the tools keep their size and scroll (no scrollbar shown)
+      // rather than squeeze together or run off its top and bottom.
+      className={`${SHELL} flex flex-col gap-0.5 p-1 max-h-[calc(100%-1rem)] overflow-y-auto overscroll-contain no-scrollbar [&>*]:shrink-0`}
     >
       {TOOLS.filter(({ id }) => !(in3d && id === "select") && !(!in3d && SPACE_TOOLS.has(id as DrawToolKind))).map(({ id, label, Icon }, i) => {
         const active = tool === id;
