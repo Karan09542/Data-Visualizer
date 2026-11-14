@@ -444,7 +444,14 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isAndroidOrTablet, setIsAndroidOrTablet] = useState(() => isAndroidOrTabletDevice());
   useEffect(() => {
-    setIsAndroidOrTablet(isAndroidOrTabletDevice());
+    const check = () => setIsAndroidOrTablet(isAndroidOrTabletDevice());
+    check();
+    window.addEventListener("resize", check);
+    window.addEventListener("orientationchange", check);
+    return () => {
+      window.removeEventListener("resize", check);
+      window.removeEventListener("orientationchange", check);
+    };
   }, []);
   const [showHelp, setShowHelp] = useState(false);
   const [showVedic, setShowVedic] = useState(false);
@@ -3271,7 +3278,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           <div className="flex items-center gap-0.5 p-0.5 rounded-xl bg-slate-100/80 dark:bg-slate-900/50 ring-1 ring-slate-200/70 dark:ring-slate-700/50">
             <button
               onClick={() => setShowGridControls((prev) => !prev)}
-              className={`${headerIconBtn} md:hidden ${showGridControls
+              className={`${headerIconBtn} ${isAndroidOrTablet ? "" : "md:hidden"} ${showGridControls
                 ? "bg-blue-100 text-blue-600 dark:bg-blue-500/20 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-500/20"
                 : ""
                 }`}
@@ -7273,9 +7280,12 @@ export const MathNodeRenderer: React.FC<any> = ({
               data-no-trace
               data-capture-exclude
               data-graph-inset="top"
-              className={`absolute top-2 left-2 right-2 md:top-3 md:left-3 md:right-auto z-40 flex items-center gap-1 p-1 rounded-xl bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 pointer-events-auto overflow-x-auto no-scrollbar transition-all duration-300 ${showGridControls || showAdvancedAxisControls
-                ? "opacity-100 translate-y-0"
-                : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-100"
+              className={`absolute top-2 left-2 right-2 md:top-3 md:left-3 md:right-auto z-40 flex items-center gap-1 p-1 rounded-xl bg-white/85 dark:bg-slate-900/85 backdrop-blur-md border border-slate-200/80 dark:border-slate-700/60 shadow-lg shadow-slate-900/5 dark:shadow-black/30 pointer-events-auto overflow-x-auto no-scrollbar transition-all duration-300 ${
+                showGridControls || showAdvancedAxisControls
+                  ? "opacity-100 translate-y-0"
+                  : isAndroidOrTablet
+                    ? "opacity-0 -translate-y-2 pointer-events-none"
+                    : "opacity-0 -translate-y-2 pointer-events-none md:pointer-events-auto md:translate-y-0 md:opacity-100"
                 }`}
             >
               <div
