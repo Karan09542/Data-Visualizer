@@ -9,7 +9,7 @@ import {
   type ImageLayout,
 } from "./imageViewMath";
 import { MarkupSvg, useMarkupGestures } from "./imageMarkup/ImageMarkupLayer";
-import { ImageMarkupToolbar, TOOL_KEYS } from "./imageMarkup/ImageMarkupToolbar";
+import { ImageMarkupToolbar, TOOL_KEYS, useCompactMarkup } from "./imageMarkup/ImageMarkupToolbar";
 import { HIGHLIGHTER_OPACITY, HIGHLIGHTER_SCALE, ptUnit } from "./imageMarkup/markupModel";
 import type { ImageMarkupState } from "./imageMarkup/useImageMarkup";
 
@@ -120,6 +120,8 @@ export function InteractiveZoomImage({
 
   // ─── Marks ───────────────────────────────────────────────────────────────────
   const drawing = !!markup && drawMode;
+  // The touch layout's draw bar takes the bottom: the zoom bar steps aside (fingers pinch).
+  const compactMarkup = useCompactMarkup();
   const unit = layout ? ptUnit(layout.naturalWidth, layout.naturalHeight) : 1;
   const gestures = useMarkupGestures(
     // Always called (hooks), with an inert stand-in when there's no markup.
@@ -731,7 +733,7 @@ export function InteractiveZoomImage({
       <div
         data-zoom-ui
         // While drawing on a phone the draw bar takes the bottom; fingers pinch to zoom.
-        className={`absolute bottom-3 right-3 z-30 ${drawing ? "hidden sm:flex" : "flex"} items-center gap-0.5 p-1 rounded-full bg-black/65 backdrop-blur-md border border-white/10 text-white shadow-lg`}
+        className={`absolute bottom-3 right-3 z-30 ${drawing && compactMarkup ? "hidden" : "flex"} items-center gap-0.5 p-1 rounded-full bg-black/65 backdrop-blur-md border border-white/10 text-white shadow-lg`}
         onPointerDown={(e) => e.stopPropagation()}
       >
         <button type="button" onClick={() => zoomTo(scale / STEP)} disabled={scale <= MIN_SCALE + 1e-6} className={barButton} title="Zoom out (−)">

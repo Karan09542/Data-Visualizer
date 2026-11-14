@@ -34,6 +34,7 @@ import {
   type MarkupTool,
 } from "./markupModel";
 import type { ImageMarkupState } from "./useImageMarkup";
+import { isAndroidOrTabletDevice, isMobileDevice } from "../../lib/deviceInfo";
 
 const TOOLS: { id: MarkupTool; label: string; key: string; Icon: React.ElementType }[] = [
   { id: "select", label: "Select and move a mark", key: "V", Icon: MousePointer2 },
@@ -109,18 +110,25 @@ const RANGE_CSS = `
 .mk-range:active::-webkit-slider-thumb,.mk-range:focus-visible::-webkit-slider-thumb{transform:scale(1.15)}
 `;
 
-/** Whether the viewer is phone-sized: the tools move to a bar along the bottom. */
-function useCompact() {
+/** A phone or tablet (by its user agent): always the touch layout, whatever its width. */
+const TOUCH_DEVICE = typeof navigator !== "undefined" && (isMobileDevice() || isAndroidOrTabletDevice());
+
+/**
+ * Whether the draw tools take the touch layout: one bar along the bottom, in reach of a
+ * thumb, with panels above it. Always on phones and tablets; elsewhere when the window
+ * is phone-narrow.
+ */
+export function useCompactMarkup() {
   const query = "(max-width: 639px)";
-  const [compact, setCompact] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
+  const [narrow, setNarrow] = useState(() => typeof window !== "undefined" && window.matchMedia(query).matches);
   useEffect(() => {
     const mq = window.matchMedia(query);
-    const on = () => setCompact(mq.matches);
+    const on = () => setNarrow(mq.matches);
     on();
     mq.addEventListener("change", on);
     return () => mq.removeEventListener("change", on);
   }, []);
-  return compact;
+  return TOUCH_DEVICE || narrow;
 }
 
 /** The size: a slider, − and + for a finger, and the value in pt (typed on a desktop). */
@@ -291,7 +299,7 @@ export function ImageMarkupToolbar({ markup, src, fileName, onDone, onMessage }:
   const selected = selectedId ? shapes.find((s) => s.id === selectedId) : undefined;
   const [confirmClear, setConfirmClear] = useState(false);
   const [saving, setSaving] = useState(false);
-  const compact = useCompact();
+  const compact = useCompactMarkup();
   const [sheet, setSheet] = useState<"tools" | "style" | "more" | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -375,7 +383,8 @@ export function ImageMarkupToolbar({ markup, src, fileName, onDone, onMessage }:
       <div
         ref={rootRef}
         data-zoom-ui
-        className="absolute inset-x-2 bottom-2 z-40 flex flex-col gap-2 pointer-events-none"
+        // Full width on a phone; on a tablet a phone-wide bar in the middle, not stretched.
+        className="absolute inset-x-2 bottom-2 sm:inset-x-auto sm:left-1/2 sm:-translate-x-1/2 sm:w-[min(30rem,calc(100%-1rem))] z-40 flex flex-col gap-2 pointer-events-none"
         style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         {...stop}
       >
