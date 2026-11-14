@@ -193,7 +193,7 @@ export const circleRadius = (s: SpanShape) => Math.hypot(s.x2 - s.x1, s.y2 - s.y
 
 /** The box round a shape, in picture pixels (line thickness included). */
 export function bounds(s: MarkupShape, unit: number) {
-  const pad = (s.size * unit) / 2;
+  const pad = strokeWidth(s, unit) / 2;
   if (isStroke(s)) {
     let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for (let i = 0; i < s.points.length; i += 2) {
@@ -223,7 +223,7 @@ export function bounds(s: MarkupShape, unit: number) {
  * or anywhere inside it when it is filled (or a stamp, which is small).
  */
 export function hitTest(s: MarkupShape, x: number, y: number, unit: number, slop: number): boolean {
-  const reach = (s.size * unit) / 2 + slop;
+  const reach = strokeWidth(s, unit) / 2 + slop;
   const reach2 = reach * reach;
   if (isStroke(s)) {
     const p = s.points;
@@ -288,7 +288,14 @@ export const HIGHLIGHTER_SCALE = 3;
 export const AREA_FILL_OPACITY = 0.3;
 
 /** The line thickness actually drawn, in picture pixels. */
-export const strokeWidth = (s: MarkupShape, unit: number) => s.size * unit * (s.kind === "highlighter" ? HIGHLIGHTER_SCALE : 1);
+/**
+ * A symbol's line is drawn in proportion to the symbol (about a ninth of its size), so a
+ * small tick is fine and a big one bold, whatever line width the pen was last set to.
+ */
+export const STAMP_LINE = 0.11;
+
+export const strokeWidth = (s: MarkupShape, unit: number) =>
+  isStamp(s) ? Math.max(0.75, s.stamp * STAMP_LINE) * unit : s.size * unit * (s.kind === "highlighter" ? HIGHLIGHTER_SCALE : 1);
 
 /**
  * The marks as an SVG document over a picture of the given size: used to save the
