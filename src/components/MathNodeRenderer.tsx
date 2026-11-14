@@ -191,6 +191,7 @@ import {
   selectionCentre,
   selectionCentre3,
   canLiftPoints,
+  canTiltInSpace,
   canTurnInSpace,
   transformPoints,
   transformRow,
@@ -228,7 +229,7 @@ import {
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
-import type { Graph3DOptions, Selection3D } from "./math-node/Graph3D";
+import type { Graph3DOptions, RotateAxes, Selection3D } from "./math-node/Graph3D";
 import { solveDrag, snapToStep } from "../lib/math/dragSolve";
 import {
   POINT_COORDINATES_LABEL,
@@ -2423,14 +2424,53 @@ export const MathNodeRenderer: React.FC<any> = ({
         selectionIn3d.sliders.length,
         selectionIn3d.points.length ? canLiftPoints(selectionIn3d, functions, baseScope, (c) => mathjs.matrix(c)) : false,
         selectionIn3d.points.length >= 2 && canTurnInSpace(selectionIn3d, functions),
+        canTiltInSpace(selectionIn3d, functions),
       ])
     : "";
   // Held by its contents, so the 3D view isn't handed a new one on every render.
   const selection3d = useMemo<Selection3D | null>(() => {
     if (!selection3dKey) return null;
-    const [rowIds, centre, points, sliders, canLift, canRotate] = JSON.parse(selection3dKey);
-    return { rowIds, centre, canLift, canRotate, canResize: points >= 2 || (points > 0 && sliders > 0) };
+    const [rowIds, centre, points, sliders, canLift, canRotate, canTilt] = JSON.parse(selection3dKey);
+    return { rowIds, centre, canLift, canRotate, canTilt, canResize: points >= 2 || (points > 0 && sliders > 0) };
   }, [selection3dKey]);
+
+  // Which axes the 3D view's turning handles turn about: one, two or all three.
+  const [rotateAxes, setRotateAxes] = useState<RotateAxes>(() => {
+    try {
+      const saved = JSON.parse(localStorage.getItem("mathNode.rotateAxes") || "null");
+      if (saved && typeof saved === "object" && (saved.x || saved.y || saved.z)) return { x: !!saved.x, y: !!saved.y, z: !!saved.z };
+    } catch {
+      /* private mode: the default */
+    }
+    return { x: true, y: true, z: true };
+  });
+  const toggleRotateAxis = (axis: keyof RotateAxes) =>
+    setRotateAxes((prev) => {
+      const next = { ...prev, [axis]: !prev[axis] };
+      // At least one stays on.
+      if (!next.x && !next.y && !next.z) return prev;
+      try {
+        localStorage.setItem("mathNode.rotateAxes", JSON.stringify(next));
+      } catch {
+        /* not kept: still works for this visit */
+      }
+      return next;
+    });
+  // Whether what is selected can be tilted (turned about x or y), and why not.
+  const tiltBlock: string | null =
+    viewMode !== "3d" || !selection
+      ? null
+      : selection3d?.centre
+        ? !selection3d.canRotate
+          ? "Select a shape with two points or more to turn it"
+          : !selection3d.canLift
+            ? "It shares a point with something written for the flat graph, so it can only turn about z"
+            : !selection3d.canTilt
+              ? "Circles, arcs and solids keep the plane they were drawn on: they turn about z only"
+              : null
+        : selectedRow?.handlesOnSelect
+          ? null
+          : "Nothing to turn";
 
   const handleSelect = (fnIds: string[], middle: [number, number] | null, add: boolean) => {
     // Shift adds what isn't selected yet and lets go of what is.
@@ -7562,6 +7602,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                 selection={selection3d}
                 onSelect={handleSelect}
                 onSelectionMotion={handleSelectionMotion}
+                rotateAxes={rotateAxes}
                 drawHeight={drawHeight}
                 onDrawHeight={setDrawHeight}
                 drawPlane={drawPlane}
@@ -10104,6 +10145,46 @@ export const MathNodeRenderer: React.FC<any> = ({
                             <span className="hidden sm:inline">{word}</span>
                           </span>
                         ))}
+                    </span>
+                  )}
+                  {viewMode === "3d" && (selection3d?.centre ? selection3d.canRotate : selectedRow?.handlesOnSelect) && (
+                    // Which axes the turning handles turn about: any one, any two, or all three.
+                    <span
+                      className="shrink-0 flex items-center gap-0.5 ml-1 p-0.5 rounded-full bg-white/10"
+                      role="group"
+                      aria-label="Turn about"
+                    >
+                      <span className="hidden sm:inline pl-1.5 pr-0.5 text-white/60">Turn</span>
+                      {(
+                        [
+                          ["x", "#ef4444"],
+                          ["y", "#22c55e"],
+                          ["z", "#eab308"],
+                        ] as const
+                      ).map(([axis, color]) => {
+                        const blocked = axis !== "z" && !!tiltBlock;
+                        const on = rotateAxes[axis] && !blocked;
+                        return (
+                          <button
+                            key={axis}
+                            type="button"
+                            onClick={() => toggleRotateAxis(axis)}
+                            disabled={blocked}
+                            aria-pressed={on}
+                            title={
+                              blocked
+                                ? tiltBlock!
+                                : `${on ? "Hide" : "Show"} the ${axis.toUpperCase()} ring: turn about the ${axis}-axis. Two or more on also give a free-turn handle (purple).`
+                            }
+                            className={`h-6 min-w-6 px-1.5 rounded-full text-[11px] font-bold uppercase transition-colors disabled:opacity-35 disabled:cursor-not-allowed ${
+                              on ? "text-slate-900" : "text-white/70 hover:text-white"
+                            }`}
+                            style={on ? { background: color } : undefined}
+                          >
+                            {axis}
+                          </button>
+                        );
+                      })}
                     </span>
                   )}
                   <span className="flex-1" />

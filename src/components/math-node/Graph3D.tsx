@@ -112,6 +112,8 @@ export interface Graph3DProps {
   onSelect?: (fnIds: string[], middle: [number, number] | null, add: boolean) => void;
   /** A handle of a selection built on points was dragged a step. */
   onSelectionMotion?: (motion: Motion) => void;
+  /** Which axes the turning handles turn about (all three when left out). */
+  rotateAxes?: RotateAxes;
 }
 
 /** What the Select tool has hold of in the 3D view. */
@@ -127,16 +129,29 @@ export interface Selection3D {
   canLift: boolean;
   canRotate: boolean;
   canResize: boolean;
+  /** It can be turned about the x- and y-axes (see canTiltInSpace). */
+  canTilt?: boolean;
 }
 
 /** The gizmo of a selection built on points (no row has this id). */
 const SELECTION_ID = "__selection__";
 const SELECT_COLOR = "#3b82f6";
 const SELECT_HANDLE_ANGLE = (5 * Math.PI) / 4;
+/** Where the x and y rings' handles rest, round their rings. */
+const REST_TILT = (-3 * Math.PI) / 4;
 /** Kinds of row whose drawing follows the in-plane transform (move, turn, resize across the floor). */
 const PLANAR_KINDS = new Set(["function", "parametric", "polar", "point3", "geometry", "ode", "surface", "surface-rhs", "surface-uv", "iso", "curve2d", "region2d"]);
 
-type GizmoKind = "center" | "x" | "y" | "z" | "rotate" | "scale";
+/** "rotate" turns about z (the yellow ring), rotX and rotY about x and y, "free" about any of them. */
+type GizmoKind = "center" | "x" | "y" | "z" | "rotate" | "rotX" | "rotY" | "free" | "scale";
+
+/** Which axes the turning handles turn about (the X, Y, Z switches). */
+export interface RotateAxes {
+  x: boolean;
+  y: boolean;
+  z: boolean;
+}
+const ALL_AXES: RotateAxes = { x: true, y: true, z: true };
 
 /** Where a transformable row's gizmo stands, and the transform it shows. */
 interface GizmoFrame {
@@ -161,6 +176,11 @@ interface GizmoFrame {
   planar: boolean;
   /** It can be moved up and down. */
   liftable: boolean;
+  /** It can be turned about the x- and y-axes too. */
+  tiltable: boolean;
+  /** Its turn about x and y now (radians). */
+  rx: number;
+  ry: number;
 }
 
 /** The two axes that run along each drawing plane (by the axis it is square to). */
@@ -188,11 +208,17 @@ const DRAW_PLANES: { plane: 0 | 1 | 2; label: string; title: string }[] = [
 ];
 
 /** The handles a gizmo has: only what its row (or selection) can do. */
-const gizmoKinds = (g: GizmoFrame): GizmoKind[] => {
+const gizmoKinds = (g: GizmoFrame, axes: RotateAxes = ALL_AXES): GizmoKind[] => {
   const kinds: GizmoKind[] = [];
   if (g.planar) kinds.push("center", "x", "y");
   if (g.liftable) kinds.push("z");
-  if (g.planar && g.rotatable) kinds.push("rotate");
+  const turns = g.planar && g.rotatable;
+  const about = [turns && g.tiltable && axes.x, turns && g.tiltable && axes.y, turns && axes.z];
+  if (about[2]) kinds.push("rotate");
+  if (about[0]) kinds.push("rotX");
+  if (about[1]) kinds.push("rotY");
+  // Free turning needs two axes or more to mean anything a ring can't do.
+  if (about.filter(Boolean).length >= 2) kinds.push("free");
   if (g.planar && g.resizable) kinds.push("scale");
   return kinds;
 };
@@ -202,6 +228,9 @@ const GIZMO_COLORS: Partial<Record<GizmoKind, string>> = {
   y: "#22c55e",
   z: "#3b82f6",
   rotate: "#eab308",
+  rotX: "#ef4444",
+  rotY: "#22c55e",
+  free: "#a855f7",
   scale: "#10b981",
 };
 
@@ -212,7 +241,10 @@ const GIZMO_TITLES: Record<GizmoKind | "pivot" | "move", string> = {
   x: "Drag along x",
   y: "Drag along y",
   z: "Drag up or down (z)",
-  rotate: "Drag round to turn it (Shift: steps of 15°)",
+  rotate: "Drag round to turn it about z (Shift: steps of 15°)",
+  rotX: "Drag round to turn it about x (Shift: steps of 15°)",
+  rotY: "Drag round to turn it about y (Shift: steps of 15°)",
+  free: "Drag to turn it freely, about the axes switched on",
   scale: "Drag to resize (Shift: keep its shape)",
 };
 
@@ -327,7 +359,8 @@ const HANDLE_CSS = `
 .g3d-gz-x .g3d-dot::after,.g3d-gz-y .g3d-dot::after,.g3d-gz-z .g3d-dot::after{inset:12.5px}
 .g3d-gz-scale .g3d-dot{cursor:nwse-resize}
 .g3d-gz-scale .g3d-dot::after{border-radius:3px}
-.g3d-gz-rotate .g3d-dot{cursor:grab}
+.g3d-gz-rotate .g3d-dot,.g3d-gz-rotX .g3d-dot,.g3d-gz-rotY .g3d-dot{cursor:grab}
+.g3d-gz-free .g3d-dot{cursor:move}
 .g3d-gz-tip{position:absolute;left:0;top:0;transform:translate(-50%,0);padding:4px 8px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
 .g3d-ax{position:absolute;left:0;top:0;width:0;height:0;pointer-events:none;z-index:2}
 .g3d-ax-hit{position:absolute;left:-20px;top:-20px;width:40px;height:40px;border-radius:50%;pointer-events:auto;cursor:pointer;touch-action:none;display:flex;align-items:center;justify-content:center;outline:none;-webkit-tap-highlight-color:transparent}
@@ -1119,10 +1152,24 @@ class Engine {
     hit0: THREE.Vector3 | null;
     along0: number | null;
     /** A selection's drag: how far it has been taken so far (each step reports the rest). */
-    applied: { move: Vec3; angle: number; rawAngle: number; lastAngle: number | null; factor: number; dist0: number | null };
-    /** The height a selection is resized about. */
+    applied: {
+      move: Vec3;
+      angle: number;
+      rawAngle: number;
+      lastAngle: number | null;
+      factor: number;
+      dist0: number | null;
+      /** Where the pointer was last, in screen pixels. */
+      last: { x: number; y: number };
+      /** A typed row's turn when the drag began, and the free turn made since. */
+      q0: THREE.Quaternion;
+      qFree: THREE.Quaternion;
+      freeAngle: number;
+    };
+    /** The height a selection is resized and turned about. */
     centreZ: number;
   } | null = null;
+  private rotateAxes: RotateAxes = { ...ALL_AXES };
   // Select tool
   private selectTool = false;
   private selection: Selection3D | null = null;
@@ -2305,6 +2352,8 @@ class Engine {
         f.isPivotEnabled,
         f.isPivotEnabled && f.transformPivot?.join(","),
         f.transformTranslateZ,
+        f.transformRotateX,
+        f.transformRotateY,
         f.handlesOnSelect,
         inDegrees,
         p.quality,
@@ -2351,6 +2400,7 @@ class Engine {
       this.building = null;
       this.applyRowHeight(entry, f);
       this.makeGizmoFrame(entry, f, kind);
+      this.applyRowTilt(entry, f);
       entry.group.traverse((o) => {
         o.frustumCulled = false;
       });
@@ -2429,6 +2479,9 @@ class Engine {
       resizable: onSelect || !!f.isResizable,
       planar,
       liftable: true,
+      tiltable: planar,
+      rx: f.transformRotateX || 0,
+      ry: f.transformRotateY || 0,
     };
   }
 
@@ -3362,6 +3415,8 @@ class Engine {
       !!f.transformRotate ||
       !!f.transformTranslate?.some(Boolean) ||
       !!f.transformTranslateZ ||
+      !!f.transformRotateX ||
+      !!f.transformRotateY ||
       (!!f.transformScale && (f.transformScale[0] !== 1 || f.transformScale[1] !== 1));
     entry.isPoint = true;
     if (literal && !moved && f.showPoint !== false && pointDraggable(f)) {
@@ -6201,7 +6256,7 @@ class Engine {
     }
     if (this.selFrame) frames.push({ id: SELECTION_ID, g: this.selFrame, color: SELECT_COLOR });
     for (const { id, g, color: own } of frames) {
-      for (const kind of gizmoKinds(g)) {
+      for (const kind of gizmoKinds(g, this.rotateAxes)) {
         const key = `${id}:${kind}`;
         live.add(key);
         let el = this.gizmoEls.get(key);
@@ -6358,6 +6413,9 @@ class Engine {
       resizable: sel.canResize,
       planar: true,
       liftable: sel.canLift,
+      tiltable: !!sel.canTilt && sel.canLift,
+      rx: 0,
+      ry: 0,
     };
   }
 
@@ -6475,8 +6533,171 @@ class Engine {
   }
 
 
+  // ── Turning in space: about x, y, z, or freely ──
+  //
+  // A ring per axis (x red, y green, z yellow), and a purple handle that turns freely
+  // about the axes switched on, as a trackball does. Rows typed as equations keep the
+  // turn in their transformRotateX/Y/Z settings (composed as quaternions, so every
+  // ring turns about the graph's own axis however the row is already turned); shapes
+  // built on points are turned by turning their points.
+
+  setRotateAxes(axes: RotateAxes) {
+    const a = this.rotateAxes;
+    if (a.x === axes.x && a.y === axes.y && a.z === axes.z) return;
+    this.rotateAxes = { ...axes };
+    this.syncGizmos();
+    this.requestRender();
+  }
+
+  /** The 3D-only tilt: the whole row turned about the x- and y-axes through its middle. */
+  private applyRowTilt(entry: RowEntry, f: MathFunction) {
+    const rx = f.transformRotateX || 0;
+    const ry = f.transformRotateY || 0;
+    if ((!rx && !ry) || !Number.isFinite(rx + ry)) return;
+    let pivot: Vec3;
+    const g = entry.gizmo;
+    if (g) pivot = [g.px + g.tx, g.py + g.ty, g.cz];
+    else {
+      entry.group.updateMatrixWorld(true);
+      const box = new THREE.Box3().setFromObject(entry.group);
+      if (box.isEmpty()) return;
+      const c = box.getCenter(new THREE.Vector3());
+      pivot = [c.x, c.y, c.z];
+    }
+    const m = new THREE.Matrix4()
+      .makeTranslation(pivot[0], pivot[1], pivot[2])
+      .multiply(new THREE.Matrix4().makeRotationFromEuler(new THREE.Euler(rx, ry, 0, "YXZ")))
+      .multiply(new THREE.Matrix4().makeTranslation(-pivot[0], -pivot[1], -pivot[2]));
+    const group = entry.group;
+    group.updateMatrix();
+    group.matrix.premultiply(m);
+    group.matrixAutoUpdate = false;
+    group.matrixWorldNeedsUpdate = true;
+    const v = new THREE.Vector3();
+    const turn = (p: Vec3): Vec3 => {
+      v.set(p[0], p[1], p[2]).applyMatrix4(m);
+      return [v.x, v.y, v.z];
+    };
+    for (const l of entry.labels) l.pos = turn(l.pos);
+    if (entry.anchor) entry.anchor = turn(entry.anchor);
+    if (entry.drag) entry.drag.pos = turn(entry.drag.pos);
+    // Slices and where it meets other surfaces are worked out on the untilted shape:
+    // left out while it is tilted, rather than drawn in the wrong place.
+    entry.implicit = undefined;
+    entry.flat = undefined;
+    entry.surfaces = [];
+  }
+
+  /** Where the pointer is round a turning ring, as the angle that grows with a positive turn. */
+  private ringAngle(kind: GizmoKind, c: Vec3, clientX: number, clientY: number): number | null {
+    const axis = kind === "rotX" ? 0 : kind === "rotY" ? 1 : 2;
+    const hit = this.hitPlane(clientX, clientY, axis, c[axis]);
+    if (!hit) return null;
+    if (axis === 0) return Math.atan2(hit.z - c[2], hit.y - c[1]);
+    // About y a positive turn carries z towards x: the angle from x towards z falls.
+    if (axis === 1) return -Math.atan2(hit.z - c[2], hit.x - c[0]);
+    return Math.atan2(hit.y - c[1], hit.x - c[0]);
+  }
+
+  /**
+   * A drag of the free-turn handle, as a turn in graph units: dragging right turns about
+   * the screen's upright, dragging down about its horizontal, as a trackball does. Only
+   * the axes switched on take part. Null when the drag has nothing along them.
+   */
+  private freeTurn(dx: number, dy: number, allowed: [boolean, boolean, boolean]): { axis: [number, number, number]; angle: number } | null {
+    const toLocal = (x: number, y: number) => {
+      const o = this.content.worldToLocal(new THREE.Vector3());
+      const d = new THREE.Vector3(x, y, 0).applyQuaternion(this.camera.quaternion);
+      return this.content.worldToLocal(d).sub(o).normalize();
+    };
+    const up = toLocal(0, 1);
+    const right = toLocal(1, 0);
+    const a = up.multiplyScalar(dx).add(right.multiplyScalar(dy));
+    const full = a.length();
+    if (full < 1e-9) return null;
+    const masked = [allowed[0] ? a.x : 0, allowed[1] ? a.y : 0, allowed[2] ? a.z : 0];
+    const len = Math.hypot(masked[0], masked[1], masked[2]);
+    if (len < 1e-6 * full || len < 1e-9) return null;
+    return { axis: [masked[0] / len, masked[1] / len, masked[2] / len], angle: len * 0.012 };
+  }
+
+  /** The axes a gizmo may turn about now: its own abilities and the switches. */
+  private turnAxes(g: GizmoFrame): [boolean, boolean, boolean] {
+    const k = gizmoKinds(g, this.rotateAxes);
+    return [k.includes("rotX"), k.includes("rotY"), k.includes("rotate")];
+  }
+
+  /**
+   * A step of a turning drag (any ring, or the free handle). A row typed as an equation
+   * gets its new turn; a selection built on points is sent the turn of its points.
+   */
+  private stepTurnDrag(clientX: number, clientY: number, shift: boolean) {
+    const gz = this.gz;
+    if (!gz) return;
+    const s = gz.start;
+    const a = gz.applied;
+    const c: Vec3 = [s.px + s.tx, s.py + s.ty, s.cz];
+    const isSel = gz.id === SELECTION_ID;
+    const dx = clientX - a.last.x;
+    const dy = clientY - a.last.y;
+    a.last = { x: clientX, y: clientY };
+
+    if (gz.kind === "free") {
+      const t = this.freeTurn(dx, dy, this.turnAxes(s));
+      if (!t) return;
+      a.freeAngle += t.angle;
+      if (isSel) {
+        this.getProps().onSelectionMotion?.({ kind: "rotate3", axis: t.axis, angle: t.angle, centre: [s.px, s.py, gz.centreZ] });
+      } else {
+        a.qFree.premultiply(new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...t.axis), t.angle));
+        this.patchTurn(gz.id, a.qFree.clone().multiply(a.q0));
+      }
+      this.syncGizmos();
+      this.requestRender();
+      return;
+    }
+
+    // A ring: how far round the pointer has gone, unwrapped; seen edge-on, the drag across.
+    const ang = this.ringAngle(gz.kind, c, clientX, clientY);
+    const d =
+      ang !== null && a.lastAngle !== null
+        ? Math.atan2(Math.sin(ang - a.lastAngle), Math.cos(ang - a.lastAngle))
+        : (gz.kind === "rotY" ? -1 : 1) * (Math.abs(dx) >= Math.abs(dy) ? dx : -dy) * 0.01;
+    a.lastAngle = ang;
+    a.rawAngle += d;
+    const unit = ((shift ? 15 : 1) * Math.PI) / 180;
+    const total = Math.round(a.rawAngle / unit) * unit;
+    const step = total - a.angle;
+    if (Math.abs(step) < 1e-9) return;
+    a.angle = total;
+    const axis: [number, number, number] = gz.kind === "rotX" ? [1, 0, 0] : gz.kind === "rotY" ? [0, 1, 0] : [0, 0, 1];
+    if (isSel) {
+      const emit = this.getProps().onSelectionMotion;
+      if (gz.kind === "rotate") {
+        // About the upright: flat points stay flat.
+        this.selTurn = s.rot + total;
+        emit?.({ kind: "rotate", angle: step, centre: [s.px, s.py] });
+      } else emit?.({ kind: "rotate3", axis, angle: step, centre: [s.px, s.py, gz.centreZ] });
+    } else {
+      this.patchTurn(gz.id, new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(...axis), total).multiply(a.q0));
+    }
+    this.syncGizmos();
+    this.requestRender();
+  }
+
+  /** A typed row's whole turn, as its three settings (Ry · Rx · Rz). */
+  private patchTurn(id: string, q: THREE.Quaternion) {
+    const e = new THREE.Euler().setFromQuaternion(q, "YXZ");
+    const tidy = (v: number) => (Math.abs(v) < 1e-9 ? 0 : Number(v.toFixed(6)));
+    const patch: Partial<MathFunction> = { transformRotateX: tidy(e.x), transformRotateY: tidy(e.y), transformRotate: tidy(e.z) };
+    const p = this.getProps();
+    if (this.rows.get(id)?.gizmoOnSelect) p.onPatchRow?.(id, patch);
+    else (p.onTransformRow ?? p.onPatchRow)?.(id, patch);
+    this.requestRender();
+  }
+
   /** Where a gizmo's handles are, in graph units. */
-  private gizmoSpots(g: GizmoFrame): Record<GizmoKind, Vec3> {
+  private gizmoSpots(g: GizmoFrame, id?: string): Record<GizmoKind, Vec3> {
     const c: Vec3 = [g.px + g.tx, g.py + g.ty, g.cz];
     const L = g.radius * 0.85;
     const turn = g.rot + g.base;
@@ -6492,20 +6713,31 @@ class Engine {
       return [c[0] + x * cosT - y * sinT, c[1] + x * sinT + y * cosT, c[2]];
     };
     const a = (g.radius * 1.2) / Math.SQRT2;
+    const R = g.radius;
+    // The x and y rings' handles rest up and behind, clear of the arrows; while one is
+    // dragged it rides round with the pointer.
+    const held = id !== undefined && this.gz?.id === id ? this.gz : null;
+    const tx = REST_TILT + (held?.kind === "rotX" ? held.applied.angle : 0);
+    const ty = REST_TILT + (held?.kind === "rotY" ? held.applied.angle : 0);
+    const k = R * 0.58;
     return {
       center: c,
       x: [c[0] + L, c[1], c[2]],
       y: [c[0], c[1] + L, c[2]],
       z: [c[0], c[1], c[2] + L],
       // Turning only reads the angle: the ring keeps its size whatever the scale.
-      rotate: [c[0] + g.radius * cosT, c[1] + g.radius * sinT, c[2]],
+      rotate: [c[0] + R * cosT, c[1] + R * sinT, c[2]],
+      rotX: [c[0], c[1] + R * Math.cos(tx), c[2] + R * Math.sin(tx)],
+      // About y the angle runs from x towards -z (see ringAngle).
+      rotY: [c[0] + R * Math.cos(ty), c[1], c[2] - R * Math.sin(ty)],
+      free: [c[0] - k, c[1] + k, c[2] + k],
       scale: place(a, -a),
     };
   }
 
   /** The ring, the arrows and the line to the resize handle. */
   private buildGizmoScene(id: string, g: GizmoFrame) {
-    const spots = this.gizmoSpots(g);
+    const spots = this.gizmoSpots(g, id);
     const [cx, cy, cz] = spots.center;
     const over = (m: THREE.Material) => {
       m.depthTest = false;
@@ -6524,7 +6756,7 @@ class Engine {
       this.gizmoGroup.add(obj);
     };
     const active = this.gz?.id === id ? this.gz.kind : null;
-    const kinds = gizmoKinds(g);
+    const kinds = gizmoKinds(g, this.rotateAxes);
 
     if (kinds.includes("rotate")) {
       // The ring the turn handle runs round, through the handle itself.
@@ -6552,6 +6784,18 @@ class Engine {
         lines(fan, GIZMO_COLORS.rotate!, 0.35);
       }
     }
+    // The x and y rings: upright circles through the middle, square to their axes.
+    for (const kind of ["rotX", "rotY"] as const) {
+      if (!kinds.includes(kind)) continue;
+      const r = g.radius;
+      const ring: number[] = [];
+      const n = 96;
+      const at = (t: number): Vec3 =>
+        kind === "rotX" ? [cx, cy + r * Math.cos(t), cz + r * Math.sin(t)] : [cx + r * Math.cos(t), cy, cz + r * Math.sin(t)];
+      for (let i = 0; i < n; i++) ring.push(...at((i / n) * TWO_PI), ...at(((i + 1) / n) * TWO_PI));
+      lines(ring, GIZMO_COLORS[kind]!, active === kind ? 0.95 : 0.5);
+    }
+    if (kinds.includes("free")) lines([cx, cy, cz, ...spots.free], GIZMO_COLORS.free!, 0.6, true);
     if (kinds.includes("scale")) lines([cx, cy, cz, ...spots.scale], GIZMO_COLORS.scale!, 0.6, true);
 
     // Arrows along the axes, with heads.
@@ -6629,7 +6873,7 @@ class Engine {
         continue;
       }
       let s = spots.get(id);
-      if (!s) spots.set(id, (s = this.gizmoSpots(g)));
+      if (!s) spots.set(id, (s = this.gizmoSpots(g, id)));
       const p = s[kind];
       if (!this.toScreen(p[0], p[1], p[2], at)) {
         el.style.display = "none";
@@ -6658,10 +6902,18 @@ class Engine {
 
   private gizmoReadout(kind: GizmoKind, g: GizmoFrame): string {
     const f = (v: number) => formatCoord(v);
-    if (kind === "rotate") {
-      let deg = (g.rot * 180) / Math.PI;
-      deg = ((((deg + 180) % 360) + 360) % 360) - 180;
-      return `Turn ${Math.round(deg)}°`;
+    const deg = (rad: number) => {
+      const d = (rad * 180) / Math.PI;
+      return Math.round(((((d + 180) % 360) + 360) % 360) - 180);
+    };
+    if (kind === "rotate" || kind === "rotX" || kind === "rotY" || kind === "free") {
+      const gz = this.gz;
+      if (gz?.id === SELECTION_ID) {
+        if (kind === "free") return `Turn ${deg(gz.applied.freeAngle)}° freely`;
+        return `Turn about ${kind === "rotX" ? "x" : kind === "rotY" ? "y" : "z"} ${deg(gz.applied.angle)}°`;
+      }
+      if (!g.rx && !g.ry && kind === "rotate") return `Turn ${deg(g.rot)}°`;
+      return `x ${deg(g.rx)}° · y ${deg(g.ry)}° · z ${deg(g.rot)}°`;
     }
     if (kind === "scale") {
       return Math.abs(g.sx - g.sy) < 1e-3 ? `Scale ${g.sx.toFixed(2)}×` : `Scale ${g.sx.toFixed(2)} × ${g.sy.toFixed(2)}  (Shift: keep shape)`;
@@ -6742,11 +6994,20 @@ class Engine {
         move: [0, 0, 0],
         angle: 0,
         rawAngle: 0,
-        lastAngle: hit0 ? Math.atan2(hit0.y - center[1], hit0.x - center[0]) : null,
+        lastAngle:
+          kind === "rotate" || kind === "rotX" || kind === "rotY"
+            ? this.ringAngle(kind, center, e.clientX, e.clientY)
+            : hit0
+              ? Math.atan2(hit0.y - center[1], hit0.x - center[0])
+              : null,
         factor: 1,
         dist0: reach0 > 1e-6 ? reach0 : null,
+        last: { x: e.clientX, y: e.clientY },
+        q0: new THREE.Quaternion().setFromEuler(new THREE.Euler(g.rx, g.ry, g.rot, "YXZ")),
+        qFree: new THREE.Quaternion(),
+        freeAngle: 0,
       },
-      // Flat points that can't be lifted stay on the floor: resized about it.
+      // Flat points that can't be lifted stay on the floor: resized and turned about it.
       centreZ: sel?.centre && sel.canLift ? sel.centre[2] : 0,
     };
     // Heavy rows are redrawn coarsely while they move, then refined.
@@ -6760,6 +7021,7 @@ class Engine {
   private stepGizmoDrag(clientX: number, clientY: number, shift: boolean, alt: boolean) {
     const gz = this.gz;
     if (!gz) return;
+    if (gz.kind === "rotate" || gz.kind === "rotX" || gz.kind === "rotY" || gz.kind === "free") return this.stepTurnDrag(clientX, clientY, shift);
     if (gz.id === SELECTION_ID) return this.stepSelectionDrag(clientX, clientY, shift, alt);
     const s = gz.start;
     const half = this.domain.half;
@@ -6799,11 +7061,6 @@ class Engine {
         const ly = vx * Math.sin(s.base) + vy * Math.cos(s.base);
         const pNew: [number, number] = [round(s.px + lx), round(s.py + ly)];
         patch = { transformPivot: pNew, transformTranslate: [round(px - pNew[0]), round(py - pNew[1])] };
-      } else if (gz.kind === "rotate") {
-        let rot = Math.atan2(hit.y - cy, hit.x - cx) - s.base;
-        const unit = ((shift ? 15 : 1) * Math.PI) / 180;
-        rot = Math.round(rot / unit) * unit;
-        patch = { transformRotate: round(rot, 6) };
       } else if (gz.kind === "scale") {
         const a = (s.radius * 1.2) / Math.SQRT2;
         const dx = hit.x - cx;
@@ -7052,6 +7309,10 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
   useEffect(() => {
     engineRef.current?.setSelection(props.selection ?? null);
   }, [props.selection]);
+
+  useEffect(() => {
+    engineRef.current?.setRotateAxes(props.rotateAxes ?? ALL_AXES);
+  }, [props.rotateAxes]);
 
   useEffect(() => {
     engineRef.current?.setDrawPlane(props.drawPlane ?? 2);

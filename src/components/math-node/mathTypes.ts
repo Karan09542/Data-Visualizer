@@ -151,6 +151,12 @@ export interface MathFunction {
   transformPivot?: [number, number]; // [px, py]
   /** 3D view only: how far the whole row is lifted up the z-axis. */
   transformTranslateZ?: number;
+  /**
+   * 3D view only: the row tilted about the x- and y-axes through its middle, in radians.
+   * With transformRotate (about z) the whole turn is Ry · Rx · Rz.
+   */
+  transformRotateX?: number;
+  transformRotateY?: number;
 
   // Individual Timeline Support
   hasCustomTimeline?: boolean;

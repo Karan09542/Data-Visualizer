@@ -450,7 +450,7 @@ export const mathHelp: HelpContent = {
             {
               icon: MousePointer2,
               title: 'Select and transform',
-              text: 'The Select tool works in 3D too: click a shape (Shift-click adds more), then drag the red, green and blue arrows to move it along x, y and z, the yellow handle to turn it, and the green one to resize it. Delete removes it. Dragging empty space still turns the view.',
+              text: 'The Select tool works in 3D too: click a shape (Shift-click adds more), then drag the red, green and blue arrows to move it along x, y and z. Turn it about x, y or z with the red, green and yellow rings, or freely with the purple handle; the X, Y and Z switches in the bar pick which axes (one, two or all three). The green square resizes it, Delete removes it, and dragging empty space still turns the view.',
             },
             {
               icon: PlaneIcon,

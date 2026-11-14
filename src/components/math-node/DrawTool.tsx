@@ -42,7 +42,7 @@ export type GraphTool = DrawToolKind | "select";
 export const SELECT_TOOL_HINT = "Click a shape, or drag a box round several, then move, turn, resize or delete them. Shift adds to the selection.";
 /** The same in the 3D view, where a drag turns the view and the handles are arrows. */
 export const SELECT_TOOL_HINT_3D =
-  "Click a shape to select it (Shift-click adds more). Drag the arrows to move it along x, y or z, the yellow handle to turn it, the green one to resize it. Delete removes it.";
+  "Click a shape to select it (Shift-click adds more). Drag the arrows to move it along x, y or z, the rings to turn it about x (red), y (green) or z (yellow), the purple handle to turn it freely, the green square to resize it. Delete removes it.";
 
 export const DRAW_TOOL_CLICKS: Record<DrawToolKind, number> = {
   point: 1,

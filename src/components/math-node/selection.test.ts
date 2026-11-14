@@ -4,7 +4,9 @@ import * as mathjs from "mathjs";
 import type { MathFunction } from "./mathTypes";
 import {
   canLiftPoints,
+  canTiltInSpace,
   canTurnInSpace,
+  rotateAbout,
   describeSelection,
   describeSelections,
   freePoint,
@@ -146,4 +148,45 @@ test("canLiftPoints: only when no row would break", () => {
   const seg = row("line", "[P, Q]");
   rows = [P, Q, seg];
   assert.equal(canLiftPoints(describeSelection(seg.id, rows, [])!, rows, null, toValue), true);
+});
+
+test("rotateAbout turns right-handed about each axis", () => {
+  const near = (a: number[], b: number[]) => a.forEach((v, i) => assert.ok(Math.abs(v - b[i]) < 1e-9, `${a} vs ${b}`));
+  near(rotateAbout([0, 1, 0], [1, 0, 0], Math.PI / 2), [0, 0, 1]); // about x: y to z
+  near(rotateAbout([0, 0, 1], [0, 1, 0], Math.PI / 2), [1, 0, 0]); // about y: z to x
+  near(rotateAbout([1, 0, 0], [0, 0, 1], Math.PI / 2), [0, 1, 0]); // about z: x to y
+  // A third of a turn about (1, 1, 1) carries x to y.
+  const k = 1 / Math.sqrt(3);
+  near(rotateAbout([1, 0, 0], [k, k, k], (2 * Math.PI) / 3), [0, 1, 0]);
+});
+
+test("turning in space about a centre: points get heights, distances stay", () => {
+  const A = row("point", "A = [1, 0]");
+  const B = row("point", "B = [3, 0]");
+  const C = row("point", "C = [2, 2]");
+  const tri = row("polygon", "[A, B, C]");
+  const sel = describeSelection(tri.id, [A, B, C, tri], [])!;
+  // A quarter turn about the x-axis through (2, 0, 0): the triangle stands up.
+  const up = transformPoints(sel, { kind: "rotate3", axis: [1, 0, 0], angle: Math.PI / 2, centre: [2, 0, 0] }, []).exprs;
+  assert.equal(exprOf(up, A), "A = [1, 0]");
+  assert.equal(exprOf(up, B), "B = [3, 0]");
+  assert.equal(exprOf(up, C), "C = [2, 0, 2]");
+  // An axis that isn't of unit length is made one. A flat point that ends on the floor stays flat.
+  const tilted = transformPoints(sel, { kind: "rotate3", axis: [0, 5, 0], angle: Math.PI, centre: [2, 0, 0] }, []).exprs;
+  assert.equal(exprOf(tilted, A), "A = [3, 0]");
+  assert.equal(exprOf(tilted, B), "B = [1, 0]");
+  assert.equal(exprOf(tilted, C), "C = [2, 2]");
+});
+
+test("canTiltInSpace: shapes on points yes, circles and solids drawn with cos and sin no", () => {
+  const A = row("point", "A = [0, 0]");
+  const B = row("point", "B = [2, 0]");
+  const C = row("point", "C = [0, 2]");
+  const tri = row("polygon", "[A, B, C]");
+  const circle = row("parametric", "p3(A) + 2*[cos(t rad), sin(t rad), 0]");
+  const all = [A, B, C, tri, circle];
+  assert.equal(canTiltInSpace(describeSelection(tri.id, all, [])!, all), true);
+  assert.equal(canTiltInSpace(describeSelections([tri.id, circle.id], all, [])!, all), false);
+  // A single point has nothing to turn.
+  assert.equal(canTiltInSpace(describeSelection(A.id, all, [])!, all), false);
 });

@@ -132,10 +132,28 @@ export function selectionCentre3(sel: Selection): [number, number, number] | nul
 export type Motion =
   | { kind: "move"; dx: number; dy: number; dz?: number }
   | { kind: "rotate"; angle: number; centre: [number, number] }
-  | { kind: "scale"; factor: number; centre: [number, number]; centreZ?: number };
+  | { kind: "scale"; factor: number; centre: [number, number]; centreZ?: number }
+  /** A turn in space: by `angle` (radians, right-handed) about the line through `centre` along `axis`. */
+  | { kind: "rotate3"; axis: [number, number, number]; angle: number; centre: [number, number, number] };
+
+/** (x, y, z) turned about the unit axis k through the origin (Rodrigues' formula). */
+export function rotateAbout(v: [number, number, number], k: [number, number, number], angle: number): [number, number, number] {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  const dot = k[0] * v[0] + k[1] * v[1] + k[2] * v[2];
+  const cross = [k[1] * v[2] - k[2] * v[1], k[2] * v[0] - k[0] * v[2], k[0] * v[1] - k[1] * v[0]];
+  return [0, 1, 2].map((i) => v[i] * c + cross[i] * s + k[i] * dot * (1 - c)) as [number, number, number];
+}
 
 const moved = (m: Motion, x: number, y: number, z: number): [number, number, number] => {
   if (m.kind === "move") return [x + m.dx, y + m.dy, z + (m.dz ?? 0)];
+  if (m.kind === "rotate3") {
+    const len = Math.hypot(...m.axis) || 1;
+    const k: [number, number, number] = [m.axis[0] / len, m.axis[1] / len, m.axis[2] / len];
+    const [cx, cy, cz] = m.centre;
+    const r = rotateAbout([x - cx, y - cy, z - cz], k, m.angle);
+    return [cx + r[0], cy + r[1], cz + r[2]];
+  }
   const [cx, cy] = m.centre;
   if (m.kind === "scale") {
     const cz = m.centreZ;
@@ -153,6 +171,17 @@ const moved = (m: Motion, x: number, y: number, z: number): [number, number, num
 export function canTurnInSpace(sel: Selection, functions: MathFunction[]): boolean {
   const ids = new Set(sel.rowIds);
   return !functions.some((f) => ids.has(f.id) && UPRIGHT_CIRCLE.test(f.expr ?? ""));
+}
+
+/**
+ * Whether the selection can be tilted (turned about the x- or y-axis) by moving its
+ * points. A circle, arc or solid written with cos and sin keeps the plane it was
+ * drawn on, so only its centre would move: those can't.
+ */
+export function canTiltInSpace(sel: Selection, functions: MathFunction[]): boolean {
+  if (sel.points.length < 2) return false;
+  const ids = new Set(sel.rowIds);
+  return !functions.some((f) => ids.has(f.id) && /\b(?:cos|sin)\s*\(/.test(f.expr ?? ""));
 }
 
 /**
@@ -231,6 +260,8 @@ export function transformRow(f: MathFunction, motion: Motion): Partial<MathFunct
   const [tx, ty] = f.transformTranslate ?? [0, 0];
   if (motion.kind === "move") return { transformTranslate: [tx + motion.dx, ty + motion.dy] };
   if (motion.kind === "rotate") return { transformRotate: (f.transformRotate ?? 0) + motion.angle };
+  // A turn in space: the 3D view turns such rows itself, through their tilt settings.
+  if (motion.kind === "rotate3") return {};
   const [sx, sy] = f.transformScale ?? [1, 1];
   return { transformScale: [sx * motion.factor, sy * motion.factor] };
 }
