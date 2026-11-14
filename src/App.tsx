@@ -964,42 +964,51 @@ function App() {
           </div>
         </>
       )}
+      {/*
+        Each lazy panel in its own boundary: a Suspense boundary shows nothing until every
+        lazy child in it has loaded, so one shared boundary made the canvas settings wait for
+        the biggest of them (the media viewer, the AI sidebar…) before they could open.
+      */}
+      <Suspense fallback={null}><AdvancedPanel /></Suspense>
+      <Suspense fallback={null}><AISettingsSidebar /></Suspense>
+      <Suspense fallback={null}><YoutubeSearchPanel /></Suspense>
+      <Suspense fallback={null}><ShortcutsPopup /></Suspense>
       <Suspense fallback={null}>
-        <AdvancedPanel />
-        <AISettingsSidebar />
-        <YoutubeSearchPanel />
-        <ShortcutsPopup />
         <MathHelpPopup
           isOpen={isMathHelpOpen}
           onClose={() => setIsMathHelpOpen(false)}
         />
-        <ImportModal />
-        <SqliteWorkspaceModal />
+      </Suspense>
+      <Suspense fallback={null}><ImportModal /></Suspense>
+      <Suspense fallback={null}><SqliteWorkspaceModal /></Suspense>
+      <Suspense fallback={null}>
         <SavedDocumentsModal
           isOpen={isSavedDocsOpen}
           onClose={() => setIsSavedDocsOpen(false)}
         />
+      </Suspense>
+      <Suspense fallback={null}>
         <ShareDialog
           isOpen={isShareDialogOpen}
           onClose={() => setIsShareDialogOpen(false)}
         />
-        <TextPreviewPopup />
-        <MediaPreviewPopup />
-        <PyMissingPromptModal />
-        <ProductivityLayer />
-        <StickyNotesManager />
-        {isTemplateGalleryOpen && (
+      </Suspense>
+      <Suspense fallback={null}><TextPreviewPopup /></Suspense>
+      <Suspense fallback={null}><MediaPreviewPopup /></Suspense>
+      <Suspense fallback={null}><PyMissingPromptModal /></Suspense>
+      <Suspense fallback={null}><ProductivityLayer /></Suspense>
+      <Suspense fallback={null}><StickyNotesManager /></Suspense>
+      {isTemplateGalleryOpen && (
+        <Suspense fallback={null}>
           <BlankCanvasTemplateGallery
             isModal={true}
             onClose={() => setIsTemplateGalleryOpen(false)}
           />
-        )}
-      </Suspense>
+        </Suspense>
+      )}
 
-      <Suspense fallback={null}>
-        <AudioPlayerModal />
-        <MiniPlayer />
-      </Suspense>
+      <Suspense fallback={null}><AudioPlayerModal /></Suspense>
+      <Suspense fallback={null}><MiniPlayer /></Suspense>
 
       {shouldRenderLearningGames && (
         <Suspense fallback={isLearningGamesOpen ? <LearningGamesLoadingFallback /> : null}>
