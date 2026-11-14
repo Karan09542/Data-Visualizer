@@ -820,7 +820,8 @@ export function BlankCanvasTemplateGallery({ isModal = false, onClose }: BlankCa
 
   return (
     <>
-      <div className="absolute inset-0 z-20 overflow-y-auto custom-scrollbar pointer-events-auto p-4 sm:p-6 md:p-8">
+      {/* nodrag: the canvas's zoom leaves wheel and touch alone here, so the page scrolls. */}
+      <div className="nodrag absolute inset-0 z-20 overflow-y-auto overscroll-contain touch-pan-y custom-scrollbar pointer-events-auto p-4 sm:p-6 md:p-8">
         <div className="min-h-full flex flex-col justify-center items-center py-4">
           {content}
         </div>
