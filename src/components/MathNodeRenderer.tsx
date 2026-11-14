@@ -1005,39 +1005,18 @@ export const MathNodeRenderer: React.FC<any> = ({
   }, [drawTool]);
   const [isResizingSidebar, setIsResizingSidebar] = useState(false);
   // Which edge is being dragged: the docked panel's splitter, or the phone panel's grip.
-  const resizeKindRef = useRef<"dock" | "phone">("dock");
-  // On a phone the panel slides over the graph; its width there, once dragged.
-  const [phonePanelWidth, setPhonePanelWidth] = useState<number | null>(null);
+  const resizeKindRef = useRef<"dock">("dock");
 
   const sidebarWidthRef = useRef(sidebarWidth);
   sidebarWidthRef.current = sidebarWidth;
   const sidebarHeightRef = useRef(sidebarHeight);
   sidebarHeightRef.current = sidebarHeight;
-  const phonePanelWidthRef = useRef(phonePanelWidth);
-  phonePanelWidthRef.current = phonePanelWidth;
-
-  const resizeSessionRef = useRef<{
-    kind: "dock" | "phone";
-    pointerId: number;
-    startX: number;
-    startY: number;
-    startWidth: number;
-    startHeight: number;
-    scaleX: number;
-    scaleY: number;
-    parentWidth: number;
-    parentHeight: number;
-    targetEl: HTMLElement | null;
-    currentWidth: number;
-    currentHeight: number;
-    rafId: number | null;
-  } | null>(null);
 
   // The drag in hand: which pointer, how far from the edge it took hold, and the size
   // it has reached. The size is written straight to the panel while dragging (once a
   // frame) and saved when the drag ends, so the whole graph isn't re-rendered per move.
   const sidebarDragRef = useRef<{ pointerId: number; grab: number; size: number | null } | null>(null);
-  const startSidebarResize = (kind: "dock" | "phone") => (e: React.PointerEvent) => {
+  const startSidebarResize = (kind: "dock" = "dock") => (e: React.PointerEvent) => {
     if (e.button !== 0) return;
     const el = sidebarRef.current;
     if (!el) return;
@@ -1051,15 +1030,13 @@ export const MathNodeRenderer: React.FC<any> = ({
     // How far from the panel's edge the press landed: the edge keeps that distance,
     // so it doesn't jump when the drag starts.
     const grab =
-      kind === "dock" && panelPosition === "bottom"
+      panelPosition === "bottom"
         ? e.clientY - rect.top
-        : kind === "dock" && panelPosition === "right"
+        : panelPosition === "right"
           ? e.clientX - rect.left
           : e.clientX - rect.right;
     sidebarDragRef.current = { pointerId: e.pointerId, grab, size: null };
-    resizeKindRef.current = kind;
-    // The phone panel takes its width from a variable only once it has one.
-    if (kind === "phone" && !phonePanelWidth) setPhonePanelWidth(Math.round(el.offsetWidth));
+    resizeKindRef.current = "dock";
     setIsResizingSidebar(true);
   };
 
@@ -1088,12 +1065,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       // On a zoomed canvas a screen pixel isn't a pixel of the panel.
       const zoom = el.offsetWidth > 0 && rect.width > 0 ? rect.width / el.offsetWidth : 1;
       let size: number;
-      if (kind === "phone") {
-        // Over the graph: leave a strip of it showing, so it can be tapped to close.
-        const room = (el.parentElement?.getBoundingClientRect().width ?? window.innerWidth) / zoom - 40;
-        size = Math.max(240, Math.min((latest.x - drag.grab - rect.left) / zoom, room));
-        el.style.setProperty("--phone-panel-width", `${Math.round(size)}px`);
-      } else if (panelPosition === "bottom") {
+      if (panelPosition === "bottom") {
         // Measured from the edge the splitter sits on, so the edge follows the
         // pointer whichever side the panel is docked to.
         size = Math.max(140, Math.min((rect.bottom - (latest.y - drag.grab)) / zoom, 800));
@@ -1125,8 +1097,7 @@ export const MathNodeRenderer: React.FC<any> = ({
       }
       // Saved now: the size the panel already shows.
       if (drag?.size != null) {
-        if (kind === "phone") setPhonePanelWidth(drag.size);
-        else if (panelPosition === "bottom") setSidebarHeight(drag.size);
+        if (panelPosition === "bottom") setSidebarHeight(drag.size);
         else setSidebarWidth(drag.size);
       }
       sidebarDragRef.current = null;
@@ -3366,7 +3337,7 @@ export const MathNodeRenderer: React.FC<any> = ({
           isPanelVisible && (
             <div
               ref={sidebarRef}
-              className={`bg-slate-50 dark:bg-slate-800 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 md:relative md:inset-auto md:translate-x-0 ${isResizingSidebar ? "select-none touch-none" : "transition-transform duration-300"} ${phonePanelWidth || (isResizingSidebar && resizeKindRef.current === "phone") ? "w-[var(--phone-panel-width)]" : "w-full sm:w-[85vw]"} md:w-[var(--sidebar-width)] md:h-[var(--sidebar-height)] md:max-w-none ${panelPosition === "right"
+              className={`bg-slate-50 dark:bg-slate-800 flex flex-col shrink-0 border-r border-slate-200 dark:border-slate-700 nodrag z-[50] absolute inset-y-0 left-0 right-0 w-full md:right-auto md:relative md:inset-auto md:translate-x-0 ${isResizingSidebar ? "select-none touch-none" : "transition-transform duration-300"} md:w-[var(--sidebar-width)] md:h-[var(--sidebar-height)] md:max-w-none ${panelPosition === "right"
                 ? "md:border-l md:border-r-0 md:border-t-0"
                 : panelPosition === "bottom"
                   ? "md:border-t md:border-r-0 md:border-l-0"
@@ -3379,36 +3350,19 @@ export const MathNodeRenderer: React.FC<any> = ({
                   "--sidebar-width":
                     panelPosition === "bottom"
                       ? "100%"
-                      : isResizingSidebar && resizeSessionRef.current && resizeSessionRef.current.kind !== "phone"
-                        ? `${resizeSessionRef.current.currentWidth}px`
+                      : isResizingSidebar && sidebarDragRef.current && sidebarDragRef.current.size != null
+                        ? `${sidebarDragRef.current.size}px`
                         : `${sidebarWidth}px`,
                   "--sidebar-height":
                     panelPosition === "bottom"
-                      ? isResizingSidebar && resizeSessionRef.current && resizeSessionRef.current.kind !== "phone"
-                        ? `${resizeSessionRef.current.currentHeight}px`
+                      ? isResizingSidebar && sidebarDragRef.current && sidebarDragRef.current.size != null
+                        ? `${sidebarDragRef.current.size}px`
                         : `${sidebarHeight}px`
                       : "auto",
-                  "--phone-panel-width":
-                    isResizingSidebar && resizeSessionRef.current && resizeSessionRef.current.kind === "phone"
-                      ? `${resizeSessionRef.current.currentWidth}px`
-                      : phonePanelWidth ? `${phonePanelWidth}px` : undefined,
                 } as React.CSSProperties
               }
               onClick={() => setActiveActionMenuId(null)}
             >
-              {/* Phones: a grip on the panel's edge to drag it wider or narrower. */}
-              <div
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize the panel"
-                title="Drag to resize (touch anywhere along this edge)"
-                onPointerDown={startSidebarResize("phone")}
-                className="md:hidden absolute inset-y-0 -right-4 z-[60] w-8 flex items-center justify-center touch-none select-none cursor-col-resize"
-              >
-                <span
-                  className={`w-2 h-16 rounded-full shadow-md ring-1 ring-black/10 transition-colors pointer-events-none ${isResizingSidebar ? "bg-blue-500 ring-blue-400" : "bg-slate-400 dark:bg-slate-500"}`}
-                />
-              </div>
               <div className="flex-1 overflow-y-auto p-2.5 sm:p-4 flex flex-col gap-4 sm:gap-6 custom-scrollbar">
                 {/* Functions */}
                 <div className="flex flex-col gap-2.5 sm:gap-3">
@@ -3480,6 +3434,15 @@ export const MathNodeRenderer: React.FC<any> = ({
                         title="Clear All Functions"
                       >
                         <Trash2 size={14} />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsMobileSidebarOpen(false)}
+                        className="md:hidden p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors"
+                        title="Close panel"
+                        aria-label="Close Functions & Equations panel"
+                      >
+                        <X size={15} />
                       </button>
                     </div>
                   </div>
