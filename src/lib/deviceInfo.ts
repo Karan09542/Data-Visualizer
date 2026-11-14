@@ -31,6 +31,16 @@ export const isMobileDevice = () => {
     || ua.includes('iPod') || ua.includes('Mobile');
 };
 
+/** Detects if the current device is an Android device or a tablet (including iPad & iPadOS) via user-agent */
+export const isAndroidOrTabletDevice = (): boolean => {
+  if (typeof navigator === 'undefined') return false;
+  const ua = navigator.userAgent || '';
+  const isAndroid = /Android/i.test(ua);
+  const isIPad = /iPad/i.test(ua) || (/Macintosh/i.test(ua) && typeof navigator.maxTouchPoints === 'number' && navigator.maxTouchPoints > 1);
+  const isTablet = /Tablet|PlayBook|Silk/i.test(ua);
+  return isAndroid || isIPad || isTablet;
+};
+
 /** Label shown in the device picker, e.g. "Windows - Chrome". Users can override it per browser. */
 export const getDeviceLabel = () => {
   try {

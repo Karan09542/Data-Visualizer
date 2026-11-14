@@ -248,6 +248,7 @@ import { inferType, isComplexExpr } from "../lib/math/inferType";
 import { parseOdeSystemCached } from "../lib/math/odeSystem";
 import { getOdeExtent } from "../lib/math/odeCurveData";
 import { odeSystemToLatex } from "../lib/math/odeLatex";
+import { isAndroidOrTabletDevice } from "../lib/deviceInfo";
 
 // Compiled lesson-challenge conditions, by expression.
 const CHECK_CACHE = new Map<string, any>();
@@ -441,6 +442,10 @@ export const MathNodeRenderer: React.FC<any> = ({
   const [viewResetKey, setViewResetKey] = useState(0);
   const [showGridControls, setShowGridControls] = useState(false);
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isAndroidOrTablet, setIsAndroidOrTablet] = useState(() => isAndroidOrTabletDevice());
+  useEffect(() => {
+    setIsAndroidOrTablet(isAndroidOrTabletDevice());
+  }, []);
   const [showHelp, setShowHelp] = useState(false);
   const [showVedic, setShowVedic] = useState(false);
   const [activeActionMenuId, setActiveActionMenuId] = useState<string | null>(
@@ -3518,7 +3523,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                             handleDropFunction(f.id, dragOverFunctionPosition);
                           }
                         }}
-                        className={`flex flex-col md:flex-row md:flex-wrap md:items-center gap-1.5 md:gap-2 bg-white dark:bg-slate-900/50 p-1.5 sm:p-2 md:pr-10 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
+                        className={`flex flex-col ${isAndroidOrTablet ? "gap-1.5 p-1.5 sm:p-2" : "md:flex-row md:flex-wrap md:items-center gap-1.5 md:gap-2 p-1.5 sm:p-2 md:pr-10"} bg-white dark:bg-slate-900/50 border-l-[3px] rounded bg-gradient-to-r from-transparent to-slate-100 dark:to-slate-900/20 shadow-sm dark:shadow-inner group transition-all hover:border-slate-400 dark:hover:border-slate-500 relative
                       ${draggedFunctionId === f.id ? "opacity-40" : ""} ${draggedFunctionId !== null ? "[&>*]:pointer-events-none" : ""} ${activeActionMenuId === f.id ? "z-[100]" : activeVisualEditorId === f.id ? "z-40" : "z-10"}
                     `}
                         style={{ borderLeftColor: f.color }}
@@ -3540,14 +3545,14 @@ export const MathNodeRenderer: React.FC<any> = ({
                           )}
 
                         {/* Mobile Header Row / Desktop Left Elements */}
-                        <div className="flex items-center gap-1 sm:gap-1.5 w-full md:w-auto flex-shrink-0">
+                        <div className={`flex items-center gap-1 sm:gap-1.5 ${isAndroidOrTablet ? "w-full" : "w-full md:w-auto"} flex-shrink-0`}>
                           {/* Grip Handle */}
                           <div
                             onMouseDown={() => setCanDragFunctionId(f.id)}
                             onMouseUp={() => setCanDragFunctionId(null)}
                             onTouchStart={() => setCanDragFunctionId(f.id)}
                             onTouchEnd={() => setCanDragFunctionId(null)}
-                            className="cursor-grab active:cursor-grabbing text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-0.5 sm:ml-0 rounded md:opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0"
+                            className={`cursor-grab active:cursor-grabbing text-slate-400 dark:text-slate-500 hover:text-slate-600 dark:hover:text-slate-300 p-0.5 -ml-0.5 sm:ml-0 rounded ${isAndroidOrTablet ? "opacity-100" : "md:opacity-0 group-hover:opacity-100"} transition-opacity flex-shrink-0`}
                             title="Drag to reorder"
                           >
                             <GripVertical size={13} className="sm:w-3.5 sm:h-3.5" />
@@ -3716,10 +3721,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                             );
                           })()}
 
-                          <div className="flex-1 md:hidden"></div>
-                          {/* Mobile Toggle Button inside Header Row */}
+                          <div className={`flex-1 ${isAndroidOrTablet ? "" : "md:hidden"}`}></div>
+                          {/* Three Dots Action Button inside Header Row */}
                           <div
-                            className="md:hidden flex items-center shrink-0 nodrag cursor-default"
+                            className={`${isAndroidOrTablet ? "" : "md:hidden"} flex items-center shrink-0 nodrag cursor-default`}
                             onClick={(e) => e.stopPropagation()}
                           >
                             <button
@@ -3730,14 +3735,15 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   activeActionMenuId === f.id ? null : f.id,
                                 );
                               }}
+                              title="More Options"
                             >
                               <MoreVertical size={15} />
                             </button>
                           </div>
                         </div>
 
-                        {/* Equation Input / Desktop Right side */}
-                        <div className="flex flex-col flex-1 min-w-0 w-full md:w-auto relative">
+                        {/* Equation Input */}
+                        <div className={`flex flex-col flex-1 min-w-0 ${isAndroidOrTablet ? "w-full" : "w-full md:w-auto"} relative`}>
                           <div className="flex items-center font-mono text-sm w-full gap-1 relative group/input">
                             <div className="flex-1 min-w-0">
                               <EquationInput
@@ -3798,9 +3804,10 @@ export const MathNodeRenderer: React.FC<any> = ({
                             </div>
 
                             {/* Desktop Inline Actions */}
-                            <div
-                              className={`absolute right-2 top-5 -translate-y-1/2 hidden md:opacity-0 md:group-hover/input:opacity-100 md:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 transition-opacity z-[1000] hover:opacity-100`}
-                            >
+                            {!isAndroidOrTablet && (
+                              <div
+                                className={`absolute right-2 top-5 -translate-y-1/2 hidden md:opacity-0 md:group-hover/input:opacity-100 md:flex items-center gap-0.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm rounded-md p-0.5 transition-opacity z-[1000] hover:opacity-100`}
+                              >
                               <button
                                 type="button"
                                 onClick={() => {
@@ -3964,6 +3971,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                                 <Trash2 size={14} />
                               </button>
                             </div>
+                            )}
                           </div>
 
                           {drawingFnId === f.id && (
@@ -6508,11 +6516,11 @@ export const MathNodeRenderer: React.FC<any> = ({
                           </div>
                         )}
                         {/* Action Buttons Block */}
-                        <div className="absolute right-2 top-2 nodrag shrink-0 z-[1000] flex flex-col md:flex-row items-end md:items-center">
-                          {/* Mobile Dropdown Actions Block */}
+                        <div className={`absolute right-2 top-2 nodrag shrink-0 z-[1000] flex flex-col items-end ${isAndroidOrTablet ? "" : "md:flex-row md:items-center"}`}>
+                          {/* Dropdown Actions Block */}
                           {activeActionMenuId === f.id && (
                             <div
-                              className="md:hidden mt-[36px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md p-1 min-w-[150px] z-[100] flex flex-col gap-0.5 nodrag cursor-default animate-in fade-in zoom-in-95"
+                              className={`${isAndroidOrTablet ? "" : "md:hidden"} mt-[36px] bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl rounded-md p-1 min-w-[150px] z-[100] flex flex-col gap-0.5 nodrag cursor-default animate-in fade-in zoom-in-95`}
                               onClick={(e) => e.stopPropagation()}
                             >
                               <button
