@@ -1356,7 +1356,7 @@ export const TransferNodeRenderer: React.FC<{
 
       let blob = media.originalBlob || blobRegistry.get(media.content);
 
-      if (!blob && media.type === "file" && media.content.startsWith("blob:")) {
+      if (!blob && media.content && (media.content.startsWith("blob:") || media.content.startsWith("data:"))) {
         console.log("[Transfer Node Copy] Fallback Triggered: Fetching object URL");
         try {
           const res = await fetch(media.content);
@@ -1396,7 +1396,13 @@ export const TransferNodeRenderer: React.FC<{
         ]);
       };
 
-      if (media.fileType === "image") {
+      const isImage =
+        media.fileType === "image" ||
+        (blob && blob.type.startsWith("image/")) ||
+        (media.fileName && getFileType(media.fileName) === "image") ||
+        (media.content && media.content.startsWith("data:image/"));
+
+      if (isImage) {
         let supportsNative = false;
         try {
           if (typeof ClipboardItem !== "undefined" && ClipboardItem.supports) {
@@ -1406,7 +1412,7 @@ export const TransferNodeRenderer: React.FC<{
           supportsNative = false;
         }
 
-        if (!supportsNative && (blob.type === "image/webp" || blob.type === "image/avif" || blob.type === "image/png" || blob.type === "image/jpeg")) {
+        if (!supportsNative && (blob.type === "image/webp" || blob.type === "image/avif" || blob.type === "image/png" || blob.type === "image/jpeg" || blob.type === "image/jpg" || blob.type.startsWith("image/"))) {
           console.log("[Transfer Node Copy] Fallback Triggered: Converting image format via JSquash...");
           const convertToPng = async () => {
             let imageData: ImageData | null = null;
@@ -1418,7 +1424,7 @@ export const TransferNodeRenderer: React.FC<{
               } else if (blob.type === "image/avif") {
                 const decodeAvif = (await import("@jsquash/avif/decode")).default;
                 imageData = await decodeAvif(buffer);
-              } else if (blob.type === "image/jpeg") {
+              } else if (blob.type === "image/jpeg" || blob.type === "image/jpg") {
                 const decodeJpeg = (await import("@jsquash/jpeg/decode")).default;
                 imageData = await decodeJpeg(buffer);
               }
@@ -1430,6 +1436,7 @@ export const TransferNodeRenderer: React.FC<{
               return await new Promise<Blob>((resolve, reject) => {
                 const img = new Image();
                 img.onload = () => {
+                  try { URL.revokeObjectURL(img.src); } catch (_) {}
                   const canvas = document.createElement("canvas");
                   canvas.width = img.width;
                   canvas.height = img.height;
@@ -1441,7 +1448,10 @@ export const TransferNodeRenderer: React.FC<{
                     else reject(new Error("Canvas toBlob failed"));
                   }, "image/png");
                 };
-                img.onerror = () => reject(new Error("Image load failed"));
+                img.onerror = () => {
+                  try { URL.revokeObjectURL(img.src); } catch (_) {}
+                  reject(new Error("Image load failed"));
+                };
                 img.src = URL.createObjectURL(blob!);
               });
             } else {
@@ -1475,6 +1485,7 @@ export const TransferNodeRenderer: React.FC<{
             const canvasBlob = await new Promise<Blob>((resolve, reject) => {
               const img = new Image();
               img.onload = () => {
+                try { URL.revokeObjectURL(img.src); } catch (_) {}
                 const canvas = document.createElement("canvas");
                 canvas.width = img.width;
                 canvas.height = img.height;
@@ -1486,7 +1497,10 @@ export const TransferNodeRenderer: React.FC<{
                   else reject(new Error("Canvas toBlob failed"));
                 }, "image/png");
               };
-              img.onerror = () => reject(new Error("Image load failed"));
+              img.onerror = () => {
+                try { URL.revokeObjectURL(img.src); } catch (_) {}
+                reject(new Error("Image load failed"));
+              };
               img.src = URL.createObjectURL(blob!);
             });
             await writeToClipboard(canvasBlob);
@@ -4859,12 +4873,41 @@ export const TransferNodeRenderer: React.FC<{
               }
             };
 
-            const handleCopyMessage = (msg: Message) => {
-              navigator.clipboard.writeText(msg.content);
-              setCopyStatus({ id: msg.id, status: "success" });
-              setTimeout(() => {
-                setCopyStatus(prev => prev?.id === msg.id ? null : prev);
-              }, 2000);
+            const handleCopyMessage = async (msg: Message) => {
+              // 1. Single attachment in composite message (e.g. sent without caption)
+              if (msg.type === "composite") {
+                const singleAtt = msg.attachments && msg.attachments.length === 1 ? msg.attachments[0] : null;
+                if (singleAtt && (!msg.content || !msg.content.trim())) {
+                  await handleMediaCopy({ ...singleAtt, id: msg.id, sender: msg.sender, timestamp: msg.timestamp } as any);
+                  return;
+                }
+              }
+
+              // 2. File or file offer message (Image, text file, etc.)
+              const isImage =
+                msg.fileType === "image" ||
+                (msg.fileName && getFileType(msg.fileName) === "image") ||
+                (msg.content && (msg.content.startsWith("data:image/") || blobRegistry.get(msg.content)?.type.startsWith("image/")));
+
+              if (msg.type === "file" || (msg.type === "file_offer" && msg.content) || isImage) {
+                await handleMediaCopy(msg);
+                return;
+              }
+
+              // 3. Text message / caption text
+              if (msg.content) {
+                try {
+                  await navigator.clipboard.writeText(msg.content);
+                  setCopyStatus({ id: msg.id, status: "success" });
+                  setNotification({ message: "Text copied to clipboard", type: "success" });
+                  setTimeout(() => {
+                    setCopyStatus((prev) => (prev?.id === msg.id ? null : prev));
+                  }, 2000);
+                } catch (err) {
+                  console.error("Failed to copy text", err);
+                  setNotification({ message: "Failed to copy text", type: "error" });
+                }
+              }
             };
 
             const content = (
@@ -5141,7 +5184,7 @@ export const TransferNodeRenderer: React.FC<{
                                     onClick={() =>
                                       handleCopyMessage(msg)
                                     }
-                                    title={copyStatus?.id === msg.id && copyStatus.status === "success" ? "Copied!" : "Copy"}
+                                    title={copyStatus?.id === msg.id && copyStatus.status === "success" ? "Copied!" : msg.fileType === "image" || (msg.fileName && getFileType(msg.fileName) === "image") ? "Copy image" : "Copy"}
                                     className={`p-1.5 rounded-full transition-all duration-200 cursor-pointer ${copyStatus?.id === msg.id && copyStatus.status === "success" ? "bg-emerald-500/25 text-emerald-400 ring-1 ring-emerald-500/40" : isDark ? "hover:bg-white/20 text-white" : "hover:bg-slate-100 text-slate-600"}`}
                                   >
                                     {copyStatus?.id === msg.id && copyStatus.status === "success" ? (
