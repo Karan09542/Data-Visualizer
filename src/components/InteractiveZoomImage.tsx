@@ -10,7 +10,7 @@ import {
 } from "./imageViewMath";
 import { MarkupSvg, useMarkupGestures } from "./imageMarkup/ImageMarkupLayer";
 import { ImageMarkupToolbar, TOOL_KEYS } from "./imageMarkup/ImageMarkupToolbar";
-import { ptUnit } from "./imageMarkup/markupModel";
+import { HIGHLIGHTER_OPACITY, HIGHLIGHTER_SCALE, ptUnit } from "./imageMarkup/markupModel";
 import type { ImageMarkupState } from "./imageMarkup/useImageMarkup";
 
 interface InteractiveZoomImageProps {
@@ -97,6 +97,7 @@ export function InteractiveZoomImage({
 
   const containerRef = useRef<HTMLDivElement>(null);
   const imgRef = useRef<HTMLImageElement>(null);
+  const cursorRingRef = useRef<HTMLDivElement>(null);
   const pointers = useRef(new Map<number, { x: number; y: number }>());
   const gesture = useRef<{
     startX: number;
@@ -330,6 +331,18 @@ export function InteractiveZoomImage({
   const onPointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
     const p = toContainer(e.clientX, e.clientY);
 
+    // Visual brush stroke size cursor indicator for pen & highlighter
+    if (cursorRingRef.current) {
+      if (e.pointerType === "touch" || (e.target as HTMLElement).closest("[data-zoom-ui]")) {
+        cursorRingRef.current.style.display = "none";
+      } else if (drawing && (markup?.style.tool === "pen" || markup?.style.tool === "highlighter")) {
+        cursorRingRef.current.style.display = "flex";
+        cursorRingRef.current.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) translate(-50%, -50%)`;
+      } else {
+        cursorRingRef.current.style.display = "none";
+      }
+    }
+
     // Hover readout (mouse and pen) while the point tool is on.
     if (coordsOn && e.pointerType !== "touch") {
       const px = pixelAt(p.x, p.y);
@@ -475,6 +488,12 @@ export function InteractiveZoomImage({
   const barButton =
     "h-7 min-w-7 px-1.5 inline-flex items-center justify-center gap-1 rounded-full text-[11px] font-medium text-slate-200 hover:text-white hover:bg-white/10 disabled:opacity-35 disabled:pointer-events-none transition-colors";
 
+  const isPenOrHighlighter = drawing && (markup?.style.tool === "pen" || markup?.style.tool === "highlighter");
+  const isHighlighter = markup?.style.tool === "highlighter";
+  const strokeSize = markup?.style.size ?? 2;
+  const strokeScreenPx = strokeSize * unit * (isHighlighter ? HIGHLIGHTER_SCALE : 1) * ratio;
+  const cursorDiameter = Math.max(strokeScreenPx, 4);
+
   return (
     <div
       ref={containerRef}
@@ -483,7 +502,9 @@ export function InteractiveZoomImage({
         drawing
           ? markup?.style.tool === "select"
             ? "cursor-default"
-            : "cursor-crosshair"
+            : isPenOrHighlighter
+              ? "cursor-none"
+              : "cursor-crosshair"
           : coordsOn
             ? "cursor-crosshair"
             : isGesturing
@@ -495,8 +516,17 @@ export function InteractiveZoomImage({
       onPointerMove={onPointerMove}
       onPointerUp={endPointer}
       onPointerCancel={endPointer}
+      onPointerEnter={(e) => {
+        if (e.pointerType === "touch") return;
+        if (cursorRingRef.current && isPenOrHighlighter && !(e.target as HTMLElement).closest("[data-zoom-ui]")) {
+          const p = toContainer(e.clientX, e.clientY);
+          cursorRingRef.current.style.display = "flex";
+          cursorRingRef.current.style.transform = `translate3d(${p.x}px, ${p.y}px, 0) translate(-50%, -50%)`;
+        }
+      }}
       onPointerLeave={(e) => {
         if (e.pointerType !== "touch") setHover(null);
+        if (cursorRingRef.current) cursorRingRef.current.style.display = "none";
       }}
       onKeyDown={onKeyDown}
       aria-label={`${alt}. Zoom ${percent}%.`}
@@ -563,6 +593,38 @@ export function InteractiveZoomImage({
           onDone={() => onDrawModeChange?.(false)}
           onMessage={onMarkupMessage}
         />
+      )}
+
+      {/* Visual brush stroke size cursor for pen & highlighter */}
+      {isPenOrHighlighter && (
+        <div
+          ref={cursorRingRef}
+          aria-hidden="true"
+          className="absolute left-0 top-0 pointer-events-none rounded-full z-30 hidden items-center justify-center will-change-transform"
+          style={{
+            width: `${cursorDiameter}px`,
+            height: `${cursorDiameter}px`,
+            border: "1.5px solid rgba(255, 255, 255, 0.95)",
+            boxShadow: "0 0 0 1px rgba(0, 0, 0, 0.65), inset 0 0 0 1px rgba(0, 0, 0, 0.35)",
+            transform: "translate3d(-9999px, -9999px, 0) translate(-50%, -50%)",
+          }}
+        >
+          {isHighlighter && (
+            <span
+              className="absolute inset-0 rounded-full pointer-events-none"
+              style={{
+                backgroundColor: markup?.style.color ?? "#facc15",
+                opacity: HIGHLIGHTER_OPACITY,
+              }}
+            />
+          )}
+          {!isHighlighter && cursorDiameter >= 8 && (
+            <span
+              className="w-1.5 h-1.5 rounded-full pointer-events-none shadow-[0_0_1px_1px_rgba(0,0,0,0.8)]"
+              style={{ backgroundColor: markup?.style.color ?? "#fff" }}
+            />
+          )}
+        </div>
       )}
 
       {/* Pinned points */}

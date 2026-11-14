@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { ColorPickerTrigger } from "../image-workspace/components/shared/ColorPickers";
 import {
   Check,
   ChevronUp,
@@ -13,6 +14,7 @@ import {
   MousePointer2,
   MoveUpRight,
   PenLine,
+  Pipette,
   Plus,
   Redo2,
   Square,
@@ -143,7 +145,7 @@ function SizeControl({
   // A very light or very dark colour would vanish against the track: the fill falls back to blue.
   const fill = (() => {
     const m = /^#([0-9a-f]{6})$/i.exec(color);
-    if (!m) return "#3b82f6";
+    if (!m) return color.startsWith("#") || color.startsWith("rgb") ? color : "#3b82f6";
     const n = parseInt(m[1], 16);
     const lum = (0.299 * (n >> 16) + 0.587 * ((n >> 8) & 255) + 0.114 * (n & 255)) / 255;
     return lum > 0.85 || lum < 0.15 ? "#3b82f6" : color;
@@ -200,10 +202,12 @@ function SizeControl({
 
 function Swatches({ color, onPick, big }: { color: string; onPick: (c: string) => void; big: boolean }) {
   const size = big ? "size-8" : "size-6";
+  const isCustom = !COLORS.some((c) => c.toLowerCase() === color.toLowerCase());
+
   return (
     <div className={big ? "grid grid-cols-5 gap-2.5 justify-items-center" : "flex items-center gap-1"} role="radiogroup" aria-label="Colour">
       {COLORS.map((c) => {
-        const on = color.toLowerCase() === c;
+        const on = color.toLowerCase() === c.toLowerCase();
         return (
           <button
             key={c}
@@ -220,16 +224,35 @@ function Swatches({ color, onPick, big }: { color: string; onPick: (c: string) =
           />
         );
       })}
-      <label className={`shrink-0 relative ${size} rounded-full border border-white/25 overflow-hidden cursor-pointer`} title="Any colour">
-        <span className="absolute inset-0" style={{ background: "conic-gradient(red, yellow, lime, cyan, blue, magenta, red)" }} />
-        <input
-          type="color"
-          value={/^#[0-9a-f]{6}$/i.test(color) ? color : "#ef4444"}
-          onChange={(e) => onPick(e.target.value)}
-          className="absolute inset-0 opacity-0 cursor-pointer"
-          aria-label="Pick any colour"
+      <ColorPickerTrigger
+        color={color}
+        onChange={onPick}
+        presets={COLORS}
+        className={`shrink-0 relative ${size} rounded-full cursor-pointer hover:scale-110 active:scale-95 transition-transform flex items-center justify-center p-0 aspect-square ${
+          isCustom
+            ? "ring-2 ring-white ring-offset-2 ring-offset-black/70 shadow-md"
+            : "hover:ring-1 hover:ring-white/60"
+        }`}
+        style={{
+          background: isCustom
+            ? color
+            : "conic-gradient(from 180deg, #ef4444, #f59e0b, #10b981, #06b6d4, #6366f1, #ec4899, #ef4444)",
+          backgroundOrigin: "border-box",
+          backgroundClip: "border-box",
+          backgroundRepeat: "no-repeat",
+          boxShadow: isCustom
+            ? undefined
+            : "0 0 0 1px rgba(255, 255, 255, 0.3), inset 0 0 2px rgba(0, 0, 0, 0.25)",
+        }}
+        label="Custom colour picker"
+        title="Custom colour picker"
+      >
+        <Pipette
+          size={big ? 13 : 11}
+          className="text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.85)] pointer-events-none"
+          strokeWidth={2.4}
         />
-      </label>
+      </ColorPickerTrigger>
     </div>
   );
 }
@@ -370,9 +393,14 @@ export function ImageMarkupToolbar({ markup, src, fileName, onDone, onMessage }:
                     pickTool(id);
                     setSheet(null);
                   }}
+                  onPointerDown={(e) => {
+                    e.stopPropagation();
+                    pickTool(id);
+                    setSheet(null);
+                  }}
                   aria-pressed={on}
                   aria-label={label}
-                  className={`h-14 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors ${
+                  className={`h-14 rounded-xl flex flex-col items-center justify-center gap-1 transition-colors cursor-pointer ${
                     on ? "bg-white text-slate-900" : "text-slate-200 active:bg-white/15"
                   }`}
                 >
@@ -492,6 +520,8 @@ export function ImageMarkupToolbar({ markup, src, fileName, onDone, onMessage }:
 
   const BTN =
     "shrink-0 h-8 w-8 inline-flex items-center justify-center rounded-full text-slate-200 hover:text-white hover:bg-white/10 disabled:opacity-35 disabled:pointer-events-none transition-colors";
+  const TOOL_BTN =
+    "shrink-0 h-8 w-8 inline-flex items-center justify-center rounded-full disabled:opacity-35 disabled:pointer-events-none transition-colors cursor-pointer";
   return (
     <div
       ref={rootRef}
@@ -510,10 +540,18 @@ export function ImageMarkupToolbar({ markup, src, fileName, onDone, onMessage }:
               key={id}
               type="button"
               onClick={() => pickTool(id)}
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                pickTool(id);
+              }}
               aria-pressed={on}
               title={`${label} (${key})`}
               aria-label={label}
-              className={`${BTN} ${on ? "bg-white text-slate-900 hover:bg-white hover:text-slate-900" : ""}`}
+              className={`${TOOL_BTN} ${
+                on
+                  ? "bg-white text-slate-900 shadow-xs hover:bg-white hover:text-slate-900"
+                  : "text-slate-200 hover:text-white hover:bg-white/10 active:bg-white/20"
+              }`}
             >
               <Icon size={16} strokeWidth={id === "badge" ? 2.5 : 2} />
             </button>

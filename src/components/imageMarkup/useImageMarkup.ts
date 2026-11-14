@@ -36,7 +36,7 @@ function loadStyle(): MarkupStyle {
     const s = JSON.parse(raw);
     return {
       tool: typeof s.tool === "string" ? s.tool : DEFAULT_STYLE.tool,
-      color: typeof s.color === "string" && /^#[0-9a-f]{6}$/i.test(s.color) ? s.color : DEFAULT_STYLE.color,
+      color: typeof s.color === "string" && s.color.trim() ? s.color.trim() : DEFAULT_STYLE.color,
       size: clamp(Number(s.size) || DEFAULT_STYLE.size, SIZE_RANGE.min, SIZE_RANGE.max),
       stamp: clamp(Number(s.stamp) || DEFAULT_STYLE.stamp, STAMP_RANGE.min, STAMP_RANGE.max),
       fill: !!s.fill,
