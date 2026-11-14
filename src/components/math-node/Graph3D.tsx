@@ -300,6 +300,8 @@ export interface Graph3DOptions {
   intersections: boolean;
   /** A parallel (orthographic) view: no perspective, so parallel lines stay parallel. */
   ortho: boolean;
+  /** The dashed box drawn round what the Select tool has selected. */
+  selectionBox: boolean;
 }
 
 function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
@@ -319,6 +321,7 @@ function readOptions(o: Partial<Graph3DOptions> | undefined): Graph3DOptions {
     showBox: o?.showBox !== false,
     intersections: o?.intersections !== false,
     ortho: !!o?.ortho,
+    selectionBox: o?.selectionBox !== false,
   };
 }
 
@@ -1384,7 +1387,9 @@ class Engine {
       if (!this.ortho) this.camera.updateProjectionMatrix();
       this.labelsDirty = true;
     }
+    const boxChanged = options.selectionBox !== this.opts.selectionBox;
     this.opts = options;
+    if (boxChanged) this.syncGizmos();
     if (decorChanged) this.buildDecor();
     this.controls.autoRotate = options.autoRotate;
     this.sliceDirty = true;
@@ -6480,7 +6485,7 @@ class Engine {
   /** A dashed box round what is selected. */
   private buildSelectionOutline() {
     const sel = this.selection;
-    if (!this.selectTool || !sel?.rowIds.length) return;
+    if (!this.selectTool || !sel?.rowIds.length || !this.opts.selectionBox) return;
     const box = this.rowsBox(sel.rowIds);
     if (!box) return;
     const pad = 0.025 * this.domain.half;
@@ -7668,6 +7673,15 @@ const Graph3D: React.FC<Graph3DProps> = (props) => {
                   on={options.showBox}
                   onChange={(on) => setOptions({ showBox: on })}
                 />
+                {props.selectTool && !!props.selection?.rowIds.length && (
+                  // Only while something is selected: the box it shows round the selection.
+                  <Switch
+                    label="Selection box"
+                    title="The dashed box round the selected shape. Its handles stay either way."
+                    on={options.selectionBox}
+                    onChange={(on) => setOptions({ selectionBox: on })}
+                  />
+                )}
                 <Switch
                   label="Orthographic"
                   title="No perspective: parallel lines stay parallel and sizes don't shrink with distance, as in a technical drawing"
