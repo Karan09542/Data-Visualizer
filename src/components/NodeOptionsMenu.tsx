@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { MoreVertical, ExternalLink } from 'lucide-react';
+import { MoreVertical, ExternalLink, Maximize, Minimize } from 'lucide-react';
+import { useFullscreen } from '../hooks/useFullscreen';
 
 interface NodeOptionsMenuProps {
   path: string;
@@ -9,12 +10,14 @@ interface NodeOptionsMenuProps {
   customText?: string;
   onCustomAction?: () => void;
   forceWorkspace?: boolean;
+  onToggleFullscreen?: () => void;
 }
 
-export function NodeOptionsMenu({ path, iconSize = 18, className = "", customText, onCustomAction, forceWorkspace }: NodeOptionsMenuProps) {
+export function NodeOptionsMenu({ path, iconSize = 18, className = "", customText, onCustomAction, forceWorkspace, onToggleFullscreen }: NodeOptionsMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const { isFullscreen: isBrowserFullscreen, isSupported: canGoFullscreen, toggleFullscreen } = useFullscreen();
   useLayoutEffect(() => {
     if (!isOpen || !buttonRef.current || !menuRef.current) return;
 
@@ -84,6 +87,14 @@ export function NodeOptionsMenu({ path, iconSize = 18, className = "", customTex
     window.open(url.toString(), '_blank');
   };
 
+  const handleToggleFullscreen = async () => {
+    setIsOpen(false);
+    if (onToggleFullscreen) {
+      onToggleFullscreen();
+    }
+    await toggleFullscreen();
+  };
+
   return (
     <div className={`relative inline-flex items-center justify-center ${className}`} onMouseDown={(e) => e.stopPropagation()} onTouchStart={(e) => e.stopPropagation()}>
       <button 
@@ -102,11 +113,22 @@ export function NodeOptionsMenu({ path, iconSize = 18, className = "", customTex
       {isOpen && createPortal(
         <div 
           ref={menuRef}
-          className="min-w-[140px] bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-lg shadow-[0_10px_30px_-10px_rgba(0,0,0,0.3)] py-1 overflow-hidden pointer-events-auto"
+          className="min-w-[150px] bg-white dark:bg-[#161b22] border border-slate-200 dark:border-slate-800 rounded-lg shadow-[0_10px_30px_-10px_rgba(0,0,0,0.3)] py-1 overflow-hidden pointer-events-auto"
           onClick={(e) => e.stopPropagation()}
           onMouseDown={(e) => e.stopPropagation()}
           onTouchStart={(e) => e.stopPropagation()}
         >
+          {canGoFullscreen && (
+            <button
+              onClick={handleToggleFullscreen}
+              className="w-full text-left px-2.5 py-1.5 text-xs text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-2 transition-colors cursor-pointer"
+            >
+              {isBrowserFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+              <span className="font-medium">
+                {isBrowserFullscreen ? "Exit Fullscreen" : "Fullscreen Mode"}
+              </span>
+            </button>
+          )}
           <button
             onClick={() => {
               if (onCustomAction) {

@@ -3309,7 +3309,14 @@ export const MathNodeRenderer: React.FC<any> = ({
             >
               {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
             </button>
-            <NodeOptionsMenu path={nodeId} iconSize={15} className={headerIconBtn} />
+            <NodeOptionsMenu
+              path={nodeId}
+              iconSize={15}
+              className={headerIconBtn}
+              onToggleFullscreen={() => {
+                if (!isFullscreen) setIsFullscreen(true);
+              }}
+            />
           </div>
         </div>
       </div>
