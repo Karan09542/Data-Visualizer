@@ -26,6 +26,11 @@ export interface SelectToolSelection {
   centre: Vec2 | null;
   canRotate: boolean;
   canResize: boolean;
+  /**
+   * How far it is turned now, for a row turned through its own settings: the turn
+   * handle then follows it wherever it was changed (here, a typed value, the 3D view).
+   */
+  rotation?: number;
 }
 
 interface SelectToolProps {
@@ -232,8 +237,9 @@ export function SelectTool({ active, containerRef, selection, onSelect, onMotion
   const ring = Math.max(MIN_RING_PX / Math.min(sx, sy), Math.min(reach * 1.12, most));
 
   const at = (angle: number): Vec2 => [centre[0] + ring * Math.cos(angle), centre[1] + ring * Math.sin(angle)];
-  const rotateAngle = Math.PI / 2 + turned;
-  const resizeAngle = -Math.PI / 4 + turned;
+  const turnedNow = selection.rotation ?? turned;
+  const rotateAngle = Math.PI / 2 + turnedNow;
+  const resizeAngle = -Math.PI / 4 + turnedNow;
 
   return (
     <g ref={anchorRef}>

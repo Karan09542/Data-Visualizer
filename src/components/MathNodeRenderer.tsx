@@ -229,6 +229,7 @@ import {
 } from "./math-node";
 import type { TimeMode } from "./math-node/Timeline";
 import type { GraphView } from "./math-node/simulations";
+import { TransformSettings } from "./math-node/TransformSettings";
 import type { Graph3DOptions, RotateAxes, Selection3D } from "./math-node/Graph3D";
 import { solveDrag, snapToStep } from "../lib/math/dragSolve";
 import {
@@ -2406,6 +2407,7 @@ export const MathNodeRenderer: React.FC<any> = ({
         centre: [selectedRow.transformPivot[0] + tx, selectedRow.transformPivot[1] + ty],
         canRotate: true,
         canResize: true,
+        rotation: selectedRow.transformRotate ?? 0,
       };
     } else {
       // A row the user set up to transform itself keeps its own handles; here it can be deleted.
@@ -4920,248 +4922,13 @@ export const MathNodeRenderer: React.FC<any> = ({
                                   }
                                 />
 
-                                <div className="flex items-center justify-between gap-3 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900/50 px-3 py-2">
-                                  <span className="min-w-0">
-                                    <span className="block text-xs font-semibold text-slate-800 dark:text-slate-100">Origin</span>
-                                    <span className="block text-[10px] text-slate-400 dark:text-slate-500">{viewMode === "3d" ? "Shift by [h, k, z]" : "Shift by [h, k]"}</span>
-                                  </span>
-                                  <div className="flex gap-1.5 flex-1 max-w-[140px]">
-                                    <input
-                                      title="h (shift for x-axis)"
-                                      type="number"
-                                      step="1"
-                                      value={f.transformTranslate?.[0] || 0}
-                                      onChange={(e) =>
-                                        setFunctions((prev) =>
-                                          prev.map((fn) =>
-                                            fn.id === f.id
-                                              ? {
-                                                ...fn,
-                                                transformTranslate: [
-                                                  parseFloat(
-                                                    e.target.value,
-                                                  ) || 0,
-                                                  fn
-                                                    .transformTranslate?.[1] ||
-                                                  0,
-                                                ],
-                                              }
-                                              : fn,
-                                          ),
-                                        )
-                                      }
-                                      className={`${FIELD_CLASS} text-center px-1`}
-                                      placeholder="h"
-                                    />
-                                    <input
-                                      title="k (shift for y-axis)"
-                                      type="number"
-                                      step="1"
-                                      value={f.transformTranslate?.[1] || 0}
-                                      onChange={(e) =>
-                                        setFunctions((prev) =>
-                                          prev.map((fn) =>
-                                            fn.id === f.id
-                                              ? {
-                                                ...fn,
-                                                transformTranslate: [
-                                                  fn
-                                                    .transformTranslate?.[0] ||
-                                                  0,
-                                                  parseFloat(
-                                                    e.target.value,
-                                                  ) || 0,
-                                                ],
-                                              }
-                                              : fn,
-                                          ),
-                                        )
-                                      }
-                                      className={`${FIELD_CLASS} text-center px-1`}
-                                      placeholder="k"
-                                    />
-                                    {viewMode === "3d" && (
-                                      <input
-                                        title="Height shift (z), drawn in the 3D view only"
-                                        type="number"
-                                        step="0.5"
-                                        value={f.transformTranslateZ || 0}
-                                        onChange={(e) =>
-                                          setFunctions((prev) =>
-                                            prev.map((fn) =>
-                                              fn.id === f.id ? { ...fn, transformTranslateZ: parseFloat(e.target.value) || 0 } : fn,
-                                            ),
-                                          )
-                                        }
-                                        className={`${FIELD_CLASS} text-center px-1`}
-                                        placeholder="z"
-                                      />
-                                    )}
-                                  </div>
-                                </div>
-
-                                {/* Numeric Transform Inputs */}
-                                {f.isTransformable && (
-                                  <div className={SETTINGS_CARD}>
-                                    <div className="font-semibold text-slate-800 dark:text-slate-100 flex items-center justify-between">
-                                      <span className="text-xs">
-                                        Transform Data
-                                      </span>
-                                      <button
-                                        onClick={() =>
-                                          setFunctions((prev) =>
-                                            prev.map((fn) =>
-                                              fn.id === f.id
-                                                ? {
-                                                  ...fn,
-                                                  transformScale: [1, 1],
-                                                  transformRotate: 0,
-                                                  transformTranslate: [0, 0],
-                                                  transformTranslateZ: 0,
-                                                }
-                                                : fn,
-                                            ),
-                                          )
-                                        }
-                                        className="text-[9px] hover:text-blue-500 bg-white/50 dark:bg-slate-800/80 px-1.5 py-0.5 rounded border border-blue-200 dark:border-blue-800 hover:border-blue-400 transition-colors"
-                                      >
-                                        Reset
-                                      </button>
-                                    </div>
-
-                                    {f.isRotatable && (
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-slate-600 dark:text-slate-400 text-xs">
-                                          Rotation (deg)
-                                        </span>
-                                        <input
-                                          type="number"
-                                          value={Math.round(
-                                            ((f.transformRotate || 0) * 180) /
-                                            Math.PI,
-                                          )}
-                                          onChange={(e) =>
-                                            setFunctions((prev) =>
-                                              prev.map((fn) =>
-                                                fn.id === f.id
-                                                  ? {
-                                                    ...fn,
-                                                    transformRotate:
-                                                      ((parseFloat(
-                                                        e.target.value,
-                                                      ) || 0) *
-                                                        Math.PI) /
-                                                      180,
-                                                  }
-                                                  : fn,
-                                              ),
-                                            )
-                                          }
-                                          className="w-16 bg-white dark:bg-slate-800 text-right px-1.5 py-0.5 rounded outline-none border border-slate-300 dark:border-slate-600 focus:border-blue-500 transition-colors text-xs text-slate-700 dark:text-slate-200"
-                                        />
-                                      </div>
-                                    )}
-
-                                    {f.isResizable && (
-                                      <div className="flex items-center justify-between">
-                                        <span className="text-slate-600 dark:text-slate-400 text-xs">
-                                          Scale
-                                        </span>
-                                        <input
-                                          type="number"
-                                          step="0.1"
-                                          value={(
-                                            f.transformScale?.[0] || 1
-                                          ).toFixed(2)}
-                                          onChange={(e) =>
-                                            setFunctions((prev) =>
-                                              prev.map((fn) =>
-                                                fn.id === f.id
-                                                  ? {
-                                                    ...fn,
-                                                    transformScale: [
-                                                      parseFloat(
-                                                        e.target.value,
-                                                      ) || 1,
-                                                      parseFloat(
-                                                        e.target.value,
-                                                      ) || 1,
-                                                    ],
-                                                  }
-                                                  : fn,
-                                              ),
-                                            )
-                                          }
-                                          className="w-16 bg-white dark:bg-slate-800 text-right px-1.5 py-0.5 rounded outline-none border border-slate-300 dark:border-slate-600 focus:border-blue-500 transition-colors text-xs text-slate-700 dark:text-slate-200"
-                                        />
-                                      </div>
-                                    )}
-
-                                    {f.isPivotEnabled && (
-                                      <div className="flex items-center justify-between pt-1 mt-0.5 border-t border-blue-500/10">
-                                        <span className="text-slate-600 dark:text-slate-400 text-xs">
-                                          Pivot [X, Y]
-                                        </span>
-                                        <div className="flex gap-1.5">
-                                          <input
-                                            type="number"
-                                            step="0.5"
-                                            value={(
-                                              f.transformPivot?.[0] || 0
-                                            ).toFixed(1)}
-                                            onChange={(e) =>
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id
-                                                    ? {
-                                                      ...fn,
-                                                      transformPivot: [
-                                                        parseFloat(
-                                                          e.target.value,
-                                                        ) || 0,
-                                                        fn
-                                                          .transformPivot?.[1] ||
-                                                        0,
-                                                      ],
-                                                    }
-                                                    : fn,
-                                                ),
-                                              )
-                                            }
-                                            className="w-[38px] bg-white dark:bg-slate-800 text-center px-1 py-0.5 rounded outline-none border border-slate-300 dark:border-slate-600 focus:border-blue-500 transition-colors text-[10px] text-slate-700 dark:text-slate-200 font-mono"
-                                          />
-                                          <input
-                                            type="number"
-                                            step="0.5"
-                                            value={(
-                                              f.transformPivot?.[1] || 0
-                                            ).toFixed(1)}
-                                            onChange={(e) =>
-                                              setFunctions((prev) =>
-                                                prev.map((fn) =>
-                                                  fn.id === f.id
-                                                    ? {
-                                                      ...fn,
-                                                      transformPivot: [
-                                                        fn
-                                                          .transformPivot?.[0] ||
-                                                        0,
-                                                        parseFloat(
-                                                          e.target.value,
-                                                        ) || 0,
-                                                      ],
-                                                    }
-                                                    : fn,
-                                                ),
-                                              )
-                                            }
-                                            className="w-[38px] bg-white dark:bg-slate-800 text-center px-1 py-0.5 rounded outline-none border border-slate-300 dark:border-slate-600 focus:border-blue-500 transition-colors text-[10px] text-slate-700 dark:text-slate-200 font-mono"
-                                          />
-                                        </div>
-                                      </div>
-                                    )}
-                                  </div>
-                                )}
+                                <TransformSettings
+                                  f={f}
+                                  is3d={viewMode === "3d"}
+                                  onPatch={(patch) =>
+                                    setFunctions((prev) => prev.map((fn) => (fn.id === f.id ? { ...fn, ...patch } : fn)))
+                                  }
+                                />
                               </div>
                               {/* Appearance: inequality type, colour, fill, line style, width */}
                               <div className={SETTINGS_CARD}>
