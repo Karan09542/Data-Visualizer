@@ -137,6 +137,10 @@ export interface Selection3D {
 const SELECTION_ID = "__selection__";
 const SELECT_COLOR = "#3b82f6";
 const SELECT_HANDLE_ANGLE = (5 * Math.PI) / 4;
+/** How far round the z ring its handle sits from the shape's own direction. */
+const Z_HANDLE_OFFSET = Math.PI / 4;
+/** The free-turn handle's place on screen, from the middle of the gizmo (pixels). */
+const FREE_HANDLE_PX = { x: -64, y: -64 };
 /** Where the x and y rings' handles rest, round their rings. */
 const REST_TILT = (-3 * Math.PI) / 4;
 /** Kinds of row whose drawing follows the in-plane transform (move, turn, resize across the floor). */
@@ -227,11 +231,39 @@ const GIZMO_COLORS: Partial<Record<GizmoKind, string>> = {
   x: "#ef4444",
   y: "#22c55e",
   z: "#3b82f6",
-  rotate: "#eab308",
+  rotate: "#3b82f6",
   rotX: "#ef4444",
   rotY: "#22c55e",
   free: "#a855f7",
   scale: "#10b981",
+};
+
+/** The word by each handle while it is pointed at. */
+const GIZMO_LABELS: Record<GizmoKind | "pivot" | "move", string> = {
+  center: "Move",
+  move: "Move",
+  pivot: "Move the pivot",
+  x: "Move along x",
+  y: "Move along y",
+  z: "Move up or down (z)",
+  rotate: "Turn about z",
+  rotX: "Turn about x",
+  rotY: "Turn about y",
+  free: "Turn freely",
+  scale: "Resize",
+};
+
+/** What each handle shows: an arrow to move, a curved arrow to turn, and so on (lucide shapes). */
+const GIZMO_ICONS: Record<GizmoKind, string> = {
+  center: '<path d="M12 2v20"/><path d="m15 19-3 3-3-3"/><path d="m19 9 3 3-3 3"/><path d="M2 12h20"/><path d="m5 9-3 3 3 3"/><path d="m9 5 3-3 3 3"/>',
+  x: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+  y: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+  z: '<path d="M5 12h14"/><path d="m13 6 6 6-6 6"/>',
+  rotate: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  rotX: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  rotY: '<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/>',
+  free: '<path d="M16.47 7.5C15.64 4.24 13.95 2 12 2 9.24 2 7 6.48 7 12s2.24 10 5 10c.34 0 .68-.07 1-.2"/><path d="m15.19 13.71 3.82 1.86-1.86 3.81"/><path d="M19 15.57c-1.8.89-4.27 1.43-7 1.43-5.52 0-10-2.24-10-5s4.48-5 10-5c4.84 0 8.87 1.72 9.8 4"/>',
+  scale: '<path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/>',
 };
 
 const GIZMO_TITLES: Record<GizmoKind | "pivot" | "move", string> = {
@@ -347,11 +379,20 @@ const HANDLE_CSS = `
 .g3d-tip{position:absolute;left:0;top:-24px;transform:translate(-50%,-100%);padding:4px 7px;border-radius:7px;font-weight:600;font-size:11px;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 4px 12px rgba(0,0,0,.25);pointer-events:none;display:none}
 .g3d-handle.dragging .g3d-tip{display:block}
 .g3d-handle.solver .g3d-stem,.g3d-handle.solver .g3d-grip{display:none}
-.g3d-gz .g3d-dot{left:-17px;top:-17px;width:34px;height:34px}
-.g3d-gz .g3d-dot::before{inset:5px}
-.g3d-gz .g3d-dot::after{inset:11px;box-shadow:0 0 0 2px rgba(255,255,255,.92),0 1px 4px rgba(0,0,0,.45)}
 .g3d-gz{z-index:4}
 .g3d-gz-center{z-index:5}
+.g3d-gz .g3d-dot{left:-18px;top:-18px;width:36px;height:36px;display:flex;align-items:center;justify-content:center}
+.g3d-gz .g3d-dot::before,.g3d-gz .g3d-dot::after{content:none}
+.g3d-gzf{display:flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:50%;background:#fff;color:var(--c);border:2.5px solid var(--c);box-shadow:0 2px 6px rgba(0,0,0,.45);transition:transform .14s ease,box-shadow .14s ease;pointer-events:none;box-sizing:border-box}
+.g3d-gzf svg{width:13px;height:13px;fill:none;stroke:currentColor;stroke-width:2.6;stroke-linecap:round;stroke-linejoin:round}
+.g3d-gz-x .g3d-gzf,.g3d-gz-y .g3d-gzf,.g3d-gz-z .g3d-gzf{width:22px;height:22px;background:var(--c);color:#fff;border:2px solid #fff}
+.g3d-gz-x .g3d-gzf svg,.g3d-gz-y .g3d-gzf svg,.g3d-gz-z .g3d-gzf svg{transform:rotate(var(--a,0deg))}
+.g3d-gz-center .g3d-gzf{width:26px;height:26px;background:#0f172a;color:#fff;border:2.5px solid var(--c)}
+.g3d-gz-scale .g3d-gzf{border-radius:7px;width:22px;height:22px}
+.g3d-gz:hover .g3d-gzf,.g3d-gz.dragging .g3d-gzf{transform:scale(1.18);box-shadow:0 0 0 4px color-mix(in srgb,var(--c) 32%,transparent),0 2px 8px rgba(0,0,0,.5)}
+.g3d-gzl{position:absolute;left:18px;top:-32px;padding:3px 8px;border-radius:7px;font-size:11px;font-weight:600;white-space:nowrap;text-shadow:none;background:var(--g3d-tip);color:var(--g3d-fg);border:1.5px solid var(--c);box-shadow:0 3px 10px rgba(0,0,0,.3);pointer-events:none;opacity:0;transform:translateY(3px);transition:opacity .12s ease .2s,transform .12s ease .2s}
+.g3d-gz:hover .g3d-gzl{opacity:1;transform:none}
+.g3d-gz.dragging .g3d-gzl{opacity:0;transition:none}
 .g3d-drawing .g3d-dot,.g3d-drawing .g3d-grip,.g3d-drawing .g3d-stem{pointer-events:none}
 .g3d-gz-center .g3d-dot{cursor:move}
 .g3d-gz-x .g3d-dot,.g3d-gz-y .g3d-dot{cursor:grab}
@@ -1170,6 +1211,8 @@ class Engine {
     centreZ: number;
   } | null = null;
   private rotateAxes: RotateAxes = { ...ALL_AXES };
+  /** The gizmo handle pointed at ("id:kind"): its ring or arrow is drawn brighter. */
+  private gzHover: string | null = null;
   // Select tool
   private selectTool = false;
   private selection: Selection3D | null = null;
@@ -6267,7 +6310,9 @@ class Engine {
         const color = GIZMO_COLORS[kind] ?? (g.pivot ? "#3b82f6" : own);
         el.style.setProperty("--c", color);
         const dot = el.firstElementChild as HTMLElement;
-        dot.title = GIZMO_TITLES[kind === "center" ? (g.pivot ? "pivot" : "move") : kind];
+        const job = kind === "center" ? (g.pivot ? "pivot" : "move") : kind;
+        dot.title = GIZMO_TITLES[job];
+        (el.lastElementChild as HTMLElement).textContent = GIZMO_LABELS[job];
       }
       this.buildGizmoScene(id, g);
     }
@@ -6725,8 +6770,9 @@ class Engine {
       x: [c[0] + L, c[1], c[2]],
       y: [c[0], c[1] + L, c[2]],
       z: [c[0], c[1], c[2] + L],
-      // Turning only reads the angle: the ring keeps its size whatever the scale.
-      rotate: [c[0] + R * cosT, c[1] + R * sinT, c[2]],
+      // Turning only reads the angle: the ring keeps its size whatever the scale. Its
+      // handle sits half-way between two arrows, so it never hides behind one.
+      rotate: [c[0] + R * Math.cos(turn + Z_HANDLE_OFFSET), c[1] + R * Math.sin(turn + Z_HANDLE_OFFSET), c[2]],
       rotX: [c[0], c[1] + R * Math.cos(tx), c[2] + R * Math.sin(tx)],
       // About y the angle runs from x towards -z (see ringAngle).
       rotY: [c[0] + R * Math.cos(ty), c[1], c[2] - R * Math.sin(ty)],
@@ -6756,8 +6802,21 @@ class Engine {
       this.gizmoGroup.add(obj);
     };
     const active = this.gz?.id === id ? this.gz.kind : null;
+    const hovered = this.gzHover?.startsWith(`${id}:`) ? (this.gzHover.slice(id.length + 1) as GizmoKind) : null;
+    const lit = (kind: GizmoKind) => active === kind || (!active && hovered === kind);
     const kinds = gizmoKinds(g, this.rotateAxes);
+    /** A line a few pixels wide, drawn over everything. */
+    const thick = (pts: number[], color: string, width: number, opacity: number) => {
+      const geometry = new LineSegmentsGeometry();
+      geometry.setPositions(pts);
+      const material = new LineMaterial({ color: toColor(color), linewidth: width, transparent: true, opacity, depthTest: false });
+      const obj = new LineSegments2(geometry, material);
+      obj.renderOrder = 6;
+      this.gizmoGroup.add(obj);
+    };
 
+    // A ring is quiet until its handle is pointed at or dragged; while one turns, the rest fade.
+    const ringLook = (kind: GizmoKind): [number, number] => (lit(kind) ? [3.5, 1] : active ? [1.5, 0.18] : [2, 0.5]);
     if (kinds.includes("rotate")) {
       // The ring the turn handle runs round, through the handle itself.
       const r = Math.hypot(spots.rotate[0] - cx, spots.rotate[1] - cy);
@@ -6768,7 +6827,7 @@ class Engine {
         const a1 = ((i + 1) / n) * TWO_PI;
         ring.push(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cz, cx + r * Math.cos(a1), cy + r * Math.sin(a1), cz);
       }
-      lines(ring, GIZMO_COLORS.rotate!, active === "rotate" ? 0.95 : 0.55);
+      thick(ring, GIZMO_COLORS.rotate!, ...ringLook("rotate"));
       if (active === "rotate") {
         // The angle turned so far, from where the shape started.
         const start = this.gz!.start.rot + g.base;
@@ -6781,7 +6840,7 @@ class Engine {
           fan.push(cx, cy, cz, cx + r * Math.cos(a0), cy + r * Math.sin(a0), cz);
           fan.push(cx + r * Math.cos(a0), cy + r * Math.sin(a0), cz, cx + r * Math.cos(a1), cy + r * Math.sin(a1), cz);
         }
-        lines(fan, GIZMO_COLORS.rotate!, 0.35);
+        lines(fan, GIZMO_COLORS.rotate!, 0.3);
       }
     }
     // The x and y rings: upright circles through the middle, square to their axes.
@@ -6793,26 +6852,15 @@ class Engine {
       const at = (t: number): Vec3 =>
         kind === "rotX" ? [cx, cy + r * Math.cos(t), cz + r * Math.sin(t)] : [cx + r * Math.cos(t), cy, cz + r * Math.sin(t)];
       for (let i = 0; i < n; i++) ring.push(...at((i / n) * TWO_PI), ...at(((i + 1) / n) * TWO_PI));
-      lines(ring, GIZMO_COLORS[kind]!, active === kind ? 0.95 : 0.5);
+      thick(ring, GIZMO_COLORS[kind]!, ...ringLook(kind));
     }
-    if (kinds.includes("free")) lines([cx, cy, cz, ...spots.free], GIZMO_COLORS.free!, 0.6, true);
-    if (kinds.includes("scale")) lines([cx, cy, cz, ...spots.scale], GIZMO_COLORS.scale!, 0.6, true);
+    if (kinds.includes("scale") && lit("scale")) lines([cx, cy, cz, ...spots.scale], GIZMO_COLORS.scale!, 0.6, true);
 
-    // Arrows along the axes, with heads.
+    // A shaft along each axis to its arrow handle (the handle is the arrowhead).
     (["x", "y", "z"] as const).forEach((kind, axis) => {
       if (!kinds.includes(kind)) return;
       const tip = spots[kind];
-      const color = AXIS_COLORS[axis];
-      lines([cx, cy, cz, ...tip], color, active === kind ? 1 : 0.75);
-      const dir = new THREE.Vector3(axis === 0 ? 1 : 0, axis === 1 ? 1 : 0, axis === 2 ? 1 : 0);
-      const head = new THREE.Mesh(
-        new THREE.ConeGeometry(0.025 * this.domain.half, 0.07 * this.domain.half, 12),
-        over(new THREE.MeshBasicMaterial({ color, opacity: 0.9 })),
-      );
-      head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), dir);
-      head.position.set(tip[0], tip[1], tip[2]).addScaledVector(dir, 0.035 * this.domain.half);
-      head.renderOrder = 6;
-      this.gizmoGroup.add(head);
+      thick([cx, cy, cz, ...tip], AXIS_COLORS[axis], lit(kind) ? 4 : 3, active && !lit(kind) ? 0.25 : 0.95);
     });
     this.gizmoGroup.traverse((o) => {
       o.frustumCulled = false;
@@ -6826,8 +6874,26 @@ class Engine {
     const dot = document.createElement("div");
     dot.className = "g3d-dot";
     dot.tabIndex = -1;
-    wrap.appendChild(dot);
+    const face = document.createElement("div");
+    face.className = "g3d-gzf";
+    face.innerHTML = `<svg viewBox="0 0 24 24" aria-hidden="true">${GIZMO_ICONS[kind]}</svg>`;
+    dot.appendChild(face);
+    const label = document.createElement("div");
+    label.className = "g3d-gzl";
+    wrap.append(dot, label);
     this.handleHost.appendChild(wrap);
+    // Pointing at a turning handle lights up its ring.
+    dot.addEventListener("pointerenter", () => {
+      this.gzHover = `${id}:${kind}`;
+      if (!this.gz) this.syncGizmos();
+      this.requestRender();
+    });
+    dot.addEventListener("pointerleave", () => {
+      if (this.gzHover !== `${id}:${kind}`) return;
+      this.gzHover = null;
+      if (!this.gz) this.syncGizmos();
+      this.requestRender();
+    });
     dot.addEventListener("pointerdown", (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -6862,6 +6928,7 @@ class Engine {
       return;
     }
     const at = { x: 0, y: 0 };
+    const mid = { x: 0, y: 0 };
     const spots = new Map<string, Record<GizmoKind, Vec3>>();
     for (const [key, el] of this.gizmoEls) {
       const i = key.lastIndexOf(":");
@@ -6874,13 +6941,25 @@ class Engine {
       }
       let s = spots.get(id);
       if (!s) spots.set(id, (s = this.gizmoSpots(g, id)));
-      const p = s[kind];
+      const p = kind === "free" ? s.center : s[kind];
       if (!this.toScreen(p[0], p[1], p[2], at)) {
         el.style.display = "none";
         continue;
       }
+      // The free-turn handle isn't on any axis or ring: up and left of the middle, on screen.
+      if (kind === "free") {
+        at.x += FREE_HANDLE_PX.x;
+        at.y += FREE_HANDLE_PX.y;
+      }
       el.style.display = "";
       el.style.translate = `${at.x.toFixed(1)}px ${at.y.toFixed(1)}px`;
+      if (kind === "x" || kind === "y" || kind === "z") {
+        const c = s.center;
+        if (this.toScreen(c[0], c[1], c[2], mid)) {
+          const deg = (Math.atan2(at.y - mid.y, at.x - mid.x) * 180) / Math.PI;
+          el.style.setProperty("--a", `${deg.toFixed(1)}deg`);
+        }
+      }
       el.classList.toggle("dragging", this.gz?.id === id && this.gz.kind === kind);
       // While one handle is held, the others step back.
       el.style.opacity = this.gz && !(this.gz.id === id && this.gz.kind === kind) ? "0.35" : "";

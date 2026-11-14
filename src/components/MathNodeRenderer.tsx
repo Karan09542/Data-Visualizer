@@ -10129,7 +10129,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                           ? [
                               // In space the arrows move it; a row with no points behind it has every handle.
                               [SELECT_MOVE, "move", true],
-                              ["#eab308", "turn", selection3d?.centre ? selection3d.canRotate : true],
+                              ["#ffffff", "turn", selection3d?.centre ? selection3d.canRotate : true],
                               [SELECT_RESIZE, "resize", selection3d?.centre ? selection3d.canResize : true],
                             ]
                           : [
@@ -10159,7 +10159,7 @@ export const MathNodeRenderer: React.FC<any> = ({
                         [
                           ["x", "#ef4444"],
                           ["y", "#22c55e"],
-                          ["z", "#eab308"],
+                          ["z", "#3b82f6"],
                         ] as const
                       ).map(([axis, color]) => {
                         const blocked = axis !== "z" && !!tiltBlock;
