@@ -637,144 +637,107 @@ export function BlankCanvasTemplateGallery({ isModal = false, onClose }: BlankCa
 
   const templateChoiceModal = selectedTemplate && createPortal(
     <div
-      className="fixed inset-0 z-[100005] flex items-center justify-center p-3 sm:p-4 bg-black/70 backdrop-blur-sm animate-in fade-in duration-200"
+      // A sheet from the bottom on a phone, a card in the middle on larger screens.
+      className="fixed inset-0 z-[100005] flex items-end sm:items-center justify-center sm:p-4 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200"
       onClick={() => setSelectedTemplate(null)}
     >
       <div
-        className="relative w-full max-w-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl p-5 sm:p-6 overflow-hidden animate-in zoom-in-95 duration-200"
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Use the ${selectedTemplate.title} template`}
+        className="relative w-full sm:max-w-md max-h-[92dvh] overflow-y-auto bg-white dark:bg-[#11151f] border-t sm:border border-slate-200 dark:border-white/10 rounded-t-3xl sm:rounded-2xl shadow-2xl animate-in slide-in-from-bottom-4 sm:zoom-in-95 duration-200"
+        style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Top Gradient bar */}
-        <div className={`absolute top-0 left-0 right-0 h-1.5 bg-gradient-to-r ${selectedTemplate.accentGradient || 'from-indigo-500 to-purple-500'}`} />
-
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800/60 shadow-sm text-indigo-600 dark:text-indigo-400 shrink-0">
-              {selectedTemplate.icon || <Sparkles size={20} />}
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-indigo-500/10 text-indigo-600 dark:text-indigo-400 border border-indigo-500/20">
-                  {selectedTemplate.badge || 'Template'}
-                </span>
-                <span className="text-xs text-slate-400">• Starter Template</span>
-              </div>
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white mt-0.5 leading-snug">
-                {selectedTemplate.title}
-              </h3>
-            </div>
-          </div>
-          <button
-            onClick={() => setSelectedTemplate(null)}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
-            title="Cancel"
-            aria-label="Cancel"
-          >
-            <X size={18} />
-          </button>
+        {/* Grab bar: it's a sheet */}
+        <div className="sm:hidden flex justify-center pt-2.5">
+          <span className="h-1 w-10 rounded-full bg-slate-300 dark:bg-white/15" />
         </div>
 
-        {/* Status notice */}
-        {isCurrentDocEmpty ? (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 text-xs text-blue-700 dark:text-blue-300 mb-4">
-            <Sparkles size={16} className="shrink-0 mt-0.5 text-blue-500" />
-            <div>
-              <p className="font-semibold">Current workspace is empty.</p>
-              <p className="mt-0.5 text-blue-600/90 dark:text-blue-300/80">
-                You can overwrite your current document with this template, or create a brand new saved document with this example.
+        <div className="px-5 pt-4 sm:pt-5">
+          {/* What it is */}
+          <div className="flex items-start gap-3">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-slate-100 dark:bg-white/[0.06] border border-slate-200 dark:border-white/10">
+              {selectedTemplate.icon || <Sparkles size={20} />}
+            </div>
+            <div className="min-w-0 flex-1">
+              <h3 className="text-[15px] font-semibold leading-snug text-slate-900 dark:text-white">{selectedTemplate.title}</h3>
+              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] text-slate-500 dark:text-slate-400">
+                <span className="truncate">{selectedTemplate.badge || 'Template'}</span>
+                <span aria-hidden>·</span>
+                <span className="shrink-0">Starter template</span>
               </p>
             </div>
+            <button
+              type="button"
+              onClick={() => setSelectedTemplate(null)}
+              className="-mr-1.5 -mt-1 flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-white/10 transition-colors"
+              aria-label="Close"
+            >
+              <X size={18} />
+            </button>
           </div>
-        ) : (
-          <div className="flex items-start gap-2.5 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 text-xs text-amber-800 dark:text-amber-300 mb-4">
-            <AlertCircle size={16} className="shrink-0 mt-0.5 text-amber-500" />
-            <div>
-              <p className="font-semibold">
-                Current document{activeDocumentName ? ` ("${activeDocumentName}")` : ''} has existing content.
-              </p>
-              <p className="mt-0.5 text-amber-700/90 dark:text-amber-300/80">
-                Overwriting will replace your current workspace. Alternatively, create a new document with this example to preserve existing work.
-              </p>
-            </div>
-          </div>
-        )}
+          {selectedTemplate.tagline && (
+            <p className="mt-3 text-[13px] leading-relaxed text-slate-600 dark:text-slate-300">{selectedTemplate.tagline}</p>
+          )}
 
-        <div className="space-y-3 mb-5">
-          {/* Option 1: Overwrite Current Document */}
+          <div className="my-4 h-px bg-slate-200 dark:bg-white/[0.08]" />
+
+          {/* A new document */}
+          <label htmlFor="template-doc-name" className="block text-[12px] font-medium text-slate-700 dark:text-slate-300">
+            Name of the new document
+          </label>
+          <input
+            id="template-doc-name"
+            type="text"
+            value={templateDocName}
+            onChange={(e) => setTemplateDocName(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleCreateNewWithTemplate(selectedTemplate);
+            }}
+            placeholder={selectedTemplate.title}
+            className="mt-1.5 h-11 w-full rounded-xl border border-slate-200 dark:border-white/10 bg-slate-50 dark:bg-white/[0.04] px-3.5 text-sm text-slate-900 dark:text-slate-100 placeholder:text-slate-400 outline-none focus:border-indigo-400 focus:ring-2 focus:ring-indigo-500/25 transition"
+          />
+          <button
+            type="button"
+            onClick={() => handleCreateNewWithTemplate(selectedTemplate)}
+            className="mt-2.5 inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 text-sm font-semibold text-white shadow-sm transition-colors"
+          >
+            <FolderPlus size={16} />
+            Create new document
+          </button>
+          <p className="mt-1.5 text-center text-[11px] text-slate-500 dark:text-slate-400">Saved to your documents and opened.</p>
+
+          {/* Or this workspace */}
+          <div className="my-4 flex items-center gap-3 text-[11px] text-slate-400">
+            <span className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
+            or
+            <span className="h-px flex-1 bg-slate-200 dark:bg-white/[0.08]" />
+          </div>
           <button
             type="button"
             onClick={() => handleOverwriteCurrent(selectedTemplate)}
-            className="w-full text-left p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 hover:border-indigo-400 dark:hover:border-indigo-500/70 bg-slate-50 dark:bg-slate-950/60 hover:bg-indigo-50/50 dark:hover:bg-indigo-950/20 transition-all group flex items-start gap-3"
+            className={`inline-flex h-11 w-full items-center justify-center gap-2 rounded-xl border text-sm font-semibold transition-colors ${
+              isCurrentDocEmpty
+                ? 'border-slate-200 dark:border-white/10 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-white/[0.05]'
+                : 'border-amber-300/70 dark:border-amber-500/30 text-amber-700 dark:text-amber-300 hover:bg-amber-50 dark:hover:bg-amber-500/10'
+            }`}
           >
-            <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 group-hover:text-indigo-600 dark:group-hover:text-indigo-400 group-hover:border-indigo-300 transition-colors shrink-0 mt-0.5">
-              <RefreshCw size={17} className="group-hover:rotate-180 transition-transform duration-500" />
-            </div>
-            <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between">
-                <span className="text-sm font-bold text-slate-900 dark:text-white group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
-                  Overwrite Current Document
-                </span>
-                <span className="text-[11px] font-medium text-slate-400 group-hover:text-indigo-500">
-                  Use in Current &rarr;
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5 leading-relaxed">
-                {isCurrentDocEmpty
-                  ? 'Load this starter template directly into your current workspace'
-                  : 'Replace current workspace with template (unsaved changes will be lost)'}
-              </p>
-            </div>
+            <RefreshCw size={15} />
+            Use in this workspace
           </button>
-
-          {/* Option 2: Create New Document with this Example */}
-          <div className="p-3.5 rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-indigo-50/40 dark:bg-indigo-950/30">
-            <div className="flex items-start gap-3 mb-2.5">
-              <div className="flex items-center justify-center w-9 h-9 rounded-lg bg-indigo-600 text-white shadow-sm shrink-0 mt-0.5">
-                <FolderPlus size={17} />
-              </div>
-              <div className="flex-1 min-w-0">
-                <span className="text-sm font-bold text-indigo-950 dark:text-indigo-200">
-                  Create New Document
-                </span>
-                <p className="text-xs text-indigo-800/80 dark:text-indigo-300/80 mt-0.5 leading-relaxed">
-                  Saves as a new document in your saved documents list and opens it
-                </p>
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 mt-2">
-              <input
-                type="text"
-                value={templateDocName}
-                onChange={(e) => setTemplateDocName(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    handleCreateNewWithTemplate(selectedTemplate);
-                  }
-                }}
-                placeholder="Document name"
-                className="flex-1 h-9 px-3 rounded-lg border border-indigo-200 dark:border-indigo-800 bg-white dark:bg-slate-900 text-xs sm:text-sm text-slate-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/30"
-              />
-              <button
-                type="button"
-                onClick={() => handleCreateNewWithTemplate(selectedTemplate)}
-                className="inline-flex h-9 items-center justify-center gap-1.5 px-3.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-sm transition-all active:scale-95 shrink-0"
-              >
-                <Plus size={14} />
-                <span>Create Document</span>
-              </button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end pt-1">
-          <button
-            type="button"
-            onClick={() => setSelectedTemplate(null)}
-            className="px-4 py-2 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+          <p
+            className={`mt-1.5 flex items-start justify-center gap-1.5 text-center text-[11px] leading-snug ${
+              isCurrentDocEmpty ? 'text-slate-500 dark:text-slate-400' : 'text-amber-700 dark:text-amber-300/90'
+            }`}
           >
-            Cancel
-          </button>
+            {!isCurrentDocEmpty && <AlertCircle size={12} className="mt-px shrink-0" />}
+            <span>
+              {isCurrentDocEmpty
+                ? 'Your workspace is empty: the template loads straight into it.'
+                : `Replaces what's in ${activeDocumentName ? `"${activeDocumentName}"` : 'the current document'}; unsaved changes are lost.`}
+            </span>
+          </p>
         </div>
       </div>
     </div>,

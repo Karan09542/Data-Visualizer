@@ -145,6 +145,8 @@ function App() {
   }, []);
 
   const undoStack = useStore((state) => state.undoStack);
+  // Nothing on the canvas: the starter templates fill it, with nothing to fit or fold.
+  const canvasEmpty = useStore((state) => !state.treeData);
   const redoStack = useStore((state) => state.redoStack);
   const undo = useStore((state) => state.undo);
   const redo = useStore((state) => state.redo);
@@ -883,8 +885,8 @@ function App() {
                 )}
               </ErrorBoundary>
 
-              {/* Mobile Canvas Floating Controls (Bottom-Left) */}
-              {!isEditorPanelOpen && (
+              {/* Mobile Canvas Floating Controls (Bottom-Left): not over the starter templates */}
+              {!isEditorPanelOpen && !canvasEmpty && (
                 <div
                   style={{
                     bottom: 'max(1rem, env(safe-area-inset-bottom, 1rem))',
