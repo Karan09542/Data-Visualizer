@@ -1043,14 +1043,14 @@ const MediaPreviewPopup: React.FC = () => {
                 exit={{ height: 0, opacity: 0 }}
                 className="z-50 shrink-0 overflow-hidden border-b border-slate-200 bg-white dark:border-white/7 dark:bg-[#0b0e14]"
               >
-                <div className="flex h-12 items-center gap-2 sm:gap-3 px-2 sm:px-4">
+                <div className="flex h-12 items-center justify-between gap-1 sm:gap-3 px-2 sm:px-4">
                   <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-md ${iconTint}`}>{getIcon()}</div>
                   <div className="min-w-0 flex-1 leading-tight">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <h3 className="truncate text-[13px] font-semibold text-slate-900 dark:text-slate-100" title={fileName}>
                         {fileName}
                       </h3>
-                      {isImage && (
+                      {hasMultipleImages && (
                         <span className="shrink-0 text-[10px] sm:text-[11px] font-semibold text-indigo-600 dark:text-sky-400 bg-indigo-50 dark:bg-sky-500/10 px-2 py-0.5 rounded-full border border-indigo-200/60 dark:border-sky-400/20 tabular-nums">
                           {currentIndex + 1} / {availableImages.length}
                         </span>
@@ -1061,10 +1061,11 @@ const MediaPreviewPopup: React.FC = () => {
                     </p>
                   </div>
 
-                  <div className="flex shrink-0 items-center gap-0.5 sm:gap-1">
+                  {/* Actions / Tools (Draw, Rotate, Download, etc.) */}
+                  <div className="min-w-0 flex items-center justify-end gap-0.5 sm:gap-1 overflow-x-auto no-scrollbar py-0.5">
                     {/* Header Previous / Next buttons */}
-                    {isImage && (
-                      <div className="flex items-center gap-0.5 mr-1 border-r border-slate-200 dark:border-white/10 pr-1.5">
+                    {hasMultipleImages && (
+                      <div className="flex shrink-0 items-center gap-0.5 mr-0.5 sm:mr-1 border-r border-slate-200 dark:border-white/10 pr-1 sm:pr-1.5">
                         <button
                           onClick={goToPrev}
                           disabled={!canGoPrev}
@@ -1092,7 +1093,7 @@ const MediaPreviewPopup: React.FC = () => {
                           onClick={() => setDrawMode((on) => !on)}
                           disabled={isResolvingAsset}
                           aria-pressed={drawMode}
-                          className={`${HEADER_BUTTON} ${drawMode ? 'text-white bg-blue-600 hover:bg-blue-600 hover:text-white dark:bg-blue-600 dark:hover:bg-blue-600' : ''}`}
+                          className={`shrink-0 ${HEADER_BUTTON} ${drawMode ? 'text-white bg-blue-600 hover:bg-blue-600 hover:text-white dark:bg-blue-600 dark:hover:bg-blue-600' : ''}`}
                           title={drawMode ? 'Leave draw mode (Esc)' : 'Draw: mark up the image with a pen, shapes, ticks and more'}
                           aria-label={drawMode ? 'Leave draw mode' : 'Draw on the image'}
                         >
@@ -1107,7 +1108,7 @@ const MediaPreviewPopup: React.FC = () => {
                         <button
                           onClick={() => setRotation((prev) => (prev + 90) % 360)}
                           disabled={isResolvingAsset}
-                          className={HEADER_BUTTON}
+                          className={`shrink-0 ${HEADER_BUTTON}`}
                           title="Rotate"
                           aria-label="Rotate image"
                         >
@@ -1116,28 +1117,30 @@ const MediaPreviewPopup: React.FC = () => {
                         <button
                           onClick={copyImage}
                           disabled={isCopyingImage || isResolvingAsset}
-                          className={`${HEADER_BUTTON} hidden sm:inline-flex`}
+                          className={`shrink-0 ${HEADER_BUTTON} hidden sm:inline-flex`}
                           title="Copy image"
                           aria-label="Copy image"
                         >
                           {isCopyingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
                         </button>
-                        <button
-                          onClick={() => setShowThumbnails((prev) => !prev)}
-                          className={`${HEADER_BUTTON} ${showThumbnails ? 'text-indigo-600 dark:text-sky-400 bg-indigo-50 dark:bg-white/10' : ''}`}
-                          title={showThumbnails ? 'Hide thumbnail strip' : 'Show thumbnail strip'}
-                          aria-label="Toggle thumbnail strip"
-                        >
-                          <Film size={15} />
-                          <span className="hidden xl:inline text-[11px]">Thumbnails</span>
-                        </button>
+                        {hasMultipleImages && (
+                          <button
+                            onClick={() => setShowThumbnails((prev) => !prev)}
+                            className={`shrink-0 ${HEADER_BUTTON} ${showThumbnails ? 'text-indigo-600 dark:text-sky-400 bg-indigo-50 dark:bg-white/10' : ''}`}
+                            title={showThumbnails ? 'Hide thumbnail strip' : 'Show thumbnail strip'}
+                            aria-label="Toggle thumbnail strip"
+                          >
+                            <Film size={15} />
+                            <span className="hidden xl:inline text-[11px]">Thumbnails</span>
+                          </button>
+                        )}
                       </>
                     )}
                     {canDownload && (
                       <button
                         onClick={downloadOriginal}
                         disabled={isDownloading || isResolvingAsset}
-                        className={HEADER_BUTTON}
+                        className={`shrink-0 ${HEADER_BUTTON}`}
                         title="Download"
                         aria-label="Download"
                       >
@@ -1147,14 +1150,14 @@ const MediaPreviewPopup: React.FC = () => {
                     )}
                     {isWebUrl && (
                       <>
-                        <button onClick={copyLink} className={`${HEADER_BUTTON} hidden sm:inline-flex`} title="Copy link" aria-label="Copy link">
+                        <button onClick={copyLink} className={`shrink-0 ${HEADER_BUTTON} hidden sm:inline-flex`} title="Copy link" aria-label="Copy link">
                           <Link2 size={15} />
                         </button>
                         <a
                           href={originalUrl}
                           target="_blank"
                           rel="noopener noreferrer"
-                          className={`${HEADER_BUTTON} hidden sm:inline-flex`}
+                          className={`shrink-0 ${HEADER_BUTTON} hidden sm:inline-flex`}
                           title="Open in new tab"
                           aria-label="Open in new tab"
                         >
@@ -1162,8 +1165,11 @@ const MediaPreviewPopup: React.FC = () => {
                         </a>
                       </>
                     )}
+                  </div>
 
-                    <span className="mx-1 h-5 w-px bg-slate-200 dark:bg-white/10" aria-hidden />
+                  {/* Window Controls (Pinned to the Right, NEVER shrinks or clips) */}
+                  <div className="flex shrink-0 items-center gap-0.5 sm:gap-1 pl-1">
+                    <span className="mx-0.5 sm:mx-1 h-5 w-px bg-slate-200 dark:bg-white/10" aria-hidden />
                     <button onClick={() => setIsUIHidden(true)} className={HEADER_BUTTON} title="Hide header" aria-label="Hide header">
                       <ChevronUp size={16} />
                     </button>
