@@ -1292,6 +1292,8 @@ class Engine {
     this.controls.dampingFactor = 0.12;
     this.controls.autoRotateSpeed = 1.2;
     this.controls.addEventListener("change", this.requestRender);
+    // Taking hold of the view (turn, pan, scroll to zoom) stops auto-rotate.
+    this.controls.addEventListener("start", this.stopAutoRotate);
 
     // A headlight, so a surface is lit from wherever it is looked at.
     const light = new THREE.DirectionalLight(0xffffff, 1.7);
@@ -1946,8 +1948,20 @@ class Engine {
     this.setHoveredAxis(nextHover);
   }
 
+  /**
+   * The user has taken hold of the graph: auto-rotate stops, and stays off (its switch
+   * in the options shows it) until they turn it on again.
+   */
+  private stopAutoRotate = () => {
+    if (!this.opts.autoRotate) return;
+    this.opts = { ...this.opts, autoRotate: false };
+    this.controls.autoRotate = false;
+    this.getProps().onOptionsChange?.(this.opts);
+  };
+
   private onPointerDown = (e: PointerEvent) => {
     this.tween = null; // taking hold of the view stops a glide
+    this.stopAutoRotate();
     this.setPointer(e);
     // With a drawing tool, a click (not a drag, which still turns the view) places a point.
     if (this.drawTool) {
@@ -4466,7 +4480,7 @@ class Engine {
     };
     this.setDragMode(e.clientX, e.clientY, this.wantedMode(e.shiftKey));
     // Turning the graph under a moving point would fight the hand moving it.
-    this.controls.autoRotate = false;
+    this.stopAutoRotate();
     h.wrap.classList.add("dragging");
     this.updateTip();
     this.buildGuides();
@@ -7097,7 +7111,7 @@ class Engine {
     // Heavy rows are redrawn coarsely while they move, then refined.
     this.coarse = true;
     window.clearTimeout(this.coarseTimer);
-    this.controls.autoRotate = false;
+    this.stopAutoRotate();
     this.syncGizmos();
     this.requestRender();
   }
