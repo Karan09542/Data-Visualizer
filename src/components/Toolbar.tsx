@@ -1709,17 +1709,17 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                   {/* System Default Theme Toggle */}
                   <button
                     onClick={toggleSystemDefault}
-                    className={`flex items-center justify-between gap-2 p-3 border rounded-xl text-xs font-semibold transition-all ${
+                    className={`flex items-center justify-between gap-1.5 px-2.5 sm:px-3 py-3 border rounded-xl text-xs font-semibold transition-all ${
                       isSystemDefault
                         ? "bg-indigo-50 dark:bg-indigo-950/40 border-indigo-200 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300"
                         : "bg-slate-100 dark:bg-slate-900/60 hover:bg-slate-200 dark:hover:bg-slate-800/80 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-200"
                     }`}
                   >
-                    <div className="flex items-center gap-2">
-                      <Monitor size={16} className={isSystemDefault ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400"} />
-                      <span>System Theme</span>
+                    <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                      <Monitor size={16} className={`shrink-0 ${isSystemDefault ? "text-indigo-600 dark:text-indigo-400" : "text-slate-500 dark:text-slate-400"}`} />
+                      <span className="truncate whitespace-nowrap">System Theme</span>
                     </div>
-                    <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-full ${
+                    <span className={`shrink-0 text-[9px] font-bold px-1.5 py-0.5 rounded-full leading-none ${
                       isSystemDefault
                         ? "bg-indigo-200/80 dark:bg-indigo-900/60 text-indigo-800 dark:text-indigo-200"
                         : "bg-slate-200 dark:bg-slate-800 text-slate-500 dark:text-slate-400"
@@ -1746,13 +1746,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
                     }
                   >
                     {effectiveTheme === "dark" ? (
-                      <Sun size={16} className={isSystemDefault ? "text-slate-400 dark:text-slate-600" : "text-amber-500"} />
+                      <Sun size={16} className={`shrink-0 ${isSystemDefault ? "text-slate-400 dark:text-slate-600" : "text-amber-500"}`} />
                     ) : (
-                      <Moon size={16} className={isSystemDefault ? "text-slate-400 dark:text-slate-600" : "text-indigo-500"} />
+                      <Moon size={16} className={`shrink-0 ${isSystemDefault ? "text-slate-400 dark:text-slate-600" : "text-indigo-500"}`} />
                     )}
-                    <span>
+                    <span className="truncate whitespace-nowrap">
                       {isSystemDefault
-                        ? `Mode: ${effectiveTheme === "dark" ? "Dark" : "Light"} (Auto)`
+                        ? `Auto (${effectiveTheme === "dark" ? "Dark" : "Light"})`
                         : effectiveTheme === "dark"
                         ? "Light Mode"
                         : "Dark Mode"}
