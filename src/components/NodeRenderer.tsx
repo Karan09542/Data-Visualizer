@@ -221,16 +221,17 @@ function NodeRenderer({
   const nodeGradientAngle = useStore((state) => state.nodeGradientAngle);
   const nodeGradientType = useStore((state) => state.nodeGradientType);
   const toggleNodeCollapse = useStore((state) => state.toggleNodeCollapse);
-  const collapsedNodes = useStore((state) => state.collapsedNodes);
-  const searchQuery = useStore((state) => state.searchQuery);
-  const searchMatches = useStore((state) => state.searchMatches);
-  const searchAncestors = useStore((state) => state.searchAncestors);
-  const activeMatchId = useStore((state) => state.activeMatchId);
+  // Each node listens only to its own part of these shared lists, so collapsing one
+  // group, typing a search or resizing one node redraws the nodes it touches, not all.
+  const nodeId = node.data.id;
+  const isCollapsed = useStore((state) => state.collapsedNodes.has(nodeId));
+  const hasQuery = useStore((state) => !!state.searchQuery);
+  const isMatch = useStore((state) => state.searchMatches.has(nodeId));
+  const isAncestor = useStore((state) => state.searchAncestors.has(nodeId));
+  const isActiveMatch = useStore((state) => state.activeMatchId === nodeId);
   const setSelectedNodeId = useStore((state) => state.setSelectedNodeId);
   const showMediaPreview = useStore((state) => state.showMediaPreview);
-  const manuallyRenderedNodes = useStore(
-    (state) => state.manuallyRenderedNodes,
-  );
+  const manualRender = useStore((state) => state.manuallyRenderedNodes?.[nodeId]);
   const globalTextExpanded = useStore((state) => state.globalTextExpanded);
   const setActivePreviewText = useStore((state) => state.setActivePreviewText);
   const setActivePreviewMedia = useStore(
@@ -239,8 +240,13 @@ function NodeRenderer({
   const rawAppTheme = useStore((state) => state.appTheme);
   const systemTheme = useStore((state) => state.systemTheme);
   const appTheme = getEffectiveTheme(rawAppTheme, systemTheme);
-  const knownDataUrls = useStore((state) => state.knownDataUrls);
-  const nodeSizes = useStore((state) => state.nodeSizes);
+  const knownDataUrl = useStore((state) => {
+    const v = node.data.value;
+    if (v === undefined) return undefined;
+    const key = String(v);
+    return key.length < 5000 ? state.knownDataUrls[key] : undefined;
+  });
+  const customSize = useStore((state) => state.nodeSizes[nodeId]);
 
   const foreignRef = useRef<SVGForeignObjectElement>(null);
   const mediaContainerRef = useRef<HTMLDivElement>(null);
@@ -268,7 +274,7 @@ function NodeRenderer({
   const defaultSizeRef = useRef<{ width: number; height: number } | null>(null);
 
   useLayoutEffect(() => {
-    const custom = nodeSizes[node.data.id];
+    const custom = customSize;
     // The first resize starts from the default size. Without it there was nothing to
     // compare against, so the first resize of a node kept its centre and it jumped.
     const size = custom ?? defaultSizeRef.current;
@@ -301,7 +307,7 @@ function NodeRenderer({
     setIsResizing(true);
     if (resizeSettleRef.current) clearTimeout(resizeSettleRef.current);
     resizeSettleRef.current = setTimeout(() => setIsResizing(false), 200);
-  }, [nodeSizes, node.data.id]);
+  }, [customSize, node.data.id]);
 
   useEffect(() => () => {
     if (resizeSettleRef.current) clearTimeout(resizeSettleRef.current);
@@ -319,6 +325,8 @@ function NodeRenderer({
 
     let startPositions: Array<{ id: string; startX: number; startY: number }> =
       [];
+    /** The drag is a finger's: brought to the front only once it ends (see "start"). */
+    let byTouch = false;
 
     const drag = d3
       .drag<SVGForeignObjectElement, unknown>()
@@ -339,7 +347,13 @@ function NodeRenderer({
       })
       .on("start", function (event) {
         event.sourceEvent?.stopPropagation();
-        useStore.getState().bringNodeToFront(nodeRef.current.data.id);
+        // Bringing a node to the front moves its element to the end of the SVG. A mouse
+        // drag is followed on the window and doesn't mind; a finger's touch is tied to
+        // the element, and on phones moving it mid-touch dropped the gesture, so the
+        // first drag of any node not already in front did nothing. Touch: front at the end.
+        const src = event.sourceEvent as Event | undefined;
+        byTouch = !!src && (src.type.startsWith("touch") || (src as PointerEvent).pointerType === "touch");
+        if (!byTouch) useStore.getState().bringNodeToFront(nodeRef.current.data.id);
         setIsDraggingLocally(true);
 
         const store = useStore.getState();
@@ -422,6 +436,7 @@ function NodeRenderer({
         useStore.getState().setMultipleDragOverrides(dragPosUpdates);
         useStore.getState().setDraggingNodeIds(new Set());
         setIsDraggingLocally(false);
+        if (byTouch) useStore.getState().bringNodeToFront(nodeRef.current.data.id);
       });
 
     d3.select(foreignRef.current).call(drag);
@@ -439,13 +454,8 @@ function NodeRenderer({
   }, [globalTextExpanded]);
 
   const data = node.data;
-  const isCollapsed = collapsedNodes.has(data.id);
   const hasChildren = !!data.children && data.children.length > 0;
 
-  const hasQuery = !!searchQuery;
-  const isMatch = searchMatches.has(data.id);
-  const isActiveMatch = activeMatchId === data.id;
-  const isAncestor = searchAncestors.has(data.id);
   const isDimmed =
     (hasQuery && !isMatch && !isAncestor) ||
     (!hasQuery &&
@@ -635,10 +645,10 @@ function NodeRenderer({
     setIsAddPopoverOpen(true);
   };
   const isManuallyRendered =
-    manuallyRenderedNodes && manuallyRenderedNodes[data.id] !== undefined
-      ? manuallyRenderedNodes[data.id]
+    manualRender !== undefined
+      ? manualRender
       : showMediaPreview;
-  const isKnownDataUrl = strVal.length < 5000 && !!knownDataUrls[strVal];
+  const isKnownDataUrl = !!knownDataUrl;
 
   const assetMimeType = assetDetails?.mimeType?.toLowerCase() || "";
   const assetName =
@@ -1298,7 +1308,6 @@ function NodeRenderer({
     dropShadowClass = "drop-shadow-[0_0_5px_rgba(168,85,247,0.4)]";
   }
 
-  const customSize = nodeSizes[data.id];
 
   // The size a node has before anyone resizes it.
   const defaultWidth = isApiNode
@@ -1665,7 +1674,7 @@ function NodeRenderer({
                       >
                         {isKnownDataUrl && (
                           <span className="inline-block px-1 mr-1.5 py-0.5 rounded text-[8px] font-bold uppercase tracking-wider bg-amber-500/10 text-amber-500 border border-amber-500/20 align-middle">
-                            {knownDataUrls[strVal]}
+                            {knownDataUrl}
                           </span>
                         )}
                         <span

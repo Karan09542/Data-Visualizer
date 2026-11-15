@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { startTransition } from "react";
 import { persist } from "zustand/middleware";
+import { lazyPersistStorage } from "./lazyPersistStorage";
 import { parseInput } from "../utils/parser";
 import { transformToTree, type ApiResponseView } from "../utils/transformer";
 import type { KeyValueParam, AuthConfig, BodyConfig } from "../utils/curlParser";
@@ -1826,6 +1827,8 @@ export const useStore = create<StoreState>()(
     },
     {
       name: "json-graph-viewer-settings",
+      // Written only when something saved changed, and at most every 800 ms.
+      storage: lazyPersistStorage(),
       partialize: (state) => {
         // Prevent localStorage QuotaExceededError and massive JSON.stringify lag on every frame
         const isCodeMassive = state.code && state.code.length > 1024 * 1024;

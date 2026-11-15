@@ -374,11 +374,26 @@ export default function GraphVisualizer() {
   const currentTransformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
   const viewportRafRef = useRef<number | null>(null);
 
-  const updateViewportBounds = (transform: d3.ZoomTransform) => {
+  // How many nodes there are, for the pan handler (which runs outside React's render).
+  const nodeCountRef = useRef(0);
+  nodeCountRef.current = nodes.length;
+  // The bounds last handed to React, to tell whether a pan or zoom needs a new render.
+  const committedBoundsRef = useRef(viewportBounds);
+
+  /**
+   * The part of the graph worth drawing, as the view pans and zooms. It is only used to
+   * leave off-screen nodes out (70 nodes or more) and to draw simple boxes when zoomed far
+   * out (250 or more), so it is only updated when that can change what is drawn: not
+   * below 70 nodes, and otherwise only when the view nears the edge of the margin
+   * already drawn, the zoom changes the margin a lot, or it crosses the simple-box zoom.
+   * Updating it every frame re-rendered the whole canvas on every frame of a pan.
+   */
+  const updateViewportBounds = (transform: d3.ZoomTransform, force = false) => {
     currentTransformRef.current = transform;
     if (viewportRafRef.current) cancelAnimationFrame(viewportRafRef.current);
     viewportRafRef.current = requestAnimationFrame(() => {
       if (!wrapperRef.current) return;
+      if (!force && nodeCountRef.current < 70) return;
       const cw = wrapperRef.current.clientWidth || window.innerWidth;
       const ch = wrapperRef.current.clientHeight || window.innerHeight;
       const scale = Math.max(0.01, transform.k || 1);
@@ -386,14 +401,33 @@ export default function GraphVisualizer() {
       // to ensure nodes entering the viewport during pan don't abruptly pop in
       const screenMargin = Math.max(450, Math.min(cw, ch) * 0.5);
       const buffer = screenMargin / scale;
-      const x0 = -transform.x / scale - buffer;
-      const y0 = -transform.y / scale - buffer;
-      const x1 = (-transform.x + cw) / scale + buffer;
-      const y1 = (-transform.y + ch) / scale + buffer;
+      const vx0 = -transform.x / scale;
+      const vy0 = -transform.y / scale;
+      const vx1 = (-transform.x + cw) / scale;
+      const vy1 = (-transform.y + ch) / scale;
 
-      setViewportBounds({ x0, y0, x1, y1, scale });
+      const prev = committedBoundsRef.current;
+      if (!force && prev) {
+        const keep = buffer * 0.35;
+        const inside = vx0 - prev.x0 > keep && vy0 - prev.y0 > keep && prev.x1 - vx1 > keep && prev.y1 - vy1 > keep;
+        const zoomRatio = scale / prev.scale;
+        const sameZoom = zoomRatio > 0.8 && zoomRatio < 1.25;
+        const sameDetail = (scale < 0.25) === (prev.scale < 0.25);
+        if (inside && sameZoom && sameDetail) return;
+      }
+
+      const next = { x0: vx0 - buffer, y0: vy0 - buffer, x1: vx1 + buffer, y1: vy1 + buffer, scale };
+      committedBoundsRef.current = next;
+      setViewportBounds(next);
     });
   };
+
+  // Crossing 70 nodes: the bounds weren't kept up to date below it, so catch up now.
+  const cullingOn = nodes.length >= 70;
+  useEffect(() => {
+    if (cullingOn) updateViewportBounds(currentTransformRef.current, true);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cullingOn]);
 
   useEffect(() => {
     return () => {
@@ -1480,12 +1514,16 @@ export default function GraphVisualizer() {
             {(() => {
               const elements: any[] = [];
               const nodeMaxEdgeZ = new Map<string, number>();
+              // Where each node is in the brought-to-front order: one lookup, not a scan per node and edge.
+              const activeIndex = new Map<string, number>();
+              activeNodes.forEach((id, i) => activeIndex.set(id, i));
+              const activeAt = (id: string) => activeIndex.get(id) ?? -1;
 
               visibleLinks.forEach((link) => {
                 if (!link || !link.source?.data?.id || !link.target?.data?.id) return;
                 const isSelectedPath = selectedPathEdges.has(`${link.source.data.id}->${link.target.data.id}`);
-                const sourceActive = activeNodes.indexOf(link.source.data.id);
-                const targetActive = activeNodes.indexOf(link.target.data.id);
+                const sourceActive = activeAt(link.source.data.id);
+                const targetActive = activeAt(link.target.data.id);
                 const maxActive = Math.max(sourceActive, targetActive);
 
                 let z = 0;
@@ -1504,10 +1542,10 @@ export default function GraphVisualizer() {
 
               visibleNodes.forEach((node) => {
                 const isSelectedPath = selectedPathNodes.has(node.data.id);
-                const activeIndex = activeNodes.indexOf(node.data.id);
+                const nodeActive = activeAt(node.data.id);
 
                 let intrinsicZ = 0;
-                if (activeIndex !== -1) intrinsicZ = 10000 + activeIndex * 10;
+                if (nodeActive !== -1) intrinsicZ = 10000 + nodeActive * 10;
                 else if (isSelectedPath) intrinsicZ = 1000;
                 else intrinsicZ = 0;
 
