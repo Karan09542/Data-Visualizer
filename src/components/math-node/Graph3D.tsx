@@ -1249,6 +1249,20 @@ class Engine {
     canvas.style.touchAction = "none";
     host.appendChild(canvas);
 
+    // Drawn only while it can be seen: a 3D graph scrolled out of view (or in a hidden
+    // tab) costs nothing until it comes back.
+    if (typeof IntersectionObserver !== "undefined") {
+      this.viewObserver = new IntersectionObserver(
+        (entries) => {
+          this.inView = entries[entries.length - 1].isIntersecting;
+          this.updateSeen();
+        },
+        { rootMargin: "100px" },
+      );
+      this.viewObserver.observe(host);
+    }
+    document.addEventListener("visibilitychange", this.onPageVisibility);
+
     // Nothing is drawn outside the box.
     const e = 1.002;
     this.planes = [
@@ -2089,8 +2103,32 @@ class Engine {
   // ── Drawing ──
 
   private requestRender = () => {
-    if (!this.frame && !this.disposed) this.frame = requestAnimationFrame(this.tick);
+    if (this.disposed) return;
+    // Not seen (scrolled out of the canvas, or the tab hidden): hold the frame, and the
+    // rebuilding and auto-rotating it would do, until it is seen again. A spin being
+    // recorded keeps going.
+    if (this.unseen && !this.spin) {
+      this.heldFrame = true;
+      return;
+    }
+    if (!this.frame) this.frame = requestAnimationFrame(this.tick);
   };
+
+  /** Whether the graph can't be seen right now: no frames are drawn while so. */
+  private unseen = false;
+  private inView = true;
+  private heldFrame = false;
+  private viewObserver: IntersectionObserver | null = null;
+  private onPageVisibility = () => this.updateSeen();
+  private updateSeen() {
+    const unseen = !this.inView || (typeof document !== "undefined" && document.visibilityState === "hidden");
+    if (unseen === this.unseen) return;
+    this.unseen = unseen;
+    if (!unseen && this.heldFrame) {
+      this.heldFrame = false;
+      this.requestRender();
+    }
+  }
 
   /** Rows may have changed: check them on the next frame. */
   sync() {
@@ -7247,6 +7285,8 @@ class Engine {
   dispose() {
     this.disposed = true;
     cancelAnimationFrame(this.frame);
+    this.viewObserver?.disconnect();
+    document.removeEventListener("visibilitychange", this.onPageVisibility);
     window.clearTimeout(this.isoTimer);
     this.isoJobs.clear();
     window.clearTimeout(this.coarseTimer);

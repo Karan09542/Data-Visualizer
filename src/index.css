@@ -7628,3 +7628,14 @@ body.sticky-previewing-selection [contenteditable] *::selection,
 html:not(.dark) .gradient-card {
   --gradient-card-fill: #ffffff;
 }
+
+/*
+ * While the canvas is panned or zoomed (GraphVisualizer sets .canvas-moving), the blur
+ * behind glassy nodes is switched off: it is the costliest thing to repaint on every
+ * frame of a pan. It returns as soon as the canvas settles.
+ */
+.canvas-moving foreignObject,
+.canvas-moving foreignObject * {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}

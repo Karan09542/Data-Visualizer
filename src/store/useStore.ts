@@ -455,7 +455,11 @@ export interface StoreState {
   undoStack: { code: string; format: CodeFormat }[];
   redoStack: { code: string; format: CodeFormat }[];
 
-  setCode: (code: string, skipHistory?: boolean) => void;
+  /**
+   * The document's text. `parsed`, when given, is that text already read (by the caller
+   * that just wrote it from data), so it isn't parsed again.
+   */
+  setCode: (code: string, skipHistory?: boolean, parsed?: { data: any }) => void;
   setApiMethod: (method: string) => void;
   setApiUrl: (url: string) => void;
   setApiHeaders: (headers: string) => void;
@@ -1267,7 +1271,7 @@ export const useStore = create<StoreState>()(
           setCode(newCode);
         },
 
-        setCode: (code: string, skipHistory = false) => {
+        setCode: (code: string, skipHistory = false, parsed?: { data: any }) => {
           const currentCode = get().code;
           const {
             apiNodeResponses,
@@ -1276,7 +1280,7 @@ export const useStore = create<StoreState>()(
             apiNodeConfig,
             codeFormat,
           } = get();
-          const { data, error } = parseInput(code);
+          const { data, error } = parsed ? { data: parsed.data, error: null } : parseInput(code);
           let treeData = null;
           if (data !== null) {
             treeData = transformToTree(
@@ -1610,7 +1614,9 @@ export const useStore = create<StoreState>()(
             if (value === "true") return true;
             if (value === "false") return false;
             if (value === "null") return null;
-            if (!isNaN(Number(value)) && value.trim() !== "") return Number(value);
+            // A number too big for JavaScript (1e999) stays text: as data it would be
+            // Infinity, which JSON can't hold.
+            if (!isNaN(Number(value)) && value.trim() !== "" && Number.isFinite(Number(value))) return Number(value);
             if (value.trim().startsWith("{") || value.trim().startsWith("[")) {
               try {
                 return JSON.parse(value);
@@ -1652,34 +1658,27 @@ export const useStore = create<StoreState>()(
           }
           keepText = !!options?.fromEditor && (parts.length === 0 ? typeof parsedData : typeof checkCurrent) === "string";
 
-          // Clone parsedData
-          let newData = JSON.parse(JSON.stringify(parsedData));
-
-          let current = newData;
-          for (let i = 0; i < parts.length - 1; i++) {
-            let part = parts[i];
+          // The new data: only the objects along the path are copied, the rest is shared
+          // (nothing changes the parsed data in place). Copying all of it each edit cost
+          // more than the edit itself on a large document.
+          const keyOf = (raw: string) => {
+            let part = raw;
             if (part.startsWith("[")) {
               part = part.slice(1, -1);
               if ((part.startsWith('"') && part.endsWith('"')) || (part.startsWith("'") && part.endsWith("'"))) {
                 part = part.slice(1, -1);
               }
             }
-            current = current[part];
-          }
-
-          if (parts.length > 0) {
-            let lastPart = parts[parts.length - 1];
-            if (lastPart.startsWith("[")) {
-              lastPart = lastPart.slice(1, -1);
-              if ((lastPart.startsWith('"') && lastPart.endsWith('"')) || (lastPart.startsWith("'") && lastPart.endsWith("'"))) {
-                lastPart = lastPart.slice(1, -1);
-              }
-            }
-
-            current[lastPart] = readValue(newValue);
-          } else {
-            newData = readValue(newValue);
-          }
+            return part;
+          };
+          const setIn = (obj: any, depth: number): any => {
+            if (depth === parts.length) return readValue(newValue);
+            const key = keyOf(parts[depth]);
+            const copy = Array.isArray(obj) ? obj.slice() : { ...obj };
+            copy[key] = setIn(obj[key], depth + 1);
+            return copy;
+          };
+          const newData = setIn(parsedData, 0);
 
           // Detect format
           const isYaml = codeFormat === "yaml";
@@ -1698,7 +1697,9 @@ export const useStore = create<StoreState>()(
 
           // Asset garbage collection is handled centrally in App.tsx observer
 
-          setCode(newCode);
+          // JSON text written from this data reads back as this data: no need to parse it.
+          // (YAML can read some values differently, so it is parsed as before.)
+          setCode(newCode, false, isYaml ? undefined : { data: newData });
         },
 
         setDragOverride: (id, pos) => {

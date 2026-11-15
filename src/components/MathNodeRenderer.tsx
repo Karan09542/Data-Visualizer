@@ -1914,6 +1914,30 @@ export const MathNodeRenderer: React.FC<any> = ({
         : /\b(t|time)\b/.test(f.expr) || (odeNames.size > 0 && followsOde(f.expr))),
   );
 
+  // Whether the node can't be seen (scrolled out of the canvas, or the tab hidden): the
+  // animation then skips its frames, and picks up where it was when it comes back.
+  const unseenRef = useRef(false);
+  useEffect(() => {
+    const el = rootRef.current;
+    let inView = true;
+    const update = () => {
+      unseenRef.current = !inView || document.visibilityState === "hidden";
+    };
+    const observer =
+      el && typeof IntersectionObserver !== "undefined"
+        ? new IntersectionObserver((entries) => {
+          inView = entries[entries.length - 1].isIntersecting;
+          update();
+        })
+        : null;
+    if (el) observer?.observe(el);
+    document.addEventListener("visibilitychange", update);
+    return () => {
+      observer?.disconnect();
+      document.removeEventListener("visibilitychange", update);
+    };
+  }, []);
+
   // Animation loop
   useEffect(() => {
     const hasAnyAnimation =
@@ -1926,6 +1950,12 @@ export const MathNodeRenderer: React.FC<any> = ({
     }
 
     const loop = (timestamp: number) => {
+      if (unseenRef.current) {
+        // Not seen: no work, and no jump in time when it is seen again.
+        lastTimeRef.current = 0;
+        reqRef.current = requestAnimationFrame(loop);
+        return;
+      }
       if (!lastTimeRef.current) lastTimeRef.current = timestamp;
       const dt = (timestamp - lastTimeRef.current) / 1000;
       lastTimeRef.current = timestamp;

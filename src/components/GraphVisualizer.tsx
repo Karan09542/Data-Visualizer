@@ -187,6 +187,12 @@ const THEME_CANVAS: Record<string, { color: [string, string]; image: [string, st
   },
 };
 
+/**
+ * How many plain nodes one special node (math, code, API, todo…) weighs when deciding
+ * whether to leave off-screen nodes out. Special nodes themselves are always drawn.
+ */
+const SPECIAL_NODE_WEIGHT = 6;
+
 export default function GraphVisualizer() {
   const treeData = useStore((s) => s.treeData);
   const rawCollapsedNodes = useStore((s) => s.collapsedNodes);
@@ -374,9 +380,19 @@ export default function GraphVisualizer() {
   const currentTransformRef = useRef<d3.ZoomTransform>(d3.zoomIdentity);
   const viewportRafRef = useRef<number | null>(null);
 
-  // How many nodes there are, for the pan handler (which runs outside React's render).
+  /**
+   * How heavy the canvas is to draw: a special node (math, code, API, todo…) counts as
+   * several plain ones, so a canvas with a few of them leaves off-screen nodes out sooner.
+   * The thresholds below (70, 250) are in these units.
+   */
+  const renderWeight = useMemo(() => {
+    let w = 0;
+    for (const n of nodes) w += isSpecialNodeType(n.data) ? SPECIAL_NODE_WEIGHT : 1;
+    return w;
+  }, [nodes]);
+  // For the pan handler (which runs outside React's render).
   const nodeCountRef = useRef(0);
-  nodeCountRef.current = nodes.length;
+  nodeCountRef.current = renderWeight;
   // The bounds last handed to React, to tell whether a pan or zoom needs a new render.
   const committedBoundsRef = useRef(viewportBounds);
 
@@ -423,7 +439,7 @@ export default function GraphVisualizer() {
   };
 
   // Crossing 70 nodes: the bounds weren't kept up to date below it, so catch up now.
-  const cullingOn = nodes.length >= 70;
+  const cullingOn = renderWeight >= 70;
   useEffect(() => {
     if (cullingOn) updateViewportBounds(currentTransformRef.current, true);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -445,7 +461,7 @@ export default function GraphVisualizer() {
     }
 
     // If fewer than 70 nodes, standard rendering without culling
-    if (nodes.length < 70 || !viewportBounds) {
+    if (renderWeight < 70 || !viewportBounds) {
       return {
         visibleNodeIds: new Set(nodes.map((n) => n.data.id)),
         isLodActive: false,
@@ -502,12 +518,12 @@ export default function GraphVisualizer() {
   }, [nodes, nodeQuadtree, viewportBounds, selectedNodeId, activeNodes, searchMatches, graphExportActive]);
 
   const visibleNodes = useMemo(() => {
-    if (graphExportActive || nodes.length < 70 || !viewportBounds) return nodes;
+    if (graphExportActive || renderWeight < 70 || !viewportBounds) return nodes;
     return nodes.filter((n) => visibleNodeIds.has(n.data.id));
   }, [nodes, visibleNodeIds, viewportBounds, graphExportActive]);
 
   const visibleLinks = useMemo(() => {
-    if (graphExportActive || nodes.length < 70 || !viewportBounds) return links;
+    if (graphExportActive || renderWeight < 70 || !viewportBounds) return links;
     return links.filter(
       (l) =>
         l &&
@@ -817,7 +833,12 @@ export default function GraphVisualizer() {
           svgGRef.current.setAttribute("transform", transform.toString());
         }
         updateViewportBounds(e.transform);
-      });
+      })
+      // While the canvas is panned or zoomed it is repainted every frame: costly effects
+      // (the blur behind glassy nodes) are switched off until it settles. Set on the element
+      // directly, so starting and ending a pan doesn't re-render the canvas.
+      .on("start", () => wrapperRef.current?.classList.add("canvas-moving"))
+      .on("end", () => wrapperRef.current?.classList.remove("canvas-moving"));
 
     zoomRef.current = zoom;
 
