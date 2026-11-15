@@ -1,5 +1,5 @@
 import React from 'react';
-import { SlidersHorizontal, Image as ImageIcon, Crop, FileText, Check, ArrowLeft, RefreshCcw, RotateCw, Scan } from 'lucide-react';
+import { SlidersHorizontal, Crop, FileText, Check, ArrowLeft, RotateCcw, RotateCw, Scan, Square } from 'lucide-react';
 import { FilterOptions } from '../../../utils/image/ImageFilters';
 
 interface ToolbarBottomProps {
@@ -13,173 +13,228 @@ interface ToolbarBottomProps {
   isProcessing: boolean;
   onSetAspect: (aspect?: number) => void;
   aspect: number | undefined;
+  /** The photo's own width / height, for the "Original" shape. */
+  originalAspect?: number;
   onRotate90: () => void;
+  /** The fine straightening angle, -45° to 45°. */
   rotation: number;
   onRotateCustom: (deg: number) => void;
   cropMode: 'perspective' | 'rectangle';
-  onToggleCropMode: () => void;
+  onSetCropMode: (mode: 'perspective' | 'rectangle') => void;
 }
 
+const chip = (on: boolean) =>
+  `h-8 px-3 rounded-full text-xs font-semibold shrink-0 transition-colors ${
+    on ? 'bg-white text-slate-900' : 'bg-white/[0.07] text-slate-300 hover:bg-white/[0.12] hover:text-white'
+  }`;
+const iconBtn =
+  'h-8 w-8 shrink-0 inline-flex items-center justify-center rounded-full bg-white/[0.07] text-slate-300 hover:bg-white/[0.12] hover:text-white transition-colors';
+
+/** The crop screen's controls: shape, mode and straightening, or the adjustments. */
 export function ToolbarBottom({
   currentTab, setTab, filters, setFilters, onSave, onCancel, onResetCrop, isProcessing,
-  onSetAspect, aspect, onRotate90, rotation, onRotateCustom, cropMode, onToggleCropMode
+  onSetAspect, aspect, originalAspect, onRotate90, rotation, onRotateCustom, cropMode, onSetCropMode,
 }: ToolbarBottomProps) {
-
-  const handleOcrPrep = () => {
-    setFilters(f => ({ ...f, type: 'threshold', brightness: 20, contrast: 40 }));
-  };
-
-  const handleResetFilters = () => {
-    setFilters({ type: 'none', brightness: 0, contrast: 0 });
-  };
+  const presets: { label: string; value: number | undefined }[] = [
+    { label: 'Free', value: undefined },
+    ...(originalAspect ? [{ label: 'Original', value: originalAspect }] : []),
+    { label: '1:1', value: 1 },
+    { label: '4:3', value: 4 / 3 },
+    { label: '3:4', value: 3 / 4 },
+    { label: '16:9', value: 16 / 9 },
+    { label: '9:16', value: 9 / 16 },
+  ];
+  const isOn = (v: number | undefined) => (v === undefined ? aspect === undefined : aspect !== undefined && Math.abs(aspect - v) < 1e-6);
+  const angle = Math.round(rotation * 10) / 10;
+  const pct = ((angle + 45) / 90) * 100;
 
   return (
-    <div className="w-full bg-slate-950 border-t border-white/10 flex flex-col shrink-0 pb-safe pb-4">
-
-      {/* Dynamic Settings Area */}
-      <div className="h-32 p-4 flex flex-col justify-center">
+    <div className="w-full bg-[#0b0f17] border-t border-white/[0.08] flex flex-col shrink-0" style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom))' }}>
+      <div className="px-3 pt-3 pb-2 min-h-[8.5rem] flex flex-col justify-center gap-3">
         {currentTab === 'crop' && (
-          <div className="flex flex-col h-full gap-3 overflow-y-auto no-scrollbar justify-center">
-            <div className="flex gap-2 overflow-x-auto no-scrollbar shrink-0 px-2 pb-1">
-              {[
-                { label: 'Free', value: undefined },
-                { label: '1:1', value: 1 },
-                { label: '4:3', value: 4 / 3 },
-                { label: '16:9', value: 16 / 9 },
-                { label: '3:4', value: 3 / 4 }
-              ].map(preset => (
+          <>
+            {/* Shape */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar" role="radiogroup" aria-label="Crop shape">
+              {presets.map((p) => (
                 <button
-                  key={preset.label}
-                  onClick={() => onSetAspect(preset.value)}
-                  className={`px-3 py-1.5 rounded-full text-xs font-semibold shrink-0 transition-colors border ${aspect === preset.value ? 'bg-white text-black border-white' : 'bg-white/5 text-slate-300 border-transparent hover:bg-white/10'
-                    }`}
+                  key={p.label}
+                  type="button"
+                  role="radio"
+                  aria-checked={isOn(p.value)}
+                  onClick={() => onSetAspect(p.value)}
+                  disabled={cropMode === 'perspective' && p.value !== undefined}
+                  className={`${chip(isOn(p.value) && cropMode === 'rectangle')} disabled:opacity-35 disabled:pointer-events-none`}
                 >
-                  {preset.label}
+                  {p.label}
                 </button>
               ))}
-              <div className="w-px h-6 bg-white/10 mx-1 shrink-0 self-center" />
-              <button 
-                onClick={onToggleCropMode}
-                className={`px-3 py-1.5 rounded-full flex items-center justify-center shrink-0 transition-colors border ${cropMode === 'rectangle' ? 'bg-blue-500/20 text-blue-400 border-blue-500/30' : 'bg-white/5 hover:bg-white/10 text-slate-300 border-transparent'}`}
-                title={cropMode === 'perspective' ? "Perspective Mode (Free)" : "Straight Crop Mode"}
-              >
-                {cropMode === 'perspective' ? <Scan size={14} /> : <Crop size={14} />}
-                <span className="ml-1 text-[10px] uppercase font-bold">{cropMode}</span>
+            </div>
+
+            {/* Mode, quarter turn, reset */}
+            <div className="flex items-center gap-2">
+              <div className="flex p-0.5 rounded-full bg-white/[0.07]" role="radiogroup" aria-label="Crop mode">
+                {(
+                  [
+                    ['rectangle', 'Straight', Square],
+                    ['perspective', 'Perspective', Scan],
+                  ] as const
+                ).map(([mode, label, Icon]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    role="radio"
+                    aria-checked={cropMode === mode}
+                    onClick={() => onSetCropMode(mode)}
+                    title={mode === 'rectangle' ? 'A straight rectangle' : 'Drag each corner: straightens a page shot at an angle'}
+                    className={`h-7 px-3 inline-flex items-center gap-1.5 rounded-full text-xs font-semibold transition-colors ${
+                      cropMode === mode ? 'bg-white text-slate-900' : 'text-slate-300 hover:text-white'
+                    }`}
+                  >
+                    <Icon size={13} />
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <span className="flex-1" />
+              <button type="button" onClick={onRotate90} className={iconBtn} title="Turn 90°" aria-label="Turn 90 degrees">
+                <RotateCw size={15} />
               </button>
-              <button
-                onClick={onRotate90}
-                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-full flex items-center justify-center shrink-0"
-                title="Rotate 90°"
-              >
-                <RotateCw size={14} />
-              </button>
-              <button
-                onClick={onResetCrop}
-                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-full flex items-center justify-center shrink-0"
-                title="Reset Frame"
-              >
-                <RefreshCcw size={14} />
+              <button type="button" onClick={onResetCrop} className={iconBtn} title="Reset crop and angle" aria-label="Reset crop and angle">
+                <RotateCcw size={15} />
               </button>
             </div>
-            <div className="flex items-center gap-3 px-3">
-              <span className="text-xs text-slate-400 font-medium">Angle</span>
-              <input
-                type="range" min="-45" max="45" value={rotation > 180 ? rotation - 360 : rotation} // Simplified visual for slider
-                onChange={e => {
-                  // Keep within a standard visual range or let DocumentWorkspace handle absolute
-                  onRotateCustom(Number(e.target.value));
-                }}
-                className="flex-1 h-1 bg-slate-800 rounded-full appearance-none accent-blue-500"
-              />
-              <span className="text-xs text-slate-400 w-8 text-right">{rotation > 180 ? rotation - 360 : rotation}°</span>
+
+            {/* Straighten */}
+            <div className="flex items-center gap-3">
+              <span className="text-[11px] font-medium text-slate-400 w-16 shrink-0">Straighten</span>
+              <div className="relative flex-1 h-8 flex items-center">
+                {/* the centre mark */}
+                <span className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 h-3 w-px bg-white/35 pointer-events-none" />
+                <input
+                  type="range"
+                  min={-45}
+                  max={45}
+                  step={0.5}
+                  value={angle}
+                  onChange={(e) => onRotateCustom(Number(e.target.value))}
+                  onDoubleClick={() => onRotateCustom(0)}
+                  aria-label="Straighten angle in degrees"
+                  className="cam-range w-full"
+                  style={{ ['--pct' as string]: `${pct}%` }}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={() => onRotateCustom(0)}
+                title="Back to 0°"
+                className={`w-12 h-7 shrink-0 rounded-full text-[11px] font-semibold tabular-nums transition-colors ${
+                  angle ? 'bg-blue-500/20 text-blue-300 hover:bg-blue-500/30' : 'bg-white/[0.07] text-slate-400'
+                }`}
+              >
+                {angle > 0 ? '+' : ''}
+                {angle}°
+              </button>
             </div>
-          </div>
+          </>
         )}
 
         {currentTab === 'adjust' && (
-          <div className="flex flex-col h-full gap-3 overflow-y-auto no-scrollbar">
-            {/* Presets */}
-            <div className="flex gap-2 overflow-x-auto no-scrollbar shrink-0 pb-1">
+          <>
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar">
               <button
-                onClick={handleOcrPrep}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-500/20 text-blue-400 border border-blue-500/30 rounded-full text-xs font-semibold whitespace-nowrap"
+                type="button"
+                onClick={() => setFilters((f) => ({ ...f, type: 'threshold', brightness: 20, contrast: 40 }))}
+                className={`${chip(filters.type === 'threshold')} inline-flex items-center gap-1.5`}
               >
-                <FileText size={14} /> OCR Prep (B&W)
+                <FileText size={13} /> Document (B&amp;W)
               </button>
-              <button
-                onClick={() => setFilters(f => ({ ...f, type: 'grayscale' }))}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border ${filters.type === 'grayscale' ? 'bg-white text-black border-white' : 'bg-white/5 text-slate-300 border-transparent hover:bg-white/10'}`}
-              >
+              <button type="button" onClick={() => setFilters((f) => ({ ...f, type: 'grayscale' }))} className={chip(filters.type === 'grayscale')}>
                 Grayscale
               </button>
-              <button
-                onClick={() => setFilters(f => ({ ...f, type: 'none' }))}
-                className={`px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap border ${filters.type === 'none' ? 'bg-white text-black border-white' : 'bg-white/5 text-slate-300 border-transparent hover:bg-white/10'}`}
-              >
+              <button type="button" onClick={() => setFilters((f) => ({ ...f, type: 'none' }))} className={chip(filters.type === 'none')}>
                 Original
               </button>
-              <div className="w-px h-6 bg-white/10 mx-1 shrink-0 self-center" />
               <button
-                onClick={handleResetFilters}
-                className="px-3 py-1.5 bg-white/5 hover:bg-white/10 text-slate-300 rounded-full text-xs font-semibold whitespace-nowrap"
+                type="button"
+                onClick={() => setFilters({ type: 'none', brightness: 0, contrast: 0 })}
+                className={`${iconBtn} ml-auto`}
+                title="Reset adjustments"
+                aria-label="Reset adjustments"
               >
-                Reset All
+                <RotateCcw size={15} />
               </button>
             </div>
-
-            {/* Sliders */}
-            <div className="space-y-3 px-1">
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 w-16">Brightness</span>
+            {(
+              [
+                ['brightness', 'Brightness'],
+                ['contrast', 'Contrast'],
+              ] as const
+            ).map(([key, label]) => (
+              <div key={key} className="flex items-center gap-3">
+                <span className="text-[11px] font-medium text-slate-400 w-16 shrink-0">{label}</span>
                 <input
-                  type="range" min="-100" max="100" value={filters.brightness}
-                  onChange={e => setFilters(f => ({ ...f, brightness: Number(e.target.value) }))}
-                  className="flex-1 h-1 bg-slate-800 rounded-full appearance-none accent-blue-500"
+                  type="range"
+                  min={-100}
+                  max={100}
+                  value={filters[key]}
+                  onChange={(e) => setFilters((f) => ({ ...f, [key]: Number(e.target.value) }))}
+                  onDoubleClick={() => setFilters((f) => ({ ...f, [key]: 0 }))}
+                  aria-label={label}
+                  className="cam-range flex-1"
+                  style={{ ['--pct' as string]: `${((filters[key] + 100) / 200) * 100}%` }}
                 />
+                <span className="w-9 text-right text-[11px] font-semibold tabular-nums text-slate-300">{filters[key]}</span>
               </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-slate-400 w-16">Contrast</span>
-                <input
-                  type="range" min="-100" max="100" value={filters.contrast}
-                  onChange={e => setFilters(f => ({ ...f, contrast: Number(e.target.value) }))}
-                  className="flex-1 h-1 bg-slate-800 rounded-full appearance-none accent-blue-500"
-                />
-              </div>
-            </div>
-          </div>
+            ))}
+          </>
         )}
       </div>
 
-      {/* Main Bottom Tabs */}
-      <div className="flex items-center justify-between px-4 pt-2">
-        <button onClick={onCancel} className="p-3 text-slate-400 hover:text-white rounded-full bg-white/5 hover:bg-white/10">
+      {/* Back, the two tabs, done */}
+      <div className="flex items-center justify-between px-3 pt-1">
+        <button type="button" onClick={onCancel} className="h-11 w-11 inline-flex items-center justify-center text-slate-300 hover:text-white rounded-full bg-white/[0.07] hover:bg-white/[0.12]" aria-label="Back: retake">
           <ArrowLeft size={18} />
         </button>
-
-        <div className="flex bg-white/10 rounded-full p-1 border border-white/5">
-          <button
-            onClick={() => setTab('crop')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-colors ${currentTab === 'crop' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'}`}
-          >
-            <Crop size={14} /> Crop
-          </button>
-          <button
-            onClick={() => setTab('adjust')}
-            className={`flex items-center gap-2 px-4 py-2 rounded-full text-xs font-bold transition-colors ${currentTab === 'adjust' ? 'bg-white text-black' : 'text-slate-400 hover:text-white'}`}
-          >
-            <SlidersHorizontal size={14} /> Adjust
-          </button>
+        <div className="flex p-1 rounded-full bg-white/[0.07]" role="tablist">
+          {(
+            [
+              ['crop', 'Crop', Crop],
+              ['adjust', 'Adjust', SlidersHorizontal],
+            ] as const
+          ).map(([id, label, Icon]) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={currentTab === id}
+              onClick={() => setTab(id)}
+              className={`h-9 px-4 inline-flex items-center gap-2 rounded-full text-xs font-bold transition-colors ${
+                currentTab === id ? 'bg-white text-slate-900' : 'text-slate-400 hover:text-white'
+              }`}
+            >
+              <Icon size={14} /> {label}
+            </button>
+          ))}
         </div>
-
         <button
+          type="button"
           onClick={onSave}
           disabled={isProcessing}
-          className="p-3 text-white bg-blue-600 hover:bg-blue-500 rounded-full flex items-center justify-center disabled:opacity-50"
+          className="h-11 w-11 inline-flex items-center justify-center text-white bg-blue-600 hover:bg-blue-500 rounded-full disabled:opacity-50"
+          aria-label="Save"
         >
           {isProcessing ? <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> : <Check size={18} />}
         </button>
       </div>
 
+      <style>{`
+        .cam-range{-webkit-appearance:none;appearance:none;height:28px;background:transparent;cursor:pointer;touch-action:none}
+        .cam-range:focus{outline:none}
+        .cam-range::-webkit-slider-runnable-track{height:4px;border-radius:999px;background:linear-gradient(to right,rgba(255,255,255,.18) 0,rgba(255,255,255,.18) 100%)}
+        .cam-range::-moz-range-track{height:4px;border-radius:999px;background:rgba(255,255,255,.18)}
+        .cam-range::-webkit-slider-thumb{-webkit-appearance:none;width:20px;height:20px;margin-top:-8px;border-radius:50%;background:#fff;border:0;box-shadow:0 0 0 4px rgba(59,130,246,.35),0 2px 6px rgba(0,0,0,.5)}
+        .cam-range::-moz-range-thumb{width:20px;height:20px;border-radius:50%;background:#fff;border:0;box-shadow:0 0 0 4px rgba(59,130,246,.35),0 2px 6px rgba(0,0,0,.5)}
+      `}</style>
     </div>
   );
 }
