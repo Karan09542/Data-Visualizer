@@ -20,6 +20,9 @@ import {
   ChevronLeft,
   ChevronRight,
   Film,
+  Crop,
+  MoreVertical,
+  Check,
   PenLine,
 } from 'lucide-react';
 import { useStore, useEffectiveTheme } from '../store/useStore';
@@ -29,11 +32,13 @@ import SmartMediaRenderer from './SmartMediaRenderer';
 import { SmartFallbackMedia } from './SmartFallbackMedia';
 import { PdfViewer } from './PdfViewer';
 import { SafeModelViewer } from './SafeModelViewer';
-import { getAssetBlob, getOriginalAsset, resolveAssetUrl, resolveOriginalAssetId } from '../utils/assetManager';
+import { getAssetBlob, getOriginalAsset, importFile, resolveAssetUrl, resolveOriginalAssetId } from '../utils/assetManager';
 import { downloadBlob, downloadImage, withImageExtension } from '../utils/downloadUtils';
 import { MediaStore } from './notes/storage/MediaStore';
 import { db } from '../lib/db';
 import { useImageMarkup } from './imageMarkup/useImageMarkup';
+import { useCompactMarkup } from './imageMarkup/ImageMarkupToolbar';
+import { DocumentWorkspace } from './camera/DocumentWorkspace';
 
 /**
  * What an image's marks are saved under: its stored asset (the original, not a
@@ -349,6 +354,51 @@ const MediaPreviewPopup: React.FC = () => {
   const [showThumbnails, setShowThumbnails] = React.useState(true);
   const [dbAssetImages, setDbAssetImages] = React.useState<string[]>([]);
   const [drawMode, setDrawMode] = React.useState(false);
+  // The crop screen (the camera's), over the preview.
+  const [cropOpen, setCropOpen] = React.useState(false);
+  /** The format a crop is saved in: the original's where it can be (a PNG stays a PNG). */
+  const [cropType, setCropType] = React.useState<'image/jpeg' | 'image/png' | 'image/webp'>('image/jpeg');
+  /** A finished crop, waiting for "download a copy" or "replace the original". */
+  const [cropResult, setCropResult] = React.useState<{ blob: Blob; url: string } | null>(null);
+  const [replacing, setReplacing] = React.useState(false);
+  React.useEffect(() => () => {
+    if (cropResult) URL.revokeObjectURL(cropResult.url);
+  }, [cropResult]);
+  // The original's format, worked out when the crop screen opens.
+  React.useEffect(() => {
+    if (!cropOpen || !activePreviewMedia?.url) return;
+    let cancelled = false;
+    const pick = (mime?: string | null) => {
+      const m = (mime || '').toLowerCase();
+      const t = m.includes('png') ? 'image/png' : m.includes('webp') ? 'image/webp' : 'image/jpeg';
+      if (!cancelled) setCropType(t);
+    };
+    const u = activePreviewMedia.url.split('#')[0];
+    if (/^(img_|thumb_)/.test(u)) getOriginalAsset(u).then((a) => pick(a?.mimeType));
+    else if (u.startsWith('data:')) pick(u.slice(5, u.indexOf(';')));
+    else pick(/\.png(\?|$)/i.test(u) ? 'png' : /\.webp(\?|$)/i.test(u) ? 'webp' : 'jpeg');
+    return () => {
+      cancelled = true;
+    };
+  }, [cropOpen, activePreviewMedia?.url]);
+  // Phones and tablets: copy, thumbnails, download and crop go in one ⋮ menu.
+  const compactHeader = useCompactMarkup();
+  const [menuAt, setMenuAt] = React.useState<{ top: number; right: number } | null>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (!menuAt) return;
+    const close = (e: PointerEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuAt(null);
+    };
+    document.addEventListener('pointerdown', close, true);
+    return () => document.removeEventListener('pointerdown', close, true);
+  }, [menuAt]);
+  // A different picture, or the preview closed: the menu and crop screen go.
+  React.useEffect(() => {
+    setMenuAt(null);
+    setCropOpen(false);
+    setCropResult(null);
+  }, [activePreviewMedia?.url]);
   const markup = useImageMarkup(activePreviewMedia?.type === 'image' ? markupKeyFor(activePreviewMedia.url) : null);
 
   // Closing the preview leaves draw mode; it stays on from one image to the next.
@@ -784,6 +834,77 @@ const MediaPreviewPopup: React.FC = () => {
     }
   };
 
+  /** The name a saved crop gets (a data: or blob: picture has no real name). */
+  const cropFileName = () => {
+    const named = !/^(data|blob):/i.test(originalUrl);
+    const base = (named && fileName.replace(/\.[a-z0-9]{2,5}$/i, '')) || 'image';
+    const ext = cropType === 'image/png' ? 'png' : cropType === 'image/webp' ? 'webp' : 'jpg';
+    return `${base}-cropped.${ext}`;
+  };
+
+  /**
+   * What the document calls this picture: a stored picture by its full-size id and its
+   * thumbnail's id (canvas nodes show the thumbnail), anything else by its address.
+   */
+  const referencesOf = async (): Promise<{ original: string; thumbnail?: string }> => {
+    const u = originalUrl.split('#')[0];
+    if (/^(img_|thumb_)/.test(u)) {
+      const asset = await getOriginalAsset(u);
+      if (asset) return { original: asset.assetId, thumbnail: asset.thumbnailId };
+    }
+    return { original: originalUrl };
+  };
+
+  // Whether the open document refers to this picture: only then can it be replaced.
+  const inDocument = (() => {
+    const u = originalUrl.split('#')[0];
+    if (!u || u.startsWith('blob:')) return false;
+    return (useStore.getState().code || '').includes(u);
+  })();
+
+  const downloadCrop = () => {
+    if (!cropResult) return;
+    downloadBlob(cropResult.blob, cropFileName());
+    setCropResult(null);
+    setNotification({ message: 'Saved a cropped copy', type: 'success' });
+  };
+
+  /**
+   * Replace the original: the crop is stored as a new picture and every reference to the
+   * old one in the document points at it. Undo brings the original back (it is kept while
+   * history can still reach it).
+   */
+  const replaceWithCrop = async () => {
+    if (!cropResult) return;
+    setReplacing(true);
+    try {
+      const refs = await referencesOf();
+      const file = new File([cropResult.blob], cropFileName(), { type: cropResult.blob.type || cropType });
+      const added = await importFile(file);
+      const { code, setCode } = useStore.getState();
+      let next = code.split(refs.original).join(added.assetId);
+      if (refs.thumbnail && added.thumbnailId) next = next.split(refs.thumbnail).join(added.thumbnailId);
+      if (next === code) {
+        setNotification({ message: "This picture isn't in the open document, so it can't be replaced", type: 'error' });
+        return;
+      }
+      setCode(next);
+      const swap = (v: string) => (v === refs.original || v === refs.thumbnail ? added.assetId : v);
+      setActivePreviewMedia({
+        ...activePreviewMedia,
+        url: added.assetId,
+        gallery: activePreviewMedia.gallery?.map(swap),
+      });
+      setCropResult(null);
+      setNotification({ message: 'Replaced the original with the cropped picture (Undo brings it back)', type: 'success' });
+    } catch (err) {
+      console.error('Replacing the picture failed', err);
+      setNotification({ message: 'Could not replace the picture', type: 'error' });
+    } finally {
+      setReplacing(false);
+    }
+  };
+
   const getIcon = () => {
     switch (activePreviewMedia?.type) {
       case 'image': return <ImageIcon size={16} />;
@@ -1114,7 +1235,18 @@ const MediaPreviewPopup: React.FC = () => {
                         >
                           <RotateCw size={15} />
                         </button>
-                        <button
+                        {!compactHeader && (
+                          <button
+                            onClick={() => setCropOpen(true)}
+                            disabled={isResolvingAsset}
+                            className={`shrink-0 ${HEADER_BUTTON}`}
+                            title="Crop, straighten and adjust: saves a cropped copy"
+                            aria-label="Crop image"
+                          >
+                            <Crop size={15} />
+                          </button>
+                        )}
+                        {!compactHeader && <button
                           onClick={copyImage}
                           disabled={isCopyingImage || isResolvingAsset}
                           className={`shrink-0 ${HEADER_BUTTON} hidden sm:inline-flex`}
@@ -1122,8 +1254,8 @@ const MediaPreviewPopup: React.FC = () => {
                           aria-label="Copy image"
                         >
                           {isCopyingImage ? <Loader2 size={15} className="animate-spin" /> : <Copy size={15} />}
-                        </button>
-                        {hasMultipleImages && (
+                        </button>}
+                        {hasMultipleImages && !compactHeader && (
                           <button
                             onClick={() => setShowThumbnails((prev) => !prev)}
                             className={`shrink-0 ${HEADER_BUTTON} ${showThumbnails ? 'text-indigo-600 dark:text-sky-400 bg-indigo-50 dark:bg-white/10' : ''}`}
@@ -1136,7 +1268,7 @@ const MediaPreviewPopup: React.FC = () => {
                         )}
                       </>
                     )}
-                    {canDownload && (
+                    {canDownload && !compactHeader && (
                       <button
                         onClick={downloadOriginal}
                         disabled={isDownloading || isResolvingAsset}
@@ -1166,6 +1298,24 @@ const MediaPreviewPopup: React.FC = () => {
                       </>
                     )}
                   </div>
+
+                  {/* Phones and tablets: the rest in one menu */}
+                  {compactHeader && (isImage || canDownload) && (
+                    <button
+                      onClick={(e) => {
+                        if (menuAt) return setMenuAt(null);
+                        const r = e.currentTarget.getBoundingClientRect();
+                        setMenuAt({ top: r.bottom + 6, right: Math.max(8, window.innerWidth - r.right) });
+                      }}
+                      className={`shrink-0 ${HEADER_BUTTON} ${menuAt ? 'bg-slate-100 dark:bg-white/10' : ''}`}
+                      title="More"
+                      aria-label="More actions"
+                      aria-haspopup="menu"
+                      aria-expanded={!!menuAt}
+                    >
+                      <MoreVertical size={17} />
+                    </button>
+                  )}
 
                   {/* Window Controls (Pinned to the Right, NEVER shrinks or clips) */}
                   <div className="flex shrink-0 items-center gap-0.5 sm:gap-1 pl-1">
@@ -1324,6 +1474,146 @@ const MediaPreviewPopup: React.FC = () => {
               </motion.div>
             )}
           </AnimatePresence>
+
+          {/* The ⋮ menu (phones and tablets), outside the header so it isn't clipped */}
+          {menuAt &&
+            createPortal(
+              <div
+                ref={menuRef}
+                role="menu"
+                aria-label="More actions"
+                className="fixed z-[20060] min-w-48 rounded-xl border border-slate-200 bg-white p-1 shadow-2xl dark:border-white/10 dark:bg-[#11151f] text-slate-700 dark:text-slate-200 animate-in fade-in zoom-in-95 duration-100"
+                style={{ top: menuAt.top, right: menuAt.right }}
+              >
+                {isImage && (
+                  <button
+                    role="menuitem"
+                    disabled={isResolvingAsset}
+                    onClick={() => {
+                      setMenuAt(null);
+                      setCropOpen(true);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 h-11 text-left text-sm hover:bg-slate-100 dark:hover:bg-white/[0.06] disabled:opacity-40"
+                  >
+                    <Crop size={16} className="text-slate-500 dark:text-slate-400" /> Crop
+                  </button>
+                )}
+                {isImage && (
+                  <button
+                    role="menuitem"
+                    disabled={isCopyingImage || isResolvingAsset}
+                    onClick={() => {
+                      setMenuAt(null);
+                      copyImage();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 h-11 text-left text-sm hover:bg-slate-100 dark:hover:bg-white/[0.06] disabled:opacity-40"
+                  >
+                    <Copy size={16} className="text-slate-500 dark:text-slate-400" /> Copy image
+                  </button>
+                )}
+                {isImage && hasMultipleImages && (
+                  <button
+                    role="menuitemcheckbox"
+                    aria-checked={showThumbnails}
+                    onClick={() => {
+                      setMenuAt(null);
+                      setShowThumbnails((v) => !v);
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 h-11 text-left text-sm hover:bg-slate-100 dark:hover:bg-white/[0.06]"
+                  >
+                    <Film size={16} className="text-slate-500 dark:text-slate-400" />
+                    <span className="flex-1">Thumbnails</span>
+                    {showThumbnails && <Check size={15} className="text-blue-500" />}
+                  </button>
+                )}
+                {canDownload && (
+                  <button
+                    role="menuitem"
+                    disabled={isDownloading || isResolvingAsset}
+                    onClick={() => {
+                      setMenuAt(null);
+                      downloadOriginal();
+                    }}
+                    className="flex w-full items-center gap-3 rounded-lg px-3 h-11 text-left text-sm hover:bg-slate-100 dark:hover:bg-white/[0.06] disabled:opacity-40"
+                  >
+                    <Download size={16} className="text-slate-500 dark:text-slate-400" /> Download
+                  </button>
+                )}
+              </div>,
+              document.body,
+            )}
+
+          {/* Crop: the camera's crop screen, over the preview; it saves a cropped copy */}
+          {cropOpen &&
+            isImage &&
+            createPortal(
+              <div className="fixed inset-0 z-[20100] bg-black" onKeyDown={(e) => e.stopPropagation()}>
+                <DocumentWorkspace
+                  imageSrc={resolvedUrl}
+                  outputType={cropType}
+                  onCancel={() => setCropOpen(false)}
+                  onSave={(blob) => {
+                    setCropOpen(false);
+                    setCropResult({ blob, url: URL.createObjectURL(blob) });
+                  }}
+                />
+              </div>,
+              document.body,
+            )}
+
+          {/* The crop is done: download a copy, or replace the original */}
+          {cropResult &&
+            createPortal(
+              <div
+                className="fixed inset-0 z-[20100] flex items-end sm:items-center justify-center bg-black/70 backdrop-blur-sm sm:p-4"
+                onClick={() => !replacing && setCropResult(null)}
+              >
+                <div
+                  role="dialog"
+                  aria-label="Save the cropped picture"
+                  className="w-full sm:max-w-sm rounded-t-3xl sm:rounded-2xl border border-slate-200 dark:border-white/10 bg-white dark:bg-[#11151f] p-4 shadow-2xl"
+                  style={{ paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="flex items-center gap-3">
+                    <img src={cropResult.url} alt="Cropped" className="h-16 w-16 shrink-0 rounded-lg object-cover ring-1 ring-black/10 dark:ring-white/10" />
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-slate-900 dark:text-white">Cropped picture ready</p>
+                      <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400 truncate">{cropFileName()}</p>
+                    </div>
+                  </div>
+                  <div className="mt-4 flex flex-col gap-2">
+                    <button
+                      onClick={downloadCrop}
+                      disabled={replacing}
+                      className="h-11 rounded-xl bg-blue-600 hover:bg-blue-500 text-sm font-semibold text-white inline-flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      <Download size={16} /> Download a copy
+                    </button>
+                    <button
+                      onClick={replaceWithCrop}
+                      disabled={replacing || !inDocument}
+                      className="h-11 rounded-xl border border-slate-200 dark:border-white/10 text-sm font-semibold text-slate-800 dark:text-slate-100 hover:bg-slate-50 dark:hover:bg-white/[0.05] inline-flex items-center justify-center gap-2 disabled:opacity-40 disabled:pointer-events-none"
+                    >
+                      {replacing ? <Loader2 size={16} className="animate-spin" /> : <RotateCw size={16} />} Replace original
+                    </button>
+                    <p className="text-center text-[11px] leading-snug text-slate-500 dark:text-slate-400">
+                      {inDocument
+                        ? 'Replace swaps the picture everywhere in this document; Undo brings the original back.'
+                        : "This picture isn't in the open document, so it can only be downloaded."}
+                    </p>
+                    <button
+                      onClick={() => setCropResult(null)}
+                      disabled={replacing}
+                      className="h-9 text-xs font-semibold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>,
+              document.body,
+            )}
         </motion.div>
       )}
     </AnimatePresence>,

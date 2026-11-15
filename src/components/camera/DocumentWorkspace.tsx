@@ -9,6 +9,8 @@ interface DocumentWorkspaceProps {
   imageSrc: string; // Base64 or Blob URL of captured image
   onSave: (finalBlob: Blob) => void;
   onCancel: () => void;
+  /** The format saved (default JPEG): e.g. the original's, so a PNG stays a PNG. */
+  outputType?: 'image/jpeg' | 'image/png' | 'image/webp';
 }
 
 /** Longest side of the picture used on screen while editing (the saved one is full size). */
@@ -42,7 +44,7 @@ function quadSize(c: Point[]) {
  * screen works on a downscaled copy drawn into canvases (nothing is encoded while you
  * edit); the full-size photo is processed once, on save.
  */
-export function DocumentWorkspace({ imageSrc, onSave, onCancel }: DocumentWorkspaceProps) {
+export function DocumentWorkspace({ imageSrc, onSave, onCancel, outputType = 'image/jpeg' }: DocumentWorkspaceProps) {
   const [tab, setTab] = useState<'crop' | 'adjust'>('crop');
   const [corners, setCorners] = useState<Point[]>(rectCorners(FULL));
   const [cropMode, setCropMode] = useState<'perspective' | 'rectangle'>('rectangle');
@@ -71,6 +73,8 @@ export function DocumentWorkspace({ imageSrc, onSave, onCancel }: DocumentWorksp
   useEffect(() => {
     webglEngineRef.current = new WebGLPerspectiveEngine();
     const img = new Image();
+    // A picture from the web is read with CORS, or the canvas it is drawn on couldn't be saved.
+    if (/^https?:/i.test(imageSrc)) img.crossOrigin = 'anonymous';
     img.onload = () => {
       setBaseImage(img);
       const scale = Math.min(1, PREVIEW_MAX / Math.max(img.width, img.height));
@@ -242,8 +246,8 @@ export function DocumentWorkspace({ imageSrc, onSave, onCancel }: DocumentWorksp
           if (blob) onSave(blob);
           else onCancel();
         },
-        'image/jpeg',
-        0.92,
+        outputType,
+        outputType === 'image/png' ? undefined : 0.92,
       );
     } catch (e) {
       console.error('Save failed:', e);
