@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { AddToCanvasButton, type CanvasImage } from "./AddToCanvasButton";
-import { Scissors, Upload, Download, X, MousePointerClick, LayoutGrid, RotateCcw, Info, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Check } from "lucide-react";
+import { Scissors, Upload, Download, X, MousePointerClick, LayoutGrid, RotateCcw, Info, ChevronLeft, ChevronRight, ZoomIn, ZoomOut, Check, Copy } from "lucide-react";
 import JSZip from "jszip";
 import { motion, AnimatePresence } from "motion/react";
 import { TransformWrapper, TransformComponent } from "react-zoom-pan-pinch";
@@ -8,6 +8,7 @@ import CustomSelect from "../CustomSelect";
 import MediaCarousel from "../MediaCarousel";
 import { useClipboardImages } from "./useQuickUtilsPaste";
 import { FileDropzoneUpload } from "./FileDropzoneUpload";
+import { useStore } from "../../store/useStore";
 
 interface SlicePreview {
   index: number;
@@ -38,6 +39,8 @@ export const ImageSlicerUtil: React.FC = () => {
   const [deselectedIndices, setDeselectedIndices] = useState<Set<number>>(new Set());
   const [exportFormat, setExportFormat] = useState<"png" | "jpeg" | "webp">("png");
   const [carouselIndex, setCarouselIndex] = useState<number | null>(null);
+  const [copiedIndex, setCopiedIndex] = useState<number | null>(null);
+  const [isCopying, setIsCopying] = useState<number | null>(null);
   const [showChrome, setShowChrome] = useState(true);
   const [isDownloading, setIsDownloading] = useState(false);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -398,6 +401,61 @@ export const ImageSlicerUtil: React.FC = () => {
     ctx.drawImage(imageEl!, slice.startX, slice.startY, slice.sw, slice.sh, 0, 0, slice.sw, slice.sh);
     return new Promise<Blob>((resolve) => cv.toBlob((b) => resolve(b!), exportFormatMime, 0.92));
   }, [imageEl, exportFormat, exportFormatMime]);
+
+  const copySliceToClipboard = useCallback(async (sliceIndex: number) => {
+    if (!imageEl || !validSlices[sliceIndex]) return;
+    const slice = validSlices[sliceIndex];
+    setIsCopying(sliceIndex);
+    try {
+      const cv = document.createElement("canvas");
+      cv.width = slice.sw;
+      cv.height = slice.sh;
+      const ctx = cv.getContext("2d");
+      if (!ctx) throw new Error("Could not create 2D canvas context");
+      ctx.drawImage(imageEl, slice.startX, slice.startY, slice.sw, slice.sh, 0, 0, slice.sw, slice.sh);
+
+      const blob = await new Promise<Blob | null>((resolve) => cv.toBlob(resolve, "image/png"));
+      if (!blob) throw new Error("Could not create PNG blob");
+
+      await navigator.clipboard.write([
+        new ClipboardItem({
+          "image/png": blob,
+        }),
+      ]);
+
+      setCopiedIndex(sliceIndex);
+      useStore.getState().setNotification({
+        message: `Slice #${sliceIndex + 1} (${slice.sw}×${slice.sh}px) copied to clipboard!`,
+        type: "success",
+      });
+      setTimeout(() => {
+        setCopiedIndex((prev) => (prev === sliceIndex ? null : prev));
+      }, 2000);
+    } catch (err) {
+      console.error("Failed to copy slice to clipboard:", err);
+      useStore.getState().setNotification({
+        message: "Failed to copy slice to clipboard. Clipboard permission may be required.",
+        type: "error",
+      });
+    } finally {
+      setIsCopying(null);
+    }
+  }, [imageEl, validSlices]);
+
+  // Keyboard shortcut: Ctrl+C / Cmd+C when carousel is open copies the active slice
+  useEffect(() => {
+    if (carouselIndex === null) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "c") {
+        const activeEl = document.activeElement;
+        if (activeEl && (activeEl.tagName === "INPUT" || activeEl.tagName === "TEXTAREA")) return;
+        e.preventDefault();
+        copySliceToClipboard(carouselIndex);
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [carouselIndex, copySliceToClipboard]);
 
   const downloadZip = useCallback(async () => {
     if (!imageEl || validSlices.length === 0) return;
@@ -953,6 +1011,26 @@ export const ImageSlicerUtil: React.FC = () => {
                         : `Download ${selectedSliceCount > 0 ? `(${selectedSliceCount})` : "ZIP"}`}
                     </button>
 
+                    {/* Copy single slice button (full size) */}
+                    {selectedSliceCount === 1 && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const singleIndex = validSlices.findIndex((_, idx) => !deselectedIndices.has(idx));
+                          if (singleIndex !== -1) copySliceToClipboard(singleIndex);
+                        }}
+                        className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg font-bold text-white text-xs transition-all whitespace-nowrap ${
+                          copiedIndex !== null
+                            ? "bg-emerald-600 hover:bg-emerald-500"
+                            : "bg-slate-700 hover:bg-slate-600 dark:bg-slate-700 dark:hover:bg-slate-600 active:scale-[0.98]"
+                        }`}
+                        title="Copy selected slice to clipboard (full size)"
+                      >
+                        {copiedIndex !== null ? <Check size={13} strokeWidth={2.5} /> : <Copy size={13} />}
+                        <span>{copiedIndex !== null ? "Copied" : "Copy Slice"}</span>
+                      </button>
+                    )}
+
                     {/* Add the selected slices to the canvas (several go under one node) */}
                     <AddToCanvasButton
                       disabled={!imageEl || selectedSliceCount === 0}
@@ -991,6 +1069,8 @@ export const ImageSlicerUtil: React.FC = () => {
                   >
                     {slicePreviews.map((p) => {
                       const isSelected = !deselectedIndices.has(p.index);
+                      const isCopied = copiedIndex === p.index;
+                      const isCurrentlyCopying = isCopying === p.index;
                       return (
                         <div key={p.index} className="relative shrink-0 group">
                           <button
@@ -1014,6 +1094,28 @@ export const ImageSlicerUtil: React.FC = () => {
                               <span className="text-[9px] font-bold text-slate-500 dark:text-slate-400">#{p.index + 1}</span>
                               <span className="text-[8px] text-slate-400 font-mono ml-1">{p.width}×{p.height}</span>
                             </div>
+                          </button>
+
+                          {/* Copy full-size button on Top-Left */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              copySliceToClipboard(p.index);
+                            }}
+                            disabled={isCurrentlyCopying}
+                            className={`absolute top-1 left-1 z-10 w-4 h-4 rounded flex items-center justify-center transition-all shadow-sm ${
+                              isCopied
+                                ? "bg-emerald-600 text-white scale-110"
+                                : "bg-black/50 hover:bg-black/80 text-white opacity-80 group-hover:opacity-100 hover:scale-110"
+                            }`}
+                            title={isCopied ? "Copied!" : "Copy slice to clipboard (full size)"}
+                          >
+                            {isCopied ? (
+                              <Check size={9} strokeWidth={3} className="text-white" />
+                            ) : (
+                              <Copy size={9} className="text-white" />
+                            )}
                           </button>
 
                           {/* Selection Checkbox on Top-Right */}
@@ -1065,23 +1167,43 @@ export const ImageSlicerUtil: React.FC = () => {
           </>
         )}
         renderHeaderRight={(slice, index) => (
-          <button
-            onClick={async (e) => {
-              e.stopPropagation();
-              const blob = await renderSliceBlob(slice);
-              const url = URL.createObjectURL(blob);
-              const a = document.createElement("a");
-              a.href = url;
-              const baseName = fileName.replace(/\.[^/.]+$/, "") || "image";
-              a.download = `${baseName}_slice_${index + 1}.${exportFormatExt}`;
-              a.click();
-              URL.revokeObjectURL(url);
-            }}
-            className="p-3 bg-orange-600 rounded-full hover:bg-orange-700 text-white transition-all backdrop-blur-md flex items-center justify-center shadow-lg"
-            title={`Download Slice as ${exportFormat.toUpperCase()}`}
-          >
-            <Download className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                copySliceToClipboard(index);
+              }}
+              className={`p-3 rounded-full transition-all backdrop-blur-md flex items-center justify-center shadow-lg ${
+                copiedIndex === index
+                  ? "bg-emerald-600 text-white shadow-emerald-500/20"
+                  : "bg-white/10 hover:bg-white/20 text-white"
+              }`}
+              title="Copy full-size slice to clipboard (Ctrl+C)"
+            >
+              {copiedIndex === index ? (
+                <Check className="w-4 h-4 stroke-[2.5]" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+            <button
+              onClick={async (e) => {
+                e.stopPropagation();
+                const blob = await renderSliceBlob(slice);
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement("a");
+                a.href = url;
+                const baseName = fileName.replace(/\.[^/.]+$/, "") || "image";
+                a.download = `${baseName}_slice_${index + 1}.${exportFormatExt}`;
+                a.click();
+                URL.revokeObjectURL(url);
+              }}
+              className="p-3 bg-orange-600 rounded-full hover:bg-orange-700 text-white transition-all backdrop-blur-md flex items-center justify-center shadow-lg"
+              title={`Download Slice as ${exportFormat.toUpperCase()}`}
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          </div>
         )}
         renderItem={(slice, isSelected) => (
           <canvas
