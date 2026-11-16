@@ -129,7 +129,8 @@ import { createWorkspaceFileForTransfer } from "../utils/sqliteWorkspace";
 import { db, type SavedDocument } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
 import { ReceivedFilesPanel } from "./transfer/ReceivedFilesPanel";
-import { hasRoomFor, openReceiveSink, receivedStoreAvailable, subscribeReceived, listReceived, refreshReceived } from "../utils/transferReceivedStore";
+import { hasRoomFor, openReceiveSink, receivedStoreAvailable, subscribeReceived, listReceived, refreshReceived, getReceivedSettings } from "../utils/transferReceivedStore";
+import { ChatOptionsMenu } from "./transfer/ChatOptionsMenu";
 export { blobRegistry, getFileType };
 
 export interface Attachment {
@@ -854,6 +855,9 @@ export const TransferNodeRenderer: React.FC<{
   // Received files kept in the browser (OPFS), and the panel that manages them.
   const [showReceivedFiles, setShowReceivedFiles] = useState(false);
   const receivedCount = React.useSyncExternalStore(subscribeReceived, () => listReceived().length);
+  // Several photos in one message: an album ("+N") or all of them; albums opened up one by one.
+  const chatMedia = React.useSyncExternalStore(subscribeReceived, () => getReceivedSettings().chatMedia);
+  const [openAlbums, setOpenAlbums] = useState<Set<string>>(new Set());
   useEffect(() => {
     void refreshReceived();
   }, []);
@@ -2343,7 +2347,8 @@ export const TransferNodeRenderer: React.FC<{
   ): Promise<boolean> => {
     if (incomingStreamsRef.current[msgId]) return true;
     let target: { handle: any; stream: any } | null = null;
-    if (await receivedStoreAvailable()) {
+    // "Temporary" (chat ⋮ menu): held in memory for this visit only, not kept on the device.
+    if (getReceivedSettings().keepOnDevice !== false && (await receivedStoreAvailable())) {
       const room = await hasRoomFor(fileSize);
       if (!room.ok) {
         setNotification({
@@ -5060,6 +5065,8 @@ export const TransferNodeRenderer: React.FC<{
                         <Maximize className="w-4 h-4" />
                       </button>
                     )}
+
+                    <ChatOptionsMenu isDark={isDark} onOpenReceived={() => setShowReceivedFiles(true)} />
                   </div>
                 </div>
 
@@ -5288,33 +5295,130 @@ export const TransferNodeRenderer: React.FC<{
 
                                           return (
                                             <>
-                                              {visuals.length > 0 && (
-                                                <div className={`grid gap-1 ${visuals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
-                                                  {visuals.map((att, i) => (
-                                                    <div
-                                                      key={i}
-                                                      className={`cursor-pointer ${visuals.length === 1 ? 'w-full' : ''}`}
-                                                      onClick={() => setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
-                                                      onContextMenu={(e) => {
-                                                        e.preventDefault();
-                                                        e.stopPropagation();
-                                                        setShowContextMenu({ id: msg.id, x: e.clientX, y: e.clientY, attachment: { ...att, sender: msg.sender, timestamp: msg.timestamp } });
-                                                      }}
-                                                    >
-                                                      <FilePreviewCard
-                                                        file={att}
-                                                        isDark={isDark}
-                                                        readonly
-                                                        layout={visuals.length === 1 ? "single-grid" : "grid"}
-                                                        copyStatusObj={copyStatus}
-                                                        onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
-                                                        addedStatusObj={addedStatus}
-                                                        onAddToCanvas={() => handleAddMessageToCanvas({ ...att, sender: msg.sender, timestamp: msg.timestamp })}
-                                                      />
-                                                      {renderStreamStateUI(att, msg.sender, att.fileName, att.fileSize || 0, true)}
+                                              {visuals.length > 1 && chatMedia === "album" && !openAlbums.has(msg.id) ? (() => {
+                                                // Album: up to four tiles; the fourth says "+N" when there are more.
+                                                const more = visuals.length > 4 ? visuals.length - 3 : 0;
+                                                const tiles = visuals.slice(0, 4);
+                                                const done = visuals.filter((a) => a.streamState === "completed" || (!a.streamState && a.content)).length;
+                                                const moving = visuals.some((a) => a.streamState === "transferring" || a.streamState === "paused");
+                                                return (
+                                                  <div className="w-[264px] max-w-full">
+                                                    <div className="grid grid-cols-2 gap-[3px] rounded-[14px] overflow-hidden">
+                                                      {tiles.map((att, i) => {
+                                                        const isMore = more > 0 && i === 3;
+                                                        const wide = tiles.length === 3 && i === 0;
+                                                        const fType = att.fileType;
+                                                        const p = att.streamProgress ?? 0;
+                                                        return (
+                                                          <button
+                                                            key={att.id || i}
+                                                            type="button"
+                                                            onClick={() =>
+                                                              isMore
+                                                                ? setOpenAlbums((s) => new Set(s).add(msg.id))
+                                                                : setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)
+                                                            }
+                                                            onContextMenu={(e) => {
+                                                              e.preventDefault();
+                                                              e.stopPropagation();
+                                                              setShowContextMenu({ id: msg.id, x: e.clientX, y: e.clientY, attachment: { ...att, sender: msg.sender, timestamp: msg.timestamp } });
+                                                            }}
+                                                            className={`relative overflow-hidden ${wide ? "col-span-2 aspect-[2/1]" : "aspect-square"} ${isDark ? "bg-white/[0.05]" : "bg-slate-200"}`}
+                                                            aria-label={isMore ? `Show all ${visuals.length}` : `Open ${att.fileName}`}
+                                                          >
+                                                            {att.content && fType === "image" ? (
+                                                              <img src={att.content} alt="" loading="lazy" decoding="async" draggable={false} className="absolute inset-0 w-full h-full object-cover" />
+                                                            ) : att.content && fType === "video" ? (
+                                                              <>
+                                                                <video src={att.content} preload="metadata" muted playsInline className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+                                                                {!isMore && (
+                                                                  <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                                                    <span className="h-9 w-9 rounded-full bg-black/50 text-white inline-flex items-center justify-center backdrop-blur-sm">
+                                                                      <Play className="w-4 h-4 ml-0.5" fill="currentColor" />
+                                                                    </span>
+                                                                  </span>
+                                                                )}
+                                                              </>
+                                                            ) : (
+                                                              <span className={`absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                                                                {fType === "3d_model" ? <Box className="w-6 h-6" /> : fType === "video" ? <Play className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
+                                                                <span className="text-[10px] font-medium truncate max-w-full">{att.fileName}</span>
+                                                              </span>
+                                                            )}
+                                                            {(att.streamState === "transferring" || att.streamState === "paused" || att.streamState === "offered") && !isMore && (
+                                                              <span className="absolute inset-x-0 bottom-0 p-1.5 bg-gradient-to-t from-black/70 to-transparent">
+                                                                <span className="block h-1 rounded-full bg-white/25 overflow-hidden">
+                                                                  <span className={`block h-full rounded-full ${att.streamState === "paused" ? "bg-amber-400" : "bg-white"}`} style={{ width: `${p}%` }} />
+                                                                </span>
+                                                              </span>
+                                                            )}
+                                                            {(att.streamState === "error" || att.streamState === "canceled") && !isMore && (
+                                                              <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-[11px] font-semibold text-red-300">
+                                                                {att.streamState === "error" ? "Failed" : "Canceled"}
+                                                              </span>
+                                                            )}
+                                                            {isMore && (
+                                                              <span className="absolute inset-0 flex items-center justify-center bg-black/55 text-white text-2xl font-semibold tracking-tight">
+                                                                +{more}
+                                                              </span>
+                                                            )}
+                                                          </button>
+                                                        );
+                                                      })}
                                                     </div>
-                                                  ))}
-                                                </div>
+                                                    {moving && (
+                                                      <p className={`mt-1 px-1 text-[11px] tabular-nums ${msg.sender === "me" ? "opacity-75" : isDark ? "text-slate-400" : "text-slate-500"}`}>
+                                                        {msg.sender === "me" ? "Sending" : "Receiving"} {done} of {visuals.length}…
+                                                      </p>
+                                                    )}
+                                                  </div>
+                                                );
+                                              })() : (
+                                                <>
+                                              {visuals.length > 0 && (
+                                                  <div className={`grid gap-1 ${visuals.length > 1 ? 'grid-cols-2' : 'grid-cols-1'}`}>
+                                                    {visuals.map((att, i) => (
+                                                      <div
+                                                        key={i}
+                                                        className={`cursor-pointer ${visuals.length === 1 ? 'w-full' : ''}`}
+                                                        onClick={() => setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
+                                                        onContextMenu={(e) => {
+                                                          e.preventDefault();
+                                                          e.stopPropagation();
+                                                          setShowContextMenu({ id: msg.id, x: e.clientX, y: e.clientY, attachment: { ...att, sender: msg.sender, timestamp: msg.timestamp } });
+                                                        }}
+                                                      >
+                                                        <FilePreviewCard
+                                                          file={att}
+                                                          isDark={isDark}
+                                                          readonly
+                                                          layout={visuals.length === 1 ? "single-grid" : "grid"}
+                                                          copyStatusObj={copyStatus}
+                                                          onCopy={() => handleMediaCopy({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)}
+                                                          addedStatusObj={addedStatus}
+                                                          onAddToCanvas={() => handleAddMessageToCanvas({ ...att, sender: msg.sender, timestamp: msg.timestamp })}
+                                                        />
+                                                        {renderStreamStateUI(att, msg.sender, att.fileName, att.fileSize || 0, true)}
+                                                      </div>
+                                                    ))}
+                                                  </div>
+                                                )}
+                                                  {visuals.length > 4 && chatMedia === "album" && openAlbums.has(msg.id) && (
+                                                    <button
+                                                      type="button"
+                                                      onClick={() =>
+                                                        setOpenAlbums((s) => {
+                                                          const n = new Set(s);
+                                                          n.delete(msg.id);
+                                                          return n;
+                                                        })
+                                                      }
+                                                      className={`self-start px-2 py-1 text-[11px] font-semibold rounded-md ${isDark ? "text-indigo-300 hover:bg-white/[0.06]" : "text-indigo-600 hover:bg-indigo-50"}`}
+                                                    >
+                                                      Show less
+                                                    </button>
+                                                  )}
+                                                </>
                                               )}
                                               {others.length > 0 && (
                                                 <div className="flex flex-col gap-1">

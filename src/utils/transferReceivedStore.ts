@@ -39,6 +39,13 @@ export interface ReceivedSettings {
   fullscreen: boolean;
   /** The order files are listed in. */
   sort: ReceivedSort;
+  /**
+   * Where received files go: kept on this device (browser storage) until deleted, or held in
+   * memory only and gone when the page closes.
+   */
+  keepOnDevice: boolean;
+  /** Several photos or videos in one message: an album with "+N", or every one shown. */
+  chatMedia: 'album' | 'all';
 }
 export type ReceivedSort = 'newest' | 'oldest' | 'largest' | 'name';
 
@@ -59,7 +66,7 @@ function readJSON<T>(key: string, fallback: T): T {
 let records: ReceivedFileRecord[] = readJSON<ReceivedFileRecord[]>(RECORDS_KEY, []).map((r) =>
   r.status === 'receiving' ? { ...r, status: 'partial' } : r,
 );
-let settings: ReceivedSettings = { autoClean: 'off', view: 'list', previews: true, fullscreen: false, sort: 'newest', ...readJSON<Partial<ReceivedSettings>>(SETTINGS_KEY, {}) };
+let settings: ReceivedSettings = { autoClean: 'off', view: 'list', previews: true, fullscreen: false, sort: 'newest', keepOnDevice: true, chatMedia: 'album', ...readJSON<Partial<ReceivedSettings>>(SETTINGS_KEY, {}) };
 
 const listeners = new Set<() => void>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
