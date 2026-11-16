@@ -86,7 +86,6 @@ import {
   ChevronRight,
   Activity,
   Maximize,
-  Minimize,
   Trash2,
   Edit2,
   Play,
@@ -457,7 +456,8 @@ interface Message {
 
 const formatFileSize = (bytes: number) => sharedFormatFileSize(bytes, 'B', 1);
 
-const MAX_FILE_SIZE = 100 * 1024 * 1024; // 100 MB
+/** Folders are zipped in memory before sending, so they stay capped; files stream from disk. */
+const MAX_FOLDER_SIZE = 100 * 1024 * 1024; // 100 MB
 
 const getMimeType = (fileName: string, parsedMime?: string) => {
   if (parsedMime && parsedMime !== "application/octet-stream" && parsedMime !== "") {
@@ -1087,9 +1087,17 @@ export const TransferNodeRenderer: React.FC<{
 
   const [transferProgress, setTransferProgress] = useState(0);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  // Esc leaves the full-screen chat (unless a dialog above it takes the key first).
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) setIsFullscreen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isFullscreen]);
   const [viewMode, setViewMode] = useState<"chat" | "media">("chat");
   const [autoClipboardSync, setAutoClipboardSync] = useState(false);
-  const [largeFileMode, setLargeFileMode] = useState(false);
   const [showWorkspaceSendModal, setShowWorkspaceSendModal] = useState(false);
   const lastClipboardTextRef = useRef<string>("");
   const lastClipboardImageRef = useRef<string>("");
@@ -2148,11 +2156,7 @@ export const TransferNodeRenderer: React.FC<{
   const handleSendWorkspaceDocs = async (docsToSend: SavedDocument[], formatToSend: 'sqlite' | 'sql') => {
     try {
       const file = await createWorkspaceFileForTransfer(docsToSend, formatToSend);
-      if (largeFileMode) {
-        startFileStream(file, undefined, false);
-      } else {
-        setPendingFiles((prev) => [...prev, file]);
-      }
+      setPendingFiles((prev) => [...prev, file]);
       setNotification({
         message: `Prepared ${docsToSend.length} document${docsToSend.length === 1 ? '' : 's'} as ${formatToSend.toUpperCase()}`,
         type: 'success',
@@ -3184,13 +3188,6 @@ export const TransferNodeRenderer: React.FC<{
     const textContent = chatInput;
     const filesToProcess = [...pendingFiles];
 
-    const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
-    const totalPendingSize = filesToProcess.reduce((acc, curr) => acc + curr.size, 0);
-    if (totalPendingSize > currentLimit) {
-      setNotification({ message: "Total size of attached files exceeds 100MB limit. Enable 'Stream to Disk' for unlimited size.", type: "error" });
-      return;
-    }
-
     setChatInput("");
     setPendingFiles([]);
     setReplyingTo(null);
@@ -3209,7 +3206,7 @@ export const TransferNodeRenderer: React.FC<{
     }
     if (filesToProcess.length > 0) {
       if (filesToProcess.length === 1 && !textContent.trim()) {
-        startFileStream(filesToProcess[0], replyData, !largeFileMode);
+        startFileStream(filesToProcess[0], replyData, true);
         return;
       }
 
@@ -3274,7 +3271,7 @@ export const TransferNodeRenderer: React.FC<{
           content: textContent,
           attachments: payloadAttachments,
           replyTo: replyData,
-          autoAccept: !largeFileMode,
+          autoAccept: true,
         })
       );
       return;
@@ -3372,16 +3369,16 @@ export const TransferNodeRenderer: React.FC<{
         )}
 
         {item.streamState === "offered" && sender === "me" && (
-          <div className="text-[10px] text-center font-bold opacity-60 italic">Waiting for receiver to accept...</div>
+          <div className="text-[11px] text-center opacity-60">Waiting for the other device to accept…</div>
         )}
 
         {item.streamState === "transferring" && (
           <div className="flex flex-col gap-1 w-full mt-1 px-1">
-            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
-              <span>Transferring...</span>
+            <div className="flex justify-between items-center text-[11px] font-medium opacity-80 tabular-nums">
+              <span>Transferring…</span>
               <span>{item.streamProgress || 0}%</span>
             </div>
-            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
+            <div className="h-1 w-full bg-black/20 rounded-full overflow-hidden">
               <motion.div
                 className="h-full bg-emerald-400"
                 initial={{ width: 0 }}
@@ -3394,19 +3391,19 @@ export const TransferNodeRenderer: React.FC<{
 
         {item.streamState === "paused" && (
           <div className="flex flex-col gap-1 w-full mt-1 px-1">
-            <div className="flex justify-between items-center text-[10px] font-bold opacity-80">
+            <div className="flex justify-between items-center text-[11px] font-medium opacity-80 tabular-nums">
               <span>Paused</span>
               <span>{item.streamProgress || 0}%</span>
             </div>
-            <div className="h-1.5 w-full bg-black/20 rounded-full overflow-hidden">
+            <div className="h-1 w-full bg-black/20 rounded-full overflow-hidden">
               <div className="h-full bg-amber-400" style={{ width: `${item.streamProgress || 0}%` }} />
             </div>
           </div>
         )}
 
-        {(item.streamState === "completed" || item.streamState === "canceled" || item.streamState === "error") && (
-          <div className={`text-[10px] text-center font-bold uppercase tracking-widest ${item.streamState === "completed" ? "text-emerald-500" : "text-red-500"}`}>
-            {item.streamState === "error" ? "failed" : item.streamState}
+        {(item.streamState === "canceled" || item.streamState === "error") && (
+          <div className="text-[11px] text-center font-medium text-red-500">
+            {item.streamState === "error" ? "Transfer failed" : "Canceled"}
           </div>
         )}
 
@@ -3606,71 +3603,65 @@ export const TransferNodeRenderer: React.FC<{
 
       {/* Header */}
       <div className="p-4 sm:p-5 flex items-center justify-between gap-2">
-        <div className="flex items-center gap-3 sm:gap-4 min-w-0 shrink">
-          <div
-            className={`p-2 sm:p-2.5 rounded-xl shrink-0 ${isDark ? "bg-indigo-500/10 text-indigo-400" : "bg-indigo-50 text-indigo-600"}`}
-          >
-            <Share2 className="w-4 h-4 sm:w-5 sm:h-5" />
-          </div>
-          <div className="min-w-0">
-            <h3
-              className={`font-bold tracking-tight truncate ${isDark ? "text-white" : "text-slate-900"}`}
-            >
-              Direct Transfer
-            </h3>
-            <div className="flex flex-col gap-1.5 mt-2">
-              <div className="text-[10px] sm:text-[11px] text-slate-500 font-medium tracking-wide flex items-center gap-1.5 uppercase leading-none truncate">
-                <div
-                  className={`w-2 h-2 shrink-0 rounded-full border ${(connectionState === "connected" || connectionState === "transferring" || connectionState === "messaging")
-                    ? "bg-emerald-500 border-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]"
-                    : "bg-transparent border-slate-400 dark:border-slate-600"
-                    }`}
-                /> <span className="truncate">P2P Secure Connection</span>
-              </div>
-              <div className="flex items-center">
-                <span className={`px-2 py-0.5 rounded-md border text-[9px] sm:text-[9.5px] font-mono tracking-wide truncate leading-none ${isDark ? "bg-[#161b22]/50 border-white/5 text-slate-400" : "bg-slate-50 border-slate-200 text-slate-600"}`}>
-                  {nodeKey}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0 relative">
-          {connectionState !== "connected" && connectionState !== "messaging" && (
-            <div
-              className={`px-2.5 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${connectionState === "transferring"
-                ? "bg-blue-500/10 text-blue-500"
+        {(() => {
+          // What is happening, in plain words, and what to do next.
+          const st =
+            connectionState === "connected" || connectionState === "messaging"
+              ? { tone: "ok", label: "Connected", hint: "Device to device", more: "Messages and files go straight to the other device, never through a server" }
+              : connectionState === "transferring"
+                ? { tone: "busy", label: "Sending files…", hint: "Keep this page open", more: "Keep this page open until the transfer finishes" }
                 : connectionState === "failed"
-                  ? "bg-red-500/10 text-red-500"
-                  : isDark
-                    ? "bg-white/5 text-slate-500"
-                    : "bg-slate-100 text-slate-500"
-                }`}
-            >
-              {connectionState === "pairing"
-                ? isHosting
-                  ? offerQR
-                    ? "Waiting For Answer"
-                    : "Generating Offer"
-                  : answerQR
-                    ? "Waiting For Connection"
-                    : "Generating Answer"
-                : connectionState === "waiting"
-                  ? "Ready To Pair"
-                  : (
-                    <span className="flex items-center gap-1.5">
-                      <div className={`w-1.5 h-1.5 rounded-full ${connectionState === "transferring"
-                        ? "bg-blue-500 animate-pulse"
-                        : connectionState === "failed"
-                          ? "bg-red-500"
-                          : "bg-slate-400"
-                        }`} />
-                      {connectionState}
-                    </span>
-                  )}
+                  ? { tone: "bad", label: "Couldn't connect", hint: "Check both are online", more: "Make sure both devices are online, then try again" }
+                  : connectionState === "pairing"
+                    ? isHosting
+                      ? offerQR
+                        ? { tone: "wait", label: "Waiting for device…", hint: "Scan the code there", more: "Scan or paste this code on the other device" }
+                        : { tone: "wait", label: "Preparing code…", hint: "One moment", more: "Creating a pairing code for the other device" }
+                      : answerQR
+                        ? { tone: "wait", label: "Almost connected…", hint: "Scan the code back", more: "Scan or paste this code on the first device to finish" }
+                        : { tone: "wait", label: "Reading code…", hint: "One moment", more: "Reading the other device's pairing code" }
+                    : { tone: "idle", label: "Not connected", hint: "Pair a device to start", more: "Pair with another device to send messages and files" };
+          const dot = {
+            ok: "bg-emerald-500",
+            busy: "bg-sky-500 animate-pulse",
+            bad: "bg-red-500",
+            wait: "bg-amber-500 animate-pulse",
+            idle: isDark ? "bg-slate-500" : "bg-slate-400",
+          }[st.tone];
+          const text = {
+            ok: "text-emerald-500",
+            busy: "text-sky-500",
+            bad: "text-red-500",
+            wait: "text-amber-500",
+            idle: isDark ? "text-slate-300" : "text-slate-600",
+          }[st.tone];
+          return (
+            <div className="flex items-center gap-3 min-w-0 shrink" role="status" aria-live="polite">
+              <div
+                className={`relative h-10 w-10 rounded-xl shrink-0 flex items-center justify-center ${isDark ? "bg-indigo-500/10 text-indigo-400" : "bg-indigo-50 text-indigo-600"}`}
+              >
+                <Share2 className="w-[18px] h-[18px]" />
+                <span
+                  className={`absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full ring-2 ${isDark ? "ring-[#111829]" : "ring-white"} ${dot}`}
+                  aria-hidden
+                />
+              </div>
+              <div className="min-w-0">
+                <h3
+                  className={`text-[15px] font-semibold tracking-tight truncate leading-tight ${isDark ? "text-white" : "text-slate-900"}`}
+                  title={`Node: ${nodeKey}`}
+                >
+                  Direct Transfer
+                </h3>
+                <p className={`mt-0.5 text-xs font-medium truncate leading-snug ${text}`}>{st.label}</p>
+                <p className={`text-[11px] truncate leading-snug ${isDark ? "text-slate-500" : "text-slate-400"}`} title={st.more}>
+                  {st.hint}
+                </p>
+              </div>
             </div>
-          )}
-
+          );
+        })()}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0 relative">
           {connectionState !== "waiting" && (
             <button
               onClick={() => {
@@ -3827,41 +3818,6 @@ export const TransferNodeRenderer: React.FC<{
                             {s}
                           </button>
                         ))}
-                      </div>
-                    </div>
-                    <div>
-                      <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-2 block mt-4">
-                        Large File Transfer Mode
-                      </span>
-                      <div className={`p-1 rounded-lg flex gap-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
-                        <button
-                          onClick={() => setLargeFileMode(false)}
-                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${!largeFileMode
-                            ? isDark
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                              : "bg-white text-indigo-600 shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
-                        >
-                          Memory (Default)
-                        </button>
-                        <button
-                          onClick={() => {
-                            if ('showSaveFilePicker' in window) {
-                              setLargeFileMode(true);
-                            } else {
-                              setNotification({ message: "File System API not supported in this browser.", type: "error" });
-                            }
-                          }}
-                          className={`flex-1 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${largeFileMode
-                            ? isDark
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                              : "bg-white text-indigo-600 shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
-                        >
-                          Stream to Disk
-                        </button>
                       </div>
                     </div>
                   </div>
@@ -5032,18 +4988,18 @@ export const TransferNodeRenderer: React.FC<{
               >
                 {/* Modern Compact Toolbar */}
                 <div
-                  className={`flex items-center justify-between gap-2 overflow-x-auto p-2 sm:p-3 border-b shrink-0 ${isDark ? "bg-[#0d1017]/80 backdrop-blur-md border-white/5" : "bg-white/80 backdrop-blur-md border-slate-100"}`}
+                  className={`flex items-center justify-between gap-2 overflow-x-auto px-3 py-2 border-b shrink-0 ${isDark ? "border-white/[0.06]" : "border-slate-100"}`}
                 >
                   <div
-                    className={`flex p-1 rounded-lg shrink-0 ${isDark ? "bg-white/5" : "bg-slate-100"}`}
+                    className={`flex p-0.5 rounded-lg shrink-0 ${isDark ? "bg-white/[0.05]" : "bg-slate-100"}`}
                   >
                     <button
                       onClick={() => setViewMode("chat")}
-                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all flex items-center justify-center gap-2 ${viewMode === "chat"
+                      className={`h-7 px-3 rounded-md text-xs font-semibold transition-all flex items-center justify-center gap-1.5 ${viewMode === "chat"
                         ? isDark
-                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                          : "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-200"
+                          ? "bg-white/[0.12] text-white"
+                          : "bg-white text-slate-900 shadow-sm"
+                        : isDark ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800"
                         }`}
                     >
                       Chat
@@ -5053,76 +5009,57 @@ export const TransferNodeRenderer: React.FC<{
                     </button>
                     <button
                       onClick={() => setViewMode("media")}
-                      className={`px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${viewMode === "media"
+                      className={`h-7 px-3 rounded-md text-xs font-semibold transition-all flex items-center gap-1.5 ${viewMode === "media"
                         ? isDark
-                          ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                          : "bg-white text-indigo-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-200"
+                          ? "bg-white/[0.12] text-white"
+                          : "bg-white text-slate-900 shadow-sm"
+                        : isDark ? "text-slate-400 hover:text-slate-200" : "text-slate-500 hover:text-slate-800"
                         }`}
                     >
-                      Media ({mediaMessages.length})
+                      Media
+                      {mediaMessages.length > 0 && (
+                        <span className={`min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-semibold leading-[18px] text-center ${isDark ? "bg-white/10 text-slate-300" : "bg-slate-200 text-slate-600"}`}>
+                          {mediaMessages.length}
+                        </span>
+                      )}
                     </button>
                   </div>
 
                   <div className="flex items-center gap-1.5 shrink-0">
-                    {isFullscreen && (
-                      <div className={`flex p-1 rounded-lg mr-1 ${isDark ? "bg-white/5" : "bg-slate-100"}`}>
-                        <button
-                          onClick={() => setLargeFileMode(false)}
-                          className={`px-2 sm:px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${!largeFileMode
-                            ? isDark
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                              : "bg-white text-indigo-600 shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
-                        >
-                          <span className="hidden sm:inline">Memory</span>
-                          <span className="sm:hidden">Mem</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            if ('showSaveFilePicker' in window) {
-                              setLargeFileMode(true);
-                            } else {
-                              setNotification({ message: "File System API not supported in this browser.", type: "error" });
-                            }
-                          }}
-                          className={`px-2 sm:px-3 py-1.5 rounded-md text-[10px] font-bold uppercase transition-all ${largeFileMode
-                            ? isDark
-                              ? "bg-indigo-600 text-white shadow-lg shadow-indigo-500/20"
-                              : "bg-white text-indigo-600 shadow-sm"
-                            : "text-slate-400 hover:text-slate-200"
-                            }`}
-                        >
-                          <span className="hidden sm:inline">Stream to Disk</span>
-                          <span className="sm:hidden">Disk</span>
-                        </button>
-                      </div>
-                    )}
 
                     <button
                       onClick={() => setAutoClipboardSync(!autoClipboardSync)}
                       title={autoClipboardSync ? "Auto Clipboard Sync: ON" : "Auto Clipboard Sync: OFF"}
-                      className={`p-2 rounded-lg border transition-all ${autoClipboardSync
-                        ? "border-emerald-500/50 bg-emerald-500/10 text-emerald-500"
+                      className={`h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors ${autoClipboardSync
+                        ? "bg-emerald-500/15 text-emerald-500"
                         : isDark
-                          ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400"
-                          : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"
+                          ? "hover:bg-white/[0.08] text-slate-400 hover:text-white"
+                          : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
                         }`}
                     >
                       <Clipboard className="w-4 h-4" />
                     </button>
 
-                    <button
-                      onClick={() => setIsFullscreen(!isFullscreen)}
-                      className={`p-2 rounded-lg border transition-all ${isDark ? "border-white/5 bg-white/5 hover:bg-white/10 text-slate-400" : "border-slate-100 bg-slate-50 hover:bg-slate-100 text-slate-500"}`}
-                    >
-                      {isFullscreen ? (
-                        <Minimize className="w-4 h-4" />
-                      ) : (
+                    {isFullscreen ? (
+                      <button
+                        onClick={() => setIsFullscreen(false)}
+                        title="Exit full screen (Esc)"
+                        aria-label="Exit full screen"
+                        className={`h-8 pl-2.5 pr-3 inline-flex items-center gap-1.5 rounded-lg text-xs font-semibold transition-colors ${isDark ? "bg-white/[0.08] hover:bg-white/[0.14] text-slate-100" : "bg-slate-100 hover:bg-slate-200 text-slate-800"}`}
+                      >
+                        <X className="w-4 h-4" />
+                        Exit
+                      </button>
+                    ) : (
+                      <button
+                        onClick={() => setIsFullscreen(true)}
+                        title="Full screen"
+                        aria-label="Full screen"
+                        className={`h-8 w-8 inline-flex items-center justify-center rounded-lg transition-colors ${isDark ? "hover:bg-white/[0.08] text-slate-400 hover:text-white" : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"}`}
+                      >
                         <Maximize className="w-4 h-4" />
-                      )}
-                    </button>
+                      </button>
+                    )}
                   </div>
                 </div>
 
@@ -5142,16 +5079,15 @@ export const TransferNodeRenderer: React.FC<{
                     const items = Array.from(e.dataTransfer.items);
 
                     const newFiles: File[] = [];
-                    let hasLarge = false;
+                    let largeFolder = false;
                     for (const item of items) {
                       if (item.kind === 'file') {
                         const entry = item.webkitGetAsEntry ? item.webkitGetAsEntry() : null;
                         if (entry && entry.isDirectory) {
                           const filesInDir = await getFilesFromEntry(entry);
-                          const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
                           const totalSize = filesInDir.reduce((acc, curr) => acc + curr.file.size, 0);
-                          if (totalSize > currentLimit) {
-                            hasLarge = true;
+                          if (totalSize > MAX_FOLDER_SIZE) {
+                            largeFolder = true;
                           } else if (filesInDir.length > 0) {
                             const id = uuidv4();
                             setZippingTasks(prev => [...prev, { id, folderName: entry.name }]);
@@ -5159,16 +5095,12 @@ export const TransferNodeRenderer: React.FC<{
                           }
                         } else {
                           const f = item.getAsFile();
-                          const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
-                          if (f) {
-                            if (f.size > currentLimit) hasLarge = true;
-                            else newFiles.push(f);
-                          }
+                          if (f) newFiles.push(f);
                         }
                       }
                     }
-                    if (hasLarge) {
-                      setNotification({ message: "Files/folders exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
+                    if (largeFolder) {
+                      setNotification({ message: "Folders over 100 MB can't be zipped. Select the files inside instead: files of any size can be sent.", type: "error" });
                     }
                     if (newFiles.length > 0) {
                       setPendingFiles(prev => [...prev, ...newFiles]);
@@ -5183,12 +5115,12 @@ export const TransferNodeRenderer: React.FC<{
                           behavior: "smooth",
                         });
                       }}
-                      className="absolute bottom-24 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-indigo-600 text-white text-[10px] font-bold uppercase rounded-full shadow-lg flex items-center gap-2 hover:bg-indigo-700 transition-all border border-indigo-400/30 shadow-indigo-900/20"
+                      className={`absolute bottom-24 left-1/2 -translate-x-1/2 z-50 h-8 px-3.5 text-[11px] font-semibold rounded-full shadow-lg flex items-center gap-1.5 transition-colors border ${isDark ? "bg-[#1b2333] border-white/10 text-slate-100 hover:bg-[#232c3f]" : "bg-white border-slate-200 text-slate-700 hover:bg-slate-50"}`}
                     >
                       <ChevronRight className="w-3.5 h-3.5 rotate-90" />
                       {unreadCount > 0
-                        ? `${unreadCount} New Messages`
-                        : "Jump to Latest"}
+                        ? `${unreadCount} new message${unreadCount === 1 ? "" : "s"}`
+                        : "Latest"}
                     </button>
                   )}
                   <AnimatePresence mode="wait">
@@ -5204,12 +5136,7 @@ export const TransferNodeRenderer: React.FC<{
                           ref={scrollRef}
                           onScroll={handleScroll}
                           onWheelCapture={(e) => e.stopPropagation()}
-                          className={`flex-1 overflow-y-auto p-4 space-y-6 scrollbar-thin ${isDark ? "scrollbar-dark" : "scrollbar-light"}`}
-                          style={{
-                            backgroundImage: isDark
-                              ? "radial-gradient(circle at 50% 50%, rgba(79, 70, 229, 0.05) 0%, transparent 100%)"
-                              : "none",
-                          }}
+                          className={`flex-1 overflow-y-auto px-3 py-4 scrollbar-thin ${isDark ? "scrollbar-dark" : "scrollbar-light"}`}
                         >
                           {chatMessages.length === 0 && (
                             <div className="h-full flex flex-col items-center justify-center text-center px-12 gap-6">
@@ -5228,9 +5155,6 @@ export const TransferNodeRenderer: React.FC<{
                                   Messages are sent directly between devices.
                                   Nothing is stored on any server.
                                 </p>
-                                <p className={`text-xs mt-2 font-medium ${isDark ? "text-indigo-400/80" : "text-indigo-500/80"}`}>
-                                  Max file/folder size: {largeFileMode ? "Unlimited (Stream to disk)" : "100MB"}
-                                </p>
                               </div>
                             </div>
                           )}
@@ -5242,7 +5166,7 @@ export const TransferNodeRenderer: React.FC<{
                               layout
                               initial={{ opacity: 0, scale: 0.95, y: 10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
-                              className={`flex flex-col mb-4 ${msg.sender === "me" ? "items-end" : "items-start"}`}
+                              className={`flex flex-col mb-3 ${msg.sender === "me" ? "items-end" : "items-start"}`}
                             >
                               <div
                                 onContextMenu={(e) => {
@@ -5253,19 +5177,19 @@ export const TransferNodeRenderer: React.FC<{
                                     y: e.clientY,
                                   });
                                 }}
-                                className={`group relative max-w-[85%] rounded-3xl p-1 transition-all duration-300 ${msg.sender === "me"
+                                className={`group relative max-w-[85%] rounded-[18px] p-0.5 transition-colors ${msg.sender === "me"
                                   ? msg.type === "composite" || msg.type === "file"
-                                    ? isDark ? "bg-slate-800 text-white rounded-tr-sm shadow-xl" : "bg-slate-200 text-slate-800 rounded-tr-sm shadow-sm"
-                                    : "bg-indigo-600 text-white rounded-tr-sm shadow-xl shadow-indigo-500/20"
+                                    ? isDark ? "bg-indigo-500/[0.14] text-slate-100 rounded-br-md ring-1 ring-indigo-400/20" : "bg-indigo-50 text-slate-800 rounded-br-md ring-1 ring-indigo-100"
+                                    : "bg-indigo-600 text-white rounded-br-md"
                                   : isDark
-                                    ? "bg-[#161f30] text-slate-200 rounded-tl-sm border border-white/5"
-                                    : "bg-slate-100 text-slate-800 rounded-tl-sm"
+                                    ? "bg-[#1a2232] text-slate-100 rounded-bl-md ring-1 ring-white/[0.05]"
+                                    : "bg-white text-slate-800 rounded-bl-md ring-1 ring-slate-200"
                                   }`}
                               >
                                 {msg.status === "sending" && (msg.type === "composite" || msg.type === "file" || msg.type === "text") && (
-                                  <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-sm rounded-[inherit] flex flex-col items-center justify-center p-4">
-                                    <RefreshCw className="w-5 h-5 text-white animate-spin mb-2" />
-                                    <div className="text-[10px] font-bold text-white uppercase tracking-wider whitespace-nowrap">Sending...</div>
+                                  <div className="absolute inset-0 z-50 bg-black/40 backdrop-blur-[2px] rounded-[inherit] flex flex-col items-center justify-center p-4">
+                                    <RefreshCw className="w-4 h-4 text-white animate-spin mb-1.5" />
+                                    <div className="text-[11px] font-semibold text-white whitespace-nowrap">Sending…</div>
                                     {(msg.chunksTotal ?? 0) > 0 && (
                                       <div className="w-full max-w-[120px] h-1.5 bg-white/20 rounded-full mt-3 overflow-hidden">
                                         <div
@@ -5319,7 +5243,7 @@ export const TransferNodeRenderer: React.FC<{
                                 </div>
 
                                 {msg.isDeleted ? (
-                                  <div className="px-4 py-2.5 text-xs font-medium italic opacity-50 flex items-center gap-2">
+                                  <div className="px-3 py-2 text-xs italic opacity-50 flex items-center gap-2">
                                     <Trash2 className="w-3.5 h-3.5" />
                                     This message was deleted
                                   </div>
@@ -5330,19 +5254,19 @@ export const TransferNodeRenderer: React.FC<{
                                         onClick={() =>
                                           scrollToMessage(msg.replyTo!.id)
                                         }
-                                        className={`mx-1 mt-1 mb-0.5 p-2 rounded-2xl flex flex-col gap-0.5 text-left transition-all border-l-4 ${msg.sender === "me"
-                                          ? "bg-black/20 border-white/40 text-white/80 hover:bg-black/30"
+                                        className={`mx-0.5 mt-0.5 mb-0.5 px-2.5 py-1.5 rounded-[14px] flex flex-col gap-0.5 text-left transition-colors border-l-[3px] ${msg.sender === "me"
+                                          ? "bg-black/15 border-white/50 text-white/85 hover:bg-black/25"
                                           : isDark
                                             ? "bg-white/5 border-indigo-500/50 text-slate-400 hover:bg-white/10"
                                             : "bg-black/5 border-indigo-400 text-slate-500 hover:bg-black/10"
                                           }`}
                                       >
-                                        <span className="text-[9px] font-black uppercase tracking-widest opacity-60">
+                                        <span className="text-[10px] font-semibold opacity-70">
                                           {msg.replyTo.sender === "me"
                                             ? "You"
                                             : "Remote"}
                                         </span>
-                                        <span className="text-[10px] font-bold line-clamp-1">
+                                        <span className="text-[11px] line-clamp-1 opacity-90">
                                           {msg.replyTo.type === "file"
                                             ? `📄 ${msg.replyTo.fileName}`
                                             : msg.replyTo.type === "composite" && !msg.replyTo.content
@@ -5352,7 +5276,7 @@ export const TransferNodeRenderer: React.FC<{
                                       </button>
                                     )}
                                     {msg.type === "text" && (
-                                      <div className="px-4 py-2.5 text-xs font-medium select-text whitespace-pre-wrap break-words">
+                                      <div className="px-3 py-2 text-[13px] leading-snug select-text whitespace-pre-wrap break-words">
                                         {renderContentWithLinks(msg.content)}
                                       </div>
                                     )}
@@ -5424,7 +5348,7 @@ export const TransferNodeRenderer: React.FC<{
                                           );
                                         })()}
                                         {msg.content && (
-                                          <div className="px-3 py-1.5 text-xs font-medium mt-0.5 select-text whitespace-pre-wrap break-words">
+                                          <div className="px-3 py-1.5 text-[13px] leading-snug mt-0.5 select-text whitespace-pre-wrap break-words">
                                             {renderContentWithLinks(msg.content)}
                                           </div>
                                         )}
@@ -5647,14 +5571,14 @@ export const TransferNodeRenderer: React.FC<{
                                               </div>
                                               <div className="flex flex-col min-w-0 flex-1">
                                                 <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                                                  <span className="text-xs font-black truncate leading-tight max-w-[150px] sm:max-w-none">
+                                                  <span className="text-[13px] font-semibold truncate leading-tight max-w-[150px] sm:max-w-none">
                                                     {msg.fileName}
                                                   </span>
-                                                  <span className="px-1.5 py-0.2 rounded text-[8px] font-black uppercase tracking-wider bg-indigo-500/20 text-indigo-400 border border-indigo-500/30">
+                                                  <span className="px-1.5 rounded text-[10px] font-semibold bg-indigo-500/15 text-indigo-400">
                                                     {msg.fileName.toLowerCase().endsWith('.sql') ? 'SQL' : 'SQLITE'}
                                                   </span>
                                                 </div>
-                                                <div className="flex items-center gap-2 text-[9px] font-bold opacity-70 uppercase tracking-widest">
+                                                <div className="flex items-center gap-1.5 text-[11px] opacity-65">
                                                   <span>{formatFileSize(msg.fileSize || 0)}</span>
                                                   <span className="w-1 h-1 rounded-full bg-current opacity-40" />
                                                   <span>Workspace Data</span>
@@ -5721,10 +5645,10 @@ export const TransferNodeRenderer: React.FC<{
                                                 )}
                                               </div>
                                               <div className="flex flex-col min-w-0 flex-1">
-                                                <span className="text-xs font-black truncate leading-tight mb-1">
+                                                <span className="text-[13px] font-semibold truncate leading-tight mb-0.5">
                                                   {msg.fileName}
                                                 </span>
-                                                <div className="flex items-center gap-2 text-[9px] font-bold opacity-70 uppercase tracking-widest">
+                                                <div className="flex items-center gap-1.5 text-[11px] opacity-65">
                                                   <span>
                                                     {formatFileSize(
                                                       msg.fileSize || 0,
@@ -5755,8 +5679,8 @@ export const TransferNodeRenderer: React.FC<{
                                 )}
                               </div>
 
-                              <div className="flex items-center gap-2 mt-1.5 px-2">
-                                <span className="text-[10px] text-slate-500 font-bold tracking-tight">
+                              <div className="flex items-center gap-1.5 mt-1 px-1.5">
+                                <span className="text-[10px] text-slate-500 font-medium tabular-nums">
                                   {new Date(msg.timestamp).toLocaleTimeString(
                                     [],
                                     {
@@ -5766,8 +5690,8 @@ export const TransferNodeRenderer: React.FC<{
                                   )}
                                 </span>
                                 {msg.isEdited && !msg.isDeleted && (
-                                  <span className="text-[10px] text-slate-500 font-bold tracking-tight italic">
-                                    (edited)
+                                  <span className="text-[10px] text-slate-500">
+                                    edited
                                   </span>
                                 )}
                                 {msg.sender === "me" && (
@@ -5792,7 +5716,7 @@ export const TransferNodeRenderer: React.FC<{
                         </div>
 
                         <div
-                          className={`p-4 border-t ${isDark ? "bg-[#0d1017]/50 border-white/5" : "bg-white border-slate-100"}`}
+                          className={`px-3 pt-2.5 pb-3 border-t ${isDark ? "border-white/[0.06]" : "border-slate-100"}`}
                         >
                           <AnimatePresence>
                             {editingMessage && (
@@ -5957,71 +5881,40 @@ export const TransferNodeRenderer: React.FC<{
                               </motion.div>
                             )}
                           </AnimatePresence>
-                          <div className="flex items-center gap-2">
-                            <AnimatePresence initial={false}>
-                              {!chatInputFocused && (
-                                <motion.div
-                                  key="chat-upload-actions"
-                                  initial={{ opacity: 0, scale: 0.8, width: 0 }}
-                                  animate={{ opacity: 1, scale: 1, width: "auto" }}
-                                  exit={{ opacity: 0, scale: 0.8, width: 0 }}
-                                  transition={{ duration: 0.18, ease: "easeInOut" }}
-                                  className="flex items-center gap-2 overflow-hidden shrink-0"
-                                >
-                                  <label
-                                    className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark
-                                      ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
-                                      : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
-                                      }`}
-                                    title="Upload Files"
-                                  >
-                                    <Plus className="w-5 h-5" />
-                                    <input
-                                      type="file"
-                                      className="hidden"
-                                      multiple
-                                      onChange={(e) => {
-                                        const files = Array.from(e.target.files || []);
-                                        const validFiles = [];
-                                        const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
-                                        let hasLarge = false;
-                                        for (const f of files) {
-                                          if (f.size > currentLimit) hasLarge = true;
-                                          else validFiles.push(f);
-                                        }
-                                        if (hasLarge) {
-                                          setNotification({ message: "Files exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
-                                        }
-                                        if (validFiles.length > 0) {
-                                          setPendingFiles(prev => [...prev, ...validFiles]);
-                                        }
-                                        // clear the input so the same file can be selected again
-                                        e.target.value = '';
-                                      }}
-                                    />
-                                  </label>
+                          <div
+                            className={`flex items-end gap-0.5 rounded-2xl p-1 border transition-colors ${isDark
+                              ? "bg-white/[0.04] border-white/[0.08] focus-within:border-indigo-500/60"
+                              : "bg-slate-50 border-slate-200 focus-within:border-indigo-400 focus-within:bg-white"
+                              }`}
+                          >
+                              <label
+                                className={`h-9 w-9 rounded-xl cursor-pointer transition-colors flex shrink-0 items-center justify-center ${isDark ? "text-slate-400 hover:text-white hover:bg-white/[0.08]" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/70"}`}
+                                title="Attach files"
+                              >
+                                <Plus className="w-[18px] h-[18px]" />
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  multiple
+                                  onChange={(e) => {
+                                    const files = Array.from(e.target.files || []);
+                                    if (files.length > 0) {
+                                      setPendingFiles(prev => [...prev, ...files]);
+                                    }
+                                    // clear the input so the same file can be selected again
+                                    e.target.value = '';
+                                  }}
+                                />
+                              </label>
 
-                                  <button
-                                    type="button"
-                                    onClick={() => setShowWorkspaceSendModal(true)}
-                                    title="Send Workspace Documents as SQLite / SQL"
-                                    className={`p-2.5 rounded-full border cursor-pointer transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark
-                                      ? "border-white/5 bg-white/5 hover:bg-white/10 hover:border-indigo-500/30 text-indigo-400"
-                                      : "border-slate-100 bg-slate-50 hover:bg-slate-100 hover:border-indigo-200 text-indigo-600"
-                                    }`}
-                                  >
-                                    <Database className="w-5 h-5" />
-                                  </button>
-                                </motion.div>
-                              )}
-                            </AnimatePresence>
-
-                            <div
-                              className={`flex-1 flex items-center rounded-3xl p-1.5 border transition-all shadow-inner min-w-0 ${isDark
-                                ? "bg-[#161f30] border-white/5 focus-within:border-indigo-500/50"
-                                : "bg-slate-50 border-slate-100 focus-within:border-indigo-500"
-                                }`}
-                            >
+                              <button
+                                type="button"
+                                onClick={() => setShowWorkspaceSendModal(true)}
+                                title="Send workspace documents"
+                                className={`h-9 w-9 rounded-xl cursor-pointer transition-colors flex shrink-0 items-center justify-center ${isDark ? "text-slate-400 hover:text-white hover:bg-white/[0.08]" : "text-slate-500 hover:text-slate-900 hover:bg-slate-200/70"}`}
+                              >
+                                <Database className="w-4 h-4" />
+                              </button>
                               <textarea
                                 rows={Math.min(chatInput.split("\n").length, 5) || 1}
                                 value={chatInput}
@@ -6033,18 +5926,8 @@ export const TransferNodeRenderer: React.FC<{
                                     .map(item => item.getAsFile())
                                     .filter((f): f is File => f !== null);
 
-                                  const validFiles = [];
-                                  const currentLimit = largeFileMode ? Infinity : MAX_FILE_SIZE;
-                                  let hasLarge = false;
-                                  for (const f of files) {
-                                    if (f.size > currentLimit) hasLarge = true;
-                                    else validFiles.push(f);
-                                  }
-                                  if (hasLarge) {
-                                    setNotification({ message: "Pasted files exceeding 100MB limit were ignored (enable Stream to Disk for larger files)", type: "error" });
-                                  }
-                                  if (validFiles.length > 0) {
-                                    setPendingFiles(prev => [...prev, ...validFiles]);
+                                  if (files.length > 0) {
+                                    setPendingFiles(prev => [...prev, ...files]);
                                   }
                                 }}
                                 onKeyDown={(e) => {
@@ -6063,7 +5946,7 @@ export const TransferNodeRenderer: React.FC<{
                                 onFocus={() => setChatInputFocused(true)}
                                 onBlur={() => setChatInputFocused(false)}
                                 placeholder="Type a message..."
-                                className="flex-1 bg-transparent px-3 py-2 text-sm focus:outline-none placeholder:text-slate-500 font-medium min-w-0 resize-none max-h-32 overflow-y-auto leading-relaxed [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
+                                className="flex-1 bg-transparent px-1.5 py-2 text-[13px] focus:outline-none placeholder:text-slate-500 min-w-0 resize-none max-h-32 overflow-y-auto leading-snug [&::-webkit-scrollbar]:hidden [-ms-overflow-style:none] [scrollbar-width:none]"
                               />
                               {!chatInputFocused && chatInput.length > 0 && (
                                 <button
@@ -6072,7 +5955,8 @@ export const TransferNodeRenderer: React.FC<{
                                     setEditingMessage(null);
                                     setReplyingTo(null);
                                   }}
-                                  className="w-[32px] h-[32px] shrink-0 text-slate-400 hover:text-slate-600 sm:hidden flex items-center justify-center transition-colors"
+                                  className="w-9 h-9 shrink-0 text-slate-400 hover:text-slate-600 sm:hidden flex items-center justify-center transition-colors"
+                                  aria-label="Clear"
                                 >
                                   <X className="w-4 h-4" />
                                 </button>
@@ -6081,26 +5965,12 @@ export const TransferNodeRenderer: React.FC<{
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={sendMessage}
                                 disabled={!chatInput.trim() && pendingFiles.length === 0}
-                                className="w-[36px] h-[36px] shrink-0 bg-indigo-600 disabled:opacity-50 text-white rounded-full hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-500/30 flex items-center justify-center cursor-pointer"
+                                className="w-9 h-9 shrink-0 bg-indigo-600 disabled:bg-transparent disabled:text-slate-500 text-white rounded-xl hover:bg-indigo-500 transition-colors flex items-center justify-center cursor-pointer"
+                                title="Send"
+                                aria-label="Send"
                               >
                                 <Send className="w-4 h-4 ml-0.5" />
                               </button>
-                            </div>
-
-                            <button
-                              onClick={() => {
-                                if (
-                                  confirm(
-                                    "Are you sure you want to disconnect?",
-                                  )
-                                ) {
-                                  resetState();
-                                }
-                              }}
-                              className={`p-2.5 rounded-full border transition-all flex shrink-0 items-center justify-center w-[44px] h-[44px] ${isDark ? "border-red-500/10 bg-red-500/5 hover:bg-red-500/10 text-red-400" : "border-red-50/10 bg-red-50 hover:bg-red-100 text-red-500"}`}
-                            >
-                              <X className="w-5 h-5" />
-                            </button>
                           </div>
                         </div>
                       </motion.div>
@@ -6115,17 +5985,17 @@ export const TransferNodeRenderer: React.FC<{
                       >
                         <div className="flex items-center justify-between mb-4 px-2">
                           <h4
-                            className={`text-sm font-black uppercase tracking-widest ${isDark ? "text-white" : "text-slate-900"}`}
+                            className={`text-xs font-semibold ${isDark ? "text-slate-300" : "text-slate-700"}`}
                           >
-                            Shared Media
+                            Shared media
                           </h4>
                         </div>
 
                         {mediaMessages.length === 0 ? (
                           <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40">
                             <ImageIcon className="w-12 h-12 mb-4" />
-                            <p className="text-sm font-bold uppercase tracking-tighter">
-                              No Media Shared Yet
+                            <p className="text-xs font-medium">
+                              No media shared yet
                             </p>
                           </div>
                         ) : (
@@ -6156,7 +6026,7 @@ export const TransferNodeRenderer: React.FC<{
                                   </div>
                                 )}
                                 <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center gap-1.5 p-1">
-                                  <span className="text-[9px] font-black text-white uppercase tracking-tighter truncate max-w-full px-1">
+                                  <span className="text-[10px] font-semibold text-white truncate max-w-full px-1">
                                     {m.fileName}
                                   </span>
                                   <div

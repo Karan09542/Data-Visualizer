@@ -8,6 +8,8 @@
 import { downloadBlob } from './downloadUtils';
 
 const FOLDER = 'transfer-received';
+/** Where transferThumbs keeps previews (named here too, so deleting a file removes its preview). */
+const THUMBS = 'transfer-received-thumbs';
 const RECORDS_KEY = 'dv-transfer-received-v1';
 const SETTINGS_KEY = 'dv-transfer-received-settings-v1';
 
@@ -29,7 +31,16 @@ export interface ReceivedFileRecord {
 export type AutoClean = 'off' | 'saved' | '1d' | '7d' | '30d';
 export interface ReceivedSettings {
   autoClean: AutoClean;
+  /** How the panel shows files. */
+  view: 'list' | 'grid';
+  /** Picture and video previews in the panel. */
+  previews: boolean;
+  /** The panel fills the screen. */
+  fullscreen: boolean;
+  /** The order files are listed in. */
+  sort: ReceivedSort;
 }
+export type ReceivedSort = 'newest' | 'oldest' | 'largest' | 'name';
 
 /* ---------------------------------------------------------------- records */
 
@@ -48,7 +59,7 @@ function readJSON<T>(key: string, fallback: T): T {
 let records: ReceivedFileRecord[] = readJSON<ReceivedFileRecord[]>(RECORDS_KEY, []).map((r) =>
   r.status === 'receiving' ? { ...r, status: 'partial' } : r,
 );
-let settings: ReceivedSettings = { autoClean: 'off', ...readJSON<Partial<ReceivedSettings>>(SETTINGS_KEY, {}) };
+let settings: ReceivedSettings = { autoClean: 'off', view: 'list', previews: true, fullscreen: false, sort: 'newest', ...readJSON<Partial<ReceivedSettings>>(SETTINGS_KEY, {}) };
 
 const listeners = new Set<() => void>();
 let saveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -99,7 +110,7 @@ export function setReceivedSettings(next: Partial<ReceivedSettings>) {
     /* kept for this session only */
   }
   changed();
-  void applyAutoClean();
+  if ('autoClean' in next) void applyAutoClean();
 }
 
 /* ------------------------------------------------------------------ OPFS */
@@ -128,8 +139,17 @@ export async function getReceivedFile(id: string): Promise<File | null> {
   }
 }
 
+const thumbsFolder = async () => {
+  try {
+    return await (await navigator.storage.getDirectory()).getDirectoryHandle(THUMBS, { create: true });
+  } catch {
+    return null;
+  }
+};
+
 export async function deleteReceived(ids: string[]): Promise<void> {
   const dir = await folder();
+  const thumbs = await thumbsFolder();
   const gone = new Set<string>();
   for (const id of ids) {
     const r = getReceivedRecord(id);
@@ -139,6 +159,7 @@ export async function deleteReceived(ids: string[]): Promise<void> {
     } catch {
       /* already gone */
     }
+    thumbs?.removeEntry(`${id}.jpg`).catch(() => {});
     gone.add(id);
   }
   if (!gone.size) return;
@@ -169,6 +190,16 @@ export async function refreshReceived(): Promise<void> {
       } catch {
         /* in use */
       }
+    }
+  }
+  // Previews whose file is gone.
+  const thumbs = await thumbsFolder();
+  if (thumbs) {
+    const ids = new Set(records.map((r) => `${r.id}.jpg`));
+    try {
+      for await (const h of (thumbs as any).values()) if (!ids.has(h.name)) await thumbs.removeEntry(h.name).catch(() => {});
+    } catch {
+      /* listing not supported */
     }
   }
   records = records
