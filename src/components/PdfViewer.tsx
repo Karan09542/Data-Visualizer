@@ -83,7 +83,7 @@ async function fetchBytes(url: string, onProgress: (fraction: number) => void, s
   const reader = res.body.getReader();
   const chunks: Uint8Array[] = [];
   let received = 0;
-  for (;;) {
+  for (; ;) {
     const { done, value } = await reader.read();
     if (done) break;
     chunks.push(value);
@@ -99,7 +99,7 @@ async function fetchBytes(url: string, onProgress: (fraction: number) => void, s
   return out.buffer;
 }
 
-export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment = "top", isDark = true }) => {
+export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment = "center", isDark = true }) => {
   /* ── Document ───────────────────────────────────────────────────────── */
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [numPages, setNumPages] = useState(0);
@@ -838,10 +838,10 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
     { value: "rotate-cw", label: "Rotate right", description: `Page ${currentPage}`, icon: <RotateCw size={15} /> },
     ...(viewMode === "single"
       ? [
-          alignMode === "top"
-            ? { value: "align", label: "Center vertically", description: "Middle of the view", icon: <AlignVerticalJustifyCenter size={15} /> }
-            : { value: "align", label: "Align to top", description: "Start at the top", icon: <AlignStartVertical size={15} /> },
-        ]
+        alignMode === "top"
+          ? { value: "align", label: "Center vertically", description: "Middle of the view", icon: <AlignVerticalJustifyCenter size={15} /> }
+          : { value: "align", label: "Align to top", description: "Start at the top", icon: <AlignStartVertical size={15} /> },
+      ]
       : []),
     { value: "search", label: "Find in document", description: "Ctrl+F", icon: <Search size={15} /> },
     { value: "download", label: "Download PDF", description: hasRotations || isReordered ? "With your changes" : "Original file", icon: <FileDown size={15} /> },
@@ -861,13 +861,11 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
     <>
       {isNarrow && sidebarOpen && <div className="absolute inset-0 z-30 bg-black/40" onClick={() => setSidebarOpen(false)} aria-hidden />}
       <aside
-        className={`flex min-h-0 flex-col border-r border-(--pv-line) bg-(--pv-panel) ${
-          !sidebarOpen ? "hidden" : ""
-        } ${
-          isNarrow
+        className={`flex min-h-0 flex-col border-r border-(--pv-line) bg-(--pv-panel) ${!sidebarOpen ? "hidden" : ""
+          } ${isNarrow
             ? `absolute inset-y-0 left-0 z-40 ${sidebarWide ? "w-full" : "w-[min(88%,360px)]"} shadow-(--pv-shadow)`
             : `relative shrink-0 ${sidebarWide ? "w-130" : "w-68"}`
-        }`}
+          }`}
         aria-label="Pages and search"
       >
         <div className="flex h-14 shrink-0 items-center gap-2 border-b border-(--pv-line) px-3">
@@ -878,9 +876,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
                 role="tab"
                 aria-selected={sidebarTab === tab}
                 onClick={() => setSidebarTab(tab)}
-                className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors ${
-                  sidebarTab === tab ? "bg-(--pv-elevated) text-(--pv-text) shadow-sm" : "text-(--pv-muted) hover:text-(--pv-text)"
-                }`}
+                className={`flex h-8 items-center gap-1.5 rounded-md px-3 text-[13px] font-medium transition-colors ${sidebarTab === tab ? "bg-(--pv-elevated) text-(--pv-text) shadow-sm" : "text-(--pv-muted) hover:text-(--pv-text)"
+                  }`}
               >
                 {tab === "pages" ? "Pages" : "Search"}
                 {tab === "search" && results.length > 0 && (
@@ -1121,9 +1118,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
         >
           <div
             ref={pagesRef}
-            className={`relative mx-auto flex w-max min-w-full flex-col items-center gap-4 px-2 pb-24 pt-4 sm:px-8 sm:pt-6 ${
-              viewMode === "single" && alignMode === "center" ? "min-h-full justify-center" : ""
-            }`}
+            className={`relative mx-auto flex w-max min-w-full flex-col items-center gap-4 px-2 pb-24 pt-4 sm:px-8 sm:pt-6 ${viewMode === "single" && alignMode === "center" ? "min-h-full justify-center" : ""
+              }`}
           >
             {pdfDoc &&
               (viewMode === "single" ? (
@@ -1168,9 +1164,8 @@ export const PdfViewer: React.FC<PdfViewerProps> = ({ url, fileName, alignment =
 
         {/* Toolbar */}
         <div
-          className={`pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-2 transition-all duration-300 sm:bottom-5 ${
-            controlsVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
-          }`}
+          className={`pointer-events-none absolute inset-x-0 bottom-3 z-20 flex justify-center px-2 transition-all duration-300 sm:bottom-5 ${controlsVisible ? "translate-y-0 opacity-100" : "translate-y-3 opacity-0"
+            }`}
         >
           <div className={pill} role="toolbar" aria-label="Document controls">
             <button
