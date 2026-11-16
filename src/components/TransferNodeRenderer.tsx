@@ -115,6 +115,7 @@ import {
   CheckSquare,
   Square,
   Layers,
+  HardDrive,
 } from "lucide-react";
 import { v4 as uuidv4 } from "uuid";
 import { motion, AnimatePresence } from "motion/react";
@@ -128,6 +129,8 @@ import { blobRegistry, getFileType, addChatMessageToCanvas } from "../utils/chat
 import { createWorkspaceFileForTransfer } from "../utils/sqliteWorkspace";
 import { db, type SavedDocument } from "../lib/db";
 import { useLiveQuery } from "dexie-react-hooks";
+import { ReceivedFilesPanel } from "./transfer/ReceivedFilesPanel";
+import { hasRoomFor, openReceiveSink, receivedStoreAvailable, subscribeReceived, listReceived, refreshReceived } from "../utils/transferReceivedStore";
 export { blobRegistry, getFileType };
 
 export interface Attachment {
@@ -137,7 +140,7 @@ export interface Attachment {
   fileType: string;
   content?: string; // Object URL locally, base64 when sent
   originalBlob?: Blob;
-  streamState?: "offered" | "transferring" | "paused" | "completed" | "canceled";
+  streamState?: "offered" | "transferring" | "paused" | "completed" | "canceled" | "error";
   streamProgress?: number;
 }
 
@@ -848,6 +851,40 @@ export const TransferNodeRenderer: React.FC<{
       })
     );
   }, []);
+  // Received files kept in the browser (OPFS), and the panel that manages them.
+  const [showReceivedFiles, setShowReceivedFiles] = useState(false);
+  const receivedCount = React.useSyncExternalStore(subscribeReceived, () => listReceived().length);
+  useEffect(() => {
+    void refreshReceived();
+  }, []);
+
+  // Phones throttle or drop the connection when the screen sleeps: keep it on while files move.
+  const anyTransferring = messages.some(
+    (m) => m.streamState === "transferring" || m.attachments?.some((a) => a.streamState === "transferring"),
+  );
+  useEffect(() => {
+    if (!anyTransferring || !("wakeLock" in navigator)) return;
+    let lock: any = null;
+    let stopped = false;
+    const take = async () => {
+      if (stopped || document.visibilityState !== "visible") return;
+      try {
+        lock = await (navigator as any).wakeLock.request("screen");
+      } catch {
+        /* refused (battery saver, no permission): carry on without it */
+      }
+    };
+    void take();
+    // The lock is dropped whenever the page is hidden; take it again on return.
+    const onVisible = () => void take();
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      stopped = true;
+      document.removeEventListener("visibilitychange", onVisible);
+      lock?.release?.().catch(() => {});
+    };
+  }, [anyTransferring]);
+
   const [chatInput, setChatInput] = useState("");
   const [replyingTo, setReplyingTo] = useState<Message | null>(null);
   const [editingMessage, setEditingMessage] = useState<Message | null>(null);
@@ -1029,6 +1066,8 @@ export const TransferNodeRenderer: React.FC<{
     accepted: boolean;
     isProcessing: boolean;
     checksum: number; // simple CRC or similar
+    /** The message id, encoded once: it heads every chunk. */
+    idBytes?: Uint8Array;
   }>>({});
 
   const incomingStreamsRef = useRef<Record<string, {
@@ -1908,7 +1947,7 @@ export const TransferNodeRenderer: React.FC<{
       const slice = stream.file.slice(stream.offset, stream.offset + CHUNK_SIZE);
       const arrayBuffer = await slice.arrayBuffer();
 
-      const idBytes = new TextEncoder().encode(msgId);
+      const idBytes = (stream.idBytes ??= new TextEncoder().encode(msgId));
       const chunkBuffer = new Uint8Array(arrayBuffer);
       const out = new Uint8Array(36 + chunkBuffer.length); // msgId is UUID, 36 bytes
       out.set(idBytes, 0);
@@ -2254,6 +2293,114 @@ export const TransferNodeRenderer: React.FC<{
     return pc;
   };
 
+  /** Keeps a received file in memory: for browsers that cannot store it on disk. */
+  const memorySink = (msgId: string) => {
+    const memoryBuffer: Uint8Array[] = [];
+    return {
+      write: async (chunk: Uint8Array) => {
+        memoryBuffer.push(new Uint8Array(chunk));
+      },
+      abort: async () => {
+        memoryBuffer.length = 0;
+      },
+      close: async () => {
+        const blob = new Blob(memoryBuffer as BlobPart[]);
+        memoryBuffer.length = 0;
+        updateStreamMessage(msgId, {
+          content: URL.createObjectURL(blob),
+          originalBlob: blob,
+          streamState: "completed",
+          type: "file" as any,
+        });
+      },
+    };
+  };
+
+  /** Stops writing a received file; `keep` leaves a partial one listed (for resuming). */
+  const abortIncoming = (inStream: { stream: any } | undefined, keep = false) => {
+    if (!inStream?.stream) return;
+    try {
+      const st = inStream.stream;
+      const r = typeof st.abort === "function" ? st.abort(keep) : st.close();
+      if (r && typeof r.catch === "function") r.catch(() => {});
+    } catch (e) { }
+  };
+
+  /**
+   * Accepts an offered file. It is stored in this browser (OPFS, written by a worker, never held
+   * in memory) and listed under Received files; where that cannot be done, `fallback` (a save
+   * dialog) is tried, then memory. False when it was not accepted.
+   */
+  const acceptIncoming = async (
+    msgId: string,
+    fileName: string,
+    fileSize: number,
+    fallback?: () => Promise<{ handle: any; stream: any } | null>,
+  ): Promise<boolean> => {
+    if (incomingStreamsRef.current[msgId]) return true;
+    let target: { handle: any; stream: any } | null = null;
+    if (await receivedStoreAvailable()) {
+      const room = await hasRoomFor(fileSize);
+      if (!room.ok) {
+        setNotification({
+          message: `Not enough storage for ${fileName || "this file"} (${formatFileSize(fileSize)}; ${formatFileSize(Math.max(0, room.free || 0))} free). Delete received files to make room.`,
+          type: "error",
+        });
+        return false;
+      }
+      const sink = await openReceiveSink(
+        { id: msgId, name: fileName, size: fileSize, mime: getMimeType(fileName || "") },
+        (error) => {
+          // The disk filled up, or the browser refused the write.
+          const inStream = incomingStreamsRef.current[msgId];
+          delete incomingStreamsRef.current[msgId];
+          abortIncoming(inStream);
+          dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId }));
+          updateStreamMessage(msgId, { streamState: "error" });
+          setNotification({
+            message: error === "QuotaExceededError" ? "Storage is full: the transfer was stopped. Delete received files to make room." : "Could not store the file: the transfer was stopped.",
+            type: "error",
+          });
+        },
+      );
+      if (sink) {
+        target = {
+          handle: null,
+          stream: {
+            write: (chunk: Uint8Array) => sink.write(chunk),
+            abort: (keep?: boolean) => sink.abort(keep),
+            markDamaged: () => sink.markDamaged(),
+            close: async () => {
+              const file = await sink.close();
+              if (file) {
+                const url = URL.createObjectURL(file);
+                blobRegistry.set(url, file);
+                updateStreamMessage(msgId, { content: url, originalBlob: file, type: "file" as any });
+              }
+            },
+          },
+        };
+      }
+    }
+    if (!target && fallback) {
+      try {
+        target = await fallback();
+      } catch (e: any) {
+        if (e?.name === "AbortError") return false;
+        setNotification({ message: "Could not open file: " + e.message, type: "error" });
+        return false;
+      }
+      if (!target) return false;
+    }
+    if (!target) {
+      target = { handle: null, stream: memorySink(msgId) };
+    }
+    incomingStreamsRef.current[msgId] = { ...target, received: 0, total: fileSize, checksum: 0 };
+    dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId }));
+    updateStreamMessage(msgId, { streamState: "transferring" });
+    return true;
+  };
+
   const handleDataChannel = (dc: RTCDataChannel) => {
     dcRef.current = dc;
     dc.binaryType = "arraybuffer";
@@ -2267,6 +2414,18 @@ export const TransferNodeRenderer: React.FC<{
       });
     };
 
+    dc.onclose = () => {
+      if (dcRef.current !== dc) return; // an older channel, replaced by a new connection
+      Object.entries(incomingStreamsRef.current).forEach(([id, inStream]) => {
+        abortIncoming(inStream, true);
+        updateStreamMessage(id, { streamState: "error" });
+      });
+      incomingStreamsRef.current = {};
+      Object.keys(outgoingStreamsRef.current).forEach((id) => updateStreamMessage(id, { streamState: "error" }));
+      outgoingStreamsRef.current = {};
+      setTransferProgress(0);
+    };
+
     dc.onopen = () => {
       setConnectionState("connected");
       setNotification({
@@ -2275,59 +2434,28 @@ export const TransferNodeRenderer: React.FC<{
       });
     };
 
-    const autoAcceptStream = (msgId: string, fileSize: number) => {
-      const memoryBuffer: Uint8Array[] = [];
-      const streamMock = {
-        write: async (chunk: Uint8Array) => {
-          memoryBuffer.push(new Uint8Array(chunk));
-        },
-        close: async () => {
-          const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
-          const combined = new Uint8Array(totalLength);
-          let offset = 0;
-          for (const chunk of memoryBuffer) {
-            combined.set(chunk, offset);
-            offset += chunk.length;
-          }
-          const blob = new Blob([combined]);
-          const url = URL.createObjectURL(blob);
-          
-          updateStreamMessage(msgId, {
-            content: url,
-            originalBlob: blob,
-            streamState: "completed",
-            type: "file" as any
-          });
-        }
-      };
-      incomingStreamsRef.current[msgId] = {
-        handle: null,
-        stream: streamMock,
-        received: 0,
-        total: fileSize,
-        checksum: 0
-      };
-      dc.send(JSON.stringify({ type: "stream_accept", msgId }));
-      updateStreamMessage(msgId, { streamState: "transferring" });
+    const autoAcceptStream = (msgId: string, fileName: string, fileSize: number) => {
+      void acceptIncoming(msgId, fileName, fileSize);
     };
 
     dc.onmessage = async (e) => {
       if (e.data instanceof ArrayBuffer) {
         const data = new Uint8Array(e.data);
-        const msgIdBytes = data.slice(0, 36);
-        const msgId = new TextDecoder().decode(msgIdBytes);
-        const chunk = data.slice(36);
+        const msgId = new TextDecoder().decode(data.subarray(0, 36));
+        const chunk = data.subarray(36);
 
         const stream = incomingStreamsRef.current[msgId];
         if (stream && stream.stream) {
+          // Counted here, in arrival order: writing may hand the bytes to a worker.
+          stream.received += chunk.length;
+          stream.checksum = crc32(chunk, stream.checksum);
+          const received = stream.received;
           stream.writeQueue = (stream.writeQueue || Promise.resolve())
             .then(async () => {
               try {
                 await stream.stream.write(chunk);
-                stream.received += chunk.length;
-                stream.checksum = crc32(chunk, stream.checksum);
 
-                const progress = Math.floor((stream.received / stream.total) * 100);
+                const progress = Math.floor((received / stream.total) * 100);
                 updateStreamMessage(msgId, { streamProgress: progress });
                 
                 if (progress % 5 === 0 || progress === 100) {
@@ -2393,7 +2521,7 @@ export const TransferNodeRenderer: React.FC<{
             sendLocalNotification("Incoming Large File", msg.fileName || "File");
           }
           if (msg.autoAccept) {
-            autoAcceptStream(msg.msgId, msg.fileSize);
+            autoAcceptStream(msg.msgId, msg.fileName, msg.fileSize);
           }
           return;
         }
@@ -2416,7 +2544,7 @@ export const TransferNodeRenderer: React.FC<{
           }
           if (msg.autoAccept && msg.attachments) {
             for (const att of msg.attachments) {
-              autoAcceptStream(att.id, att.fileSize);
+              autoAcceptStream(att.id, att.fileName, att.fileSize);
             }
           }
           return;
@@ -2449,7 +2577,7 @@ export const TransferNodeRenderer: React.FC<{
           }
           const inStream = incomingStreamsRef.current[msg.msgId];
           if (inStream) {
-            try { inStream.stream.close(); } catch (e) { }
+            abortIncoming(inStream);
             delete incomingStreamsRef.current[msg.msgId];
           }
           updateStreamMessage(msg.msgId, { streamState: "canceled" });
@@ -2467,13 +2595,15 @@ export const TransferNodeRenderer: React.FC<{
               await inStream.stream.close();
             } catch (e) { }
 
-            if (inStream.checksum !== msg.checksum) {
-              setNotification({ message: "Checksum mismatch for streamed file.", type: "error" });
+            const damaged = inStream.checksum !== msg.checksum;
+            if (damaged) {
+              inStream.stream.markDamaged?.();
+              setNotification({ message: "The file arrived damaged (checksum mismatch). Ask the sender to send it again.", type: "error" });
             } else {
-              setNotification({ message: "File download complete.", type: "success" });
+              setNotification({ message: "File received.", type: "success" });
             }
             delete incomingStreamsRef.current[msg.msgId];
-            updateStreamMessage(msg.msgId, { streamState: "completed" });
+            updateStreamMessage(msg.msgId, { streamState: damaged ? "error" : "completed" });
             if (Object.keys(outgoingStreamsRef.current).length === 0 && Object.keys(incomingStreamsRef.current).length === 0) {
               setTransferProgress(0);
             }
@@ -3227,59 +3357,17 @@ export const TransferNodeRenderer: React.FC<{
           <button
             onClick={async (e) => {
               e.stopPropagation();
-              if (!('showSaveFilePicker' in window)) {
-                setNotification({ message: "File System API not supported. Falling back to memory buffering.", type: "warning" });
-                const memoryBuffer: Uint8Array[] = [];
-                const streamMock = {
-                  write: async (chunk: Uint8Array) => {
-                    memoryBuffer.push(new Uint8Array(chunk));
-                  },
-                  close: async () => {
-                    const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
-                    const combined = new Uint8Array(totalLength);
-                    let offset = 0;
-                    for (const chunk of memoryBuffer) {
-                      combined.set(chunk, offset);
-                      offset += chunk.length;
-                    }
-                    const blob = new Blob([combined]);
-                    const url = URL.createObjectURL(blob);
-                    
-                    updateStreamMessage(item.id, {
-                      content: url,
-                      originalBlob: blob,
-                      streamState: "completed",
-                      type: "file" as any
-                    });
-                  }
-                };
-                incomingStreamsRef.current[item.id] = {
-                  handle: null,
-                  stream: streamMock,
-                  received: 0,
-                  total: fileSize,
-                  checksum: 0
-                };
-                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: item.id }));
-                updateStreamMessage(item.id, { streamState: "transferring" });
-                return;
-              }
-              try {
+              // Stored in the browser (see Received files); a save dialog, then memory, where it cannot be.
+              await acceptIncoming(item.id, fileName, fileSize, async () => {
+                if (!('showSaveFilePicker' in window)) return null;
                 const handle = await (window as any).showSaveFilePicker({ suggestedName: fileName });
-                const stream = await handle.createWritable();
-                incomingStreamsRef.current[item.id] = { handle, stream, received: 0, total: fileSize, checksum: 0 };
-                dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: item.id }));
-                updateStreamMessage(item.id, { streamState: "transferring" });
-              } catch (e: any) {
-                if (e.name !== "AbortError") {
-                  setNotification({ message: "Could not open file: " + e.message, type: "error" });
-                }
-              }
+                return { handle, stream: await handle.createWritable() };
+              });
             }}
             className="w-full py-2 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
           >
             <Download className="w-4 h-4" />
-            {'showSaveFilePicker' in window ? 'Accept File' : 'Accept File (Memory Fallback)'}
+            Accept File
           </button>
         )}
 
@@ -3316,9 +3404,9 @@ export const TransferNodeRenderer: React.FC<{
           </div>
         )}
 
-        {(item.streamState === "completed" || item.streamState === "canceled") && (
+        {(item.streamState === "completed" || item.streamState === "canceled" || item.streamState === "error") && (
           <div className={`text-[10px] text-center font-bold uppercase tracking-widest ${item.streamState === "completed" ? "text-emerald-500" : "text-red-500"}`}>
-            {item.streamState}
+            {item.streamState === "error" ? "failed" : item.streamState}
           </div>
         )}
 
@@ -3363,7 +3451,7 @@ export const TransferNodeRenderer: React.FC<{
                 } else {
                   const inStream = incomingStreamsRef.current[item.id];
                   if (inStream) {
-                    try { inStream.stream.close(); } catch (e) { }
+                    abortIncoming(inStream);
                     delete incomingStreamsRef.current[item.id];
                   }
                 }
@@ -3388,6 +3476,14 @@ export const TransferNodeRenderer: React.FC<{
       onKeyUp={(e) => e.stopPropagation()}
       onWheel={(e) => e.stopPropagation()}
     >
+      <ReceivedFilesPanel
+        open={showReceivedFiles}
+        onClose={() => setShowReceivedFiles(false)}
+        isDark={isDark}
+        canSend={connectionState === "connected" || connectionState === "messaging" || connectionState === "transferring"}
+        onSend={(files) => files.forEach((f) => startFileStream(f, undefined, true))}
+      />
+
       {/* Immersive Camera Overlay - Rendered in Portal */}
       {createPortal(
         <AnimatePresence>
@@ -3598,6 +3694,23 @@ export const TransferNodeRenderer: React.FC<{
               <LogOut className="w-4 h-4" />
             </button>
           )}
+
+          <button
+            onClick={() => setShowReceivedFiles(true)}
+            className={`relative p-1.5 rounded-lg transition-colors ${isDark
+              ? "hover:bg-white/5 text-slate-400 hover:text-white"
+              : "hover:bg-slate-100 text-slate-500 hover:text-slate-900"
+              }`}
+            title="Received files"
+            aria-label="Received files"
+          >
+            <HardDrive className="w-4 h-4" />
+            {receivedCount > 0 && (
+              <span className="absolute -top-0.5 -right-0.5 min-w-[14px] h-[14px] px-0.5 rounded-full bg-emerald-500 text-white text-[9px] font-bold leading-[14px] text-center">
+                {receivedCount > 99 ? "99+" : receivedCount}
+              </span>
+            )}
+          </button>
 
           <button
             onClick={() => setShowSettingsDropdown(!showSettingsDropdown)}
@@ -5319,51 +5432,18 @@ export const TransferNodeRenderer: React.FC<{
                                           <button
                                             onClick={async (e) => {
                                               e.stopPropagation();
-                                              if ('showDirectoryPicker' in window) {
-                                                try {
-                                                  const dirHandle = await (window as any).showDirectoryPicker();
-                                                  for (const att of msg.attachments || []) {
-                                                    if (att.streamState !== "offered") continue;
-                                                    const fileHandle = await dirHandle.getFileHandle(att.fileName, { create: true });
-                                                    const stream = await fileHandle.createWritable();
-                                                    incomingStreamsRef.current[att.id] = { handle: fileHandle, stream, received: 0, total: att.fileSize || 0, checksum: 0 };
-                                                    dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: att.id }));
-                                                    updateStreamMessage(att.id, { streamState: "transferring" });
-                                                  }
-                                                } catch (e: any) {
-                                                  if (e.name !== "AbortError") {
-                                                    setNotification({ message: "Could not open directory: " + e.message, type: "error" });
-                                                  }
-                                                }
-                                              } else {
-                                                setNotification({ message: "File System API not supported. Falling back to memory buffering.", type: "warning" });
-                                                for (const att of msg.attachments || []) {
-                                                  if (att.streamState !== "offered") continue;
-                                                  const memoryBuffer: Uint8Array[] = [];
-                                                  const streamMock = {
-                                                    write: async (chunk: Uint8Array) => { memoryBuffer.push(new Uint8Array(chunk)); },
-                                                    close: async () => {
-                                                      const totalLength = memoryBuffer.reduce((acc, curr) => acc + curr.length, 0);
-                                                      const combined = new Uint8Array(totalLength);
-                                                      let offset = 0;
-                                                      for (const chunk of memoryBuffer) {
-                                                        combined.set(chunk, offset);
-                                                        offset += chunk.length;
-                                                      }
-                                                      const blob = new Blob([combined]);
-                                                      const url = URL.createObjectURL(blob);
-                                                      updateStreamMessage(att.id, {
-                                                        content: url,
-                                                        originalBlob: blob,
-                                                        streamState: "completed",
-                                                        type: "file" as any
-                                                      });
-                                                    }
-                                                  };
-                                                  incomingStreamsRef.current[att.id] = { handle: null, stream: streamMock, received: 0, total: att.fileSize || 0, checksum: 0 };
-                                                  dcRef.current?.send(JSON.stringify({ type: "stream_accept", msgId: att.id }));
-                                                  updateStreamMessage(att.id, { streamState: "transferring" });
-                                                }
+                                              const offered = (msg.attachments || []).filter((att) => att.streamState === "offered");
+                                              // Where files cannot be stored in the browser, one folder is asked for, once.
+                                              let dirHandle: any;
+                                              const inFolder = (att: Attachment) => async () => {
+                                                if (!('showDirectoryPicker' in window)) return null;
+                                                dirHandle ??= await (window as any).showDirectoryPicker();
+                                                const handle = await dirHandle.getFileHandle(att.fileName, { create: true });
+                                                return { handle, stream: await handle.createWritable() };
+                                              };
+                                              for (const att of offered) {
+                                                const ok = await acceptIncoming(att.id, att.fileName, att.fileSize || 0, inFolder(att));
+                                                if (!ok && !dirHandle && !(await receivedStoreAvailable())) break; // the folder dialog was cancelled
                                               }
                                             }}
                                             className="w-full mt-3 py-2.5 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-500 font-bold text-xs rounded-xl transition-all flex items-center justify-center gap-2"
@@ -5804,7 +5884,7 @@ export const TransferNodeRenderer: React.FC<{
                                       Object.keys(incomingStreamsRef.current).forEach(id => {
                                         dcRef.current?.send(JSON.stringify({ type: "stream_cancel", msgId: id }));
                                         const inStream = incomingStreamsRef.current[id];
-                                        if (inStream) { try { inStream.stream.close(); } catch (e) { } }
+                                        abortIncoming(inStream);
                                         updateStreamMessage(id, { streamState: "canceled" });
                                       });
                                       outgoingStreamsRef.current = {};
