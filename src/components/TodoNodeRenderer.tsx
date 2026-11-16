@@ -21,7 +21,9 @@ import {
   CornerDownRight,
   CornerLeftUp,
   PlusCircle,
-  ExternalLink
+  ExternalLink,
+  ArrowUpToLine,
+  ArrowDownToLine,
 } from "lucide-react";
 import { TaskImagePreview } from "./TaskImagePreview";
 import { ConfirmModal } from "./ConfirmModal";
@@ -241,6 +243,14 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
     setEditingTaskId(task.id);
     setEditingText("");
     setNodeIsFlat(false);
+  };
+
+  // A new, empty task right above or below another, at the same level, ready to type into.
+  const addTaskBeside = (id: string, where: "above" | "below") => {
+    const task = todo.createTask("");
+    saveTasks((tasks) => (where === "above" ? todo.insertBefore(tasks, id, task) : todo.insertAfter(tasks, id, task)));
+    setEditingTaskId(task.id);
+    setEditingText("");
   };
 
   const toggleCollapseTask = (id: string, e?: React.MouseEvent) => {
@@ -688,6 +698,7 @@ export function TodoNodeRenderer({ nodeId, data, isExpanded, onResize }: TodoNod
                       activeMenuTaskId={activeMenuTaskId}
                       setActiveMenuTaskId={setActiveMenuTaskId}
                       addNestedSubtask={addNestedSubtask}
+                      addTaskBeside={addTaskBeside}
                       indentTask={indentTask}
                       outdentTask={outdentTask}
                       moveTaskInTree={moveTaskInTree}
@@ -753,6 +764,7 @@ const TaskMenuPortal = ({
   activeMenuTaskId,
   setActiveMenuTaskId,
   addNestedSubtask,
+  addTaskBeside,
   indentTask,
   outdentTask,
   moveTaskInTree,
@@ -884,6 +896,8 @@ const TaskMenuPortal = ({
             />
           </div>
           <MenuDivider />
+          <MenuItem icon={<ArrowUpToLine size={14} />} label="Add task above" onClick={run(() => addTaskBeside(task.id, "above"))} />
+          <MenuItem icon={<ArrowDownToLine size={14} />} label="Add task below" onClick={run(() => addTaskBeside(task.id, "below"))} />
           <MenuItem icon={<PlusCircle size={14} />} label="Add subtask" onClick={run(() => addNestedSubtask(task.id))} />
           {!isFlat && (
             <>

@@ -36,6 +36,8 @@ import {
   ArrowDown,
   Minus,
   ListChecks,
+  ArrowUpToLine,
+  ArrowDownToLine,
 } from "lucide-react";
 import * as todo from "./todo/todoModel";
 import type { TodoTask } from "./todo/todoModel";
@@ -579,6 +581,13 @@ export function TodoWorkspace({ path }: { path: string }) {
     focusTaskInput(task.id);
   };
 
+  const addTaskAbove = (id: string) => {
+    const task = todo.createTask("");
+    saveTasks((tasks) => todo.insertBefore(tasks, id, task));
+    selectOnDesktop(task.id);
+    focusTaskInput(task.id);
+  };
+
   const addNestedSubtask = (parentId: string) => {
     const task = todo.createTask("");
     // Expand the parent so the new subtask is visible.
@@ -1077,6 +1086,8 @@ export function TodoWorkspace({ path }: { path: string }) {
               onOutdent={outdentTask}
               onDuplicate={duplicateTask}
               onAddNested={addNestedSubtask}
+              onAddAbove={addTaskAbove}
+              onAddBelow={addTaskBelow}
               onMoveUp={(id: string) => moveTaskInTree(id, "up")}
               onMoveDown={(id: string) => moveTaskInTree(id, "down")}
               searchTerm={searchTerm}
@@ -1135,6 +1146,8 @@ export function TodoWorkspace({ path }: { path: string }) {
               onOutdent={outdentTask}
               onDuplicate={duplicateTask}
               onAddNested={addNestedSubtask}
+              onAddAbove={addTaskAbove}
+              onAddBelow={addTaskBelow}
               onClose={() => setSelectedTaskId(null)}
               showToast={showToast}
               isFlatList={isFlatList}
@@ -1155,6 +1168,8 @@ function TodoWorkspaceList({
   onOutdent,
   onDuplicate,
   onAddNested,
+  onAddAbove,
+  onAddBelow,
   onMoveUp,
   onMoveDown,
   searchTerm,
@@ -1262,6 +1277,8 @@ function TodoWorkspaceList({
               onOutdent={onOutdent}
               onDuplicate={onDuplicate}
               onAddNested={onAddNested}
+              onAddAbove={onAddAbove}
+              onAddBelow={onAddBelow}
               onMoveUp={onMoveUp}
               onMoveDown={onMoveDown}
               selectedTaskId={selectedTaskId}
@@ -1301,6 +1318,8 @@ function TodoWorkspaceItem({
   onOutdent,
   onDuplicate,
   onAddNested,
+  onAddAbove,
+  onAddBelow,
   onMoveUp,
   onMoveDown,
   selectedTaskId,
@@ -1859,6 +1878,36 @@ function TodoWorkspaceItem({
               <Plus size={13} />
             </button>
 
+            {/* A new task right above / below this one, same level */}
+            {onAddAbove && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onAddAbove(task.id);
+                }}
+                title="Add task above"
+                aria-label="Add task above"
+                className="p-1 hover:bg-[var(--vsc-hover)] rounded transition-colors text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-accent)] outline-none cursor-pointer"
+              >
+                <ArrowUpToLine size={13} />
+              </button>
+            )}
+            {onAddBelow && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  e.preventDefault();
+                  onAddBelow(task.id);
+                }}
+                title="Add task below"
+                aria-label="Add task below"
+                className="p-1 hover:bg-[var(--vsc-hover)] rounded transition-colors text-[var(--vsc-fg-muted)] hover:text-[var(--vsc-accent)] outline-none cursor-pointer"
+              >
+                <ArrowDownToLine size={13} />
+              </button>
+            )}
+
             {/* Direct Line Deletion fast CRUD */}
             <button
               onClick={(e) => {
@@ -1943,6 +1992,34 @@ function TodoWorkspaceItem({
                     <Plus size={13} />
                     <span>Add Subtask</span>
                   </button>
+                  {onAddAbove && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onAddAbove(task.id);
+                        close();
+                      }}
+                      className="w-full flex items-center gap-2 text-left px-2 h-8 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
+                    >
+                      <ArrowUpToLine size={13} />
+                      <span>Add Task Above</span>
+                    </button>
+                  )}
+                  {onAddBelow && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onAddBelow(task.id);
+                        close();
+                      }}
+                      className="w-full flex items-center gap-2 text-left px-2 h-8 text-[12px] text-[var(--vsc-fg)] hover:bg-[var(--vsc-hover)] rounded-[4px] transition-colors cursor-pointer"
+                    >
+                      <ArrowDownToLine size={13} />
+                      <span>Add Task Below</span>
+                    </button>
+                  )}
                   <button
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2060,6 +2137,8 @@ function TodoWorkspaceItem({
               onOutdent={onOutdent}
               onDuplicate={onDuplicate}
               onAddNested={onAddNested}
+              onAddAbove={onAddAbove}
+              onAddBelow={onAddBelow}
               onMoveUp={onMoveUp}
               onMoveDown={onMoveDown}
               selectedTaskId={selectedTaskId}
@@ -2090,6 +2169,8 @@ function TodoTaskDetails({
   onOutdent,
   onDuplicate,
   onAddNested,
+  onAddAbove,
+  onAddBelow,
   onClose,
   showToast,
   isFlatList,

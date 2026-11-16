@@ -230,6 +230,13 @@ export function insertAfter(tasks: TodoTask[] = [], siblingId: string, task: Tod
   return tasks.map((t) => (t.tasks?.length ? { ...t, tasks: insertAfter(t.tasks, siblingId, task) } : t));
 }
 
+/** Inserts a task directly before `siblingId`, at the same level. */
+export function insertBefore(tasks: TodoTask[] = [], siblingId: string, task: TodoTask): TodoTask[] {
+  const i = tasks.findIndex((t) => t.id === siblingId);
+  if (i >= 0) return [...tasks.slice(0, i), task, ...tasks.slice(i)];
+  return tasks.map((t) => (t.tasks?.length ? { ...t, tasks: insertBefore(t.tasks, siblingId, task) } : t));
+}
+
 /** Detaches a task from wherever it is. */
 function extractTask(tasks: TodoTask[], id: string): { tasks: TodoTask[]; task: TodoTask | null; parentId: string | null } {
   let task: TodoTask | null = null;
