@@ -27,6 +27,8 @@ import {
   ShieldAlert,
 } from 'lucide-react';
 import CustomSelect from '../CustomSelect';
+import { ReceivedViewer } from './ReceivedViewer';
+import { FileTypeIcon } from './FileTypeIcon';
 import { useStore } from '../../store/useStore';
 import { formatFileSize } from '../../lib/formatFileSize';
 import {
@@ -148,7 +150,6 @@ function Thumb({ rec, enabled, iconSize }: { rec: ReceivedFileRecord; enabled: b
     };
   }, [rec.id, can]);
 
-  const Icon = KIND_ICON[kindOf(rec)];
   return (
     <div className="absolute inset-0 flex items-center justify-center overflow-hidden">
       {url ? (
@@ -156,7 +157,7 @@ function Thumb({ rec, enabled, iconSize }: { rec: ReceivedFileRecord; enabled: b
       ) : (
         <>
           {can && url === undefined && <div className="absolute inset-0 animate-pulse bg-current opacity-[0.07]" />}
-          <Icon size={iconSize} className="relative opacity-80" />
+          <FileTypeIcon name={rec.name} mime={rec.mime} size={iconSize} label={iconSize >= 20} fill />
         </>
       )}
       {kind === 'video' && url && (
@@ -179,6 +180,8 @@ export function ReceivedFilesPanel({ open, onClose, isDark, canSend, onSend }: P
   const [info, setInfo] = useState<StorageInfo | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [busy, setBusy] = useState<string | null>(null);
+  /** The file open in the viewer, as an index into the files that can be opened. */
+  const [viewing, setViewing] = useState<number | null>(null);
 
   const { view, previews, fullscreen, sort } = settings;
   const [query, setQuery] = useState('');
@@ -201,6 +204,15 @@ export function ReceivedFilesPanel({ open, onClose, isDark, canSend, onSend }: P
     };
     return list.sort(by[sort] ?? by.newest);
   }, [records, query, category, sort]);
+  // Opening a file pages through the received files listed (finished ones), in the same order.
+  const viewable = useMemo(() => sorted.filter((r) => r.status === 'complete'), [sorted]);
+  useEffect(() => {
+    if (!open) setViewing(null);
+  }, [open]);
+  useEffect(() => {
+    setViewing((v) => (v === null ? v : viewable.length ? Math.min(v, viewable.length - 1) : null));
+  }, [viewable.length]);
+
   // Back to the top when what is listed changes.
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: 0 });
@@ -208,24 +220,42 @@ export function ReceivedFilesPanel({ open, onClose, isDark, canSend, onSend }: P
   const usedBytes = useMemo(() => records.reduce((s, r) => s + (r.received || 0), 0), [records]);
 
   // The scroll area: where it is scrolled to and how big it is, for drawing only what shows.
-  const scrollRef = useRef<HTMLDivElement>(null);
+  // The element is tracked, not just read once: the list is drawn afresh after the viewer closes
+  // (and on full screen / view changes), and a removed element reports a size of 0 × 0.
+  const scrollRef = useRef<HTMLDivElement | null>(null);
+  const [scrollEl, setScrollEl] = useState<HTMLDivElement | null>(null);
+  const attachScroll = React.useCallback((el: HTMLDivElement | null) => {
+    scrollRef.current = el;
+    setScrollEl(el);
+  }, []);
+  /** Where the list was scrolled to, so closing the viewer comes back to the same place. */
+  const savedTop = useRef(0);
   const [vp, setVp] = useState({ top: 0, h: 600, w: 480 });
   const scrollFrame = useRef(0);
   useLayoutEffect(() => {
-    const el = scrollRef.current;
-    if (!open || !el) return;
-    const measure = () => setVp({ top: el.scrollTop, h: el.clientHeight, w: el.clientWidth });
+    const el = scrollEl;
+    if (!el) return;
+    if (savedTop.current && el.scrollTop !== savedTop.current) el.scrollTop = savedTop.current;
+    const measure = () => {
+      if (!el.isConnected || !el.clientWidth || !el.clientHeight) return; // removed, or not laid out yet
+      setVp({ top: el.scrollTop, h: el.clientHeight, w: el.clientWidth });
+    };
     measure();
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, [open, fullscreen, view]);
+  }, [scrollEl, fullscreen, view]);
+  useEffect(() => {
+    if (!open) savedTop.current = 0;
+  }, [open]);
   const onScroll = () => {
     if (scrollFrame.current) return;
     scrollFrame.current = requestAnimationFrame(() => {
       scrollFrame.current = 0;
       const el = scrollRef.current;
-      if (el) setVp((v) => (v.top === el.scrollTop ? v : { ...v, top: el.scrollTop }));
+      if (!el) return;
+      savedTop.current = el.scrollTop;
+      setVp((v) => (v.top === el.scrollTop ? v : { ...v, top: el.scrollTop }));
     });
   };
   useEffect(() => () => cancelAnimationFrame(scrollFrame.current), []);
@@ -249,12 +279,21 @@ export function ReceivedFilesPanel({ open, onClose, isDark, canSend, onSend }: P
       return next.size === s.size ? s : next;
     });
   }, [records]);
+  const viewingRef = useRef(viewing);
+  viewingRef.current = viewing;
   useEffect(() => {
     if (!open) return;
     // Captured and claimed, so Esc closes this panel only, not the full-screen chat beneath it.
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return;
       if (document.querySelector('[role="listbox"]')) return; // a dropdown closes first
+      if (viewingRef.current !== null) {
+        // The viewer closes first, back to the list.
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        setViewing(null);
+        return;
+      }
       e.preventDefault();
       onClose();
     };
@@ -299,16 +338,10 @@ export function ReceivedFilesPanel({ open, onClose, isDark, canSend, onSend }: P
       setNotification({ message: files.length === 1 ? `Sending ${files[0].name}` : `Sending ${files.length} files`, type: 'success' });
     });
 
-  const openFile = (r: ReceivedFileRecord) =>
-    run(`open:${r.id}`, async () => {
-      const f = await getReceivedFile(r.id);
-      if (!f) return fail('Could not open', 'the file is no longer stored');
-      const url = URL.createObjectURL(f);
-      const k = kindOf(r);
-      if (k === 'image' || k === 'video' || k === 'audio' || k === 'pdf') setActivePreviewMedia({ url, type: k });
-      else window.open(url, '_blank', 'noopener');
-      setTimeout(() => URL.revokeObjectURL(url), 10 * 60 * 1000);
-    });
+  const openFile = (r: ReceivedFileRecord) => {
+    const i = viewable.findIndex((v) => v.id === r.id);
+    if (i >= 0) setViewing(i);
+  };
 
   const remove = (ids: string[], ask: boolean) =>
     run('delete', async () => {
@@ -483,6 +516,21 @@ export function ReceivedFilesPanel({ open, onClose, isDark, canSend, onSend }: P
     );
   };
 
+
+  if (viewing !== null && viewable[viewing]) {
+    return (
+      <ReceivedViewer
+        items={viewable}
+        index={viewing}
+        onIndexChange={setViewing}
+        onClose={() => setViewing(null)}
+        isDark={isDark}
+        canSend={canSend}
+        onSave={save}
+        onSend={(r) => send([r.id])}
+      />
+    );
+  }
 
   return createPortal(
     <div
@@ -729,7 +777,7 @@ export function ReceivedFilesPanel({ open, onClose, isDark, canSend, onSend }: P
         )}
 
         {/* Files: only those on screen are drawn */}
-        <div ref={scrollRef} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
+        <div ref={attachScroll} onScroll={onScroll} className="flex-1 min-h-0 overflow-y-auto overscroll-contain">
           {n === 0 ? (
             records.length ? (
               <div className={`px-6 py-14 text-center text-xs ${c.sub}`}>

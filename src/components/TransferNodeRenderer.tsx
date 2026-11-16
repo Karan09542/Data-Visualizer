@@ -132,6 +132,7 @@ import { ReceivedFilesPanel } from "./transfer/ReceivedFilesPanel";
 import { hasRoomFor, openReceiveSink, receivedStoreAvailable, subscribeReceived, listReceived, refreshReceived, getReceivedSettings } from "../utils/transferReceivedStore";
 import { ChatOptionsMenu } from "./transfer/ChatOptionsMenu";
 import { LazyThumb } from "./transfer/LazyThumb";
+import { FileTypeIcon } from "./transfer/FileTypeIcon";
 export { blobRegistry, getFileType };
 
 export interface Attachment {
@@ -5295,15 +5296,21 @@ export const TransferNodeRenderer: React.FC<{
                                         {(() => {
                                           const visuals = msg.attachments?.filter(att => att.fileType === "image" || att.fileType === "video" || att.fileType === "3d_model") || [];
                                           const others = msg.attachments?.filter(att => att.fileType !== "image" && att.fileType !== "video" && att.fileType !== "3d_model") || [];
+                                          // Several files of any kind: one album; tap a tile to open that file.
+                                          const allAtts = msg.attachments || [];
+                                          const grouped = allAtts.length > 1 && chatMedia === "album" && !openAlbums.has(msg.id);
 
                                           return (
                                             <>
-                                              {visuals.length > 1 && chatMedia === "album" && !openAlbums.has(msg.id) ? (() => {
+                                              {grouped ? (() => {
                                                 // Album: up to four tiles; the fourth says "+N" when there are more.
-                                                const more = visuals.length > 4 ? visuals.length - 3 : 0;
-                                                const tiles = visuals.slice(0, 4);
-                                                const done = visuals.filter((a) => a.streamState === "completed" || (!a.streamState && a.content)).length;
-                                                const moving = visuals.some((a) => a.streamState === "transferring" || a.streamState === "paused");
+                                                const more = allAtts.length > 4 ? allAtts.length - 3 : 0;
+                                                const tiles = allAtts.slice(0, 4);
+                                                const done = allAtts.filter((a) => a.streamState === "completed" || (!a.streamState && a.content)).length;
+                                                const moving = allAtts.some((a) => a.streamState === "transferring" || a.streamState === "paused");
+                                                const openAtt = (att: Attachment) => {
+                                                  if (att.content) setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any);
+                                                };
                                                 return (
                                                   <div className="w-[264px] max-w-full">
                                                     <div className="grid grid-cols-2 gap-[3px] rounded-[14px] overflow-hidden">
@@ -5317,9 +5324,8 @@ export const TransferNodeRenderer: React.FC<{
                                                             key={att.id || i}
                                                             type="button"
                                                             onClick={() =>
-                                                              isMore
-                                                                ? setOpenAlbums((s) => new Set(s).add(msg.id))
-                                                                : setSelectedMedia({ ...att, sender: msg.sender, timestamp: msg.timestamp } as any)
+                                                              // "+N" opens the viewer here too: next and back go through the rest.
+                                                              att.content ? openAtt(att) : isMore ? setOpenAlbums((s) => new Set(s).add(msg.id)) : undefined
                                                             }
                                                             onContextMenu={(e) => {
                                                               e.preventDefault();
@@ -5327,7 +5333,7 @@ export const TransferNodeRenderer: React.FC<{
                                                               setShowContextMenu({ id: msg.id, x: e.clientX, y: e.clientY, attachment: { ...att, sender: msg.sender, timestamp: msg.timestamp } });
                                                             }}
                                                             className={`relative overflow-hidden ${wide ? "col-span-2 aspect-[2/1]" : "aspect-square"} ${isDark ? "bg-white/[0.05]" : "bg-slate-200"}`}
-                                                            aria-label={isMore ? `Show all ${visuals.length}` : `Open ${att.fileName}`}
+                                                            aria-label={isMore ? `Open the other ${more}` : `Open ${att.fileName}`}
                                                           >
                                                             {att.content && fType === "image" ? (
                                                               <LazyThumb thumbKey={att.id || att.content} kind="image" source={att.content} receivedId={att.id} size={wide ? 512 : 256} className={isDark ? "text-slate-400" : "text-slate-500"} />
@@ -5343,9 +5349,14 @@ export const TransferNodeRenderer: React.FC<{
                                                                 )}
                                                               </>
                                                             ) : (
-                                                              <span className={`absolute inset-0 flex flex-col items-center justify-center gap-1.5 px-2 ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                                                                {fType === "3d_model" ? <Box className="w-6 h-6" /> : fType === "video" ? <Play className="w-6 h-6" /> : <ImageIcon className="w-6 h-6" />}
-                                                                <span className="text-[10px] font-medium truncate max-w-full">{att.fileName}</span>
+                                                              <span className="absolute inset-0 flex flex-col">
+                                                                <span className="relative flex-1">
+                                                                  <FileTypeIcon name={att.fileName} size={26} label fill />
+                                                                </span>
+                                                                <span className={`px-2 py-1.5 text-left ${isDark ? "bg-black/25" : "bg-white/70"}`}>
+                                                                  <span className={`block text-[10px] font-semibold truncate ${isDark ? "text-slate-200" : "text-slate-700"}`}>{att.fileName}</span>
+                                                                  <span className="block text-[9px] text-slate-500">{formatFileSize(att.fileSize || 0)}</span>
+                                                                </span>
                                                               </span>
                                                             )}
                                                             {(att.streamState === "transferring" || att.streamState === "paused" || att.streamState === "offered") && !isMore && (
@@ -5369,11 +5380,18 @@ export const TransferNodeRenderer: React.FC<{
                                                         );
                                                       })}
                                                     </div>
-                                                    {moving && (
-                                                      <p className={`mt-1 px-1 text-[11px] tabular-nums ${msg.sender === "me" ? "opacity-75" : isDark ? "text-slate-400" : "text-slate-500"}`}>
-                                                        {msg.sender === "me" ? "Sending" : "Receiving"} {done} of {visuals.length}…
+                                                    <div className="mt-1 px-1 flex items-center justify-between gap-2">
+                                                      <p className={`text-[11px] tabular-nums ${msg.sender === "me" ? "opacity-75" : isDark ? "text-slate-400" : "text-slate-500"}`}>
+                                                        {moving ? `${msg.sender === "me" ? "Sending" : "Receiving"} ${done} of ${allAtts.length}…` : `${allAtts.length} files`}
                                                       </p>
-                                                    )}
+                                                      <button
+                                                        type="button"
+                                                        onClick={() => setOpenAlbums((s) => new Set(s).add(msg.id))}
+                                                        className={`text-[11px] font-semibold rounded px-1 ${isDark ? "text-indigo-300 hover:text-indigo-200" : "text-indigo-600 hover:text-indigo-500"}`}
+                                                      >
+                                                        Show all {allAtts.length}
+                                                      </button>
+                                                    </div>
                                                   </div>
                                                 );
                                               })() : (
@@ -5406,7 +5424,7 @@ export const TransferNodeRenderer: React.FC<{
                                                     ))}
                                                   </div>
                                                 )}
-                                                  {visuals.length > 4 && chatMedia === "album" && openAlbums.has(msg.id) && (
+                                                  {allAtts.length > 1 && chatMedia === "album" && openAlbums.has(msg.id) && (
                                                     <button
                                                       type="button"
                                                       onClick={() =>
@@ -5423,7 +5441,7 @@ export const TransferNodeRenderer: React.FC<{
                                                   )}
                                                 </>
                                               )}
-                                              {others.length > 0 && (
+                                              {!grouped && others.length > 0 && (
                                                 <div className="flex flex-col gap-1">
                                                   {others.map((att, i) => (
                                                     <div

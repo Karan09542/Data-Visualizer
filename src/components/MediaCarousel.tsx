@@ -57,23 +57,31 @@ export default function MediaCarousel<T>({
     if (!showChrome) setShowChrome(true);
   };
 
-  // Keyboard navigation
+  // Keyboard navigation. One listener while open, reading the latest values: re-adding it on every
+  // change could let a single key press be handled twice.
+  const live = useRef({ selectedIndex, count: items.length, onClose, onIndexChange });
+  live.current = { selectedIndex, count: items.length, onClose, onIndexChange };
   useEffect(() => {
     if (!isOpen) return;
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        onClose();
-      } else if (e.key === "ArrowLeft" && selectedIndex > 0) {
-        onIndexChange(selectedIndex - 1);
-        handlePointerMoveChrome();
-      } else if (e.key === "ArrowRight" && selectedIndex < items.length - 1) {
-        onIndexChange(selectedIndex + 1);
-        handlePointerMoveChrome();
-      }
+      // Typing in a field (a PDF search box, say) keeps its keys; an open dropdown takes Esc.
+      const t = e.target as HTMLElement | null;
+      if (t?.closest?.("input, textarea, select, [contenteditable='true']")) return;
+      if (e.key === "Escape" && document.querySelector('[role="listbox"]')) return;
+      const { selectedIndex: i, count, onClose: close, onIndexChange: go } = live.current;
+      if (e.key === "Escape") close();
+      else if (e.key === "ArrowLeft" && i > 0) go(i - 1);
+      else if (e.key === "ArrowRight" && i < count - 1) go(i + 1);
+      else return;
+      if (e.key !== "Escape") setShowChrome(true);
+      // Handled here: nothing behind the viewer (a panel, a full-screen chat) acts on it too.
+      e.preventDefault();
+      e.stopImmediatePropagation();
     };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, selectedIndex, items.length, onClose, onIndexChange]);
+    // Captured: whatever had focus before (a node that stops its key events, say) can't hide them.
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
+  }, [isOpen]);
 
   /**
    * A one-finger, clearly sideways swipe moves to the next or previous item - unless the content
