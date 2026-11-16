@@ -29,8 +29,8 @@ export default function MediaCarousel<T>({
   isDark = true,
 }: MediaCarouselProps<T>) {
   const [showChrome, setShowChrome] = useState(true);
-  const touchStartXRef = useRef<number>(0);
-  const touchEndXRef = useRef<number>(0);
+  /** The finger that may become a swipe: where it started, and whether something else owns it. */
+  const swipe = useRef<{ x: number; y: number; blocked: boolean } | null>(null);
   const [viewedIndices, setViewedIndices] = useState<Set<number>>(new Set());
 
   useEffect(() => {
@@ -75,17 +75,40 @@ export default function MediaCarousel<T>({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [isOpen, selectedIndex, items.length, onClose, onIndexChange]);
 
+  /**
+   * A one-finger, clearly sideways swipe moves to the next or previous item - unless the content
+   * under the finger uses the drag itself: a zoomed-in picture being panned, a 3D model being
+   * turned, a slider, a text field. Such content marks itself with data-carousel-noswipe.
+   * A second finger (a pinch) cancels the swipe.
+   */
   const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartXRef.current = e.changedTouches[0].screenX;
+    const t = e.touches[0];
+    const target = e.target as Element | null;
+    const owned = !!target?.closest?.(
+      "[data-carousel-noswipe], model-viewer, input, textarea, select, [contenteditable='true']",
+    );
+    if (e.touches.length > 1) {
+      if (swipe.current) swipe.current.blocked = true;
+      return;
+    }
+    swipe.current = { x: t.clientX, y: t.clientY, blocked: owned };
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length > 1 && swipe.current) swipe.current.blocked = true;
   };
 
   const handleTouchEnd = (e: React.TouchEvent) => {
-    touchEndXRef.current = e.changedTouches[0].screenX;
-    if (touchEndXRef.current < touchStartXRef.current - 50 && selectedIndex < items.length - 1) {
-      onIndexChange(selectedIndex + 1);
-    } else if (touchEndXRef.current > touchStartXRef.current + 50 && selectedIndex > 0) {
-      onIndexChange(selectedIndex - 1);
-    }
+    const s = swipe.current;
+    if (e.touches.length > 0) return; // other fingers still down
+    swipe.current = null;
+    if (!s || s.blocked) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - s.x;
+    const dy = t.clientY - s.y;
+    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx < 0 && selectedIndex < items.length - 1) onIndexChange(selectedIndex + 1);
+    else if (dx > 0 && selectedIndex > 0) onIndexChange(selectedIndex - 1);
   };
 
   if (typeof document === "undefined") return null;
@@ -110,10 +133,16 @@ export default function MediaCarousel<T>({
             handlePointerMoveChrome();
             handleTouchStart(e);
           }}
-          onTouchMove={(e) => e.stopPropagation()}
+          onTouchMove={(e) => {
+            e.stopPropagation();
+            handleTouchMove(e);
+          }}
           onTouchEnd={(e) => {
             e.stopPropagation();
             handleTouchEnd(e);
+          }}
+          onTouchCancel={() => {
+            swipe.current = null;
           }}
           onPointerMove={(e) => {
             e.stopPropagation();

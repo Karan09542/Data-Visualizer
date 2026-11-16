@@ -442,7 +442,7 @@ export function SafeModelViewer({
   // Embedded: the model and a loading state, nothing else.
   if (!showControls) {
     return (
-      <div className="relative w-full h-full" style={style}>
+      <div className="relative w-full h-full" style={style} data-carousel-noswipe={cameraControls ? "" : undefined}>
         {viewer}
         {loadingOverlay}
       </div>
@@ -492,6 +492,7 @@ export function SafeModelViewer({
       ref={containerRef}
       tabIndex={-1}
       onKeyDown={onKeyDown}
+      data-carousel-noswipe=""
       className={`relative w-full h-full overflow-hidden outline-none ${BG_CLASS[settings.bgPreset]} transition-colors duration-300 group/viewer`}
       style={{ ...style, backgroundColor: settings.bgPreset === "custom" ? settings.bgColor : style?.backgroundColor }}
     >

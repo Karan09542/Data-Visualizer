@@ -532,6 +532,7 @@ export function InteractiveZoomImage({
       }}
       onKeyDown={onKeyDown}
       aria-label={`${alt}. Zoom ${percent}%.`}
+      data-carousel-noswipe={Math.abs(scale - 1) > 0.02 ? "" : undefined}
     >
       <img
         ref={imgRef}
