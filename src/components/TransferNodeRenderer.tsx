@@ -131,6 +131,7 @@ import { useLiveQuery } from "dexie-react-hooks";
 import { ReceivedFilesPanel } from "./transfer/ReceivedFilesPanel";
 import { hasRoomFor, openReceiveSink, receivedStoreAvailable, subscribeReceived, listReceived, refreshReceived, getReceivedSettings } from "../utils/transferReceivedStore";
 import { ChatOptionsMenu } from "./transfer/ChatOptionsMenu";
+import { LazyThumb } from "./transfer/LazyThumb";
 export { blobRegistry, getFileType };
 
 export interface Attachment {
@@ -266,18 +267,13 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, onAddToCanvas, cop
   const fileSize = isFileObj ? file.size : (file as Attachment).fileSize;
   const fType = isFileObj ? getFileType(file.name) : (file as Attachment).fileType;
 
-  const [localUrl, setLocalUrl] = useState<string | null>(null);
-
-  useEffect(() => {
-    if (file instanceof File) {
-      const url = URL.createObjectURL(file);
-      setLocalUrl(url);
-      return () => URL.revokeObjectURL(url);
-    }
-  }, [file]);
-
-  const content = file instanceof File ? localUrl : (file as Attachment).content;
-  const hasVisualContent = (fType === "image" || fType === "video" || fType === "3d_model") && !!content;
+  // Previews are small and made only once the card is near the screen; the file itself is read
+  // when it is opened. A picked File is used directly (no object URL per file).
+  const content = isFileObj ? null : (file as Attachment).content;
+  const hasVisualContent = (fType === "image" || fType === "video" || fType === "3d_model") && (isFileObj || !!content);
+  const thumbKey = isFileObj ? `${file.name}|${file.size}|${file.lastModified}` : ((file as Attachment).id || content || fileName);
+  const thumbSource: Blob | string | null = isFileObj ? (file as File) : content;
+  const receivedId = isFileObj ? undefined : (file as Attachment).id;
 
   const sizeClasses = layout === "grid"
     ? (hasVisualContent ? "w-full min-w-[120px] aspect-square" : "w-full p-2.5 flex items-center gap-3")
@@ -289,9 +285,9 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, onAddToCanvas, cop
 
   return (
     <div className={`relative group ${layout === "composer" ? "shrink-0" : ""} rounded-lg overflow-hidden border ${sizeClasses} ${isDark ? "border-slate-700/50 bg-slate-800/50" : "border-slate-200 bg-white shadow-sm"}`}>
-      {fType === "image" && content && (
+      {fType === "image" && hasVisualContent && (
         <>
-          <img src={content} alt={fileName} className="w-full h-full object-cover" />
+          <LazyThumb thumbKey={thumbKey} kind="image" source={thumbSource} receivedId={receivedId} size={layout === "single-grid" ? 640 : 256} className={isDark ? "text-slate-400" : "text-slate-500"} />
           {layout === "composer" && (
             <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/80 to-transparent p-2 pt-4 flex items-end">
               <span className="text-[10px] font-bold text-white truncate w-full drop-shadow-md">
@@ -301,24 +297,21 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, onAddToCanvas, cop
           )}
         </>
       )}
-      {fType === "video" && content && (
+      {fType === "video" && hasVisualContent && (
         <>
-          <video src={content} preload="metadata" muted playsInline className="w-full h-full object-cover" />
+          <LazyThumb thumbKey={thumbKey} kind="video" source={thumbSource} receivedId={receivedId} size={layout === "single-grid" ? 640 : 256} className={isDark ? "text-slate-400" : "text-slate-500"} />
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
             <Play className="w-8 h-8 text-white opacity-80" />
           </div>
         </>
       )}
-      {fType === "3d_model" && content && (
+      {fType === "3d_model" && hasVisualContent && (
         <>
-          <div className="w-full h-full bg-[#1e293b]">
-            <SafeModelViewer
-              src={content}
-              alt={fileName}
-              autoRotate={true}
-              cameraControls={false}
-              showControls={false}
-            />
+          {/* A live 3D view only for a single model; in grids and the composer, an icon tile. */}
+          <div className="w-full h-full bg-[#1e293b] flex items-center justify-center">
+            {layout === "single-grid" && content ? (
+              <SafeModelViewer src={content} alt={fileName} autoRotate={true} cameraControls={false} showControls={false} />
+            ) : null}
           </div>
           <div className="absolute inset-0 flex items-center justify-center bg-black/30 pointer-events-none">
             <Box className="w-8 h-8 text-white opacity-80" />
@@ -414,8 +407,8 @@ const FilePreviewCard = React.memo(({ file, onRemove, onCopy, onAddToCanvas, cop
         )}
       </div>
 
-      {/* Footer Info for Image/Video/3D */}
-      {(fType === "image" || fType === "video" || fType === "3d_model") && (
+      {/* Footer Info for Image/Video/3D (the composer card has its own label) */}
+      {(fType === "image" || fType === "video" || fType === "3d_model") && layout !== "composer" && (
         <div className="absolute bottom-0 left-0 right-0 p-1.5 bg-gradient-to-t from-black/80 to-transparent">
           <div className="text-[10px] text-white/90 truncate">{fileName}</div>
         </div>
@@ -456,6 +449,8 @@ interface Message {
 
 
 const formatFileSize = (bytes: number) => sharedFormatFileSize(bytes, 'B', 1);
+/** Picked files shown in the composer strip at a time. */
+const COMPOSER_BATCH = 24;
 
 /** Folders are zipped in memory before sending, so they stay capped; files stream from disk. */
 const MAX_FOLDER_SIZE = 100 * 1024 * 1024; // 100 MB
@@ -858,6 +853,8 @@ export const TransferNodeRenderer: React.FC<{
   // Several photos in one message: an album ("+N") or all of them; albums opened up one by one.
   const chatMedia = React.useSyncExternalStore(subscribeReceived, () => getReceivedSettings().chatMedia);
   const [openAlbums, setOpenAlbums] = useState<Set<string>>(new Set());
+  // Videos in the chat show a poster frame; the player is only created once one is played.
+  const [playingVideos, setPlayingVideos] = useState<Set<string>>(new Set());
   useEffect(() => {
     void refreshReceived();
   }, []);
@@ -939,6 +936,11 @@ export const TransferNodeRenderer: React.FC<{
   const [scanMode, setScanMode] = useState<"offer" | "answer" | null>(null);
   const [scanError, setScanError] = useState<string | null>(null);
   const [pendingFiles, setPendingFiles] = useState<File[]>([]);
+  // Picked files waiting to be sent: the strip shows a batch at a time, more as it scrolls.
+  const [composerShown, setComposerShown] = useState(COMPOSER_BATCH);
+  useEffect(() => {
+    if (pendingFiles.length === 0) setComposerShown(COMPOSER_BATCH);
+  }, [pendingFiles.length]);
   const [zippingTasks, setZippingTasks] = useState<{ id: string, folderName: string, progress?: number }[]>([]);
   const zipWorkerRef = useRef<Worker | null>(null);
 
@@ -5174,6 +5176,7 @@ export const TransferNodeRenderer: React.FC<{
                               initial={{ opacity: 0, scale: 0.95, y: 10 }}
                               animate={{ opacity: 1, scale: 1, y: 0 }}
                               className={`flex flex-col mb-3 ${msg.sender === "me" ? "items-end" : "items-start"}`}
+                              style={{ contentVisibility: "auto", containIntrinsicSize: "auto 96px" }}
                             >
                               <div
                                 onContextMenu={(e) => {
@@ -5327,10 +5330,10 @@ export const TransferNodeRenderer: React.FC<{
                                                             aria-label={isMore ? `Show all ${visuals.length}` : `Open ${att.fileName}`}
                                                           >
                                                             {att.content && fType === "image" ? (
-                                                              <img src={att.content} alt="" loading="lazy" decoding="async" draggable={false} className="absolute inset-0 w-full h-full object-cover" />
+                                                              <LazyThumb thumbKey={att.id || att.content} kind="image" source={att.content} receivedId={att.id} size={wide ? 512 : 256} className={isDark ? "text-slate-400" : "text-slate-500"} />
                                                             ) : att.content && fType === "video" ? (
                                                               <>
-                                                                <video src={att.content} preload="metadata" muted playsInline className="absolute inset-0 w-full h-full object-cover pointer-events-none" />
+                                                                <LazyThumb thumbKey={att.id || att.content} kind="video" source={att.content} receivedId={att.id} size={wide ? 512 : 256} className={isDark ? "text-slate-400" : "text-slate-500"} />
                                                                 {!isMore && (
                                                                   <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
                                                                     <span className="h-9 w-9 rounded-full bg-black/50 text-white inline-flex items-center justify-center backdrop-blur-sm">
@@ -5505,13 +5508,10 @@ export const TransferNodeRenderer: React.FC<{
                                           <div className="relative rounded-2xl overflow-hidden group/img">
                                             <button
                                               onClick={() => setSelectedMedia(msg)}
-                                              className="w-full block transition-transform active:scale-[0.98]"
+                                              className={`relative w-[264px] max-w-full aspect-[4/3] block transition-transform active:scale-[0.98] ${isDark ? "bg-white/[0.04] text-slate-400" : "bg-slate-100 text-slate-500"}`}
+                                              aria-label={`Open ${msg.fileName || "picture"}`}
                                             >
-                                              <img
-                                                src={msg.content}
-                                                alt={msg.fileName}
-                                                className="w-full max-h-[300px] object-cover"
-                                              />
+                                              <LazyThumb thumbKey={msg.id} kind="image" source={msg.content} receivedId={msg.id} size={640} />
                                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/img:opacity-100 transition-opacity flex items-center justify-center">
                                                 <Eye className="w-8 h-8 text-white" />
                                               </div>
@@ -5531,23 +5531,41 @@ export const TransferNodeRenderer: React.FC<{
 
                                         {msg.fileType === "video" && (
                                           <div className="relative rounded-2xl overflow-hidden bg-black group/vid w-full min-w-[200px] sm:min-w-[280px]">
+                                            {playingVideos.has(msg.id) ? (
                                             <video
-                                              key={msg.content}
-                                              src={msg.content}
-                                              controls
-                                              preload="metadata"
-                                              playsInline
-                                              className="w-full h-auto max-h-[400px] block object-contain mx-auto"
-                                              onLoadedMetadata={(e) => {
-                                                const video = e.target as HTMLVideoElement;
-                                                if (
-                                                  video.videoHeight >
-                                                  video.videoWidth * 1.5
-                                                ) {
-                                                  video.style.maxHeight = "500px";
-                                                }
-                                              }}
-                                            />
+                                                key={msg.content}
+                                                src={msg.content}
+                                                controls
+                                                preload="metadata"
+                                                autoPlay
+                                                playsInline
+                                                className="w-full h-auto max-h-[400px] block object-contain mx-auto"
+                                                onLoadedMetadata={(e) => {
+                                                  const video = e.target as HTMLVideoElement;
+                                                  if (
+                                                    video.videoHeight >
+                                                    video.videoWidth * 1.5
+                                                  ) {
+                                                    video.style.maxHeight = "500px";
+                                                  }
+                                                }}
+                                              />
+                                            ) : (
+                                              // A frame as the poster; the video is only loaded once played.
+                                              <button
+                                                type="button"
+                                                onClick={() => setPlayingVideos((s) => new Set(s).add(msg.id))}
+                                                className="relative block w-full aspect-video text-slate-400"
+                                                aria-label={`Play ${msg.fileName || "video"}`}
+                                              >
+                                                <LazyThumb thumbKey={msg.id} kind="video" source={msg.content} receivedId={msg.id} size={640} />
+                                                <span className="absolute inset-0 flex items-center justify-center">
+                                                  <span className="h-12 w-12 rounded-full bg-black/55 text-white inline-flex items-center justify-center backdrop-blur-sm">
+                                                    <Play className="w-5 h-5 ml-0.5" fill="currentColor" />
+                                                  </span>
+                                                </span>
+                                              </button>
+                                            )}
                                             <div className="absolute top-3 right-3 flex items-center gap-1.5 z-10">
                                               <AddToCanvasIconButton
                                                 status={addedStatus?.id === msg.id ? addedStatus.status : null}
@@ -5945,8 +5963,15 @@ export const TransferNodeRenderer: React.FC<{
                                 animate={{ height: "auto", opacity: 1 }}
                                 exit={{ height: 0, opacity: 0 }}
                                 className="mb-3 flex overflow-x-auto pb-2 gap-3"
+                                onScroll={(e) => {
+                                  // More picked files are added as the strip is scrolled near its end.
+                                  const el = e.currentTarget;
+                                  if (el.scrollLeft + el.clientWidth > el.scrollWidth - 400) {
+                                    setComposerShown((n) => (n < pendingFiles.length ? n + COMPOSER_BATCH : n));
+                                  }
+                                }}
                               >
-                                {pendingFiles.map((file, idx) => (
+                                {pendingFiles.slice(0, composerShown).map((file, idx) => (
                                   <FilePreviewCard
                                     key={`${file.name}-${idx}`}
                                     file={file}
@@ -5954,6 +5979,16 @@ export const TransferNodeRenderer: React.FC<{
                                     onRemove={() => setPendingFiles(prev => prev.filter((_, i) => i !== idx))}
                                   />
                                 ))}
+                                {pendingFiles.length > composerShown && (
+                                  <button
+                                    type="button"
+                                    onClick={() => setComposerShown((n) => n + COMPOSER_BATCH)}
+                                    className={`shrink-0 w-32 h-32 rounded-lg border border-dashed text-xs font-semibold flex flex-col items-center justify-center gap-1 ${isDark ? "border-white/15 text-slate-300 hover:bg-white/[0.04]" : "border-slate-300 text-slate-600 hover:bg-slate-50"}`}
+                                  >
+                                    <span className="text-lg">+{pendingFiles.length - composerShown}</span>
+                                    more
+                                  </button>
+                                )}
                                 {zippingTasks.map((task, idx) => (
                                   <div key={task.id} className="relative group shrink-0 rounded-lg overflow-hidden border border-slate-700/50 bg-slate-800/50 w-48 p-2.5 flex items-center gap-3">
                                     <div className="p-3 rounded-xl bg-white/5 text-white/50 relative flex items-center justify-center">
@@ -6111,14 +6146,14 @@ export const TransferNodeRenderer: React.FC<{
                                 className={`aspect-square rounded-xl overflow-hidden relative group border ${isDark ? "border-white/5 opacity-80 hover:opacity-100" : "border-slate-100"}`}
                               >
                                 {m.fileType === "image" ? (
-                                  <img
-                                    src={m.content}
-                                    className="w-full h-full object-cover"
-                                  />
+                                  <LazyThumb thumbKey={m.id} kind="image" source={m.content} receivedId={m.id} className={isDark ? "bg-white/[0.04] text-slate-400" : "bg-slate-100 text-slate-500"} />
                                 ) : m.fileType === "video" ? (
-                                  <div className={`w-full h-full flex items-center justify-center ${isDark ? "bg-slate-900 text-white" : "bg-slate-800 text-white"}`}>
-                                    <Play className="w-6 h-6" />
-                                  </div>
+                                  <>
+                                    <LazyThumb thumbKey={m.id} kind="video" source={m.content} receivedId={m.id} className={isDark ? "bg-white/[0.04] text-slate-400" : "bg-slate-100 text-slate-500"} />
+                                    <span className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                      <Play className="w-6 h-6 text-white drop-shadow" fill="currentColor" />
+                                    </span>
+                                  </>
                                 ) : getFileType(m.fileName || "") === "pdf" || m.fileType === "pdf" ? (
                                   <div className={`w-full h-full flex flex-col items-center justify-center gap-2 ${isDark ? "bg-red-500/10" : "bg-red-50"}`}>
                                     <FileText className={`w-10 h-10 ${isDark ? "text-red-400" : "text-red-500"}`} />

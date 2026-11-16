@@ -1,9 +1,13 @@
 /**
- * Small previews for received files: a scaled-down image, or a video's first frame.
+ * Small previews: a scaled-down image, or a video's first frame.
  *
- * Made only when asked for (the panel asks for rows on screen), at most a few at a time, and
- * skipped when the row has scrolled away before its turn. Kept in memory for the session and in
- * OPFS (`transfer-received-thumbs`), so reopening the panel does not decode the photos again.
+ * Made only when asked for (by tiles on screen), at most a few at a time, and skipped when the
+ * tile has scrolled away before its turn. Kept in memory for the session (a few hundred small
+ * JPEGs); previews of stored received files are also kept in OPFS
+ * (`transfer-received-thumbs`), so they are not decoded again next time.
+ *
+ * Two ways in: `getThumbnail(id)` for a file in Received files, and `getThumbFor(key, …)` for
+ * anything else - a picked File, or a chat attachment's address.
  */
 import { getReceivedFile, getReceivedRecord, listReceived, subscribeReceived, type ReceivedFileRecord } from './transferReceivedStore';
 
@@ -33,11 +37,11 @@ const remember = (id: string, url: string | null) => {
     if (oldUrl) URL.revokeObjectURL(oldUrl);
   }
 };
-// Files deleted from the store take their previews with them.
+// Files deleted from the store take their previews with them (general previews, "g:…", stay).
 subscribeReceived(() => {
   const live = new Set(listReceived().map((r) => r.id));
   for (const [id, url] of memory) {
-    if (!live.has(id)) {
+    if (!id.startsWith('g:') && !live.has(id)) {
       memory.delete(id);
       if (url) URL.revokeObjectURL(url);
     }
@@ -96,9 +100,9 @@ const freeSlot = () => {
 };
 
 /* ---- making one */
-function toJpeg(source: CanvasImageSource, w: number, h: number): Promise<Blob | null> {
+function toJpeg(source: CanvasImageSource, w: number, h: number, size = SIZE): Promise<Blob | null> {
   if (!w || !h) return Promise.resolve(null);
-  const k = Math.min(1, SIZE / Math.max(w, h));
+  const k = Math.min(1, size / Math.max(w, h));
   const c = document.createElement('canvas');
   c.width = Math.max(1, Math.round(w * k));
   c.height = Math.max(1, Math.round(h * k));
@@ -109,11 +113,11 @@ function toJpeg(source: CanvasImageSource, w: number, h: number): Promise<Blob |
   return new Promise((r) => c.toBlob((b) => r(b), 'image/jpeg', 0.78));
 }
 
-async function imageThumb(file: File): Promise<Blob | null> {
+async function imageThumb(file: Blob, size = SIZE): Promise<Blob | null> {
   try {
     // Decoded straight to the small size where the browser can.
-    const bmp = await createImageBitmap(file, { resizeWidth: SIZE, resizeQuality: 'medium' } as any);
-    const out = await toJpeg(bmp, bmp.width, bmp.height);
+    const bmp = await createImageBitmap(file, { resizeWidth: size, resizeQuality: 'medium' } as any);
+    const out = await toJpeg(bmp, bmp.width, bmp.height, size);
     bmp.close();
     if (out) return out;
   } catch {
@@ -125,7 +129,7 @@ async function imageThumb(file: File): Promise<Blob | null> {
     img.decoding = 'async';
     img.src = url;
     await img.decode();
-    return await toJpeg(img, img.naturalWidth || SIZE, img.naturalHeight || SIZE);
+    return await toJpeg(img, img.naturalWidth || size, img.naturalHeight || size, size);
   } catch {
     return null;
   } finally {
@@ -133,7 +137,7 @@ async function imageThumb(file: File): Promise<Blob | null> {
   }
 }
 
-function videoThumb(file: File): Promise<Blob | null> {
+function videoThumb(file: Blob, size = SIZE): Promise<Blob | null> {
   return new Promise((resolve) => {
     const url = URL.createObjectURL(file);
     const v = document.createElement('video');
@@ -156,7 +160,7 @@ function videoThumb(file: File): Promise<Blob | null> {
       v.currentTime = Math.min(0.5, (v.duration || 1) / 10);
     };
     v.onseeked = () => {
-      toJpeg(v, v.videoWidth, v.videoHeight).then(finish, () => finish(null));
+      toJpeg(v, v.videoWidth, v.videoHeight, size).then(finish, () => finish(null));
     };
     v.onerror = () => finish(null);
     v.src = url;
@@ -166,63 +170,107 @@ function videoThumb(file: File): Promise<Blob | null> {
 const making = new Map<string, Promise<string | null | undefined>>();
 /** Everyone waiting for a preview: it is made while any of them still wants it. */
 const wanters = new Map<string, Set<() => boolean>>();
-const anyoneWants = (id: string) => [...(wanters.get(id) ?? [])].some((f) => f());
+const anyoneWants = (key: string) => [...(wanters.get(key) ?? [])].some((f) => f());
 
-/**
- * The preview's URL; null when the file has none (not a picture, or it would not decode);
- * undefined when skipped because `stillWanted` said no before its turn came.
- */
-export async function getThumbnail(id: string, stillWanted: () => boolean): Promise<string | null | undefined> {
-  let set = wanters.get(id);
-  if (!set) wanters.set(id, (set = new Set()));
+interface Source {
+  key: string;
+  size: number;
+  /** The kind, or how to work it out when the job's turn comes. */
+  kind: () => ThumbKind | null;
+  load: () => Promise<Blob | null>;
+  /** Also cache the preview in OPFS under this id. */
+  disk?: string;
+}
+
+async function want(src: Source, stillWanted: () => boolean): Promise<string | null | undefined> {
+  let set = wanters.get(src.key);
+  if (!set) wanters.set(src.key, (set = new Set()));
   set.add(stillWanted);
   try {
     // A job skipped for an earlier asker (a tile that left the screen) is started again.
     for (;;) {
-      const r = await shared(id);
+      const r = await shared(src);
       if (r !== undefined || !stillWanted()) return r;
     }
   } finally {
     set.delete(stillWanted);
-    if (!set.size && wanters.get(id) === set) wanters.delete(id);
+    if (!set.size && wanters.get(src.key) === set) wanters.delete(src.key);
   }
 }
 
-function shared(id: string): Promise<string | null | undefined> {
-  if (memory.has(id)) return Promise.resolve(memory.get(id));
-  const already = making.get(id);
+function shared(src: Source): Promise<string | null | undefined> {
+  const { key } = src;
+  if (memory.has(key)) return Promise.resolve(memory.get(key));
+  const already = making.get(key);
   if (already) return already;
 
   const job = (async () => {
-    const cached = await readCached(id);
-    if (cached) {
-      const url = URL.createObjectURL(cached);
-      remember(id, url);
-      return url;
+    if (src.disk) {
+      const cached = await readCached(src.disk);
+      if (cached) {
+        const url = URL.createObjectURL(cached);
+        remember(key, url);
+        return url;
+      }
     }
     await takeSlot();
     try {
-      if (!anyoneWants(id)) return undefined;
-      const rec = getReceivedRecord(id);
-      const kind = rec && rec.status === 'complete' ? thumbKind(rec) : null;
-      const file = kind ? await getReceivedFile(id) : null;
-      const blob = file ? await (kind === 'video' ? videoThumb(file) : imageThumb(file)) : null;
+      if (!anyoneWants(key)) return undefined;
+      const kind = src.kind();
+      const file = kind ? await src.load() : null;
+      const blob = file ? await (kind === 'video' ? videoThumb(file, src.size) : imageThumb(file, src.size)) : null;
       if (!blob) {
-        remember(id, null);
+        remember(key, null);
         return null;
       }
-      void writeCached(id, blob);
+      if (src.disk) void writeCached(src.disk, blob);
       const url = URL.createObjectURL(blob);
-      remember(id, url);
+      remember(key, url);
       return url;
     } finally {
       freeSlot();
     }
   })().catch((err) => {
-    console.warn('[Received files] preview failed', err);
+    console.warn('[Thumbnails] preview failed', err);
     return null;
   });
-  making.set(id, job);
-  void job.then(() => making.delete(id));
+  making.set(key, job);
+  void job.then(() => making.delete(key));
   return job;
 }
+
+/**
+ * A stored received file's preview URL; null when it has none (not a picture, or it would not
+ * decode); undefined when skipped because `stillWanted` said no before its turn came.
+ */
+export function getThumbnail(id: string, stillWanted: () => boolean): Promise<string | null | undefined> {
+  return want(
+    {
+      key: id,
+      size: SIZE,
+      disk: id,
+      kind: () => {
+        const rec = getReceivedRecord(id);
+        return rec && rec.status === 'complete' ? thumbKind(rec) : null;
+      },
+      load: () => getReceivedFile(id),
+    },
+    stillWanted,
+  );
+}
+
+const generalKey = (key: string, size: number) => `g:${size}:${key}`;
+
+/** A preview of anything else (a picked File, a chat attachment), made from `load`. */
+export function getThumbFor(
+  key: string,
+  kind: ThumbKind,
+  load: () => Promise<Blob | null>,
+  stillWanted: () => boolean,
+  size = SIZE,
+): Promise<string | null | undefined> {
+  return want({ key: generalKey(key, size), size, kind: () => kind, load }, stillWanted);
+}
+
+/** A general preview already made, without waiting: undefined when there is none yet. */
+export const peekThumbFor = (key: string, size = SIZE): string | null | undefined => memory.get(generalKey(key, size));
