@@ -439,7 +439,8 @@ export default function CustomSelect({
                 </motion.div>
               )}
             </AnimatePresence>,
-            document.body
+            // In element full screen only that element is drawn: the menu goes inside it.
+            (document.fullscreenElement as HTMLElement | null) ?? document.body
           )
         : null}
     </div>
