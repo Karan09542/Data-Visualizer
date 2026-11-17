@@ -826,6 +826,8 @@ export const TransferNodeRenderer: React.FC<{
     | "transferring"
     | "messaging"
     | "failed"
+    // The other device left or dropped: the chat stays open here, ready to pick up again.
+    | "away"
   >("waiting");
   const [isHosting, setIsHosting] = useState(false);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -910,12 +912,33 @@ export const TransferNodeRenderer: React.FC<{
   const [isSearching, setIsSearching] = useState(false);
   const [onlinePresence, setOnlinePresence] = useState<Record<string, boolean>>({});
   const [incomingRequests, setIncomingRequests] = useState<any[]>([]);
+  const incomingRequestsRef = useRef<any[]>([]);
+  incomingRequestsRef.current = incomingRequests;
   const signalingSocketRef = useRef<Socket | null>(null);
   const [targetRemoteEmail, setTargetRemoteEmail] = useState<string | null>(null);
   const [myDevices, setMyDevices] = useState<DeviceInfo[]>([]);
   const [devicePicker, setDevicePicker] = useState<{ devices: DeviceInfo[]; auto: boolean } | null>(null);
   // Which device of the account we are actually negotiating with, so ICE does not drift to another one
   const activeTargetSocketRef = useRef<string | null>(null);
+  /** Set while this device is leaving on purpose, so its own close is not reported as "lost". */
+  const leavingRef = useRef(false);
+  /** Waits out a short network blip before calling the connection lost. */
+  const iceLostTimerRef = useRef<number | null>(null);
+  /** Latest values for handlers made in older renders (socket and data channel events). */
+  const connStateRef = useRef(connectionState);
+  connStateRef.current = connectionState;
+  const pairingWorkflowRef = useRef<string | null>(null);
+  /** Who the current or last chat is with, so it can be picked up again. */
+  const peerEmailRef = useRef<string | null>(null);
+  const lastPeerRef = useRef<{ email: string | null; socketId: string | null; signaling: boolean } | null>(null);
+  /** Shown while the other device is away: why, whether we're reconnecting, and devices to pick from. */
+  const [away, setAwayState] = useState<{ why: "bye" | "lost"; rejoining: boolean; choices?: DeviceInfo[]; asking?: string } | null>(null);
+  const awayRef = useRef(away);
+  const setAway = (next: typeof away) => {
+    awayRef.current = next;
+    setAwayState(next);
+  };
+  const rejoinTimerRef = useRef<number | null>(null);
 
   const [offerQR, setOfferQR] = useState("");
   const [answerQR, setAnswerQR] = useState("");
@@ -1004,7 +1027,54 @@ export const TransferNodeRenderer: React.FC<{
       await handleServerOffer(data);
     });
 
-    socket.on("webrtc-reject", () => {
+    // A request to my account went to all my devices: once one accepts (or the requester gives
+    // up), the others drop it.
+    const dropRequest = (senderSocketId?: string) => {
+      if (!senderSocketId) return false;
+      delete pendingCandidatesRef.current[senderSocketId];
+      const had = incomingRequestsRef.current.some((r) => r.senderSocketId === senderSocketId);
+      setIncomingRequests((prev) => prev.filter((r) => r.senderSocketId !== senderSocketId));
+      return had;
+    };
+    socket.on("webrtc-offer-taken", (data: { senderSocketId?: string; senderEmail?: string }) => {
+      let shown = dropRequest(data.senderSocketId);
+      // This device accepted too, but another was quicker: back out.
+      if (data.senderSocketId && activeTargetSocketRef.current === data.senderSocketId && connStateRef.current === "pairing") {
+        shown = true;
+        try { pcRef.current?.close(); } catch (e) { }
+        activeTargetSocketRef.current = null;
+        setConnectionState("waiting");
+        setIsHosting(false);
+      }
+      if (shown) {
+        setNotification({
+          message: `${data.senderEmail || "The request"} was accepted on another of your devices`,
+          type: "info",
+        });
+      }
+    });
+    socket.on("webrtc-offer-cancelled", (data: { senderSocketId?: string }) => {
+      dropRequest(data.senderSocketId);
+    });
+    socket.on("webrtc-unavailable", (data: { targetEmail?: string }) => {
+      const who = data.targetEmail || "The other device";
+      if (connStateRef.current === "away") {
+        rejoinFailed(`${who} isn't online right now. Try again when they're signed in.`);
+        return;
+      }
+      if (connStateRef.current !== "pairing") return;
+      try { pcRef.current?.close(); } catch (e) { }
+      activeTargetSocketRef.current = null;
+      setConnectionState("waiting");
+      setIsHosting(false);
+      setNotification({ message: `${who} isn't online right now`, type: "warning" });
+    });
+
+    socket.on("webrtc-reject", (data?: { senderEmail?: string }) => {
+      if (connStateRef.current === "away") {
+        rejoinFailed(`${data?.senderEmail || "The other device"} didn't accept the request.`);
+        return;
+      }
       if (pcRef.current) pcRef.current.close();
       setConnectionState("waiting");
       setOfferQR("");
@@ -1651,6 +1721,9 @@ export const TransferNodeRenderer: React.FC<{
   const [clipboardDetectedSdp, setClipboardDetectedSdp] = useState<
     string | null
   >(null);
+  useEffect(() => {
+    pairingWorkflowRef.current = pairingWorkflow;
+  }, [pairingWorkflow]);
   const [qrDensity, setQrDensity] = useState<"L" | "M" | "Q" | "H">("L");
   const [showDiagnostics, setShowDiagnostics] = useState(false);
   const [isFullscreenQR, setIsFullscreenQR] = useState(false);
@@ -2286,13 +2359,28 @@ export const TransferNodeRenderer: React.FC<{
 
     pc.oniceconnectionstatechange = () => {
       console.log("ICE State:", pc.iceConnectionState);
-      if (
-        pc.iceConnectionState === "connected" ||
-        pc.iceConnectionState === "completed"
-      ) {
+      if (pcRef.current !== pc) return; // an older connection, already replaced
+      const state = pc.iceConnectionState;
+      if (iceLostTimerRef.current !== null && state !== "disconnected") {
+        window.clearTimeout(iceLostTimerRef.current);
+        iceLostTimerRef.current = null;
+      }
+      if (state === "connected" || state === "completed") {
         setConnectionState("connected");
-      } else if (pc.iceConnectionState === "failed") {
-        setConnectionState("failed");
+      } else if (state === "disconnected") {
+        // Often a moment's blip; if it lasts, the other device is gone.
+        if (iceLostTimerRef.current === null) {
+          iceLostTimerRef.current = window.setTimeout(() => {
+            iceLostTimerRef.current = null;
+            if (pcRef.current === pc && pc.iceConnectionState !== "connected" && pc.iceConnectionState !== "completed") {
+              peerLeft("lost");
+            }
+          }, 6000);
+        }
+      } else if (state === "failed") {
+        if (awayRef.current) rejoinFailed("Couldn't reach the other device. Try again in a moment.");
+        else if (dcRef.current?.readyState === "open") peerLeft("lost");
+        else setConnectionState("failed");
       }
     };
 
@@ -2303,6 +2391,125 @@ export const TransferNodeRenderer: React.FC<{
     pcRef.current = pc;
     return pc;
   };
+
+  /** Tells the other device this one is leaving, so it can leave the chat too. */
+  const sayBye = () => {
+    leavingRef.current = true;
+    try {
+      if (dcRef.current?.readyState === "open") dcRef.current.send(JSON.stringify({ type: "bye" }));
+    } catch (e) { }
+  };
+
+  /**
+   * The other device left (said bye) or the connection was lost. The chat stays open here, so
+   * when that device connects again it picks up where it was. Nothing happens when this device
+   * is the one leaving.
+   */
+  const peerLeft = (why: "bye" | "lost") => {
+    if (leavingRef.current) return;
+    leavingRef.current = true;
+    if (iceLostTimerRef.current !== null) {
+      window.clearTimeout(iceLostTimerRef.current);
+      iceLostTimerRef.current = null;
+    }
+    try { pcRef.current?.close(); } catch (e) { }
+    activeTargetSocketRef.current = null;
+    setAway({ why, rejoining: false });
+    setConnectionState("away");
+    setIsHosting(false);
+    setTransferProgress(0);
+  };
+
+  const clearRejoinTimer = () => {
+    if (rejoinTimerRef.current !== null) {
+      window.clearTimeout(rejoinTimerRef.current);
+      rejoinTimerRef.current = null;
+    }
+  };
+
+  /** A reconnect didn't work: stay in the chat and say why. */
+  const rejoinFailed = (message: string) => {
+    clearRejoinTimer();
+    if (!awayRef.current) return;
+    try { pcRef.current?.close(); } catch (e) { }
+    setAway({ ...awayRef.current, rejoining: false, choices: undefined });
+    setConnectionState("away");
+    setIsHosting(false);
+    setNotification({ message, type: "warning" });
+  };
+
+  /** Leaves the chat on purpose: tells the other device, clears it, back to pairing. */
+  const leaveChat = () => {
+    sayBye();
+    signalingSocketRef.current?.emit("webrtc-cancel-offer");
+    clearRejoinTimer();
+    if (pcRef.current) pcRef.current.close();
+    setAway(null);
+    lastPeerRef.current = null;
+    setConnectionState("waiting");
+    setMessages([]);
+    setOfferQR("");
+    setAnswerQR("");
+    setScanMode(null);
+    setReceivedChunks(null);
+    setCompleteScannedPayload(null);
+    setIsHosting(false);
+    setTransferProgress(0);
+  };
+
+  // Signed out: a chat made through the account ends, and the other device is told.
+  useEffect(() => {
+    if (isLoggedIn) return;
+    const st = connStateRef.current;
+    if (pairingWorkflowRef.current === "signaling" && st !== "waiting") leaveChat();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn]);
+
+  /** Connects again to the device this chat was with, keeping the chat on screen. */
+  const rejoin = (pickSocketId?: string) => {
+    const peer = lastPeerRef.current;
+    if (!peer || !peer.signaling) {
+      // Paired by code: that has to be done again from the start.
+      leaveChat();
+      return;
+    }
+    const socket = signalingSocketRef.current;
+    if (!socket || !socket.connected) {
+      setNotification({ message: "You're offline from the server. Check your internet, then try again.", type: "error" });
+      return;
+    }
+    const mine = user?.email || "";
+    if (pickSocketId) {
+      initiateServerConnection(mine, pickSocketId, true);
+      return;
+    }
+    if (peer.email && peer.email !== mine) {
+      initiateServerConnection(peer.email, undefined, true);
+      return;
+    }
+    socket.emit("list-devices", (devices: DeviceInfo[] = []) => {
+      if (!awayRef.current) return;
+      if (devices.length === 0) {
+        setNotification({ message: "Your other device isn't online. Open the chat there, then try again.", type: "warning" });
+        return;
+      }
+      const pick = devices.find((d) => d.socketId === peer.socketId) || (devices.length === 1 ? devices[0] : null);
+      if (pick) initiateServerConnection(mine, pick.socketId, true);
+      else setAway({ ...awayRef.current, choices: devices });
+    });
+  };
+
+  // Closing or reloading the page says goodbye first, so the other device isn't left waiting.
+  useEffect(() => {
+    const onLeave = () => sayBye();
+    window.addEventListener("pagehide", onLeave);
+    return () => {
+      window.removeEventListener("pagehide", onLeave);
+      onLeave();
+      clearRejoinTimer();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /** Keeps a received file in memory: for browsers that cannot store it on disk. */
   const memorySink = (msgId: string) => {
@@ -2428,6 +2635,10 @@ export const TransferNodeRenderer: React.FC<{
 
     dc.onclose = () => {
       if (dcRef.current !== dc) return; // an older channel, replaced by a new connection
+      // The other device closed the connection (or it dropped): leave the chat after tidying up.
+      window.setTimeout(() => {
+        if (dcRef.current === dc) peerLeft("lost");
+      }, 0);
       Object.entries(incomingStreamsRef.current).forEach(([id, inStream]) => {
         abortIncoming(inStream, true);
         updateStreamMessage(id, { streamState: "error" });
@@ -2439,9 +2650,28 @@ export const TransferNodeRenderer: React.FC<{
     };
 
     dc.onopen = () => {
+      leavingRef.current = false;
+      clearRejoinTimer();
+      const resumed = !!awayRef.current;
+      setAway(null);
+      const peerEmail = peerEmailRef.current;
+      if (peerEmail && peerEmail !== useAuthStore.getState().user?.email) {
+        setLastConnectedEmail(peerEmail);
+        localStorage.setItem("transfer-last-connected", peerEmail);
+        setConnectionHistory((prev) => {
+          const next = [peerEmail, ...prev.filter((e) => e !== peerEmail)].slice(0, 5);
+          localStorage.setItem("transfer-history", JSON.stringify(next));
+          return next;
+        });
+      }
+      lastPeerRef.current = {
+        email: peerEmailRef.current,
+        socketId: activeTargetSocketRef.current,
+        signaling: pairingWorkflowRef.current === "signaling",
+      };
       setConnectionState("connected");
       setNotification({
-        message: "Direct device connection established!",
+        message: resumed ? "Back in the chat with the other device" : "Direct device connection established!",
         type: "success",
       });
     };
@@ -2482,6 +2712,10 @@ export const TransferNodeRenderer: React.FC<{
       }
       try {
         const msg = JSON.parse(e.data);
+        if (msg.type === "bye") {
+          peerLeft("bye");
+          return;
+        }
         if (msg.type === "msg_ack") {
           setMessages((prev) =>
             prev.map((m) =>
@@ -2788,18 +3022,36 @@ export const TransferNodeRenderer: React.FC<{
     });
   };
 
-  const initiateServerConnection = async (targetEmail: string, targetSocketId?: string) => {
+  const initiateServerConnection = async (targetEmail: string, targetSocketId?: string, resume = false) => {
     if (!signalingSocketRef.current || !signalingSocketRef.current.connected) {
       setNotification({ message: "Signaling server disconnected", type: "error" });
       return;
     }
 
     activeTargetSocketRef.current = targetSocketId || null;
+    peerEmailRef.current = targetEmail;
 
     setPairingWorkflow("signaling");
-    setConnectionState("pairing");
+    pairingWorkflowRef.current = "signaling";
+    if (resume && awayRef.current) {
+      // Stay in the chat while the other side answers; give up after a while. My own device
+      // answers by itself; another account has to accept, so it gets longer.
+      const other = targetEmail !== (useAuthStore.getState().user?.email || "");
+      setAway({ ...awayRef.current, rejoining: true, choices: undefined, asking: other ? targetEmail : undefined });
+      clearRejoinTimer();
+      rejoinTimerRef.current = window.setTimeout(() => {
+        rejoinTimerRef.current = null;
+        if (awayRef.current?.rejoining)
+          rejoinFailed(other ? `${targetEmail} didn't answer the request. Try again later.` : "The other device didn't answer. Open the chat there and try again.");
+      }, other ? 60000 : 15000);
+    } else {
+      setAway(null);
+      setConnectionState("pairing");
+    }
     setTargetRemoteEmail(targetEmail);
     setIsHosting(true);
+    // Starting over: if a stale chat is still open here, its close is ours, not "lost".
+    leavingRef.current = true;
 
     const pc = initPeer();
     const dc = pc.createDataChannel("transfer");
@@ -2900,14 +3152,14 @@ export const TransferNodeRenderer: React.FC<{
   const handleServerOffer = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; offer: RTCSessionDescriptionInit; senderProfile?: any }) => {
     const remoteEmail = data.senderEmail || data.from || "Remote Peer";
     if (remoteEmail === user?.email) {
-      // Auto-accept own devices
+      // My own devices connect straight away. Anyone else always asks, on every device of
+      // mine, even the one that was chatting with them (it shows the request in the chat).
       processServerOffer(data);
     } else {
       // Queue requests from others
       setIncomingRequests(prev => {
-        // Prevent duplicates from same sender/socket
-        if (prev.find(req => req.senderSocketId === data.senderSocketId)) return prev;
-        return [...prev, data];
+        // A newer request from the same device replaces its old one
+        return [...prev.filter(req => req.senderSocketId !== data.senderSocketId), data];
       });
     }
   };
@@ -2916,13 +3168,49 @@ export const TransferNodeRenderer: React.FC<{
     const remoteEmail = data.senderEmail || data.from || "Remote Peer";
 
     try {
-      if (pcRef.current && pcRef.current.iceConnectionState === "connected") {
-        console.log("[WebRTC] Already connected, ignoring incoming offer");
-        return;
+      const current = pcRef.current;
+      if (current && (current.iceConnectionState === "connected" || current.iceConnectionState === "completed")) {
+        // The device we're connected to is starting over (it left, or lost us): our connection
+        // is stale, so take the new one. Busy with a different device: say no, so it isn't left waiting.
+        const samePeer = !!data.senderSocketId && data.senderSocketId === activeTargetSocketRef.current;
+        const stale = !dcRef.current || dcRef.current.readyState !== "open";
+        // Another account we're chatting with, asking again: that chat is over on their side.
+        const samePerson = remoteEmail !== user?.email && remoteEmail === peerEmailRef.current;
+        if (!samePeer && !stale && !samePerson) {
+          console.log("[WebRTC] Busy with another device, declining the incoming offer");
+          if (data.senderSocketId) signalingSocketRef.current?.emit("webrtc-reject", { targetSocketId: data.senderSocketId });
+          return;
+        }
+        leavingRef.current = true; // our own close of the old one is not "lost"
+        try { current.close(); } catch (e) { }
+        // Same person starting over: keep the chat on screen and pick it up again.
+        setAway({ why: "lost", rejoining: true });
+        connStateRef.current = "away";
+        setConnectionState("away");
       }
 
+      const resuming = connStateRef.current === "away" && !!awayRef.current;
+      // Both devices pressed Reconnect at once: one offer wins (the lower connection id's).
+      if (resuming && current && current.signalingState === "have-local-offer") {
+        const me = signalingSocketRef.current?.id || "";
+        if (data.senderSocketId && me < data.senderSocketId) return;
+      }
+      activeTargetSocketRef.current = data.senderSocketId || null;
+      peerEmailRef.current = remoteEmail;
+
       setPairingWorkflow("signaling");
-      setConnectionState("pairing");
+      pairingWorkflowRef.current = "signaling";
+      if (resuming) {
+        // Picking up the open chat: it stays on screen while the connection is made.
+        setAway({ ...awayRef.current!, rejoining: true, choices: undefined });
+        clearRejoinTimer();
+        rejoinTimerRef.current = window.setTimeout(() => {
+          rejoinTimerRef.current = null;
+          if (awayRef.current?.rejoining) rejoinFailed("Couldn't reconnect. Try again in a moment.");
+        }, 15000);
+      } else {
+        setConnectionState("pairing");
+      }
       setTargetRemoteEmail(remoteEmail);
       setIsHosting(false);
 
@@ -2979,7 +3267,10 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const handleServerIceCandidate = async (data: { senderEmail?: string; from?: string; senderSocketId?: string; candidate: RTCIceCandidateInit }) => {
-    if (pcRef.current) {
+    // From a device we're not connecting to (e.g. a request still waiting for Accept): keep it
+    // for later instead of adding it to the current connection.
+    const unrelated = !!data.senderSocketId && !!activeTargetSocketRef.current && data.senderSocketId !== activeTargetSocketRef.current;
+    if (pcRef.current && !unrelated) {
       if (pcRef.current.remoteDescription) {
         try {
           await pcRef.current.addIceCandidate(new RTCIceCandidate(data.candidate));
@@ -3289,6 +3580,11 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const resetState = () => {
+    sayBye();
+    signalingSocketRef.current?.emit("webrtc-cancel-offer");
+    clearRejoinTimer();
+    setAway(null);
+    lastPeerRef.current = null;
     if (pcRef.current) pcRef.current.close();
     setConnectionState("waiting");
     setOfferQR("");
@@ -3300,6 +3596,62 @@ export const TransferNodeRenderer: React.FC<{
   };
 
   const isDark = appTheme === "dark";
+
+  const acceptRequest = (req: any) => {
+    setIncomingRequests((prev) => prev.filter((r) => r !== req));
+    const from = req.senderEmail || req.from;
+    if (connStateRef.current === "away" && lastPeerRef.current?.email !== from) {
+      // Someone new: start a fresh chat instead of carrying on the old one.
+      setAway(null);
+      setMessages([]);
+      connStateRef.current = "waiting";
+    }
+    processServerOffer(req);
+  };
+  const declineRequest = (req: any) => {
+    setIncomingRequests((prev) => prev.filter((r) => r !== req));
+    if (req.senderSocketId) signalingSocketRef.current?.emit("webrtc-reject", { targetSocketId: req.senderSocketId });
+  };
+
+  /** A connection request from another account: who it is, Accept and Decline. */
+  const renderRequestCard = (req: any, compact = false) => (
+    <div
+      key={req.senderSocketId || req.senderEmail}
+      className={`${compact ? "p-2.5 mb-3" : "p-3"} rounded-xl border flex flex-col gap-2.5 shadow-lg shadow-emerald-500/10 ${isDark ? "bg-emerald-500/10 border-emerald-500/30" : "bg-emerald-50 border-emerald-200"}`}
+    >
+      <div className="flex items-center gap-3">
+        <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 font-bold text-xs flex items-center justify-center shrink-0">
+          {req.senderProfile?.photoUrl ? (
+            <img src={req.senderProfile.photoUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
+          ) : req.senderProfile?.username ? (
+            req.senderProfile.username[0].toUpperCase()
+          ) : (
+            "U"
+          )}
+        </div>
+        <div className="flex flex-col min-w-0">
+          <span className={`text-sm font-bold truncate ${isDark ? "text-slate-200" : "text-slate-800"}`}>
+            {compact ? `${req.senderProfile?.username || req.senderEmail || "Someone"} wants to connect` : req.senderProfile?.username || "Unknown User"}
+          </span>
+          <span className="text-[10px] text-slate-500 truncate">{req.senderEmail || req.from}</span>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <button
+          onClick={() => acceptRequest(req)}
+          className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-lg text-xs transition-colors shadow-md cursor-pointer"
+        >
+          Accept
+        </button>
+        <button
+          onClick={() => declineRequest(req)}
+          className={`flex-1 py-2 font-bold rounded-lg text-xs transition-colors cursor-pointer ${isDark ? "bg-white/10 hover:bg-white/20 text-slate-300" : "bg-slate-200 hover:bg-slate-300 text-slate-700"}`}
+        >
+          Decline
+        </button>
+      </div>
+    </div>
+  );
 
   const renderContentWithLinks = (text: string) => {
     if (!text) return null;
@@ -3614,14 +3966,24 @@ export const TransferNodeRenderer: React.FC<{
         {(() => {
           // What is happening, in plain words, and what to do next.
           const st =
-            connectionState === "connected" || connectionState === "messaging"
+            connectionState === "away"
+              ? away?.rejoining
+                ? away.asking
+                  ? { tone: "wait", label: "Waiting for an answer…", hint: "Your chat is kept", more: `Asked ${away.asking} to connect again` }
+                  : { tone: "wait", label: "Reconnecting…", hint: "Your chat is kept", more: "Connecting to the other device again" }
+                : { tone: "idle", label: away?.why === "bye" ? "Other device left" : "Connection lost", hint: "Your chat is kept", more: "Reconnect to carry on with this chat" }
+              : connectionState === "connected" || connectionState === "messaging"
               ? { tone: "ok", label: "Connected", hint: "Device to device", more: "Messages and files go straight to the other device, never through a server" }
               : connectionState === "transferring"
                 ? { tone: "busy", label: "Sending files…", hint: "Keep this page open", more: "Keep this page open until the transfer finishes" }
                 : connectionState === "failed"
                   ? { tone: "bad", label: "Couldn't connect", hint: "Check both are online", more: "Make sure both devices are online, then try again" }
                   : connectionState === "pairing"
-                    ? isHosting
+                    ? pairingWorkflow === "signaling"
+                      ? isHosting
+                        ? { tone: "wait", label: "Waiting for an answer…", hint: "Accept it on the other device", more: "The request is shown on every device signed in to that account" }
+                        : { tone: "wait", label: "Connecting…", hint: "One moment", more: "Setting up a direct connection" }
+                      : isHosting
                       ? offerQR
                         ? { tone: "wait", label: "Waiting for device…", hint: "Scan the code there", more: "Scan or paste this code on the other device" }
                         : { tone: "wait", label: "Preparing code…", hint: "One moment", more: "Creating a pairing code for the other device" }
@@ -3672,18 +4034,7 @@ export const TransferNodeRenderer: React.FC<{
         <div className="flex items-center gap-1 sm:gap-2 shrink-0 relative">
           {connectionState !== "waiting" && (
             <button
-              onClick={() => {
-                if (pcRef.current) pcRef.current.close();
-                setConnectionState("waiting");
-                setMessages([]);
-                setOfferQR("");
-                setAnswerQR("");
-                setScanMode(null);
-                setReceivedChunks(null);
-                setCompleteScannedPayload(null);
-                setIsHosting(false);
-                setTransferProgress(0);
-              }}
+              onClick={leaveChat}
               className={`p-1.5 rounded-lg transition-colors ${isDark
                 ? "hover:bg-red-500/10 text-slate-400 hover:text-red-400"
                 : "hover:bg-red-50 text-slate-500 hover:text-red-500"
@@ -3867,51 +4218,7 @@ export const TransferNodeRenderer: React.FC<{
                       <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
                       Incoming Requests
                     </span>
-                    {incomingRequests.map((req, idx) => (
-                      <div key={idx} className={`p-3 rounded-xl border flex flex-col gap-3 shadow-lg shadow-emerald-500/10 ${isDark ? "bg-emerald-500/10 border-emerald-500/30" : "bg-emerald-50 border-emerald-200"}`}>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-emerald-500/20 text-emerald-500 font-bold text-xs flex items-center justify-center shrink-0">
-                            {req.senderProfile?.photoUrl ? (
-                              <img src={req.senderProfile.photoUrl} alt="Avatar" className="w-full h-full rounded-full object-cover" />
-                            ) : req.senderProfile?.username ? (
-                              req.senderProfile.username[0].toUpperCase()
-                            ) : (
-                              "U"
-                            )}
-                          </div>
-                          <div className="flex flex-col min-w-0">
-                            <span className={`text-sm font-bold truncate ${isDark ? "text-slate-200" : "text-slate-800"}`}>
-                              {req.senderProfile?.username || "Unknown User"}
-                            </span>
-                            <span className="text-[10px] text-slate-500 truncate">
-                              {req.senderEmail || req.from}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <button
-                            onClick={() => {
-                              setIncomingRequests(prev => prev.filter(r => r !== req));
-                              processServerOffer(req);
-                            }}
-                            className="flex-1 py-2 bg-emerald-500 hover:bg-emerald-400 text-white font-bold rounded-lg text-xs transition-colors shadow-md cursor-pointer"
-                          >
-                            Accept
-                          </button>
-                          <button
-                            onClick={() => {
-                              setIncomingRequests(prev => prev.filter(r => r !== req));
-                              if (req.senderSocketId) {
-                                signalingSocketRef.current?.emit("webrtc-reject", { targetSocketId: req.senderSocketId });
-                              }
-                            }}
-                            className={`flex-1 py-2 font-bold rounded-lg text-xs transition-colors cursor-pointer ${isDark ? "bg-white/10 hover:bg-white/20 text-slate-300" : "bg-slate-200 hover:bg-slate-300 text-slate-700"}`}
-                          >
-                            Decline
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    {incomingRequests.map((req) => renderRequestCard(req))}
                     <div className={`h-[1px] w-full my-2 ${isDark ? "bg-white/5" : "bg-slate-200"}`} />
                   </div>
                 )}
@@ -4924,7 +5231,8 @@ export const TransferNodeRenderer: React.FC<{
         )}
 
         {(connectionState === "connected" ||
-          connectionState === "transferring") &&
+          connectionState === "transferring" ||
+          connectionState === "away") &&
           (() => {
             const chatMessages = messages;
             const mediaMessages = getMediaItems(messages);
@@ -5918,6 +6226,77 @@ export const TransferNodeRenderer: React.FC<{
                               </motion.div>
                             )}
                           </AnimatePresence>
+                          {incomingRequests
+                            .filter((r) => {
+                              const from = r.senderEmail || r.from;
+                              return connectionState === "away" ? from === lastPeerRef.current?.email : from === peerEmailRef.current;
+                            })
+                            .map((r) => renderRequestCard(r, true))}
+                          {connectionState === "away" && away && (
+                            <div
+                              role="status"
+                              className={`mb-3 rounded-2xl border p-3 ${isDark ? "bg-amber-500/[0.06] border-amber-500/20" : "bg-amber-50 border-amber-200"}`}
+                            >
+                              <div className="flex items-start gap-2.5">
+                                <span className={`mt-1 h-2 w-2 rounded-full shrink-0 ${away.rejoining ? "bg-amber-500 animate-pulse" : isDark ? "bg-slate-500" : "bg-slate-400"}`} aria-hidden />
+                                <div className="flex-1 min-w-0">
+                                  <p className={`text-[13px] font-semibold leading-snug ${isDark ? "text-slate-100" : "text-slate-800"}`}>
+                                    {away.rejoining
+                                      ? away.asking
+                                        ? `Waiting for ${away.asking} to accept…`
+                                        : "Reconnecting…"
+                                      : away.why === "bye"
+                                        ? "The other device left the chat"
+                                        : "Lost connection to the other device"}
+                                  </p>
+                                  <p className={`mt-0.5 text-[11px] leading-snug ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                                    {away.rejoining
+                                      ? away.asking
+                                        ? "A request was sent to their devices. Your messages stay here."
+                                        : "Your messages stay here. This takes a few seconds."
+                                      : lastPeerRef.current?.signaling === false
+                                        ? "Your messages stay here. To carry on, pair the devices again."
+                                        : "Your messages stay here. When it connects again, this chat carries on."}
+                                  </p>
+                                </div>
+                              </div>
+                              {away.choices && away.choices.length > 0 && !away.rejoining && (
+                                <div className="mt-2.5 flex flex-col gap-1.5">
+                                  <span className={`text-[11px] font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>Which device?</span>
+                                  {away.choices.map((device) => (
+                                    <button
+                                      key={device.socketId}
+                                      onClick={() => rejoin(device.socketId)}
+                                      className={`w-full px-2.5 py-2 rounded-lg border flex items-center gap-2 text-left text-xs font-medium transition-colors cursor-pointer ${isDark ? "bg-white/5 border-white/10 hover:bg-white/10 text-slate-200" : "bg-white border-slate-200 hover:bg-slate-50 text-slate-700"}`}
+                                    >
+                                      {device.platform === "mobile" ? (
+                                        <Smartphone className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      ) : (
+                                        <Laptop className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                                      )}
+                                      <span className="flex-1 min-w-0 truncate">{device.name}</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              )}
+                              <div className="mt-2.5 flex items-center justify-end gap-2">
+                                <button
+                                  onClick={leaveChat}
+                                  className={`h-8 px-3 rounded-lg text-xs font-medium transition-colors cursor-pointer ${isDark ? "text-slate-300 hover:bg-white/[0.06]" : "text-slate-600 hover:bg-slate-200/60"}`}
+                                >
+                                  Leave chat
+                                </button>
+                                <button
+                                  onClick={() => rejoin()}
+                                  disabled={away.rejoining}
+                                  className="h-8 px-3 rounded-lg text-xs font-semibold bg-indigo-600 hover:bg-indigo-500 disabled:opacity-60 disabled:cursor-default text-white transition-colors flex items-center gap-1.5 cursor-pointer"
+                                >
+                                  <RefreshCw className={`w-3.5 h-3.5 ${away.rejoining ? "animate-spin" : ""}`} />
+                                  {away.rejoining ? (away.asking ? "Waiting" : "Reconnecting") : lastPeerRef.current?.signaling === false ? "Pair again" : "Reconnect"}
+                                </button>
+                              </div>
+                            </div>
+                          )}
                           {transferProgress > 0 && (
                             <div className="mb-4 bg-indigo-500/5 p-3 rounded-2xl border border-indigo-500/10">
                               <div className="flex justify-between items-center mb-2 px-1">
@@ -6121,7 +6500,7 @@ export const TransferNodeRenderer: React.FC<{
                               <button
                                 onMouseDown={(e) => e.preventDefault()}
                                 onClick={sendMessage}
-                                disabled={!chatInput.trim() && pendingFiles.length === 0}
+                                disabled={(!chatInput.trim() && pendingFiles.length === 0) || connectionState === "away"}
                                 className="w-9 h-9 shrink-0 bg-indigo-600 disabled:bg-transparent disabled:text-slate-500 text-white rounded-xl hover:bg-indigo-500 transition-colors flex items-center justify-center cursor-pointer"
                                 title="Send"
                                 aria-label="Send"
