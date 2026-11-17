@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight, Moon, Paintbrush, Layers, Crop } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight, Moon, Paintbrush, Layers, Crop, FileType } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -14,6 +14,7 @@ import { ImageColorExtractor } from "./ImageColorExtractor";
 import { PassportStudioUtil } from "./PassportStudioUtil";
 import { ImageSlicerUtil } from "./ImageSlicerUtil";
 import { PdfMergeUtil } from "./PdfMergeUtil";
+import { ImageFormatConverter } from "./ImageFormatConverter";
 import CustomSelect from "../CustomSelect";
 import { useQuickUtilsPasteGuard } from "./useQuickUtilsPaste";
 
@@ -41,6 +42,7 @@ const TABS = [
   { id: "passport", group: "photos", label: "Passport Photo Maker", description: "Make print-ready passport and ID photos", icon: Printer, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "text-blue-500" },
   { id: "imgslicer", group: "photos", label: "Split Image into Pieces", description: "Cut one image into a grid of tiles", icon: Scissors, activeClass: "bg-orange-50 dark:bg-orange-900/20 text-orange-600 dark:text-orange-400 shadow-sm border border-orange-200/50 dark:border-orange-800/30", iconClass: "text-orange-500" },
   { id: "colorthief", group: "photos", label: "Pick Colors from a Photo", description: "Find the main colors in any image", icon: Pipette, activeClass: "bg-fuchsia-50 dark:bg-fuchsia-900/20 text-fuchsia-600 dark:text-fuchsia-400 shadow-sm border border-fuchsia-200/50 dark:border-fuchsia-800/30", iconClass: "text-fuchsia-500" },
+  { id: "imgformat", group: "photos", label: "Change Image Format", description: "Convert to PNG, JPG, WebP, AVIF, BMP or ICO", icon: FileType, activeClass: "bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 shadow-sm border border-violet-200/50 dark:border-violet-800/30", iconClass: "text-violet-500" },
   { id: "crop", group: "photos", label: "Advanced Crop", description: "Trim, rotate, and sculpt images for social media & custom shapes", icon: Crop, activeClass: "bg-teal-50 dark:bg-teal-900/20 text-teal-600 dark:text-teal-400 shadow-sm border border-teal-200/50 dark:border-teal-800/30", iconClass: "text-teal-500" },
   { id: "bgremover", group: "photos", label: "Background Remover", description: "Isolate subjects and remove backgrounds with AI", icon: Sparkles, activeClass: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 shadow-sm border border-emerald-200/50 dark:border-emerald-800/30", iconClass: "text-emerald-500" },
   { id: "upscaler", group: "photos", label: "Upscale Image", description: "AI super-resolution up to 8x with sharpening", icon: ArrowUpRight, activeClass: "bg-indigo-50 dark:bg-indigo-900/20 text-indigo-600 dark:text-indigo-400 shadow-sm border border-indigo-200/50 dark:border-indigo-800/30", iconClass: "text-indigo-500" },
@@ -68,7 +70,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
+  const [activeTab, setActiveTab] = useState<"imgformat" | "crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
   const [hasOpenedWaveDisp, setHasOpenedWaveDisp] = useState(false);
   const [isMaximized, setIsMaximized] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
@@ -318,6 +320,7 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
                 </Suspense>
               )}
               {activeTab === "passport" && <PassportStudioUtil />}
+              {activeTab === "imgformat" && <ImageFormatConverter />}
               {activeTab === "img2pdf" && <ImageToPdfConverter />}
               {activeTab === "pdfmerge" && <PdfMergeUtil />}
               {activeTab === "imgslicer" && <ImageSlicerUtil />}
