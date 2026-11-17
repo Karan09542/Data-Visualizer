@@ -87,6 +87,20 @@ export function InteractiveZoomImage({
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
   const [isGesturing, setIsGesturing] = useState(false);
+  /**
+   * Gallery swipe at fit view: the picture follows the finger sideways only, then slides out to
+   * the next / previous one or springs back. `swipeAnim` picks the transition for the release.
+   */
+  const [swipeX, setSwipeX] = useState(0);
+  const [swipeAnim, setSwipeAnim] = useState<"none" | "back" | "out" | "in">("back");
+  /** The way the last swipe went (-1 left, 1 right), so the next picture slides in from the other side. */
+  const incoming = useRef(0);
+  // Once a slide back or in has finished, zooming goes back to its own quick transition.
+  useEffect(() => {
+    if (swipeAnim !== "back" && swipeAnim !== "in") return;
+    const t = window.setTimeout(() => setSwipeAnim("none"), 260);
+    return () => window.clearTimeout(t);
+  }, [swipeAnim, swipeX]);
   const [layout, setLayout] = useState<ImageLayout | null>(null);
 
   const [coordsOn, setCoordsOn] = useState(false);
@@ -108,6 +122,13 @@ export function InteractiveZoomImage({
     pinchScale: number;
     pinchPos: { x: number; y: number };
     pinchMid: { x: number; y: number };
+    /** Fit view: a drag is a sideways swipe ("x") or nothing ("y"), decided by its first move. */
+    axis?: "x" | "y";
+    /** Latest sideways offset, and speed (px/ms) for flicks. */
+    dx?: number;
+    vx?: number;
+    lastT?: number;
+    wasPinch?: boolean;
   } | null>(null);
   const lastTap = useRef({ time: 0, x: 0, y: 0 });
   const nextPinId = useRef(1);
@@ -173,6 +194,22 @@ export function InteractiveZoomImage({
 
   // Reset when the picture changes.
   useEffect(() => {
+    const dir = incoming.current;
+    incoming.current = 0;
+    const w = containerRef.current?.offsetWidth || 0;
+    if (dir && w) {
+      setSwipeAnim("none");
+      setSwipeX(-dir * w * 0.35);
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          setSwipeAnim("in");
+          setSwipeX(0);
+        }),
+      );
+    } else {
+      setSwipeAnim("none");
+      setSwipeX(0);
+    }
     setScale(1);
     setPosition({ x: 0, y: 0 });
     setPins([]);
@@ -215,16 +252,25 @@ export function InteractiveZoomImage({
     return el ? { x: el.offsetWidth / 2, y: el.offsetHeight / 2 } : { x: 0, y: 0 };
   };
 
-  /** Keeps at least a strip of the picture on screen. */
+  /**
+   * Where the picture may be moved to. Viewing: its edges stop at the screen's edges, so there is
+   * never empty space beside a zoomed-in picture, and a picture that fits stays centred. Drawing:
+   * looser, a strip kept on screen, so marks can be made near an edge.
+   */
   const boundPosition = (x: number, y: number, s = live.current.scale) => {
     const el = containerRef.current;
     const l = live.current.layout;
     if (!el || !l) return { x, y };
     const { fit } = contentFit(l);
-    const halfW = (l.naturalWidth * fit * s) / 2;
-    const halfH = (l.naturalHeight * fit * s) / 2;
-    const limitX = Math.max(0, el.offsetWidth / 2 + halfW - KEEP_VISIBLE);
-    const limitY = Math.max(0, el.offsetHeight / 2 + halfH - KEEP_VISIBLE);
+    const turned = Math.round(rotation / 90) % 2 !== 0;
+    const w = (turned ? l.naturalHeight : l.naturalWidth) * fit * s;
+    const h = (turned ? l.naturalWidth : l.naturalHeight) * fit * s;
+    const limitX = drawing
+      ? Math.max(0, el.offsetWidth / 2 + w / 2 - KEEP_VISIBLE)
+      : Math.max(0, (w - el.offsetWidth) / 2);
+    const limitY = drawing
+      ? Math.max(0, el.offsetHeight / 2 + h / 2 - KEEP_VISIBLE)
+      : Math.max(0, (h - el.offsetHeight) / 2);
     return { x: Math.max(-limitX, Math.min(limitX, x)), y: Math.max(-limitY, Math.min(limitY, y)) };
   };
 
@@ -314,7 +360,9 @@ export function InteractiveZoomImage({
         pinchScale: scale,
         pinchPos: position,
         pinchMid: { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 },
+        wasPinch: true,
       };
+      setSwipeX(0);
       setIsGesturing(true);
       return;
     }
@@ -380,7 +428,27 @@ export function InteractiveZoomImage({
     if (!g.moved && Math.hypot(dx, dy) < DRAG_SLOP) return;
     if (!g.moved) {
       g.moved = true;
+      g.axis = Math.abs(dx) >= Math.abs(dy) ? "x" : "y";
       setIsGesturing(true);
+    }
+
+    // Not zoomed in: like a phone's gallery. Sideways the picture follows the finger (with
+    // resistance when there is nothing that way); up and down it stays put.
+    if (live.current.scale <= 1.02 && !g.wasPinch) {
+      if (g.axis !== "x") return;
+      const can = dx < 0 ? !!onSwipeLeft : !!onSwipeRight;
+      const offset = can ? dx : dx * 0.25;
+      const now = performance.now();
+      if (g.lastT !== undefined && g.dx !== undefined) {
+        const dt = Math.max(1, now - g.lastT);
+        // Recent speed weighs most: a flick is short, and only its last moves count.
+        const v = (offset - g.dx) / dt;
+        g.vx = g.vx === undefined ? v : 0.4 * g.vx + 0.6 * v;
+      }
+      g.dx = offset;
+      g.lastT = now;
+      setSwipeX(offset);
+      return;
     }
     setPosition(boundPosition(g.startPos.x + dx, g.startPos.y + dy));
   };
@@ -399,23 +467,31 @@ export function InteractiveZoomImage({
     gesture.current = null;
     setIsGesturing(false);
 
-    // Horizontal swipe gesture only when at normal fit zoom (disabled when zoomed in or zoomed out)
-    const isAtNormalZoom = Math.abs(live.current.scale - 1) <= 0.02;
-    if (g && g.moved && (onSwipeLeft || onSwipeRight) && isAtNormalZoom && !drawing) {
-      const p = toContainer(e.clientX, e.clientY);
-      const dx = p.x - g.startX;
-      const dy = p.y - g.startY;
-      if (Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.3) {
-        if (dx < 0 && onSwipeLeft) {
-          fitView();
-          onSwipeLeft();
-          return;
-        } else if (dx > 0 && onSwipeRight) {
-          fitView();
-          onSwipeRight();
-          return;
-        }
+    // A pinch let go smaller than the screen springs back to fit.
+    if (g?.wasPinch && live.current.scale < 1) {
+      fitView();
+      return;
+    }
+
+    // Gallery swipe: far enough, or a flick, goes to the next / previous picture; else back.
+    if (g && g.moved && g.axis === "x" && g.dx !== undefined && !g.wasPinch && !drawing) {
+      const w = containerRef.current?.offsetWidth || 1;
+      const dx = g.dx;
+      const flick = Math.abs(g.vx ?? 0) > 0.35 && Math.sign(g.vx ?? 0) === Math.sign(dx);
+      const go = dx < 0 ? onSwipeLeft : onSwipeRight;
+      if (go && e.type !== "pointercancel" && (Math.abs(dx) > w * 0.22 || (flick && Math.abs(dx) > 24))) {
+        const dir = dx < 0 ? -1 : 1;
+        setSwipeAnim("out");
+        setSwipeX(dir * w);
+        window.setTimeout(() => {
+          incoming.current = dir;
+          go();
+        }, 170);
+        return;
       }
+      setSwipeAnim("back");
+      setSwipeX(0);
+      return;
     }
 
     if (!g || g.moved || e.type === "pointercancel") return;
@@ -462,6 +538,15 @@ export function InteractiveZoomImage({
   // ─── Readouts ────────────────────────────────────────────────────────────────
 
   const ratio = layout ? displayRatio(layout, transform) : scale;
+  const pictureTransition = isGesturing
+    ? "none"
+    : swipeAnim === "out"
+      ? "transform 170ms cubic-bezier(0.4, 0, 1, 1)"
+      : swipeAnim === "in" || swipeAnim === "back"
+        ? "transform 240ms cubic-bezier(0.2, 0.8, 0.2, 1)"
+        : swipeAnim === "none" && swipeX !== 0
+          ? "none"
+          : "transform 90ms ease-out";
   const percent = Math.round(ratio * 100);
 
   /** A picture pixel in the chosen unit: the image's own pixels, or on-screen pixels at this zoom. */
@@ -546,9 +631,9 @@ export function InteractiveZoomImage({
         }}
         className={`max-w-full max-h-full object-contain shadow-md select-none pointer-events-none ${className}`}
         style={{
-          transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
+          transform: `translate3d(${position.x + swipeX}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
           transformOrigin: "center center",
-          transition: isGesturing ? "none" : "transform 90ms ease-out",
+          transition: pictureTransition,
           // Crisp pixels when zoomed well past real size, for reading coordinates.
           imageRendering: ratio >= 4 ? "pixelated" : undefined,
         }}
@@ -565,9 +650,9 @@ export function InteractiveZoomImage({
               top: layout.boxTop,
               width: layout.boxWidth,
               height: layout.boxHeight,
-              transform: `translate3d(${position.x}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
+              transform: `translate3d(${position.x + swipeX}px, ${position.y}px, 0) scale(${scale}) rotate(${rotation}deg)`,
               transformOrigin: "center center",
-              transition: isGesturing ? "none" : "transform 90ms ease-out",
+              transition: pictureTransition,
             }}
           >
             <div

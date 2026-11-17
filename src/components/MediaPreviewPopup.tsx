@@ -140,6 +140,10 @@ const toOriginalAssetId = (val: string): string => {
   return trimmed;
 };
 
+/** File types that are never pictures: kept out of the image viewer's next / back and thumbnails. */
+const NON_IMAGE_EXT =
+  /\.(pdf|mp4|webm|mov|m4v|mkv|avi|3gp|mp3|wav|ogg|oga|m4a|aac|flac|opus|weba|glb|gltf|obj|stl|fbx|usdz|ply|zip|rar|7z|tar|gz|tgz|docx?|xlsx?|pptx?|odt|ods|odp|rtf|csv|tsv|json|xml|ya?ml|txt|md|log|html?|css|js|ts|tsx|jsx|py|sql|db|sqlite3?|exe|apk|msi|dmg)$/i;
+
 /** Detect whether a string value represents an image URL or image asset */
 const isImageCandidate = (val: string, uploadedMeta?: Record<string, { mimeType?: string } | undefined>) => {
   if (!val || typeof val !== 'string') return false;
@@ -353,6 +357,8 @@ const MediaPreviewPopup: React.FC = () => {
   const [isUIHidden, setIsUIHidden] = React.useState(false);
   const [showThumbnails, setShowThumbnails] = React.useState(true);
   const [dbAssetImages, setDbAssetImages] = React.useState<string[]>([]);
+  /** Every stored asset's type (MIME, file name), so non-pictures can be told apart by id. */
+  const [assetTypes, setAssetTypes] = React.useState<Map<string, { mime: string; name: string }>>(new Map());
   const [drawMode, setDrawMode] = React.useState(false);
   // The crop screen (the camera's), over the preview.
   const [cropOpen, setCropOpen] = React.useState(false);
@@ -415,6 +421,13 @@ const MediaPreviewPopup: React.FC = () => {
       .toArray()
       .then((all) => {
         if (cancelled) return;
+        const types = new Map<string, { mime: string; name: string }>();
+        for (const a of all) {
+          const t = { mime: a.mimeType || '', name: a.filename || '' };
+          if (a.assetId) types.set(a.assetId, t);
+          if (a.thumbnailId) types.set(a.thumbnailId, t);
+        }
+        setAssetTypes(types);
         // Build set of all IDs registered as thumbnails of any asset
         const thumbnailIds = new Set<string>();
         for (const a of all) {
@@ -498,9 +511,30 @@ const MediaPreviewPopup: React.FC = () => {
     return result;
   }, [treeData, parsedData, uploadedMediaMetadata, dbAssetImages]);
 
-  // Stable list of images for navigation and thumbnail filmstrip
+  /**
+   * Whether an entry is a picture. A known type (stored asset, uploaded media) decides; otherwise
+   * anything with a non-picture extension (PDF, video, 3D, documents…) is left out.
+   */
+  const isPicture = React.useCallback(
+    (raw: string) => {
+      const u = raw.trim();
+      if (u.startsWith('data:')) return u.startsWith('data:image/');
+      const known = assetTypes.get(u) || assetTypes.get(toOriginalAssetId(u));
+      if (known?.mime) return known.mime.startsWith('image/');
+      const uploaded = uploadedMediaMetadata?.[u]?.mimeType;
+      if (uploaded) return uploaded.startsWith('image/');
+      if (known?.name && NON_IMAGE_EXT.test(known.name)) return false;
+      return !NON_IMAGE_EXT.test(u.split(/[?#]/)[0]);
+    },
+    [assetTypes, uploadedMediaMetadata],
+  );
+
+  // Stable list of images for navigation and thumbnail filmstrip: pictures only.
   const availableImages = React.useMemo(() => {
     if (!activePreviewMedia || activePreviewMedia.type !== 'image') return [];
+    const current = activePreviewMedia.url ? toOriginalAssetId(activePreviewMedia.url) : '';
+    // The picture being shown always stays in, whatever its address looks like.
+    const keep = (id: string) => id === current || isPicture(id);
 
     // If an explicit gallery was provided (e.g. from task attachments or node gallery), preserve its exact order
     if (activePreviewMedia.gallery && activePreviewMedia.gallery.length > 0) {
@@ -508,7 +542,7 @@ const MediaPreviewPopup: React.FC = () => {
       const list: string[] = [];
       for (const item of activePreviewMedia.gallery) {
         const norm = toOriginalAssetId(item);
-        if (norm && !isThumbnailAsset(norm) && !seen.has(norm)) {
+        if (norm && !isThumbnailAsset(norm) && !seen.has(norm) && keep(norm)) {
           seen.add(norm);
           list.push(norm);
         }
@@ -517,7 +551,7 @@ const MediaPreviewPopup: React.FC = () => {
     }
 
     // Fallback: use workspaceImages in stable order, appending active image if not yet in list
-    const list = [...workspaceImages];
+    const list = workspaceImages.filter(keep);
     if (activePreviewMedia.url) {
       const curNorm = toOriginalAssetId(activePreviewMedia.url);
       if (curNorm && !isThumbnailAsset(curNorm) && !list.includes(curNorm)) {
@@ -525,7 +559,7 @@ const MediaPreviewPopup: React.FC = () => {
       }
     }
     return list;
-  }, [activePreviewMedia?.type, activePreviewMedia?.gallery, workspaceImages]);
+  }, [activePreviewMedia?.type, activePreviewMedia?.gallery, activePreviewMedia?.url, workspaceImages, isPicture]);
 
   const isImage = activePreviewMedia?.type === 'image';
   const hasMultipleImages = isImage && availableImages.length > 1;
