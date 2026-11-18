@@ -19,13 +19,15 @@ interface ModernSliderProps {
   /** Quick picks shown as chips under the track. */
   marks?: SliderMark[];
   disabled?: boolean;
+  /** A small note beside the label, e.g. "on save". */
+  badge?: string;
 }
 
 /**
  * A range slider with a filled track, a round thumb and a value bubble while it's dragged. It is
  * a real <input type="range"> underneath, so keyboard, screen readers and touch work as usual.
  */
-export const ModernSlider: React.FC<ModernSliderProps> = ({ label, value, min, max, step = 1, onChange, format, ends, marks, disabled }) => {
+export const ModernSlider: React.FC<ModernSliderProps> = ({ label, value, min, max, step = 1, onChange, format, ends, marks, disabled, badge }) => {
   const id = useId();
   const [active, setActive] = useState(false);
   const p = max > min ? (value - min) / (max - min) : 0;
@@ -36,8 +38,13 @@ export const ModernSlider: React.FC<ModernSliderProps> = ({ label, value, min, m
   return (
     <div className={disabled ? "opacity-50 pointer-events-none" : ""}>
       <div className="flex items-center justify-between mb-2">
-        <label htmlFor={id} className="text-xs font-medium text-slate-600 dark:text-slate-300">
+        <label htmlFor={id} className="text-xs font-medium text-slate-600 dark:text-slate-300 flex items-center gap-1.5">
           {label}
+          {badge && (
+            <span className="px-1.5 py-px rounded text-[9px] font-semibold uppercase tracking-wide bg-slate-100 dark:bg-white/5 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-white/10">
+              {badge}
+            </span>
+          )}
         </label>
         <span className="text-xs font-semibold tabular-nums text-violet-700 dark:text-violet-300 bg-violet-500/10 border border-violet-500/20 px-2 py-0.5 rounded-md">
           {shown}

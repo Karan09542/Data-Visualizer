@@ -191,7 +191,8 @@ export default defineConfig(({ mode }) => {
       }
     ],
     optimizeDeps: {
-      exclude: ['@jsquash/png', '@jsquash/jpeg', '@jsquash/webp', '@jsquash/avif', '@jsquash/resize'],
+      // @ffmpeg/ffmpeg starts its worker from a file next to itself, which pre-bundling would move.
+      exclude: ['@jsquash/png', '@jsquash/jpeg', '@jsquash/webp', '@jsquash/avif', '@jsquash/resize', '@ffmpeg/ffmpeg'],
       // Only the formula reader's worker imports it; bundling it up front avoids a
       // dev-server reload (and a cut-off model download) the first time it loads.
       include: ['@huggingface/transformers']

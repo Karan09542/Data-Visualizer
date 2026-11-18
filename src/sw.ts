@@ -172,7 +172,9 @@ const keepOkOrOpaque = {
 };
 
 registerRoute(
-  ({ url }) => CDN_HOSTS.has(url.hostname),
+  // The ffmpeg engine (~31 MB) is kept by the audio tools in OPFS / IndexedDB; caching it
+  // here too would store it twice.
+  ({ url }) => CDN_HOSTS.has(url.hostname) && !url.pathname.includes('/@ffmpeg/core@'),
   new CacheFirst({
     cacheName: 'cdn-cache',
     plugins: [

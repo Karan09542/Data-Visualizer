@@ -2,7 +2,7 @@ import React, { useState, useEffect, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { lazyWithRetry } from "../../utils/lazyWithRetry";
 import { motion, AnimatePresence } from "motion/react";
-import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight, Moon, Paintbrush, Layers, Crop, FileType } from "lucide-react";
+import { X, FileImage, FolderArchive, Binary, Hash, Palette, FileSpreadsheet, Key, Printer, Pipette, Waves, Maximize2, Minimize2, Scissors, FileStack, Sticker, Sparkles, ArrowUpRight, Moon, Paintbrush, Layers, Crop, FileType, AudioLines } from "lucide-react";
 import { ImageToPdfConverter } from "./ImageToPdfConverter";
 import { FolderToZipConverter } from "./FolderToZipConverter";
 import { Base64Converter } from "./Base64Converter";
@@ -27,11 +27,13 @@ const ImageUpscalerUtil = lazyWithRetry(() => import("./ImageUpscalerUtil").then
 const LowLightEnhancerUtil = lazyWithRetry(() => import("./LowLightEnhancerUtil").then(m => ({ default: m.LowLightEnhancerUtil })), "Low Light Enhancer");
 const StyleTransferUtil = lazyWithRetry(() => import("./StyleTransferUtil").then(m => ({ default: m.StyleTransferUtil })), "Art Style Transfer");
 const ImageDepthUtil = lazyWithRetry(() => import("./ImageDepthUtil").then(m => ({ default: m.ImageDepthUtil })), "Image Depth");
+const AudioEditor = lazyWithRetry(() => import("./audio-editor/AudioEditor").then(m => ({ default: m.AudioEditor })), "Audio Editor");
 const ImageCropUtil = lazyWithRetry(() => import("./ImageCropUtil").then(m => ({ default: m.ImageCropUtil })), "Advanced Crop");
 
 /** Everyday groups first; developer tools last */
 const TAB_GROUPS = [
   { id: "photos", label: "Photos" },
+  { id: "audio", label: "Audio" },
   { id: "files", label: "PDF & Files" },
   { id: "creative", label: "Fun & Creative" },
   { id: "developer", label: "Developer tools" },
@@ -50,6 +52,7 @@ const TABS = [
   { id: "styletransfer", group: "photos", label: "Art Style Transfer", description: "Transform photos into artistic masterworks with AI", icon: Paintbrush, activeClass: "bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 shadow-sm border border-violet-200/50 dark:border-violet-800/30", iconClass: "text-violet-500" },
   { id: "imagedepth", group: "photos", label: "Image Depth", description: "Map how far away everything is, then blur, light or fog by distance", icon: Layers, activeClass: "bg-cyan-50 dark:bg-cyan-900/20 text-cyan-600 dark:text-cyan-400 shadow-sm border border-cyan-200/50 dark:border-cyan-800/30", iconClass: "text-cyan-500" },
   // PDF & Files
+  { id: "audioeditor", group: "audio", label: "Audio Editor", description: "Trim, merge, mix, effects and convert with ffmpeg", icon: AudioLines, activeClass: "bg-violet-50 dark:bg-violet-900/20 text-violet-600 dark:text-violet-400 shadow-sm border border-violet-200/50 dark:border-violet-800/30", iconClass: "text-violet-500" },
   { id: "img2pdf", group: "files", label: "Image to PDF", description: "Turn photos into a single PDF", icon: FileImage, activeClass: "bg-sky-50 dark:bg-sky-900/20 text-sky-600 dark:text-sky-400 shadow-sm border border-sky-200/50 dark:border-sky-800/30", iconClass: "text-sky-500" },
   { id: "pdfmerge", group: "files", label: "Merge PDFs", description: "Combine several PDFs into one file", icon: FileStack, activeClass: "bg-blue-50 dark:bg-blue-900/20 text-blue-600 dark:text-blue-400 shadow-sm border border-blue-200/50 dark:border-blue-800/30", iconClass: "text-blue-500" },
   { id: "folder2zip", group: "files", label: "Folder to ZIP", description: "Pack a folder into one ZIP file", icon: FolderArchive, activeClass: "bg-purple-50 dark:bg-purple-900/20 text-purple-600 dark:text-purple-400 shadow-sm border border-purple-200/50 dark:border-purple-800/30", iconClass: "text-purple-500" },
@@ -70,7 +73,7 @@ interface QuickUtilsModalProps {
 }
 
 export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
-  const [activeTab, setActiveTab] = useState<"imgformat" | "crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
+  const [activeTab, setActiveTab] = useState<"audioeditor" | "imgformat" | "crop" | "bgremover" | "upscaler" | "lowlight" | "styletransfer" | "imagedepth" | "wavedisp" | "passport" | "img2pdf" | "pdfmerge" | "imgslicer" | "folder2zip" | "base64" | "hash" | "color" | "csv2json" | "jwt" | "colorthief" | "stickermaker">("passport");
   const [hasOpenedWaveDisp, setHasOpenedWaveDisp] = useState(false);
   const [isMaximized, setIsMaximized] = useState<boolean>(() => {
     if (typeof window !== "undefined") {
@@ -321,6 +324,11 @@ export function QuickUtilsModal({ isOpen, onClose }: QuickUtilsModalProps) {
               )}
               {activeTab === "passport" && <PassportStudioUtil />}
               {activeTab === "imgformat" && <ImageFormatConverter />}
+              {activeTab === "audioeditor" && (
+                <Suspense fallback={<div className="flex items-center justify-center w-full h-full text-slate-500">Loading Audio Editor...</div>}>
+                  <AudioEditor />
+                </Suspense>
+              )}
               {activeTab === "img2pdf" && <ImageToPdfConverter />}
               {activeTab === "pdfmerge" && <PdfMergeUtil />}
               {activeTab === "imgslicer" && <ImageSlicerUtil />}
