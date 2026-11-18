@@ -1,10 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
 import { ImagePlus, Video, X } from "lucide-react";
-import { ModernSlider } from "../ModernSlider";
 import { ColorPickerTrigger } from "../../image-workspace/components/shared/ColorPickers";
 import { parseSolidColor, rgbToHex } from "../imageFormatEncoders";
 import { useMedia, usePreview, useJob, fsName } from "./hooks";
-import { ActionBar, Card, CommandLine, Field, FilePick, FileBar, Pills, ResultCard, Transport, card } from "./ui";
+import { Slider, ActionBar, Card, CommandLine, Field, FilePick, FileBar, Pills, ResultCard, Transport, card } from "./ui";
 import { DEFAULT_VIDEO, NEUTRAL, formatTime, videoArgs, type VideoSettings, type Visual } from "./commands";
 
 const SIZES: { value: VideoSettings["size"]; label: string }[] = [
@@ -125,8 +124,8 @@ export const VideoTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
       ) : (
         <>
           <div className={`${card} p-3 sm:p-4 flex flex-col gap-3`}>
-            <div className="flex justify-center rounded-xl bg-slate-100 dark:bg-black/40 p-3">
-              <canvas ref={canvas} className="rounded-lg shadow-lg max-h-[340px] max-w-full" style={{ aspectRatio: `${W} / ${H}` }} />
+            <div className="flex justify-center rounded-lg bg-slate-100 dark:bg-[#0d1117] border border-slate-100 dark:border-slate-800 p-3">
+              <canvas ref={canvas} className="rounded-md max-h-[340px] max-w-full" style={{ aspectRatio: `${W} / ${H}` }} />
             </div>
             <Transport p={preview} enabled={!!sound?.buffer} time={preview.position} total={duration} />
           </div>
@@ -144,7 +143,7 @@ export const VideoTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
                       </button>
                     </div>
                   )}
-                  <button onClick={() => pick.current?.click()} className="h-9 px-3 rounded-xl border border-dashed border-slate-300 dark:border-white/15 text-xs font-semibold text-slate-600 dark:text-slate-300 hover:border-violet-400 hover:text-violet-600 flex items-center gap-1.5">
+                  <button onClick={() => pick.current?.click()} className="h-8 px-3 rounded-lg border border-dashed border-slate-300 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-1.5">
                     <ImagePlus size={14} /> {picture ? "Change" : "Add a picture"}
                   </button>
                 </div>
@@ -173,7 +172,7 @@ export const VideoTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
                     </label>
                   ))}
                 </div>
-                <ModernSlider label="Frame rate" value={v.fps} min={10} max={30} step={5} onChange={(x) => set({ fps: x })} format={(x) => `${x} fps`} ends={["Quicker to make", "Smoother"]} disabled={v.visual === "none" && !!picture} />
+                <Slider label="Frame rate" value={v.fps} min={10} max={30} step={5} onChange={(x) => set({ fps: x })} format={(x) => `${x} fps`} ends={["Quicker to make", "Smoother"]} disabled={v.visual === "none" && !!picture} />
               </div>
               <p className="text-[11px] text-slate-500">Encoded in your browser (H.264 + AAC). A moving visual takes about as long as the sound; a still picture is much quicker.</p>
             </div>

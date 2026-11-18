@@ -18,7 +18,7 @@ import {
   splitArgs,
   videoArgs,
   parseLoudness,
-  picturesArgs,
+  coverArgs,
   formatCommand,
   formatTime,
   outputName,
@@ -31,7 +31,7 @@ import {
   type ProbeInfo,
 } from "./commands";
 
-const info = (o: Partial<ProbeInfo> = {}): ProbeInfo => ({ duration: 60, sampleRate: 44100, channels: 2, codec: "mp3", bitrate: 192, hasAudio: true, hasVideo: false, tags: {}, ...o });
+const info = (o: Partial<ProbeInfo> = {}): ProbeInfo => ({ duration: 60, sampleRate: 44100, channels: 2, codec: "mp3", bitrate: 192, hasAudio: true, hasVideo: false, hasCover: false, coverCodec: null, tags: {}, ...o });
 const fc = (a: string[]) => a[a.indexOf("-filter_complex") + 1];
 
 test("parseProbe: duration, stream, tags; cover art isn't video", () => {
@@ -43,9 +43,14 @@ test("parseProbe: duration, stream, tags; cover art isn't video", () => {
   Stream #0:0: Audio: mp3 (mp3float), 44100 Hz, stereo, fltp, 320 kb/s
   Stream #0:1: Video: mjpeg (Baseline), yuvj420p(pc), 500x500, 90k tbr, 90k tbn (attached pic)`);
   assert.ok(Math.abs(p.duration! - 205.47) < 1e-9);
-  assert.deepEqual([p.sampleRate, p.channels, p.codec, p.bitrate, p.hasAudio, p.hasVideo], [44100, 2, "mp3", 320, true, false]);
+  assert.deepEqual([p.sampleRate, p.channels, p.codec, p.bitrate, p.hasAudio, p.hasVideo, p.hasCover], [44100, 2, "mp3", 320, true, false, true]);
   assert.deepEqual(p.tags, { title: "Morning Song", artist: "The Band" });
   assert.equal(parseProbe("Stream #0:1[0x2](eng): Audio: ac3, 48000 Hz, 5.1(side), fltp").channels, 6);
+  // " (attached pic)" printed on a line of its own still counts as a cover, not a video
+  const split = parseProbe("  Stream #0:0: Audio: mp3, 44100 Hz, stereo, fltp, 320 kb/s\n  Stream #0:1: Video: png, rgba(pc), 600x600, 90k tbr, 90k tbn\n (attached pic)\n    Metadata:\n      comment : Cover (front)");
+  assert.deepEqual([split.hasCover, split.hasVideo, split.coverCodec], [true, false, "png"]);
+  const film = parseProbe("  Stream #0:0: Video: h264, yuv420p, 640x360\n  Stream #0:1: Audio: aac, 48000 Hz, stereo");
+  assert.deepEqual([film.hasCover, film.hasVideo], [false, true]);
   assert.equal(parseProbe("Stream #0:0: Audio: pcm_s16le, 22050 Hz, 4 channels, s16").channels, 4);
   const v = parseProbe("  Duration: 00:00:05.00, start: 0.0, bitrate: 900 kb/s\n  Stream #0:0: Video: h264, yuv420p, 640x360");
   assert.deepEqual([v.hasAudio, v.hasVideo, v.duration], [false, true, 5]);
@@ -166,14 +171,20 @@ test("audio to video", () => {
   const pic = videoArgs("a.mp3", "cover.jpg", "o.mp4", { ...DEFAULT_VIDEO, visual: "none" });
   assert.deepEqual(pic.slice(1, 7), ["-loop", "1", "-framerate", "1", "-i", "cover.jpg"]);
   assert.ok(pic.includes("stillimage") && pic.includes("1:a:0"));
-  assert.match(fc(videoArgs("a", null, "o.mp4", DEFAULT_VIDEO)), /^color=c=0x0b0f17:s=1280x720:r=25\[bg\];\[0:a:0\]showwaves=s=1280x240:mode=cline:rate=25:colors=0xa78bfa,format=rgba\[viz\];\[bg\]\[viz\]overlay=0:240:shortest=1\[v0\];\[v0\]format=yuv420p\[v\]$/);
+  assert.match(fc(videoArgs("a", null, "o.mp4", DEFAULT_VIDEO)), /^color=c=0x0a0a0a:s=1280x720:r=25\[bg\];\[0:a:0\]showwaves=s=1280x240:mode=cline:rate=25:colors=0xffffff,format=rgba\[viz\];\[bg\]\[viz\]overlay=0:240:shortest=1\[v0\];\[v0\]format=yuv420p\[v\]$/);
   assert.match(fc(videoArgs("a", null, "o.mp4", { ...DEFAULT_VIDEO, visual: "none" })), /showwaves/);
 });
 
 test("inspect", () => {
   const log = `[Parsed_ebur128_0 @ 0x1] Summary:\n  Integrated loudness:\n    I:         -19.6 LUFS\n  Loudness range:\n    LRA:         3.8 LU\n  True peak:\n    Peak:       -1.2 dBFS\n[Parsed_volumedetect_1] mean_volume: -21.3 dB\n[Parsed_volumedetect_1] max_volume: -1.5 dB`;
   assert.deepEqual(parseLoudness(log), { integrated: -19.6, range: 3.8, truePeak: -1.2, meanVolume: -21.3, maxVolume: -1.5 });
-  assert.deepEqual(picturesArgs("x", "s.png", "w.png").slice(-6), ["-map", "[w]", "-frames:v", "1", "-y", "w.png"]);
+  assert.deepEqual(coverArgs("in.mp3", "mjpeg"), {
+    args: ["-hide_banner", "-i", "in.mp3", "-an", "-map", "0:v:0", "-frames:v", "1", "-update", "1", "-c:v", "copy", "-y", "cover.jpg"],
+    output: "cover.jpg",
+    mime: "image/jpeg",
+  });
+  assert.equal(coverArgs("in.m4a", "png").args.includes("copy"), true);
+  assert.equal(coverArgs("in.ogg", "bmp").output, "cover.png");
 });
 
 test("helpers", () => {

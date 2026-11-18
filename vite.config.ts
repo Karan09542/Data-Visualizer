@@ -195,7 +195,15 @@ export default defineConfig(({ mode }) => {
       exclude: ['@jsquash/png', '@jsquash/jpeg', '@jsquash/webp', '@jsquash/avif', '@jsquash/resize', '@ffmpeg/ffmpeg'],
       // Only the formula reader's worker imports it; bundling it up front avoids a
       // dev-server reload (and a cut-off model download) the first time it loads.
-      include: ['@huggingface/transformers']
+      // The Audio Editor is loaded on demand; bundling its waveform library up front means
+      // opening it doesn't trigger "new dependencies optimized" page reloads.
+      include: [
+        '@huggingface/transformers',
+        'wavesurfer.js',
+        'wavesurfer.js/dist/plugins/regions.esm.js',
+        'wavesurfer.js/dist/plugins/timeline.esm.js',
+        'wavesurfer.js/dist/plugins/hover.esm.js',
+      ]
     },
     resolve: {
       alias: {
@@ -436,6 +444,8 @@ export default defineConfig(({ mode }) => {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.
       // Do not modify—file watching is disabled to prevent flickering during agent edits.
       hmr: process.env.DISABLE_HMR !== 'true' ? { overlay: false } : false,
+      // Throwaway test pages under scratch/ are not part of the app: changes there never reload it.
+      watch: { ignored: ['**/scratch/**'] },
     },
   };
 });

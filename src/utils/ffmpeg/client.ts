@@ -64,6 +64,8 @@ export interface RunOptions {
   outputs?: string[];
   /** Also every file whose name starts with this (e.g. split parts). */
   outputPrefix?: string;
+  /** Stops this job: skipped if it hasn't started, ended if it's running. */
+  signal?: AbortSignal;
   /** ratio 0–1 as ffmpeg reports it; seconds of output written so far. */
   onProgress?: (ratio: number, seconds: number) => void;
 }
@@ -78,6 +80,7 @@ export interface RunResult {
 /** Writes the inputs, runs `ffmpeg …args`, reads the outputs, cleans up. Rejects only on cancel or crash. */
 export function runFFmpeg(args: string[], inputs: RunInput[], opts: RunOptions = {}): Promise<RunResult> {
   const job = queue.then(async () => {
+    if (opts.signal?.aborted) throw new Cancelled(); // given up while waiting its turn
     const ff = await startFFmpeg();
     const log: string[] = [];
     const onLog = ({ message }: { message: string }) => {
@@ -93,6 +96,8 @@ export function runFFmpeg(args: string[], inputs: RunInput[], opts: RunOptions =
       stopped = true;
       stopFFmpeg(); // ending the worker is the only way to stop a running command
     };
+    const onAbort = () => cancelRunning?.();
+    opts.signal?.addEventListener("abort", onAbort);
     const created = new Set<string>();
     try {
       for (const i of inputs) {
@@ -121,6 +126,7 @@ export function runFFmpeg(args: string[], inputs: RunInput[], opts: RunOptions =
       stopFFmpeg();
       throw e;
     } finally {
+      opts.signal?.removeEventListener("abort", onAbort);
       cancelRunning = null;
       if (!stopped && engine === ff) {
         ff.off("log", onLog);

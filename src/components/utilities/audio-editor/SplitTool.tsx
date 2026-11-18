@@ -1,14 +1,17 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { Loader2, Split } from "lucide-react";
-import { ModernSlider } from "../ModernSlider";
-import { useMedia, usePreview, useJob, fsName } from "./hooks";
-import { ActionBar, Card, CommandLine, FilePick, FileBar, OutputCard, Pills, ResultCard, Transport, Waveform, card } from "./ui";
+import { useMedia, usePreview, useJob, fsName, useWaveformVisible } from "./hooks";
+import { Slider, ActionBar, Card, CommandLine, FilePick, FileBar, OutputCard, Pills, ResultCard, Transport, card } from "./ui";
+import { MiniBar, WaveToggle } from "./ui";
+import { Waveform } from "./Waveform";
+import { useAccent } from "./palette";
 import { runFFmpeg } from "../../../utils/ffmpeg/client";
 import { DEFAULT_OUTPUT, NEUTRAL, cutsAtPauses, evenCuts, everyCuts, formatInfo, formatTime, parseSilences, silenceDetectArgs, splitArgs, type OutputSettings } from "./commands";
 
 type Mode = "parts" | "every" | "pauses";
 
 export const SplitTool: React.FC<{ ready: boolean; file: File | null; onFile: (f: File | null) => void; onUse: (f: File) => void; onLibrary: () => void }> = ({ ready, file, onFile, onUse, onLibrary }) => {
+  const a = useAccent();
   const { info, sound, error, duration } = useMedia(file, ready);
   const [out, setOut] = useState<OutputSettings>(DEFAULT_OUTPUT);
   const [mode, setMode] = useState<Mode>("parts");
@@ -20,6 +23,7 @@ export const SplitTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
   const [pauses, setPauses] = useState<{ start: number; end: number }[] | null>(null);
   const [finding, setFinding] = useState(false);
   const preview = usePreview(sound?.buffer ?? null, NEUTRAL);
+  const [showWave, setShowWave] = useWaveformVisible();
   const { job, output, run, clear } = useJob();
 
   // Finding pauses is an ffmpeg pass (silencedetect): run it when the settings settle
@@ -59,7 +63,14 @@ export const SplitTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
       ) : (
         <>
           <div className={`${card} p-3 sm:p-4 flex flex-col gap-3`}>
-            <Waveform peaks={sound?.peaks ?? null} duration={duration} markers={cuts} playhead={sound?.buffer ? preview.position : null} onSeek={preview.seek} />
+            <div className="flex justify-end -mt-1 -mb-1">
+              <WaveToggle on={showWave} onChange={setShowWave} />
+            </div>
+            {showWave ? (
+              <Waveform peaks={sound?.peaks ?? null} buffer={sound?.buffer} duration={duration} markers={cuts} playhead={sound?.buffer ? preview.position : null} onSeek={preview.seek} />
+            ) : (
+              <MiniBar duration={duration} position={sound?.buffer ? preview.position : null} onSeek={preview.seek} markers={cuts} />
+            )}
             <Transport p={preview} enabled={!!sound?.buffer} time={preview.position} total={duration} />
           </div>
           <Card
@@ -74,9 +85,9 @@ export const SplitTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
           >
             <div className="flex flex-col gap-6">
               <Pills<Mode> options={[{ value: "parts", label: "Equal parts" }, { value: "every", label: "Every…" }, { value: "pauses", label: "At pauses" }]} value={mode} onChange={setMode} />
-              {mode === "parts" && <ModernSlider label="Number of parts" value={parts} min={2} max={20} onChange={setParts} format={(v) => `${v} parts · ${formatTime(duration / v, 0)} each`} />}
+              {mode === "parts" && <Slider label="Number of parts" value={parts} min={2} max={20} onChange={setParts} format={(v) => `${v} parts · ${formatTime(duration / v, 0)} each`} />}
               {mode === "every" && (
-                <ModernSlider
+                <Slider
                   label="Each part"
                   value={every}
                   min={5}
@@ -90,9 +101,9 @@ export const SplitTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
               {mode === "pauses" && (
                 <>
                   <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-                    <ModernSlider label="Quiet below" value={quiet} min={-60} max={-20} onChange={setQuiet} format={(v) => `${v} dB`} />
-                    <ModernSlider label="Pause at least" value={pause} min={0.2} max={4} step={0.1} onChange={setPause} format={(v) => `${v.toFixed(1)} s`} />
-                    <ModernSlider label="Parts at least" value={minPart} min={1} max={120} onChange={setMinPart} format={(v) => formatTime(v, 0)} />
+                    <Slider label="Quiet below" value={quiet} min={-60} max={-20} onChange={setQuiet} format={(v) => `${v} dB`} />
+                    <Slider label="Pause at least" value={pause} min={0.2} max={4} step={0.1} onChange={setPause} format={(v) => `${v.toFixed(1)} s`} />
+                    <Slider label="Parts at least" value={minPart} min={1} max={120} onChange={setMinPart} format={(v) => formatTime(v, 0)} />
                   </div>
                   {pauses && !finding && (
                     <p className="text-xs text-slate-500">
@@ -105,8 +116,8 @@ export const SplitTool: React.FC<{ ready: boolean; file: File | null; onFile: (f
               {cuts.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {[0, ...cuts].map((c, i) => (
-                    <button key={i} onClick={() => preview.seek(c)} className="px-2 py-1 rounded-lg bg-slate-100 dark:bg-white/5 text-[11px] tabular-nums text-slate-600 dark:text-slate-300 hover:bg-violet-500/10" title="Listen from here">
-                      <b className="text-violet-600 dark:text-violet-300">{i + 1}</b> {formatTime(c, 0)}–{formatTime(cuts[i] ?? duration, 0)}
+                    <button key={i} onClick={() => preview.seek(c)} className="h-7 px-2 rounded-md border border-slate-200 dark:border-slate-800 text-[11px] tabular-nums text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800" title="Listen from here">
+                      <b className={`font-bold ${a.text}`}>{i + 1}</b> {formatTime(c, 0)}–{formatTime(cuts[i] ?? duration, 0)}
                     </button>
                   ))}
                 </div>

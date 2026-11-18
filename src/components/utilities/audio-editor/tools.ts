@@ -29,6 +29,7 @@ import {
   ScanSearch,
 } from "lucide-react";
 import { EQ_BANDS, NEUTRAL, type FxParams, type Format } from "./commands";
+import type { Hue } from "./palette";
 
 type NumKey = { [K in keyof FxParams]: FxParams[K] extends number ? K : never }[keyof FxParams];
 type BoolKey = { [K in keyof FxParams]: FxParams[K] extends boolean ? K : never }[keyof FxParams];
@@ -63,7 +64,36 @@ export interface Tool {
   videoOnly?: boolean;
   /** Added to the result's name */
   suffix?: string;
+  /** Its own colour (tile icon, and accents inside the tool) */
+  color?: Hue;
 }
+
+/** Each tool's colour: light, distinct within its group. */
+const COLORS: Record<ToolId, Hue> = {
+  trim: "sky",
+  merge: "indigo",
+  split: "orange",
+  mix: "teal",
+  speed: "amber",
+  pitch: "pink",
+  echo: "cyan",
+  eq: "violet",
+  reverse: "rose",
+  toVideo: "red",
+  toMp3: "lime",
+  volume: "blue",
+  fade: "fuchsia",
+  denoise: "emerald",
+  loudness: "green",
+  bass: "orange",
+  "8d": "purple",
+  voice: "pink",
+  silence: "sky",
+  convert: "blue",
+  channels: "cyan",
+  ringtone: "rose",
+  inspect: "indigo",
+};
 
 const dB = (v: number) => (v === 0 ? "0 dB" : `${v > 0 ? "+" : ""}${v} dB`);
 const sec = (v: number) => (v ? `${v.toFixed(1)} s` : "Off");
@@ -289,7 +319,7 @@ export const TOOLS: Tool[] = [
     ],
   },
   { id: "ringtone", label: "Ringtone", about: "A 30-second clip with soft fades", icon: BoomBox, trim: true, format: "m4a", start: { trimEnd: 30, fadeIn: 0.5, fadeOut: 2 }, suffix: " (ringtone)", controls: FADES },
-  { id: "inspect", label: "Inspect", about: "Loudness, peaks and a picture of the sound", icon: ScanSearch },
+  { id: "inspect", label: "Inspect", about: "Loudness, peaks and the cover picture", icon: ScanSearch },
 ];
 
 export const GROUPS: { title: string; ids: ToolId[]; big?: boolean }[] = [
@@ -298,6 +328,8 @@ export const GROUPS: { title: string; ids: ToolId[]; big?: boolean }[] = [
   { title: "Enhance & Effects", ids: ["volume", "fade", "denoise", "loudness", "bass", "8d", "voice", "silence"] },
   { title: "Convert & Analyze", ids: ["convert", "channels", "ringtone", "inspect"] },
 ];
+
+TOOLS.forEach((t) => (t.color = COLORS[t.id]));
 
 export const tool = (id: ToolId) => TOOLS.find((t) => t.id === id)!;
 export const EQ_LABELS = EQ_BANDS;

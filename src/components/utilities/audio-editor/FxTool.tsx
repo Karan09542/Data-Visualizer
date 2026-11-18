@@ -1,8 +1,9 @@
 import React, { useMemo, useState } from "react";
-import { ModernSlider } from "../ModernSlider";
-import CustomSelect from "../../CustomSelect";
-import { useMedia, usePreview, useJob, fsName } from "./hooks";
-import { ACCEPT_MEDIA, ACCEPT_VIDEO, ActionBar, Card, CommandLine, EqFader, Field, FilePick, FileBar, OutputCard, Pills, ResetButton, ResultCard, ToggleRow, Transport, Waveform, bytes, card, input } from "./ui";
+import { Loader2 } from "lucide-react";
+import { useMedia, usePreview, useJob, fsName, useWaveformVisible, useEditedWaveform } from "./hooks";
+import { Select, Slider, ACCEPT_MEDIA, ACCEPT_VIDEO, ActionBar, Card, CommandLine, EqFader, Field, FilePick, FileBar, OutputCard, Pills, ResetButton, ResultCard, ToggleRow, Transport, bytes, card, input } from "./ui";
+import { MiniBar, WaveToggle } from "./ui";
+import { Waveform } from "./Waveform";
 import { DEFAULT_OUTPUT, EQ_BANDS, NEUTRAL, editArgs, estimateBytes, formatInfo, formatTime, outputName, resultLength, type FxParams, type OutputSettings } from "./commands";
 import type { Control, Tool } from "./tools";
 
@@ -13,7 +14,7 @@ function ControlView({ c, p, set }: { c: Control; p: FxParams; set: (x: Partial<
   if (c.when && !c.when(p)) return null;
   switch (c.type) {
     case "slider":
-      return <ModernSlider label={c.label} value={p[c.key]} min={c.min} max={c.max} step={c.step} onChange={(v) => set({ [c.key]: v })} format={c.format} ends={c.ends} marks={c.marks} badge={c.badge} />;
+      return <Slider label={c.label} value={p[c.key]} min={c.min} max={c.max} step={c.step} onChange={(v) => set({ [c.key]: v })} format={c.format} ends={c.ends} marks={c.marks} badge={c.badge} />;
     case "toggle":
       return <ToggleRow label={c.label} hint={c.hint} checked={p[c.key]} onChange={(v) => set({ [c.key]: v })} badge={c.badge} />;
     case "presets": {
@@ -28,18 +29,18 @@ function ControlView({ c, p, set }: { c: Control; p: FxParams; set: (x: Partial<
     case "choice":
       return (
         <Field label={c.label}>
-          <CustomSelect value={String(p[c.key])} onChange={(v) => set({ [c.key]: c.key === "loudness" ? Number(v) : v } as Partial<FxParams>)} options={c.options.map((o) => ({ label: o.label, value: String(o.value) }))} className="w-full" />
+          <Select label={c.label} value={String(p[c.key])} onChange={(v) => set({ [c.key]: c.key === "loudness" ? Number(v) : v } as Partial<FxParams>)} options={c.options.map((o) => ({ label: o.label, value: String(o.value) }))} />
         </Field>
       );
     case "eq":
       return (
         <div>
-          <div className="flex justify-between sm:justify-around px-1 py-4 rounded-2xl bg-slate-50 dark:bg-white/[0.02] border border-slate-100 dark:border-white/[0.05]">
+          <div className="flex justify-between sm:justify-around px-2 py-4 rounded-lg border border-slate-100 dark:border-slate-800">
             {EQ_BANDS.map((b, i) => (
               <EqFader key={b.f} label={b.label} freq={b.f} value={p.eq[i]} onChange={(v) => set({ eq: p.eq.map((g, j) => (j === i ? v : g)) })} />
             ))}
           </div>
-          <p className="mt-2 text-[11px] text-slate-500 text-center">Drag a fader or use ↑ ↓. Double-click resets it.</p>
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 text-center">Drag a fader or use ↑ ↓. Double-click resets it.</p>
         </div>
       );
   }
@@ -72,6 +73,10 @@ export const FxTool: React.FC<{
   const end = fx.trimEnd == null ? duration : Math.min(fx.trimEnd, duration);
   const fxFor = useMemo(() => ({ ...fx, trimEnd: fx.trimEnd != null && duration && fx.trimEnd >= duration ? null : fx.trimEnd }), [fx, duration]);
   const preview = usePreview(sound?.buffer ?? null, fxFor);
+  // Waveform: hidden saves work; shown, effect tools draw the result (re-rendered after a pause in changes)
+  const [showWave, setShowWave] = useWaveformVisible();
+  const drawResult = showWave && !!tool.controls?.length && !tool.trim && !preview.bypass;
+  const { edited, busy: drawing } = useEditedWaveform(sound?.buffer ?? null, fxFor, drawResult);
   const controls = tool.controls ?? [];
   const hasFx = controls.length > 0;
   const changed = !same(fx, startFx);
@@ -106,15 +111,47 @@ export const FxTool: React.FC<{
       ) : (
         <>
           <div className={`${card} p-3 sm:p-4 flex flex-col gap-3`}>
-            <Waveform
-              peaks={sound?.peaks ?? null}
-              duration={duration}
-              start={tool.trim ? fx.trimStart : 0}
-              end={tool.trim ? end : duration}
-              onTrim={tool.trim ? (a, b) => set({ trimStart: +a.toFixed(2), trimEnd: b >= duration - 0.01 ? null : +b.toFixed(2) }) : undefined}
-              playhead={sound?.buffer ? preview.position : null}
-              onSeek={preview.seek}
-            />
+            <div className="flex items-center justify-between gap-2 -mt-1 -mb-1">
+              <span className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+                {!showWave ? "Waveform hidden" : edited ? "Result, with effects" : "Original"}
+                {drawing && <Loader2 size={11} className="animate-spin" />}
+              </span>
+              <WaveToggle on={showWave} onChange={setShowWave} />
+            </div>
+            {!showWave ? (
+              <MiniBar
+                duration={duration}
+                position={sound?.buffer ? preview.position : null}
+                onSeek={preview.seek}
+                start={tool.trim ? fx.trimStart : undefined}
+                end={tool.trim ? end : undefined}
+              />
+            ) : edited ? (
+              // the result's own timeline: trimmed, sped up or slowed, reversed
+              <Waveform
+                peaks={null}
+                buffer={edited}
+                duration={edited.duration}
+                normalize={false}
+                playhead={sound?.buffer ? preview.piece / (fxFor.speed || 1) : null}
+                onSeek={(t) => {
+                  const q = Math.min(total, t * (fxFor.speed || 1));
+                  preview.seek(fxFor.reverse ? end - q : fx.trimStart + q);
+                }}
+              />
+            ) : (
+              <Waveform
+                peaks={sound?.peaks ?? null}
+                buffer={sound?.buffer}
+                duration={duration}
+                normalize={!tool.controls?.length || !!tool.trim}
+                start={tool.trim ? fx.trimStart : 0}
+                end={tool.trim ? end : duration}
+                onTrim={tool.trim ? (a, b) => set({ trimStart: +a.toFixed(2), trimEnd: b >= duration - 0.01 ? null : +b.toFixed(2) }) : undefined}
+                playhead={sound?.buffer ? preview.position : null}
+                onSeek={preview.seek}
+              />
+            )}
             <Transport p={preview} enabled={!!sound?.buffer} time={time} total={total} compare={hasFx && !tool.trim} />
             {tool.trim && (
               <div className="pt-3 border-t border-slate-100 dark:border-white/[0.06] grid grid-cols-3 gap-3 items-end">
@@ -136,7 +173,7 @@ export const FxTool: React.FC<{
                   </label>
                 ))}
                 <p className="pb-2 text-xs text-slate-500">
-                  Keeping <b className="text-slate-700 dark:text-slate-200 tabular-nums">{formatTime(total)}</b>
+                  Keeping <b className="font-medium text-slate-900 dark:text-slate-100 tabular-nums">{formatTime(total)}</b>
                 </p>
               </div>
             )}

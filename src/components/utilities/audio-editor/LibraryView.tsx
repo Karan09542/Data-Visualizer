@@ -3,6 +3,7 @@ import { Download, Film, Library, Loader2, Pause, Play, Trash2, WandSparkles } f
 import { useLibrary } from "./hooks";
 import { clearLibrary, libraryOnDevice, readLibraryFile, removeFromLibrary, type LibraryItem } from "./library";
 import { IconButton, bytes, card, download } from "./ui";
+import { useAccent } from "./palette";
 
 const ago = (t: number) => {
   const s = (Date.now() - t) / 1000;
@@ -10,6 +11,7 @@ const ago = (t: number) => {
 };
 
 export const LibraryView: React.FC<{ onUse: (f: File) => void }> = ({ onUse }) => {
+  const a = useAccent();
   const items = useLibrary();
   const [open, setOpen] = useState<{ id: string; url: string; video: boolean } | null>(null);
   const [confirm, setConfirm] = useState(false);
@@ -45,7 +47,7 @@ export const LibraryView: React.FC<{ onUse: (f: File) => void }> = ({ onUse }) =
 
       {items?.length === 0 && (
         <div className={`${card} p-10 flex flex-col items-center text-center gap-3`}>
-          <div className="w-14 h-14 rounded-2xl bg-violet-500/10 text-violet-500 flex items-center justify-center">
+          <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${a.icon}`}>
             <Library size={26} />
           </div>
           <p className="text-sm font-semibold text-slate-700 dark:text-slate-200">Nothing here yet</p>
@@ -61,11 +63,11 @@ export const LibraryView: React.FC<{ onUse: (f: File) => void }> = ({ onUse }) =
             return (
               <li key={it.id} className="p-3 sm:px-4">
                 <div className="flex items-center gap-3">
-                  <button onClick={() => play(it)} className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 transition-colors ${playing ? "bg-violet-600 text-white" : "bg-violet-500/10 text-violet-600 dark:text-violet-300 hover:bg-violet-500/20"}`} aria-label={playing ? "Close player" : `Play ${it.name}`}>
+                  <button onClick={() => play(it)} className={`w-9 h-9 rounded-full flex items-center justify-center shrink-0 transition-colors ${playing ? a.solid : a.icon}`} aria-label={playing ? "Close player" : `Play ${it.name}`}>
                     {playing ? <Pause size={16} /> : video ? <Film size={16} /> : <Play size={16} className="ml-0.5" />}
                   </button>
                   <div className="min-w-0 flex-1">
-                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{it.name}</p>
+                    <p className="text-[13px] text-slate-900 dark:text-slate-100 truncate">{it.name}</p>
                     <p className="text-xs text-slate-500 truncate">
                       {it.tool} · {bytes(it.size)} · {ago(it.createdAt)}
                     </p>

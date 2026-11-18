@@ -93,12 +93,16 @@ export interface ProbeInfo {
   bitrate: number | null;
   hasAudio: boolean;
   hasVideo: boolean;
+  /** An embedded cover picture (album art) */
+  hasCover: boolean;
+  /** Its format as stored, e.g. "mjpeg", "png" */
+  coverCodec: string | null;
   tags: Record<string, string>;
 }
 
 /** Reads `ffmpeg -i file`'s description of the input. */
 export function parseProbe(log: string): ProbeInfo {
-  const p: ProbeInfo = { duration: null, sampleRate: null, channels: null, codec: null, bitrate: null, hasAudio: false, hasVideo: false, tags: {} };
+  const p: ProbeInfo = { duration: null, sampleRate: null, channels: null, codec: null, bitrate: null, hasAudio: false, hasVideo: false, hasCover: false, coverCodec: null, tags: {} };
   const d = /Duration:\s*(\d+):(\d{2}):(\d{2}(?:\.\d+)?)/.exec(log);
   if (d) p.duration = +d[1] * 3600 + +d[2] * 60 + +d[3];
   const br = /Duration:[^\n]*bitrate:\s*(\d+)\s*kb\/s/.exec(log);
@@ -115,7 +119,12 @@ export function parseProbe(log: string): ProbeInfo {
       p.channels = named[layout] ?? (/(\d+)\s*channels/.exec(layout) ? +/(\d+)\s*channels/.exec(layout)![1] : null);
     }
   }
-  p.hasVideo = /Stream #\d+:\d+[^:]*: Video:/.test(log) && !/Video:[^\n]*\(attached pic\)/.test(log);
+  // Look at each stream's block: ffmpeg may print " (attached pic)" on its own line
+  const videos = log.split(/(?=Stream #\d+:\d+)/).filter((b) => /^Stream #\d+:\d+[^:\n]*: Video:/.test(b));
+  const coverBlock = videos.find((b) => /\(attached pic\)/.test(b.split(/\n\s*(?:Stream #|Metadata:|At least one)/)[0]));
+  p.hasCover = !!coverBlock;
+  p.coverCodec = coverBlock ? /Video:\s*([^,\s(]+)/.exec(coverBlock)?.[1] ?? null : null;
+  p.hasVideo = videos.some((b) => !/\(attached pic\)/.test(b.split(/\n\s*(?:Stream #|Metadata:|At least one)/)[0]));
   const meta = /Input #0[\s\S]*?Metadata:\n([\s\S]*?)\n\s*Duration:/.exec(log);
   for (const line of meta?.[1].split("\n") ?? []) {
     const m = /^\s*(\w+)\s*:\s?(.*)$/.exec(line);
@@ -481,7 +490,7 @@ export interface VideoSettings {
   background: string;
   fps: number;
 }
-export const DEFAULT_VIDEO: VideoSettings = { visual: "waves", size: "1280x720", color: "a78bfa", background: "0b0f17", fps: 25 };
+export const DEFAULT_VIDEO: VideoSettings = { visual: "waves", size: "1280x720", color: "ffffff", background: "0a0a0a", fps: 25 };
 
 const hex = (c: string) => c.replace(/^#/, "").slice(0, 6).padEnd(6, "0");
 
@@ -557,26 +566,21 @@ export interface LoudnessReport {
 /** Loudness (EBU R128) and volume, as a summary in the log. */
 export const inspectArgs = (input: string) => ["-hide_banner", "-i", input, "-map", "0:a:0", "-af", "ebur128=peak=true:framelog=verbose,volumedetect", "-f", "null", "-"];
 
-/** A spectrogram and a waveform picture (PNGs). */
-export const picturesArgs = (input: string, spectrum: string, wave: string, width = 1200) => [
-  "-hide_banner",
-  "-i",
-  input,
-  "-filter_complex",
-  `[0:a:0]asplit=2[a][b];[a]showspectrumpic=s=${width}x360:legend=0:color=intensity:scale=log[s];[b]showwavespic=s=${width}x200:colors=0xa78bfa|0xe879f9:split_channels=1[w]`,
-  "-map",
-  "[s]",
-  "-frames:v",
-  "1",
-  "-y",
-  spectrum,
-  "-map",
-  "[w]",
-  "-frames:v",
-  "1",
-  "-y",
-  wave,
-];
+/**
+ * Takes the embedded cover picture out (no audio is decoded, so it's quick). JPEG and PNG
+ * covers are copied exactly as stored; anything else becomes a PNG. `-update 1` writes one
+ * image properly (without it ffmpeg aborts at the end, which can break the next command).
+ */
+export function coverArgs(input: string, codec: string | null): { args: string[]; output: string; mime: string } {
+  const ext = codec === "mjpeg" ? "jpg" : "png";
+  const copy = codec === "mjpeg" || codec === "png";
+  const output = `cover.${ext}`;
+  return {
+    args: ["-hide_banner", "-i", input, "-an", "-map", "0:v:0", "-frames:v", "1", "-update", "1", "-c:v", copy ? "copy" : "png", "-y", output],
+    output,
+    mime: ext === "jpg" ? "image/jpeg" : "image/png",
+  };
+}
 
 export function parseLoudness(log: string): LoudnessReport {
   const sum = log.slice(Math.max(0, log.lastIndexOf("Summary:")));

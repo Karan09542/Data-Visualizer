@@ -52,6 +52,157 @@ const MATRIX: Record<FxParams["stereo"], [number, number, number, number]> = {
   "8d": [1, 0, 0, 1],
 };
 
+/** Rough loudness (RMS and peak, dBFS) of a sound, for previewing loudness evening. Cached. */
+const loudCache = new WeakMap<AudioBuffer, { rms: number; peak: number }>();
+export function measureLoudness(buffer: AudioBuffer) {
+  let hit = loudCache.get(buffer);
+  if (hit) return hit;
+  let s = 0,
+    c = 0,
+    pk = 0;
+  const stride = Math.max(1, Math.floor(buffer.length / 1_000_000));
+  for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+    const d = buffer.getChannelData(ch);
+    for (let i = 0; i < d.length; i += stride) (s += d[i] * d[i]), c++, (pk = Math.max(pk, Math.abs(d[i])));
+  }
+  hit = { rms: 20 * Math.log10(Math.sqrt(s / Math.max(1, c)) || 1e-9), peak: 20 * Math.log10(pk || 1e-9) };
+  loudCache.set(buffer, hit);
+  return hit;
+}
+
+/** The loudness gain (dB) the preview uses to approximate EBU R128 evening. */
+const normGainDb = (p: FxParams, loud: { rms: number; peak: number }) => Math.max(-20, Math.min(20, p.loudness - loud.rms, -1 - loud.peak));
+
+const reversedCache = new WeakMap<AudioBuffer, AudioBuffer>();
+function reversedOf(buf: AudioBuffer, make: (ch: number, len: number, rate: number) => AudioBuffer) {
+  let r = reversedCache.get(buf);
+  if (!r) {
+    r = make(buf.numberOfChannels, buf.length, buf.sampleRate);
+    for (let c = 0; c < buf.numberOfChannels; c++) r.getChannelData(c).set(buf.getChannelData(c).slice().reverse());
+    reversedCache.set(buf, r);
+  }
+  return r;
+}
+
+let workletUrl: string | null = null;
+const pitchWorkletUrl = () => (workletUrl ??= URL.createObjectURL(new Blob([PITCH_WORKLET], { type: "text/javascript" })));
+
+/**
+ * The edit rendered offline, quickly, for drawing: the same chain as the live preview, at a
+ * low sample rate (the waveform only needs the shape). Its timeline is the result's: trimmed,
+ * sped up or slowed down, reversed, plus any echo tail.
+ */
+export async function renderForWaveform(buffer: AudioBuffer, p: FxParams): Promise<AudioBuffer> {
+  const start = Math.max(0, p.trimStart);
+  const end = p.trimEnd == null ? buffer.duration : Math.min(buffer.duration, p.trimEnd);
+  const L = Math.max(0.05, end - start);
+  const speed = p.speed || 1;
+  const tail = p.echoDecay > 0 ? (p.echoDelay * 2) / 1000 + 0.4 : 0;
+  const total = L / speed + tail;
+  // about 3 million frames at most, whatever the length
+  const rate = Math.round(Math.max(3000, Math.min(8000, 3_000_000 / total)));
+  const ctx = new OfflineAudioContext(2, Math.max(1, Math.ceil(total * rate)), rate);
+  const gain = (v = 1) => {
+    const g = ctx.createGain();
+    g.gain.value = v;
+    return g;
+  };
+  const filter = (type: BiquadFilterType, f: number, g = 0, q?: number) => {
+    const b = ctx.createBiquadFilter();
+    b.type = type;
+    b.frequency.value = Math.min(f, rate / 2 - 10);
+    b.gain.value = g;
+    if (q) b.Q.value = q;
+    return b;
+  };
+
+  const src = ctx.createBufferSource();
+  src.buffer = p.reverse ? reversedOf(buffer, (c, l, r) => new AudioBuffer({ numberOfChannels: c, length: l, sampleRate: r })) : buffer;
+  src.playbackRate.value = speed;
+
+  let node: AudioNode = src;
+  const ratio = Math.pow(2, p.pitch / 12) / speed;
+  if (Math.abs(ratio - 1) > 1e-3) {
+    try {
+      await ctx.audioWorklet.addModule(pitchWorkletUrl());
+      const shift = new AudioWorkletNode(ctx, "pitch-shift", { outputChannelCount: [2], channelCount: 2, channelCountMode: "explicit" });
+      shift.parameters.get("ratio")!.value = Math.max(0.1, Math.min(8, ratio));
+      node = node.connect(shift);
+    } catch {
+      /* drawn without the pitch shift */
+    }
+  }
+  node = node
+    .connect(filter("highpass", p.highpass > 0 ? p.highpass : 10, 0, 0.707))
+    .connect(filter("lowpass", p.lowpass > 0 ? p.lowpass : 20000, 0, 0.707))
+    .connect(filter("lowshelf", 100, p.bass))
+    .connect(filter("highshelf", 3000, p.treble));
+  EQ_BANDS.forEach((b, i) => p.eq[i] && (node = node.connect(filter("peaking", b.f, p.eq[i], 1.4))));
+
+  // fades, in the result's time
+  const fade = gain(1);
+  const fi = p.fadeIn / speed;
+  const fo = p.fadeOut / speed;
+  const len = L / speed;
+  if (fi > 0) fade.gain.setValueAtTime(0, 0), fade.gain.linearRampToValueAtTime(1, Math.min(fi, len));
+  if (fo > 0) fade.gain.setValueAtTime(1, Math.max(fi, len - fo)), fade.gain.linearRampToValueAtTime(0, len);
+  node = node.connect(fade);
+
+  if (p.tremolo > 0) {
+    const depth = Math.max(0, Math.min(1, p.tremoloDepth));
+    const trem = gain(1 - depth / 2);
+    const lfo = ctx.createOscillator();
+    lfo.frequency.value = p.tremolo;
+    lfo.connect(gain(depth / 2)).connect(trem.gain);
+    lfo.start();
+    node = node.connect(trem);
+  }
+
+  // stereo
+  const split = ctx.createChannelSplitter(2);
+  const merge = ctx.createChannelMerger(2);
+  const m = MATRIX[p.stereo];
+  node.connect(split);
+  split.connect(gain(m[0]), 0).connect(merge, 0, 0);
+  split.connect(gain(m[1]), 0).connect(merge, 0, 1);
+  split.connect(gain(m[2]), 1).connect(merge, 0, 0);
+  split.connect(gain(m[3]), 1).connect(merge, 0, 1);
+  node = merge;
+  if (p.stereo === "8d") {
+    const pan = ctx.createStereoPanner();
+    const orbit = ctx.createOscillator();
+    orbit.frequency.value = Math.max(0.01, p.orbit);
+    orbit.connect(pan.pan);
+    orbit.start();
+    node = node.connect(pan);
+  }
+
+  node = node.connect(gain(Math.pow(10, p.volume / 20)));
+  if (p.normalize) node = node.connect(gain(Math.pow(10, normGainDb(p, measureLoudness(buffer)) / 20)));
+  if (p.compressor) {
+    const comp = ctx.createDynamicsCompressor();
+    comp.threshold.value = -20;
+    comp.ratio.value = 3;
+    comp.attack.value = 0.01;
+    comp.release.value = 0.2;
+    node = node.connect(comp).connect(gain(Math.pow(10, 2 / 20)));
+  }
+  const out = gain();
+  node.connect(out);
+  if (p.echoDecay > 0) {
+    const k = Math.min(0.9, p.echoDecay);
+    const d1 = ctx.createDelay(4);
+    const d2 = ctx.createDelay(4);
+    d1.delayTime.value = Math.max(0.01, p.echoDelay / 1000);
+    d2.delayTime.value = Math.max(0.02, (p.echoDelay * 2) / 1000);
+    node.connect(d1).connect(gain(k)).connect(out);
+    node.connect(d2).connect(gain(k * 0.55)).connect(out);
+  }
+  out.connect(ctx.destination);
+  src.start(0, p.reverse ? buffer.duration - end : start, L);
+  return ctx.startRendering();
+}
+
 export class Preview {
   readonly ctx = new AudioContext({ latencyHint: "interactive" });
   readonly analyser: AnalyserNode;
@@ -195,17 +346,7 @@ export class Preview {
     this.reversed = null;
     this.q0 = 0;
     this.duration = buffer?.duration ?? 0;
-    if (buffer) {
-      let s = 0,
-        c = 0,
-        pk = 0;
-      const stride = Math.max(1, Math.floor(buffer.length / 1_000_000));
-      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
-        const d = buffer.getChannelData(ch);
-        for (let i = 0; i < d.length; i += stride) (s += d[i] * d[i]), c++, (pk = Math.max(pk, Math.abs(d[i])));
-      }
-      this.loud = { rms: 20 * Math.log10(Math.sqrt(s / Math.max(1, c)) || 1e-9), peak: 20 * Math.log10(pk || 1e-9) };
-    }
+    if (buffer) this.loud = measureLoudness(buffer);
   }
 
   get hasSound() {
@@ -277,7 +418,7 @@ export class Preview {
     to(n.orbitDepth.gain, e.stereo === "8d" ? 1 : 0);
     n.orbit.frequency.setValueAtTime(Math.max(0.01, e.orbit), now);
     to(n.vol.gain, db(e.volume));
-    to(n.norm.gain, e.normalize ? db(Math.max(-20, Math.min(20, e.loudness - this.loud.rms, -1 - this.loud.peak))) : 1);
+    to(n.norm.gain, e.normalize ? db(normGainDb(e, this.loud)) : 1);
     to(n.wet.gain, e.compressor ? 1 : 0);
     to(n.dry.gain, e.compressor ? 0 : 1);
     const k = Math.max(0, Math.min(0.9, e.echoDecay));
@@ -388,11 +529,14 @@ export class Preview {
   /** New settings, heard at once; trim or reverse changes restart at the same spot. */
   setParams(next: FxParams) {
     const at = this.position();
+    const prevReverse = this.p.reverse;
     const restart = next.trimStart !== this.p.trimStart || next.trimEnd !== this.p.trimEnd || (!this.bypass && next.reverse !== this.p.reverse);
     if (this.playingNow && !restart && !this.bypass && next.speed !== this.p.speed) (this.q0 = this.q()), (this.t0 = this.ctx.currentTime);
     this.p = next;
     if (restart) {
-      const q = this.qAt(Math.max(this.start, Math.min(this.end, at)));
+      // reverse flipped while stopped: start from the beginning of the (new) piece
+      const flipped = !this.playingNow && next.reverse !== prevReverse;
+      const q = flipped ? 0 : this.qAt(Math.max(this.start, Math.min(this.end, at)));
       if (this.playingNow) this.startAt(q);
       else this.q0 = q;
     }

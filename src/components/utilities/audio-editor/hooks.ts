@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { downloadCore, getStoredCore, removeStoredCore, type CoreProgress, type StoredCore } from "../../../utils/ffmpeg/coreStore";
 import { startFFmpeg, isFFmpegRunning, stopFFmpeg, runFFmpeg, errorFromLog, Cancelled } from "../../../utils/ffmpeg/client";
 import { parseProbe, type FxParams, type ProbeInfo } from "./commands";
-import { Preview } from "./preview";
+import { Preview, renderForWaveform } from "./preview";
 import { saveToLibrary, listLibrary, onLibraryChange, type LibraryItem } from "./library";
 
 // ================================================================ engine
@@ -320,4 +320,63 @@ export function useLibrary() {
     return onLibraryChange(load);
   }, []);
   return items;
+}
+
+// ================================================================ waveform
+
+const WAVE_KEY = "audio-editor:waveform";
+const waveListeners = new Set<(on: boolean) => void>();
+
+/** Show or hide waveforms (hidden saves work on slow devices). Remembered, and shared by every tool. */
+export function useWaveformVisible(): [boolean, (on: boolean) => void] {
+  const [on, setOn] = useState(() => {
+    try {
+      return localStorage.getItem(WAVE_KEY) !== "off";
+    } catch {
+      return true;
+    }
+  });
+  useEffect(() => {
+    waveListeners.add(setOn);
+    return () => void waveListeners.delete(setOn);
+  }, []);
+  const set = useCallback((v: boolean) => {
+    try {
+      localStorage.setItem(WAVE_KEY, v ? "on" : "off");
+    } catch {
+      /* private mode */
+    }
+    waveListeners.forEach((l) => l(v));
+  }, []);
+  return [on, set];
+}
+
+/**
+ * The result's waveform: the edit rendered offline, `delay` ms after the settings stop
+ * changing. Keeps the last one while the next is worked out; does nothing while `enabled` is off.
+ */
+export function useEditedWaveform(buffer: AudioBuffer | null, params: FxParams, enabled: boolean, delay = 300) {
+  const [rendered, setRendered] = useState<{ buffer: AudioBuffer; key: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const run = useRef(0);
+  const key = JSON.stringify(params);
+  useEffect(() => {
+    if (!buffer || !enabled) return;
+    if (rendered?.key === key) {
+      setBusy(false);
+      return;
+    }
+    const me = ++run.current;
+    setBusy(true);
+    const t = window.setTimeout(() => {
+      renderForWaveform(buffer, params)
+        .then((b) => me === run.current && setRendered({ buffer: b, key }))
+        .catch((e) => console.warn("[audio editor] couldn't draw the result waveform", e))
+        .finally(() => me === run.current && setBusy(false));
+    }, delay);
+    return () => window.clearTimeout(t);
+  }, [buffer, key, enabled]); // eslint-disable-line react-hooks/exhaustive-deps
+  // a new sound: forget the old drawing
+  useEffect(() => setRendered(null), [buffer]);
+  return { edited: enabled ? rendered?.buffer ?? null : null, busy: enabled && busy };
 }
