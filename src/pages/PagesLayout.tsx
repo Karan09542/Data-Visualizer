@@ -61,13 +61,11 @@ const PagesLayout = () => {
       <header id="app-header" data-app-header="true" className="border-b border-slate-200 dark:border-slate-800 bg-white/90 dark:bg-[#161b22]/90 backdrop-blur-md sticky top-0 z-50 transition-colors">
         <div className="max-w-7xl mx-auto px-4 md:px-8 py-3.5 flex items-center justify-between">
           <Link to="/" className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2.5 group">
-            <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-cyan-500 flex items-center justify-center text-white shadow-sm group-hover:scale-105 transition-transform">
-              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"></path>
-                <path d="M12 12v9"></path>
-                <path d="m16 16-4-4-4 4"></path>
-              </svg>
-            </div>
+            <img
+              src="/app-icon.png"
+              alt="Data Visualizer"
+              className="w-10 h-10 rounded- object-contain shadow-sm group-hover:scale-105 transition-transform"
+            />
             <span className="tracking-tight font-extrabold bg-clip-text text-transparent bg-gradient-to-r from-slate-900 to-slate-700 dark:from-white dark:to-slate-300">
               Data Visualizer
             </span>
@@ -79,11 +77,10 @@ const PagesLayout = () => {
               <Link
                 key={link.path}
                 to={link.path}
-                className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${
-                  isActive(link.path)
-                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold'
-                    : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/60'
-                }`}
+                className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all ${isActive(link.path)
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/70 dark:text-slate-400 dark:hover:text-slate-100 dark:hover:bg-slate-800/60'
+                  }`}
               >
                 {link.name}
               </Link>
@@ -119,11 +116,10 @@ const PagesLayout = () => {
                 key={link.path}
                 to={link.path}
                 onClick={() => setMobileMenuOpen(false)}
-                className={`block px-3 py-2 rounded-lg text-sm font-medium ${
-                  isActive(link.path)
-                    ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold'
-                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                }`}
+                className={`block px-3 py-2 rounded-lg text-sm font-medium ${isActive(link.path)
+                  ? 'bg-indigo-50 dark:bg-indigo-950/40 text-indigo-600 dark:text-indigo-400 font-semibold'
+                  : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800/50'
+                  }`}
               >
                 {link.name}
               </Link>
