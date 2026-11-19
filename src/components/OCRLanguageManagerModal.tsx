@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { X, Download, Trash2, CheckCircle, Loader2 } from 'lucide-react';
 import { getDownloadedLanguages, downloadLanguage, deleteLanguage } from '../services/tesseractService';
+import { useModalBackHandler } from '../utils/modalBackHandler';
 
 interface OCRLanguageManagerModalProps {
   isOpen: boolean;
@@ -27,6 +28,7 @@ const AVAILABLE_LANGUAGES = [
 ];
 
 export default function OCRLanguageManagerModal({ isOpen, onClose, onLanguageSelected, selectedLanguage }: OCRLanguageManagerModalProps) {
+  useModalBackHandler(isOpen, onClose, 'ocr-language-manager');
   const [downloadedLangs, setDownloadedLangs] = useState<string[]>([]);
   const [downloading, setDownloading] = useState<string | null>(null);
   const [progress, setProgress] = useState<number>(0);

@@ -3,12 +3,19 @@ import { usePyPackageStore } from "../store/usePyPackageStore";
 import { useStore } from "../store/useStore";
 import { executePyNode } from "../utils/pyExecutor";
 import { AlertTriangle, Loader2, Play, CheckCircle2, X } from "lucide-react";
+import { useModalBackHandler } from "../utils/modalBackHandler";
 
 export const PyMissingPromptModal: React.FC = () => {
   const showMissingModal = usePyPackageStore((state) => state.showMissingModal);
   const setShowMissingModal = usePyPackageStore((state) => state.setShowMissingModal);
   const installPackage = usePyPackageStore((state) => state.installPackage);
   const store = useStore();
+
+  useModalBackHandler(
+    !!showMissingModal?.isOpen,
+    () => setShowMissingModal(null),
+    "py-missing-prompt"
+  );
 
   const [installing, setInstalling] = useState(false);
   const [currentInstallingPkg, setCurrentInstallingPkg] = useState("");

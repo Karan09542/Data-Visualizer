@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, Check, GitMerge, Link2, Pencil, Replace, Tag, X, Copy } from "lucide-react";
+import { useModalBackHandler } from "../utils/modalBackHandler";
 
 export type MergeStrategy = "default" | "url" | "custom";
 export type ConflictAction = "replace" | "rename" | "deep-merge";
@@ -125,6 +126,7 @@ export default function MergeConfigDialog(props: MergeConfigDialogProps) {
     strategy, onStrategyChange, customKey, onCustomKeyChange,
     conflictAction, onConflictActionChange, onCancel, onConfirm,
   } = props;
+  useModalBackHandler(true, onCancel, "merge-config-dialog");
   const customInputRef = useRef<HTMLInputElement>(null);
   const confirmRef = useRef<HTMLButtonElement>(null);
 

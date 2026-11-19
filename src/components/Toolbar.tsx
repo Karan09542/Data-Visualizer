@@ -67,6 +67,7 @@ import { WikiSearchOverlay } from "./WikiSearchOverlay";
 import { PromptModal } from "./PromptModal";
 import UserMenu, { AuthModals } from "./UserMenu";
 import { preloadLearningGames } from "../learning/preload";
+import { useModalBackHandler } from "../utils/modalBackHandler";
 import { LAYOUT_MODES, CODE_FORMATS, NODE_THEMES, EDGE_STYLES, NODE_SHAPES, type LayoutMode } from "../constants/visualizer";
 
 const LAYOUT_META: Record<LayoutMode, { label: string; description: string; icon: React.ReactNode }> = {
@@ -181,6 +182,13 @@ export default function Toolbar({ onOpenShare }: { onOpenShare: () => void }) {
   const [isCameraModalOpen, setIsCameraModalOpen] = useState(false);
   const [isWikiSearchOpen, setIsWikiSearchOpen] = useState(false);
   const [pendingCameraFile, setPendingCameraFile] = useState<File | null>(null);
+
+  useModalBackHandler(isMobileMenuOpen, () => setIsMobileMenuOpen(false), "mobile-menu");
+  useModalBackHandler(isApiHelpOpen, () => setIsApiHelpOpen(false), "api-help-modal");
+  useModalBackHandler(isBarcodeGeneratorOpen, () => setIsBarcodeGeneratorOpen(false), "barcode-generator");
+  useModalBackHandler(isQuickUtilsOpen, () => setIsQuickUtilsOpen(false), "quick-utils");
+  useModalBackHandler(isCameraModalOpen, () => setIsCameraModalOpen(false), "camera-modal");
+  useModalBackHandler(isWikiSearchOpen, () => setIsWikiSearchOpen(false), "wiki-search");
 
   const handleCameraCapture = (file: File) => {
     setIsCameraModalOpen(false);

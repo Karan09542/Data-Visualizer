@@ -139,6 +139,7 @@ export const defaultSettings = {
   lastSavedCode: null as string | null,
   stickyNotesEnabled: false,
   nodeLayoutOverrides: {} as Record<string, LayoutMode>,
+  backButtonClosesPopups: true,
 };
 
 export type ApiNodeDiagnosticError = {
@@ -423,6 +424,8 @@ export interface StoreState {
   isMathHelpOpen: boolean;
   isYoutubeSearchOpen: boolean;
   isLearningGamesOpen: boolean;
+  backButtonClosesPopups: boolean;
+  setBackButtonClosesPopups: (enabled: boolean) => void;
   activeDocumentId: number | null;
   activeDocumentName: string | null;
   isDirty: boolean;
@@ -1569,6 +1572,7 @@ export const useStore = create<StoreState>()(
         setIsMathHelpOpen: (isOpen: boolean) => set({ isMathHelpOpen: isOpen }),
         setIsYoutubeSearchOpen: (isOpen: boolean) => set({ isYoutubeSearchOpen: isOpen }),
         setIsLearningGamesOpen: (isOpen: boolean) => set({ isLearningGamesOpen: isOpen }),
+        setBackButtonClosesPopups: (enabled: boolean) => set({ backButtonClosesPopups: enabled }),
         setIsSavedDocsOpen: (isOpen: boolean) => set({ isSavedDocsOpen: isOpen }),
         setIsSqliteModalOpen: (isOpen: boolean) => set({ isSqliteModalOpen: isOpen }),
         setSqliteModalInitialTab: (tab: 'export' | 'import') => set({ sqliteModalInitialTab: tab }),

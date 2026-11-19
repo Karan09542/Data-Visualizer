@@ -34,6 +34,7 @@ import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { TransformControls } from 'three/examples/jsm/controls/TransformControls.js';
 import * as fabric from 'fabric';
 import { DepthEstimationResult } from '../../../../ai/types';
+import { useModalBackHandler } from '../../../../utils/modalBackHandler';
 
 /** How much memory the local brush history may hold, in bytes. */
 const UNDO_BUDGET_BYTES = 24 * 1024 * 1024;
@@ -119,6 +120,7 @@ export const Depth3DViewerModal: React.FC<Depth3DViewerModalProps> = ({
   updateLayers,
   onClose
 }) => {
+  useModalBackHandler(true, onClose, 'depth-3d-viewer');
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<THREE.WebGLRenderer | null>(null);
   const sceneRef = useRef<THREE.Scene | null>(null);

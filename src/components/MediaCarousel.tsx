@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "motion/react";
 import { ChevronLeft, ChevronRight, X } from "lucide-react";
+import { useModalBackHandler } from "../utils/modalBackHandler";
 
 export interface MediaCarouselProps<T> {
   isOpen: boolean;
@@ -28,6 +29,7 @@ export default function MediaCarousel<T>({
   keepMounted = false,
   isDark = true,
 }: MediaCarouselProps<T>) {
+  useModalBackHandler(isOpen, onClose, "media-carousel");
   const [showChrome, setShowChrome] = useState(true);
   /** The finger that may become a swipe: where it started, and whether something else owns it. */
   const swipe = useRef<{ x: number; y: number; blocked: boolean } | null>(null);

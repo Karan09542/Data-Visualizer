@@ -17,6 +17,7 @@ import { AudioTrackCard } from "./AudioTrackCard";
 import { AudioControls } from "./AudioControls";
 import { useAudioPlayer } from "../hooks/useAudioPlayer";
 import { UPLOAD_ACCEPT, isPlayableMedia, uploadAudioFiles } from "../services/audioUploads";
+import { useModalBackHandler } from "../../utils/modalBackHandler";
 
 const DATE_FORMAT = new Intl.DateTimeFormat(undefined, {
   month: "short",
@@ -48,6 +49,15 @@ const AudioPlayerModal: React.FC = () => {
   const [draggedItemIndex, setDraggedItemIndex] = useState<number | null>(null);
   const [draggedOverIndex, setDraggedOverIndex] = useState<number | null>(null);
   const [isMobileLibraryOpen, setIsMobileLibraryOpen] = useState(false);
+
+  useModalBackHandler(
+    isPlayerOpen,
+    () => {
+      if (isMobileLibraryOpen) setIsMobileLibraryOpen(false);
+      else togglePlayer();
+    },
+    "audio-player"
+  );
   const [isUploading, setIsUploading] = useState(false);
   const [uploadNote, setUploadNote] = useState<{ text: string; tone: "ok" | "error" } | null>(null);
   const [isDroppingFiles, setIsDroppingFiles] = useState(false);

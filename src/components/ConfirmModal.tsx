@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { AlertTriangle, X } from "lucide-react";
+import { useModalBackHandler } from "../utils/modalBackHandler";
 
 export interface ConfirmModalProps {
   isOpen: boolean;
@@ -23,6 +24,7 @@ export const ConfirmModal: React.FC<ConfirmModalProps> = ({
   onClose,
   variant = "danger",
 }) => {
+  useModalBackHandler(isOpen, onClose, "confirm-modal");
   const modalRef = useRef<HTMLDivElement>(null);
 
   // Handle click outside

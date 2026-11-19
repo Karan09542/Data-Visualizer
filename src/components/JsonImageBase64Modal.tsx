@@ -15,6 +15,7 @@ import {
   Download,
 } from 'lucide-react';
 import MediaCarousel from './MediaCarousel';
+import { useModalBackHandler } from '../utils/modalBackHandler';
 
 export interface ConvertedImage {
   id: string;
@@ -180,6 +181,7 @@ export default function JsonImageBase64Modal({
   onInsertAtCursor,
   onUpdateFullJson,
 }: JsonImageBase64ModalProps) {
+  useModalBackHandler(isOpen, onClose, "json-image-base64-modal");
   const [images, setImages] = useState<ConvertedImage[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [useRawBase64, setUseRawBase64] = useState(true);

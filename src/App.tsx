@@ -19,6 +19,7 @@ import { OfflineBanner } from "./components/OfflineBanner";
 import { MobilePullToRefresh } from "./components/MobilePullToRefresh";
 import { useKeyboardMediaShortcuts } from "./audio/hooks/useKeyboardMediaShortcuts";
 import { lazyWithRetry } from "./utils/lazyWithRetry";
+import { useGlobalModalsBackHandler } from "./hooks/useGlobalModalsBackHandler";
 
 const ImportModal = lazyWithRetry(() => import("./components/ImportModal").then(module => ({ default: module.ImportModal })), 'ImportModal');
 const SqliteWorkspaceModal = lazyWithRetry(() => import("./components/SqliteWorkspaceModal").then(module => ({ default: module.SqliteWorkspaceModal })), 'SqliteWorkspaceModal');
@@ -373,6 +374,7 @@ function App() {
   }, [searchParams, setCode]);
 
   const [isShareDialogOpen, setIsShareDialogOpen] = useState(false);
+  useGlobalModalsBackHandler({ isShareDialogOpen, setIsShareDialogOpen });
   const containerRef = useRef<HTMLDivElement>(null);
   const [isDragSplitting, setIsDragSplitting] = useState(false);
   const isDragging = useRef(false);

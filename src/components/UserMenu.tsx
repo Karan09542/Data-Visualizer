@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/useAuthStore';
 import { useStore } from '../store/useStore';
 import { authFetch, API_BASE_URL } from '../lib/authFetch';
 import { CameraCaptureModal } from './CameraCaptureModal';
+import { useModalBackHandler } from '../utils/modalBackHandler';
 
 interface UserMenuProps {
   variant?: 'icon' | 'row';
@@ -117,6 +118,9 @@ export function AuthModals() {
   const setNotification = useStore((state) => state.setNotification);
   
   const isLoggedIn = getIsLoggedIn();
+
+  useModalBackHandler(isAuthModalOpen && !isLoggedIn, closeLoginModal, "auth-modal");
+  useModalBackHandler(isProfileModalOpen && isLoggedIn, closeProfileModal, "profile-modal");
 
   // Login states
   const [email, setEmail] = useState('');

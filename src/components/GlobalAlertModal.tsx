@@ -2,10 +2,13 @@ import React from 'react';
 import { useStore } from '../store/useStore';
 import { X, TriangleAlert } from 'lucide-react';
 import { createPortal } from 'react-dom';
+import { useModalBackHandler } from '../utils/modalBackHandler';
 
 export function GlobalAlertModal() {
   const globalAlert = useStore((state) => state.globalAlert);
   const setGlobalAlert = useStore((state) => state.setGlobalAlert);
+
+  useModalBackHandler(!!globalAlert, () => setGlobalAlert(null), "global-alert-modal");
 
   if (!globalAlert) return null;
 

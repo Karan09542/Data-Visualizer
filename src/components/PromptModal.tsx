@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { HelpCircle, X } from "lucide-react";
+import { useModalBackHandler } from "../utils/modalBackHandler";
 
 export interface PromptModalProps {
   isOpen: boolean;
@@ -25,6 +26,7 @@ export const PromptModal: React.FC<PromptModalProps> = ({
   onConfirm,
   onClose,
 }) => {
+  useModalBackHandler(isOpen, onClose, "prompt-modal");
   const modalRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [value, setValue] = useState(defaultValue);

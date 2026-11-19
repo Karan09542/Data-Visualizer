@@ -24,6 +24,7 @@ import { FiltersSection } from './sections/FiltersSection';
 import { FileSizeSection, ResolutionSection } from './sections/OutputSection';
 import { PaperSection, SpacingSection } from './sections/PaperSection';
 import { Segmented, cx } from './ui/primitives';
+import { useModalBackHandler } from '../../../../../utils/modalBackHandler';
 
 interface PassportPrintModalProps {
   sourceImage: string; // Data URL of the generated passport photo
@@ -43,6 +44,7 @@ const SIDEBAR_TABS: { value: SidebarTab; label: React.ReactNode }[] = [
 ];
 
 export const PassportPrintModal: React.FC<PassportPrintModalProps> = ({ sourceImage, onClose, initialAutoAdjust = false, showAddToCanvas = false }) => {
+  useModalBackHandler(true, onClose, 'passport-print-modal');
   const appTheme = useEffectiveTheme();
   const setAppTheme = useStore((state) => state.setAppTheme);
   const isDark = appTheme === 'dark';

@@ -20,6 +20,7 @@ import {
   FreeApiPreset,
   FreeApiCategory,
 } from '../constants/freeApis';
+import { useModalBackHandler } from '../utils/modalBackHandler';
 
 interface FreeApiModalProps {
   isOpen: boolean;
@@ -28,6 +29,7 @@ interface FreeApiModalProps {
 }
 
 export function FreeApiModal({ isOpen, onClose, onSelect }: FreeApiModalProps) {
+  useModalBackHandler(isOpen, onClose, "free-api-modal");
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<FreeApiCategory>('All');
   const [copiedId, setCopiedId] = useState<string | null>(null);

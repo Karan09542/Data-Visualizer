@@ -7,6 +7,7 @@ import { ModelManifest } from '../../../../ai/types';
 import { formatFileSize } from '../../../../lib/formatFileSize';
 import { opfsStorage } from '../../../../ai/manager/OPFSStorage';
 import { ModelConfig, NormalizationType } from '../../../../ai/config/ModelConfig';
+import { useModalBackHandler } from '../../../../utils/modalBackHandler';
 
 interface AIModelManagerModalProps {
   onClose: () => void;
@@ -380,6 +381,7 @@ const StaleDownloads: React.FC<{ models: any[] }> = ({ models }) => {
 };
 
 export const AIModelManagerModal: React.FC<AIModelManagerModalProps> = ({ onClose }) => {
+  useModalBackHandler(true, onClose, 'ai-model-manager');
   const [models, setModels] = useState(() => modelRegistry.getVisible());
   const [uploadFile, setUploadFile] = useState<File | null>(null);
   const [isUploading, setIsUploading] = useState(false);

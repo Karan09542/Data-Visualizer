@@ -5,6 +5,7 @@ import { type Crop } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { cn } from '@/lib/utils';
 import { DocumentWorkspace } from './camera/DocumentWorkspace';
+import { useModalBackHandler } from '../utils/modalBackHandler';
 
 interface CameraCaptureModalProps {
   onClose: () => void;
@@ -19,6 +20,7 @@ const cameraLabel = (camera: MediaDeviceInfo, index: number) => {
 };
 
 export function CameraCaptureModal({ onClose, onCapture, initialImageSrc = null }: CameraCaptureModalProps) {
+  useModalBackHandler(true, onClose, 'camera-capture-modal');
   const [stream, setStream] = useState<MediaStream | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const [facingMode, setFacingMode] = useState<'environment' | 'user'>('environment');

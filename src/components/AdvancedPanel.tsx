@@ -1,6 +1,6 @@
 import {
   X, Image as ImageIcon, RotateCcw, Keyboard, PenTool, HelpCircle, ChevronDown, AlignLeft,
-  Youtube, Mic, Shield, SlidersHorizontal, StickyNote, Search, Check, Music, Sparkles, type LucideIcon,
+  Youtube, Mic, Shield, SlidersHorizontal, StickyNote, Search, Check, Music, Sparkles, Undo2, type LucideIcon,
 } from 'lucide-react';
 import { useStore, defaultSettings, NodeTheme, EdgeStyle } from '../store/useStore';
 import { useAnnotationStore } from '../store/useAnnotationStore';
@@ -340,6 +340,8 @@ SwatchButton.displayName = 'SwatchButton';
 export default function AdvancedPanel() {
   const isAdvancedPanelOpen = useStore((state) => state.isAdvancedPanelOpen);
   const setIsAdvancedPanelOpen = useStore((state) => state.setIsAdvancedPanelOpen);
+  const backButtonClosesPopups = useStore((state) => state.backButtonClosesPopups ?? true);
+  const setBackButtonClosesPopups = useStore((state) => state.setBackButtonClosesPopups);
   const showMediaPreview = useStore((state) => state.showMediaPreview);
   const setShowMediaPreview = useStore((state) => state.setShowMediaPreview);
   const globalTextExpanded = useStore((state) => state.globalTextExpanded);
@@ -856,6 +858,9 @@ export default function AdvancedPanel() {
               </SettingRow>
               <SettingRow icon={AlignLeft} iconClass="bg-indigo-500/10 text-indigo-500" title="Expand all text" description="Show the full content of multiline text nodes">
                 <Toggle label="Expand all text" checked={globalTextExpanded} onChange={setGlobalTextExpanded} />
+              </SettingRow>
+              <SettingRow icon={Undo2} iconClass="bg-teal-500/10 text-teal-500" title="Back button closes popups" description="Browser and device back button closes active popups in order (LIFO)">
+                <Toggle label="Back button closes popups" checked={backButtonClosesPopups} onChange={setBackButtonClosesPopups} activeClass="bg-teal-500" />
               </SettingRow>
               <SettingRow icon={Mic} iconClass="bg-violet-500/10 text-violet-500" title="Voice commands" description="Mic and voice control">
                 <button

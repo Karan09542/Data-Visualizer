@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { Edit2, X } from 'lucide-react';
 import { useStore } from '../store/useStore';
+import { useModalBackHandler } from '../utils/modalBackHandler';
 import CustomSelect from './CustomSelect';
 
 export interface NodeEditingModalProps {
@@ -16,6 +17,8 @@ export function NodeEditingModal({
   applyJsonChange,
 }: NodeEditingModalProps) {
   const appTheme = useStore((s) => s.appTheme);
+
+  useModalBackHandler(!!editingNode, () => setEditingNode(null), 'node-editing-modal');
 
   if (!editingNode) return null;
 
