@@ -86,12 +86,14 @@ function App() {
   useEffect(() => {
     if (typeof window !== "undefined") {
       const runPreload = () => {
-        preloadLearningGames();
+        preloadLearningGames().then(() => {
+          setLearningGamesLoaded(true);
+        });
       };
       if ("requestIdleCallback" in window) {
-        (window as any).requestIdleCallback(runPreload, { timeout: 3000 });
+        (window as any).requestIdleCallback(runPreload, { timeout: 2500 });
       } else {
-        setTimeout(runPreload, 2000);
+        setTimeout(runPreload, 1500);
       }
     }
   }, []);

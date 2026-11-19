@@ -34,13 +34,14 @@ export default function LearningGamesPanel() {
   const historyCount = useLearningStore((s) => s.history.length);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const reduceMotion = useReducedMotion();
-  const hadFallback = useRef(fallbackWasShown);
+  // Only skip slide-in if fallback was actually shown immediately preceding this open
+  const skipEntranceAnimation = Boolean(reduceMotion || fallbackWasShown);
 
   useEffect(() => {
-    if (fallbackWasShown) {
+    if (open && fallbackWasShown) {
       setFallbackWasShown(false);
     }
-  }, []);
+  }, [open]);
   const dragControls = useDragControls();
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -98,7 +99,7 @@ export default function LearningGamesPanel() {
         {open && (
           <div className="fixed inset-0 z-[9000]" onKeyDown={onKeyDown}>
             <motion.div
-              className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px] dark:bg-black/50"
+              className="absolute inset-0 bg-slate-950/40 md:backdrop-blur-sm dark:bg-black/60"
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
@@ -113,16 +114,26 @@ export default function LearningGamesPanel() {
               aria-labelledby="lg-title"
               tabIndex={-1}
               className={cn(
-                "absolute flex flex-col overflow-hidden bg-white text-slate-800 shadow-2xl outline-none dark:bg-[#0d1117] dark:text-slate-200",
+                "absolute flex flex-col overflow-hidden bg-white text-slate-800 shadow-2xl outline-none dark:bg-[#0d1117] dark:text-slate-200 transform-gpu",
                 isDesktop
                   ? "bottom-2 right-2 top-2 rounded-3xl border border-slate-200/80 transition-[width] duration-300 ease-out dark:border-slate-800"
                   : "inset-x-0 bottom-0 top-[max(0.75rem,env(safe-area-inset-top))] rounded-t-[1.75rem]",
               )}
-              style={isDesktop ? { width: playing ? "min(1120px, calc(100vw - 1rem))" : "min(540px, calc(100vw - 1rem))" } : undefined}
-              initial={reduceMotion || hadFallback.current ? false : (isDesktop ? { x: "105%" } : { y: "100%" })}
+              style={
+                isDesktop
+                  ? { width: playing ? "min(1120px, calc(100vw - 1rem))" : "min(540px, calc(100vw - 1rem))" }
+                  : { willChange: "transform" }
+              }
+              initial={skipEntranceAnimation ? false : (isDesktop ? { x: "105%" } : { y: "100%" })}
               animate={isDesktop ? { x: 0 } : { y: 0 }}
               exit={isDesktop ? { x: "105%" } : { y: "100%" }}
-              transition={reduceMotion ? { duration: 0 } : { type: "spring", damping: 34, stiffness: 340, mass: 0.9 }}
+              transition={
+                reduceMotion
+                  ? { duration: 0 }
+                  : isDesktop
+                    ? { type: "spring", damping: 34, stiffness: 340, mass: 0.9 }
+                    : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }
+              }
               drag={isDesktop ? false : "y"}
               dragListener={false}
               dragControls={dragControls}

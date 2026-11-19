@@ -29,15 +29,15 @@ export default function LearningGamesLoadingFallback() {
     >
       {/* Backdrop */}
       <div
-        className="absolute inset-0 bg-slate-950/25 backdrop-blur-[2px] dark:bg-black/50 transition-opacity animate-in fade-in duration-200"
+        className="absolute inset-0 bg-slate-950/40 md:backdrop-blur-sm dark:bg-black/60 transition-opacity animate-in fade-in duration-200"
         onClick={close}
         aria-hidden
       />
 
       {/* Slide-in panel matching LearningGamesPanel */}
       <div
-        className="absolute flex flex-col overflow-hidden bg-white text-slate-800 shadow-2xl outline-none dark:bg-[#0d1117] dark:text-slate-200 bottom-2 right-2 top-2 rounded-3xl border border-slate-200/80 dark:border-slate-800 max-md:inset-x-0 max-md:bottom-0 max-md:top-[max(0.75rem,env(safe-area-inset-top))] max-md:rounded-t-[1.75rem] animate-in slide-in-from-right duration-250 max-md:slide-in-from-bottom"
-        style={{ width: "min(540px, calc(100vw - 1rem))" }}
+        className="absolute flex flex-col overflow-hidden bg-white text-slate-800 shadow-2xl outline-none dark:bg-[#0d1117] dark:text-slate-200 bottom-2 right-2 top-2 rounded-3xl border border-slate-200/80 dark:border-slate-800 max-md:inset-x-0 max-md:bottom-0 max-md:top-[max(0.75rem,env(safe-area-inset-top))] max-md:rounded-t-[1.75rem] animate-in slide-in-from-right duration-250 max-md:slide-in-from-bottom transform-gpu"
+        style={{ width: "min(540px, calc(100vw - 1rem))", willChange: "transform" }}
       >
         {/* Header */}
         <header className="shrink-0 border-b border-slate-200/80 px-4 pb-3 pt-2 dark:border-slate-800 sm:px-5 md:pt-4">
