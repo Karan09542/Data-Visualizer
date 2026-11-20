@@ -492,7 +492,7 @@ function WordRow({ word, progress, setName, expanded, editing, selecting, select
   return (
     <li
       className={cn(
-        "rounded-2xl border bg-white transition-colors dark:bg-slate-900/40",
+        "rounded-2xl border bg-white transition-colors dark:bg-slate-900/40 [content-visibility:auto] [contain-intrinsic-size:0_64px]",
         selected ? "border-indigo-400 bg-indigo-50/50 dark:border-indigo-400/60 dark:bg-indigo-500/10" : "border-slate-200/80 dark:border-slate-800",
       )}
     >

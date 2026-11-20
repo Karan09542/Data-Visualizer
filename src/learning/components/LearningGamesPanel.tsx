@@ -14,7 +14,6 @@ import { ReviewView } from "./ReviewView";
 import { WordsView } from "./WordsView";
 import { ConfirmContext, type ConfirmRequest } from "./primitives";
 import { useMediaQuery } from "./hooks";
-import { fallbackWasShown, setFallbackWasShown } from "../preload";
 import "../learning.css";
 
 const VIEWS: Record<LearningView, () => React.ReactElement> = {
@@ -34,14 +33,7 @@ export default function LearningGamesPanel() {
   const historyCount = useLearningStore((s) => s.history.length);
   const isDesktop = useMediaQuery("(min-width: 768px)");
   const reduceMotion = useReducedMotion();
-  // Only skip slide-in if fallback was actually shown immediately preceding this open
-  const skipEntranceAnimation = Boolean(reduceMotion || fallbackWasShown);
-
-  useEffect(() => {
-    if (open && fallbackWasShown) {
-      setFallbackWasShown(false);
-    }
-  }, [open]);
+  const [canDrag, setCanDrag] = useState(false);
   const dragControls = useDragControls();
   const panelRef = useRef<HTMLDivElement>(null);
   const returnFocus = useRef<HTMLElement | null>(null);
@@ -53,7 +45,10 @@ export default function LearningGamesPanel() {
   }, [setOpen]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open) {
+      setCanDrag(false);
+      return;
+    }
     returnFocus.current = document.activeElement as HTMLElement | null;
     void useLearningStore.getState().init();
     useStore.getState().setIsMobileMenuOpen(false);
@@ -114,7 +109,7 @@ export default function LearningGamesPanel() {
               aria-labelledby="lg-title"
               tabIndex={-1}
               className={cn(
-                "absolute flex flex-col overflow-hidden bg-white text-slate-800 shadow-2xl outline-none dark:bg-[#0d1117] dark:text-slate-200 transform-gpu",
+                "absolute flex flex-col overflow-hidden bg-white text-slate-800 shadow-2xl outline-none dark:bg-[#0d1117] dark:text-slate-200 transform-gpu [backface-visibility:hidden]",
                 isDesktop
                   ? "bottom-2 right-2 top-2 rounded-3xl border border-slate-200/80 transition-[width] duration-300 ease-out dark:border-slate-800"
                   : "inset-x-0 bottom-0 top-[max(0.75rem,env(safe-area-inset-top))] rounded-t-[1.75rem]",
@@ -122,9 +117,9 @@ export default function LearningGamesPanel() {
               style={
                 isDesktop
                   ? { width: playing ? "min(1120px, calc(100vw - 1rem))" : "min(540px, calc(100vw - 1rem))" }
-                  : { willChange: "transform" }
+                  : { willChange: "transform", transform: "translateZ(0)" }
               }
-              initial={skipEntranceAnimation ? false : (isDesktop ? { x: "105%" } : { y: "100%" })}
+              initial={reduceMotion ? false : (isDesktop ? { x: "105%" } : { y: "100%" })}
               animate={isDesktop ? { x: 0 } : { y: 0 }}
               exit={isDesktop ? { x: "105%" } : { y: "100%" }}
               transition={
@@ -132,9 +127,9 @@ export default function LearningGamesPanel() {
                   ? { duration: 0 }
                   : isDesktop
                     ? { type: "spring", damping: 34, stiffness: 340, mass: 0.9 }
-                    : { duration: 0.28, ease: [0.16, 1, 0.3, 1] }
+                    : { duration: 0.24, ease: [0.22, 1, 0.36, 1] }
               }
-              drag={isDesktop ? false : "y"}
+              drag={!isDesktop && canDrag ? "y" : false}
               dragListener={false}
               dragControls={dragControls}
               dragConstraints={{ top: 0, bottom: 0 }}
@@ -143,7 +138,12 @@ export default function LearningGamesPanel() {
                 if (info.offset.y > 140 || info.velocity.y > 700) close();
               }}
               onAnimationComplete={() => {
-                if (open && !panelRef.current?.contains(document.activeElement)) panelRef.current?.focus({ preventScroll: true });
+                if (open) {
+                  setCanDrag(true);
+                  if (!panelRef.current?.contains(document.activeElement)) {
+                    panelRef.current?.focus({ preventScroll: true });
+                  }
+                }
               }}
             >
               <header

@@ -46,7 +46,6 @@ const AudioPlayerModal = lazyWithRetry(() => import("./audio/components/AudioPla
 const MiniPlayer = lazyWithRetry(() => import("./audio/components/MiniPlayer"), 'MiniPlayer');
 const LearningGamesPanel = lazyWithRetry(() => import("./learning/components/LearningGamesPanel"), 'LearningGamesPanel');
 import { preloadLearningGames } from "./learning/preload";
-import LearningGamesLoadingFallback from "./learning/components/LearningGamesLoadingFallback";
 import { FloatingMic } from "./voice/components/FloatingMic";
 import { useVoice } from "./voice/useVoice";
 import { GlobalErrorBoundary } from "./components/AppErrorPopup";
@@ -82,20 +81,12 @@ function App() {
   useEffect(() => {
     if (isLearningGamesOpen) setLearningGamesLoaded(true);
   }, [isLearningGamesOpen]);
-  // Eagerly prefetch learning games when browser is idle to ensure instant opening
+
+  // Eagerly prefetch learning games immediately so the panel is ready in memory
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const runPreload = () => {
-        preloadLearningGames().then(() => {
-          setLearningGamesLoaded(true);
-        });
-      };
-      if ("requestIdleCallback" in window) {
-        (window as any).requestIdleCallback(runPreload, { timeout: 2500 });
-      } else {
-        setTimeout(runPreload, 1500);
-      }
-    }
+    preloadLearningGames().then(() => {
+      setLearningGamesLoaded(true);
+    });
   }, []);
 
   // Dynamic mobile viewport height calculation & mobile scroll lock
@@ -1015,7 +1006,7 @@ function App() {
       <Suspense fallback={null}><MiniPlayer /></Suspense>
 
       {shouldRenderLearningGames && (
-        <Suspense fallback={isLearningGamesOpen ? <LearningGamesLoadingFallback /> : null}>
+        <Suspense fallback={null}>
           <LearningGamesPanel />
         </Suspense>
       )}
